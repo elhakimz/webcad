@@ -31,7 +31,9 @@ export class Menu {
         { label: 'ARC', command: 'ARC' },
         { label: 'CIRCLE', command: 'CIRCLE' },
         { label: 'LINE:', command: 'LINE' },
-        { label: 'POINT' },
+        { label: 'PLINE', command: 'PLINE' },
+        { label: 'POINT', command: 'POINT' },
+        { label: 'POLYGON', command: 'POLYGON' },
         { label: 'TEXT' }
       ]},
       { label: 'EDIT', submenu: [

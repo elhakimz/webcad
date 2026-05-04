@@ -6,6 +6,9 @@ import { MoveCommand } from "../commands/MoveCommand"
 import { ZoomCommand } from "../commands/ZoomCommand"
 import { Test3DCommand } from "../commands/Test3DCommand"
 import { ArcCommand } from "../commands/ArcCommand"
+import { PointCommand } from "../commands/PointCommand"
+import { PolylineCommand } from "../commands/PolylineCommand"
+import { PolygonCommand } from "../commands/PolygonCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 
@@ -41,6 +44,18 @@ export class CommandManager {
     if(cmd === "ARC"){
       this.active = new ArcCommand()
       return "ARC command started: start point"
+    }
+    if(cmd === "POINT"){
+      this.active = new PointCommand()
+      return "POINT command started: pick point"
+    }
+    if(cmd === "PLINE"){
+      this.active = new PolylineCommand()
+      return "PLINE command started: specify start point"
+    }
+    if(cmd === "POLYGON"){
+      this.active = new PolygonCommand()
+      return "POLYGON Number of sides <4>:"
     }
     return "Unknown command: " + cmd
   }

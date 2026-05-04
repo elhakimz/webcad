@@ -3,6 +3,9 @@ import { Entity } from "../core/model/Entity"
 import { Line } from "../core/model/Line"
 import { Circle } from "../core/model/Circle"
 import { Arc } from "../core/model/Arc"
+import { Point } from "../core/model/Point"
+import { Polyline } from "../core/model/Polyline"
+import { bulgeToArc } from "../core/engine/MathUtils"
 
 export class Viewer {
   scene: THREE.Scene
@@ -64,13 +67,17 @@ export class Viewer {
   setPreview(entity: Entity | null) {
     if (this.previewObject) {
       this.scene.remove(this.previewObject);
-      if (this.previewObject instanceof THREE.Line || this.previewObject instanceof THREE.LineLoop) {
-        this.previewObject.geometry.dispose();
-        if (Array.isArray(this.previewObject.material)) {
-          this.previewObject.material.forEach(m => m.dispose());
-        } else {
-          this.previewObject.material.dispose();
-        }
+      if (this.previewObject instanceof THREE.Line || this.previewObject instanceof THREE.LineLoop || this.previewObject instanceof THREE.Points || this.previewObject instanceof THREE.Group) {
+        this.previewObject.traverse((obj) => {
+          if (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points) {
+            obj.geometry.dispose();
+            if (Array.isArray(obj.material)) {
+              obj.material.forEach(m => m.dispose());
+            } else {
+              obj.material.dispose();
+            }
+          }
+        });
       }
       this.previewObject = null;
     }
@@ -96,6 +103,14 @@ export class Viewer {
         const geo = new THREE.BufferGeometry().setFromPoints(points);
         const mat = new THREE.LineBasicMaterial({ color: previewColor });
         this.previewObject = new THREE.Line(geo, mat);
+      } else if (entity instanceof Point) {
+        const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(entity.x, entity.y, 0)
+        ]);
+        const mat = new THREE.PointsMaterial({ color: previewColor, size: 5, sizeAttenuation: false });
+        this.previewObject = new THREE.Points(geo, mat);
+      } else if (entity instanceof Polyline) {
+        this.previewObject = this.createPolylineObject(entity, previewColor);
       }
 
       if (this.previewObject) {
@@ -104,6 +119,38 @@ export class Viewer {
     }
 
     this.render();
+  }
+
+  private createPolylineObject(entity: Polyline, color: number): THREE.Object3D {
+    const group = new THREE.Group();
+    const mat = new THREE.LineBasicMaterial({ color });
+
+    for (let i = 0; i < entity.vertices.length - (entity.closed ? 0 : 1); i++) {
+      const v1 = entity.vertices[i];
+      const v2 = entity.vertices[(i + 1) % entity.vertices.length];
+
+      if (Math.abs(v1.bulge) < 1e-6) {
+        // Line segment
+        const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(v1.x, v1.y, 0),
+          new THREE.Vector3(v2.x, v2.y, 0)
+        ]);
+        group.add(new THREE.Line(geo, mat));
+      } else {
+        // Arc segment
+        const arcParams = bulgeToArc(v1, v2, v1.bulge);
+        if (arcParams) {
+          const curve = new THREE.EllipseCurve(
+            arcParams.cx, arcParams.cy, arcParams.r, arcParams.r,
+            arcParams.startAngle, arcParams.endAngle, !arcParams.ccw, 0
+          );
+          const points = curve.getPoints(20);
+          const geo = new THREE.BufferGeometry().setFromPoints(points);
+          group.add(new THREE.Line(geo, mat));
+        }
+      }
+    }
+    return group;
   }
 
   setHelpers(points: { x: number, y: number }[] | null) {
@@ -220,6 +267,24 @@ export class Viewer {
     this.scene.add(arc);
   }
 
+  addPoint(x: number, y: number, id?: string) {
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(x, y, 0)
+    ]);
+    const mat = new THREE.PointsMaterial({ color: 0x00ff00, size: 5, sizeAttenuation: false });
+    const point = new THREE.Points(geo, mat);
+    if (id) {
+      point.name = id;
+    }
+    this.scene.add(point);
+  }
+
+  addPolyline(entity: Polyline) {
+    const obj = this.createPolylineObject(entity, 0x00ff00);
+    obj.name = entity.id;
+    this.scene.add(obj);
+  }
+
   addMesh(geometry: THREE.BufferGeometry, id?: string) {
     const mat = new THREE.MeshStandardMaterial({ 
       color: 0x00ff00,
@@ -234,14 +299,20 @@ export class Viewer {
   pickEntity(clientX: number, clientY: number): string | null {
     const raycaster = new THREE.Raycaster();
     raycaster.params.Line = { threshold: 5 / this.camera.zoom }; 
+    raycaster.params.Points = { threshold: 5 / this.camera.zoom };
 
     const mouse = this.getNormalizedDeviceCoordinates(clientX, clientY);
 
     raycaster.setFromCamera(mouse, this.camera);
-    const intersects = raycaster.intersectObjects(this.scene.children);
+    const intersects = raycaster.intersectObjects(this.scene.children, true);
 
     if (intersects.length > 0) {
-      return intersects[0].object.name || null;
+      // Find the top-level object with a name (the entity ID)
+      let obj = intersects[0].object;
+      while (obj && !obj.name && obj.parent) {
+        obj = obj.parent;
+      }
+      return obj.name || null;
     }
     return null;
   }
@@ -251,14 +322,16 @@ export class Viewer {
     const obj = this.scene.getObjectByName(id);
     if (obj) {
       this.scene.remove(obj);
-      if (obj instanceof THREE.Mesh || obj instanceof THREE.Line || obj instanceof THREE.LineLoop) {
-        obj.geometry.dispose();
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach(m => m.dispose());
-        } else {
-          obj.material.dispose();
+      obj.traverse((child) => {
+        if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
+          child.geometry.dispose();
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
+          }
         }
-      }
+      });
     }
   }
 
@@ -315,6 +388,18 @@ export class Viewer {
         maxX = Math.max(maxX, e.cx + e.r);
         minY = Math.min(minY, e.cy - e.r);
         maxY = Math.max(maxY, e.cy + e.r);
+      } else if (e instanceof Point) {
+        minX = Math.min(minX, e.x);
+        maxX = Math.max(maxX, e.x);
+        minY = Math.min(minY, e.y);
+        maxY = Math.max(maxY, e.y);
+      } else if (e instanceof Polyline) {
+        e.vertices.forEach(v => {
+          minX = Math.min(minX, v.x);
+          maxX = Math.max(maxX, v.x);
+          minY = Math.min(minY, v.y);
+          maxY = Math.max(maxY, v.y);
+        });
       }
     });
     const margin = Math.max(maxX - minX, maxY - minY) * 0.1;

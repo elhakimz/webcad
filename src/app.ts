@@ -7,6 +7,8 @@ import { Entity } from "./core/model/Entity"
 import { Line } from "./core/model/Line"
 import { Circle } from "./core/model/Circle"
 import { Arc } from "./core/model/Arc"
+import { Point } from "./core/model/Point"
+import { Polyline } from "./core/model/Polyline"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import * as THREE from "three"
@@ -79,7 +81,7 @@ export class App {
       // Case: New Entity Created (Standard or via 'close')
       let entity: Entity | undefined;
       
-      if (result instanceof Line || result instanceof Circle || result instanceof Arc) {
+      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline) {
         entity = result;
       } else if ('action' in result && result.action === 'close' && result.entity) {
         entity = result.entity;
@@ -87,6 +89,11 @@ export class App {
       }
 
       if (entity) {
+        // Handle replacement if entity already exists (for PLINE updates)
+        if (this.doc.getEntity(entity.id)) {
+          this.viewer.removeObject(entity.id);
+        }
+
         this.doc.addEntity(entity)
         if (entity instanceof Line) {
           this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id)
@@ -94,11 +101,15 @@ export class App {
           this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id)
         } else if (entity instanceof Arc) {
           this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id)
+        } else if (entity instanceof Point) {
+          this.viewer.addPoint(entity.x, entity.y, entity.id)
+        } else if (entity instanceof Polyline) {
+          this.viewer.addPolyline(entity)
         }
         this.viewer.setPreview(null)
         this.viewer.render()
         
-        if (entity instanceof Circle || entity instanceof Arc) {
+        if (entity instanceof Circle || entity instanceof Arc || entity instanceof Point) {
           this.cmd.clearActive();
         }
 
@@ -118,6 +129,11 @@ export class App {
           const dy = entity.y2 - entity.y1;
           const len = Math.sqrt(dx * dx + dy * dy);
           return `${FormatUtils.formatPoint(entity.x2, entity.y2, "P" + (this.cmd.active as any).points.length)}\nLine created. ${FormatUtils.formatDistance(len)}`;
+        }
+
+        if (entity instanceof Polyline) {
+          const last = entity.vertices[entity.vertices.length - 1];
+          return `${FormatUtils.formatPoint(last.x, last.y, "P" + entity.vertices.length)}\nPolyline segment added.`;
         }
 
         return entity;

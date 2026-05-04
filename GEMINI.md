@@ -125,7 +125,7 @@ Geometry updates should be handled through the `Viewer` class in `src/render/Vie
 -   Keep UI logic (DOM interactions) in `main.ts` or a dedicated `ui/` folder, separating it from the core CAD logic in `src/core/`.
 
 ## 📍 Roadmap Priorities
--   Implementing additional commands: `COPY`, `ROTATE`, `SCALE`.
--   Selection system enhancements (window/crossing select).
--   Snap engine (endpoint, midpoint, grid).
--   DXF import/export.
+-   [ ] **Manipulation:** Implement `COPY`, `ROTATE`, and `SCALE`.
+-   [ ] **Selection:** Window and Crossing selection systems.
+-   [ ] **Precision:** Snap engine (Endpoint, Midpoint, Grid).
+-   [ ] **I/O:** DXF import and export layers.

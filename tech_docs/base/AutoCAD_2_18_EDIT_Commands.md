@@ -228,17 +228,9 @@ function cmdChange(selectedEntities, property, newValue) {
 ## Implementation Notes for JS:
 * **Entities as Objects:** Treat your Lines, Circles, and Arcs as classes/objects with a `.clone()` method and standard matrix transformation methods.
 * **Math Libraries:** Consider using a library like `gl-matrix` for handling 2x3 or 3x3 transformation matrices natively rather than manually writing the trig for every command.
-* **Floating Point Errors:** JavaScript numbers are double-precision floats. You will need an `epsilon` threshold (e.g., `0.000001`) when checking if points intersect or lie on a line.
-pseudocode:
-"""
-
-with open("AutoCAD_2_18_Edit_Commands.md", "w") as f:
-    f.write(content)
-
-
+* **Floating Point Errors:** JavaScript numbers are double-precision floats. You will need an `epsilon` threshold (e.g., `0.000001`) when checking if points intersect or lie on a line
 ```
-Your Markdown file containing the AutoCAD 2.18 EDIT commands and JavaScript pseudocode is ready to download:
-[file-tag: code-generated-file-0-1777864448001250571]
+
 
 ### Overview of Included Commands
 AutoCAD 2.18 established the standard workflows for geometry manipulation. In the provided file, I've outlined the classic behaviors and how to approach them in a modern JavaScript application:

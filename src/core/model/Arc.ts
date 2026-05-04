@@ -1,6 +1,6 @@
 
 import { Entity, BoundingBox } from "./Entity";
-import { rotatePoint } from "../engine/MathUtils"
+import { rotatePoint, reflectPointAcrossLine } from "../engine/MathUtils"
 
 export class Arc extends Entity {
   cx: number;
@@ -37,12 +37,15 @@ export class Arc extends Entity {
     this.cx = baseX + (this.cx - baseX) * factor;
     this.cy = baseY + (this.cy - baseY) * factor;
     this.r *= Math.abs(factor);
-    if (factor < 0) {
-        // Reflecting across base point: swap angles and CCW? 
-        // For simple uniform scaling, negative factor is usually avoided or handled as mirror.
-        // AutoCAD usually handles factor as absolute for radius.
-        // We'll keep it simple: radius is absolute.
-    }
+  }
+
+  mirror(p1: { x: number; y: number }, p2: { x: number; y: number }) {
+    const reflected = reflectPointAcrossLine({ x: this.cx, y: this.cy }, p1, p2);
+    this.cx = reflected.x;
+    this.cy = reflected.y;
+    this.startAngle = Math.PI - this.startAngle;
+    this.endAngle = Math.PI - this.endAngle;
+    this.ccw = !this.ccw;
   }
 
   getBoundingBox(): BoundingBox {

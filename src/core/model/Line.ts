@@ -1,6 +1,6 @@
 
 import { Entity, BoundingBox } from "./Entity"
-import { rotatePoint } from "../engine/MathUtils"
+import { rotatePoint, reflectPointAcrossLine } from "../engine/MathUtils"
 
 export class Line extends Entity {
   x1:number; y1:number; x2:number; y2:number;
@@ -31,6 +31,15 @@ export class Line extends Entity {
     this.y1 = baseY + (this.y1 - baseY) * factor;
     this.x2 = baseX + (this.x2 - baseX) * factor;
     this.y2 = baseY + (this.y2 - baseY) * factor;
+  }
+
+  mirror(p1: { x: number; y: number }, p2: { x: number; y: number }) {
+    const reflected1 = reflectPointAcrossLine({ x: this.x1, y: this.y1 }, p1, p2);
+    const reflected2 = reflectPointAcrossLine({ x: this.x2, y: this.y2 }, p1, p2);
+    this.x1 = reflected1.x;
+    this.y1 = reflected1.y;
+    this.x2 = reflected2.x;
+    this.y2 = reflected2.y;
   }
 
   getBoundingBox(): BoundingBox {

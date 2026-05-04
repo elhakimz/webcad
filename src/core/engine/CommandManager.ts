@@ -6,6 +6,7 @@ import { MoveCommand } from "../commands/MoveCommand"
 import { CopyCommand } from "../commands/CopyCommand"
 import { RotateCommand } from "../commands/RotateCommand"
 import { ScaleCommand } from "../commands/ScaleCommand"
+import { MirrorCommand } from "../commands/MirrorCommand"
 import { ZoomCommand } from "../commands/ZoomCommand"
 import { Test3DCommand } from "../commands/Test3DCommand"
 import { ArcCommand } from "../commands/ArcCommand"
@@ -52,6 +53,10 @@ export class CommandManager {
     if(cmd === "SCALE"){
       this.active = new ScaleCommand(selection)
       return selection && selection.length > 0 ? "Base point:" : "SCALE command started: select object"
+    }
+    if(cmd === "MIRROR"){
+      this.active = new MirrorCommand(selection)
+      return selection && selection.length > 0 ? "First point of mirror line:" : "MIRROR command started: select objects to mirror"
     }
     if(cmd === "ZOOM" || cmd === "Z"){
       this.active = new ZoomCommand()

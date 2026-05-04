@@ -1,7 +1,7 @@
 import { Entity } from "../model/Entity";
 
 export type CommandAction = {
-  action: 'finish' | 'close' | 'delete' | 'undo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale';
+  action: 'finish' | 'close' | 'delete' | 'undo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror';
   id?: string;
   ids?: string[];
   entity?: Entity;

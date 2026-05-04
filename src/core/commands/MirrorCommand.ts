@@ -1,0 +1,75 @@
+import { Command, CommandResponse } from "./types"
+
+export class MirrorCommand implements Command {
+  step = 0
+  targetIds: string[] = []
+  p1 = { x: 0, y: 0 }
+  p2 = { x: 0, y: 0 }
+
+  constructor(ids?: string[]) {
+    if (ids && ids.length > 0) {
+      this.targetIds = ids;
+      this.step = 1;
+    }
+  }
+
+  onInput(text: string): CommandResponse | undefined {
+    if (this.step === 0 && text) {
+      this.targetIds = [text];
+      this.step = 1;
+      return "First point of mirror line:";
+    }
+
+    if (this.step === 3) {
+      const answer = text.toUpperCase().trim();
+      if (answer === 'Y' || answer === 'N') {
+        return this.finish(answer === 'Y');
+      }
+      return "Delete old objects? (Y/N):";
+    }
+  }
+
+  onPoint(x: number, y: number): CommandResponse {
+    if (this.step === 0) {
+      return "Select objects to mirror:";
+    }
+
+    if (this.step === 1) {
+      this.p1.x = x;
+      this.p1.y = y;
+      this.step = 2;
+      return "Second point of mirror line:";
+    } else {
+      this.p2.x = x;
+      this.p2.y = y;
+      this.step = 3;
+      return "Delete old objects? (Y/N):";
+    }
+  }
+
+  private finish(deleteOriginal: boolean) {
+    const ids = [...this.targetIds];
+    const p1 = { ...this.p1 };
+    const p2 = { ...this.p2 };
+    this.step = 0;
+    this.targetIds = [];
+    return { action: "mirror", ids, p1, p2, deleteOriginal } as const;
+  }
+
+  getReferencePoints() {
+    if (this.step === 1) {
+      return [];
+    }
+    if (this.step >= 2) {
+      return [this.p1, this.p2];
+    }
+    return [];
+  }
+
+  getPrompt() {
+    if (this.step === 0) return "Select objects to mirror:";
+    if (this.step === 1) return "First point of mirror line:";
+    if (this.step === 2) return "Second point of mirror line:";
+    return "Delete old objects? (Y/N):";
+  }
+}

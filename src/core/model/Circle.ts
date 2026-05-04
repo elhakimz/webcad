@@ -1,6 +1,6 @@
 
 import { Entity, BoundingBox } from "./Entity"
-import { rotatePoint } from "../engine/MathUtils"
+import { rotatePoint, reflectPointAcrossLine } from "../engine/MathUtils"
 
 export class Circle extends Entity {
   cx: number;
@@ -29,6 +29,12 @@ export class Circle extends Entity {
     this.cx = baseX + (this.cx - baseX) * factor;
     this.cy = baseY + (this.cy - baseY) * factor;
     this.r *= Math.abs(factor);
+  }
+
+  mirror(p1: { x: number; y: number }, p2: { x: number; y: number }) {
+    const reflected = reflectPointAcrossLine({ x: this.cx, y: this.cy }, p1, p2);
+    this.cx = reflected.x;
+    this.cy = reflected.y;
   }
 
   getBoundingBox(): BoundingBox {

@@ -334,7 +334,6 @@ export class Viewer {
     const mouse = this.getNormalizedDeviceCoordinates(clientX, clientY);
     const vec = new THREE.Vector3(mouse.x, mouse.y, 0.5);
     vec.unproject(this.camera)
-    console.log(`[Viewer] screenToWorld: (${clientX}, ${clientY}) -> NDC: (${mouse.x.toFixed(3)}, ${mouse.y.toFixed(3)}) -> World: (${vec.x.toFixed(3)}, ${vec.y.toFixed(3)})`);
     return { x: vec.x, y: vec.y }
   }
 
@@ -446,31 +445,130 @@ export class Viewer {
     }
   }
 
+  private originalColors: Map<string, number> = new Map();
+
   setHighlight(ids: string[]) {
     const highlightColor = 0xffff00; // Yellow
-    const normalColor = 0x00ff00; // Green
 
+    // Collect all objects to process
+    const objectsToProcess: THREE.Object3D[] = [];
     this.scene.traverse((obj) => {
-      // Only affect drawing objects (they have a name/id)
-      if (obj.name && obj.name !== "PREVIEW" && !obj.name.startsWith("CURSOR") && 
-          (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points || obj instanceof THREE.Mesh)) {
-        
-        const isHighlighted = ids.includes(obj.name);
-        const color = isHighlighted ? highlightColor : normalColor;
+      if (obj.name && obj.name !== "PREVIEW" && !obj.name.startsWith("CURSOR")) {
+        objectsToProcess.push(obj);
+      }
+    });
+
+    // First pass: capture current colors for highlighted items (including Group children)
+    objectsToProcess.forEach(obj => {
+      const isHighlighted = ids.includes(obj.name!);
+      
+      // Handle Groups - capture colors from all children
+      if (isHighlighted && obj instanceof THREE.Group) {
+        obj.traverse((child) => {
+          if (child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Mesh) {
+            const childName = obj.name + '_' + child.uuid;
+            if (!this.originalColors.has(childName) && child.material) {
+              if (Array.isArray(child.material)) {
+                if (child.material.length > 0 && 'color' in child.material[0]) {
+                  this.originalColors.set(childName, (child.material[0] as THREE.MeshBasicMaterial).color.getHex());
+                }
+              } else if ('color' in child.material) {
+                this.originalColors.set(childName, (child.material as THREE.MeshBasicMaterial).color.getHex());
+              }
+            }
+          }
+        });
+      } else if (isHighlighted && obj.material) {
+        // Handle regular objects
+        if (!this.originalColors.has(obj.name)) {
+          if (Array.isArray(obj.material)) {
+            if (obj.material.length > 0 && 'color' in obj.material[0]) {
+              this.originalColors.set(obj.name, (obj.material[0] as THREE.MeshBasicMaterial).color.getHex());
+            }
+          } else if ('color' in obj.material) {
+            this.originalColors.set(obj.name, (obj.material as THREE.MeshBasicMaterial).color.getHex());
+          }
+        }
+      }
+    });
+
+    // Second pass: apply highlight or restore original color
+    objectsToProcess.forEach(obj => {
+      const isHighlighted = ids.includes(obj.name!);
+      
+      // Handle Groups - apply highlight to all children
+      if (obj instanceof THREE.Group) {
+        obj.traverse((child) => {
+          if (child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Mesh) {
+            const childName = obj.name + '_' + child.uuid;
+            const originalColor = this.originalColors.get(childName);
+            const targetColor = isHighlighted ? highlightColor : (originalColor ?? 0x00ff00);
+            
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach(m => {
+                  if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
+                });
+              } else if ('color' in child.material) {
+                (child.material as THREE.MeshBasicMaterial).color.set(targetColor);
+              }
+            }
+          }
+        });
+      } else if (obj.material) {
+        // Handle regular objects
+        const originalColor = this.originalColors.get(obj.name!);
+        const targetColor = isHighlighted ? highlightColor : (originalColor ?? 0x00ff00);
         
         if (Array.isArray(obj.material)) {
-            obj.material.forEach(m => {
-                if ('color' in m) (m as THREE.MeshBasicMaterial).color.set(color);
-            });
+          obj.material.forEach(m => {
+            if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
+          });
         } else if ('color' in obj.material) {
-            (obj.material as THREE.MeshBasicMaterial).color.set(color);
+          (obj.material as THREE.MeshBasicMaterial).color.set(targetColor);
         }
       }
     });
     this.render();
   }
 
-  setSelectionBox(p1: {x: number, y: number} | null, p2?: {x: number, y: number}, isCrossing?: boolean) {
+  clearHighlight() {
+    // Restore original colors
+    this.scene.traverse((obj) => {
+      // Handle Groups - restore colors to all children
+      if (obj instanceof THREE.Group) {
+        obj.traverse((child) => {
+          if (child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Mesh) {
+            const childName = obj.name + '_' + child.uuid;
+            if (this.originalColors.has(childName) && child.material) {
+              const originalColor = this.originalColors.get(childName)!;
+              if (Array.isArray(child.material)) {
+                child.material.forEach(m => {
+                  if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(originalColor);
+                });
+              } else if ('color' in child.material) {
+                (child.material as THREE.MeshBasicMaterial).color.set(originalColor);
+              }
+            }
+          }
+        });
+      } else if (obj.name && this.originalColors.has(obj.name) && obj.material) {
+        // Handle regular objects
+        const originalColor = this.originalColors.get(obj.name)!;
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(m => {
+            if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(originalColor);
+          });
+        } else if ('color' in obj.material) {
+          (obj.material as THREE.MeshBasicMaterial).color.set(originalColor);
+        }
+      }
+    });
+    this.originalColors.clear();
+    this.render();
+  }
+
+  setSelectionBox(p1: {x: number, y: number} | null, p2?: {x: number, y: number}) {
     if (this.selectionBox) {
         this.scene.remove(this.selectionBox);
         this.selectionBox.geometry.dispose();
@@ -493,11 +591,19 @@ export class Viewer {
         ];
         const geo = new THREE.BufferGeometry().setFromPoints(pts);
         
-        const color = isCrossing ? 0x00ff00 : 0x0000ff; // Green for crossing, Blue for window
-        const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 });
+        const mat = new THREE.LineDashedMaterial({ 
+            color: 0xffff00, 
+            dashSize: 5, 
+            gapSize: 3,
+            transparent: true, 
+            opacity: 0.8 
+        });
         
-        this.selectionBox = new THREE.Line(geo, mat);
-        this.selectionBox.renderOrder = 1000;
+        const line = new THREE.Line(geo, mat);
+        line.computeLineDistances();
+        line.renderOrder = 1000;
+        
+        this.selectionBox = line;
         this.scene.add(this.selectionBox);
     }
     this.render();

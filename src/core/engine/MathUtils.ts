@@ -190,3 +190,25 @@ export function rotatePoint(x: number, y: number, cx: number, cy: number, angleR
   };
 }
 
+export function reflectPointAcrossLine(point: Point, lineP1: Point, lineP2: Point): Point {
+  const dx = lineP2.x - lineP1.x;
+  const dy = lineP2.y - lineP1.y;
+  const angle = Math.atan2(dy, dx);
+
+  const tx = point.x - lineP1.x;
+  const ty = point.y - lineP1.y;
+
+  const rx = tx * Math.cos(-angle) - ty * Math.sin(-angle);
+  const ry = tx * Math.sin(-angle) + ty * Math.cos(-angle);
+
+  const reflectedRy = -ry;
+
+  const finalX = rx * Math.cos(angle) - reflectedRy * Math.sin(angle);
+  const finalY = rx * Math.sin(angle) + reflectedRy * Math.cos(angle);
+
+  return {
+    x: finalX + lineP1.x,
+    y: finalY + lineP1.y
+  };
+}
+

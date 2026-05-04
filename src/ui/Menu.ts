@@ -34,6 +34,7 @@ export class Menu {
         { label: 'PLINE', command: 'PLINE' },
         { label: 'POINT', command: 'POINT' },
         { label: 'POLYGON', command: 'POLYGON' },
+        { label: 'SOLID', command: 'SOLID' },
         { label: 'TEXT' }
       ]},
       { label: 'EDIT', submenu: [
@@ -41,7 +42,8 @@ export class Menu {
         { label: 'MOVE', command: 'MOVE' },
         { label: 'COPY', command: 'COPY' },
         { label: 'ROTATE', command: 'ROTATE' },
-        { label: 'SCALE', command: 'SCALE' }
+        { label: 'SCALE', command: 'SCALE' },
+        { label: 'MIRROR', command: 'MIRROR' }
       ]},
       { label: 'INQUIRY' },
       { label: 'LAYERS' },

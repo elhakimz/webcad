@@ -11,6 +11,7 @@ const viewer = new Viewer(canvas)
 const app = new App(viewer)
 
 const cmdLine = new CommandLine()
+app.setCommandLine((msg: string) => cmdLine.print(msg))
 const statusBar = new StatusBar()
 const menu = new Menu((cmd) => {
   cmdLine.print(`Command: ${cmd}`)

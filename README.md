@@ -22,10 +22,12 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **CIRCLE:** Center/Radius and Center/Diameter methods (toggle via `D`/`R` keys).
 -   **POLYGON:** Regular polygons via Center/Radius or Edge methods.
 -   **SOLID:** Solid-filled 2D planar triangles and quadrilaterals with chaining.
+-   **POINT:** Single point entities.
 -   **TEXT:** Single-line annotations with configurable height and rotation.
 -   **ERASE:** Interactive object selection and removal.
 -   **MOVE / COPY:** Precise translation or duplication via base point and displacement.
 -   **ROTATE / SCALE:** Geometric transformations around a base point.
+-   **MIRROR:** Reflect objects across a mirror line (with option to delete originals).
 -   **ZOOM:** `Zoom Window` and `Zoom All/Extents` (automatic fit).
 
 ### 🖥️ Authentic DOS UI
@@ -36,7 +38,8 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 
 ### 🖱️ Selection & Interaction
 -   **Selection Engine:** Advanced AABB-based hit-testing and precise geometry selection.
--   **Box Selection:** Supports both **Window** (entirely inside) and **Crossing** (intersects) modes.
+-   **Single Selection:** Click to select/deselect entities (highlighted in yellow).
+-   **Box Selection:** Drag to select multiple entities (Window/Crossing modes, dashed yellow box).
 -   **Dynamic Previews:** Real-time geometric previews for all draw and edit commands.
 -   **Pan & Zoom:** Intuitive middle-click pan and cursor-centered scroll zoom.
 

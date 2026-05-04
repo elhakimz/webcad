@@ -22,6 +22,11 @@ export class App {
   doc: Document
   selectedEntityIds: Set<string> = new Set()
   private selectionStartPoint: { x: number, y: number } | null = null
+  private commandLinePrint: ((msg: string) => void) | null = null
+
+  setCommandLine(printFn: (msg: string) => void) {
+    this.commandLinePrint = printFn;
+  }
 
   constructor(viewer:Viewer){
     this.viewer = viewer
@@ -41,6 +46,19 @@ export class App {
   }
 
   inputText(text:string){
+    // Handle Enter key (empty text) when there are selected entities and command is at step 0
+    if (text === "" && this.selectedEntityIds.size > 0) {
+      const activeName = this.cmd.active?.constructor.name;
+      const isEditCommand = activeName === 'EraseCommand' || activeName === 'MoveCommand' || activeName === 'CopyCommand' || activeName === 'RotateCommand' || activeName === 'ScaleCommand' || activeName === 'MirrorCommand';
+      if (isEditCommand && this.cmd.active && this.cmd.active.step === 0) {
+        const ids = Array.from(this.selectedEntityIds);
+        const cmdName = activeName?.replace('Command', '').toUpperCase();
+        if (cmdName) {
+          const res = this.cmd.execute(cmdName, ids);
+          return this.handleResult(res);
+        }
+      }
+    }
     const result = this.cmd.inputString(text)
     return this.handleResult(result)
   }
@@ -50,8 +68,7 @@ export class App {
     this.viewer.setCursor(worldPt.x, worldPt.y);
 
     if (this.selectionStartPoint) {
-        const isCrossing = worldPt.x < this.selectionStartPoint.x;
-        this.viewer.setSelectionBox(this.selectionStartPoint, worldPt, isCrossing);
+        this.viewer.setSelectionBox(this.selectionStartPoint, worldPt);
     }
 
     if (this.cmd.active && this.cmd.active.getPreview) {
@@ -82,7 +99,7 @@ export class App {
     const tolerance = 5 / this.viewer.camera.zoom;
 
     const activeName = this.cmd.active?.constructor.name;
-    const isEditCommand = activeName === 'EraseCommand' || activeName === 'MoveCommand' || activeName === 'CopyCommand' || activeName === 'RotateCommand' || activeName === 'ScaleCommand';
+    const isEditCommand = activeName === 'EraseCommand' || activeName === 'MoveCommand' || activeName === 'CopyCommand' || activeName === 'RotateCommand' || activeName === 'ScaleCommand' || activeName === 'MirrorCommand';
     const isSelectionStep = !this.cmd.active || (this.cmd.active && this.cmd.active.step === 0 && isEditCommand);
 
     let result: CommandResponse | undefined;
@@ -101,6 +118,7 @@ export class App {
         }
         
         found.forEach(e => this.selectedEntityIds.add(e.id));
+      if (this.commandLinePrint) this.commandLinePrint(`[Selection] Multiple (box): ${found.length} objects selected`);
     }
 
     this.selectionStartPoint = null;
@@ -116,7 +134,7 @@ export class App {
 
     // Handle initial selection step for edit commands if clicking an entity
     const activeName = this.cmd.active?.constructor.name;
-    const isEditCommand = activeName === 'EraseCommand' || activeName === 'MoveCommand' || activeName === 'CopyCommand' || activeName === 'RotateCommand' || activeName === 'ScaleCommand';
+    const isEditCommand = activeName === 'EraseCommand' || activeName === 'MoveCommand' || activeName === 'CopyCommand' || activeName === 'RotateCommand' || activeName === 'ScaleCommand' || activeName === 'MirrorCommand';
     const isSelectionStep = !this.cmd.active || (this.cmd.active && this.cmd.active.step === 0 && isEditCommand);
     const tolerance = 5 / this.viewer.camera.zoom;
 
@@ -129,12 +147,24 @@ export class App {
                 this.selectedEntityIds.add(entity.id);
             }
 
+            if (this.commandLinePrint) this.commandLinePrint(`[Selection] Single: 1 object selected`);
+
             if (this.cmd.active) {
                 return this.handleResult(this.cmd.inputString(entity.id));
             }
             return;
         } else if (!this.cmd.active) {
             this.selectedEntityIds.clear();
+        }
+
+        // If there's an active edit command at step 0 and user has selected entities, re-run command with selection
+        if (this.cmd.active && this.cmd.active.step === 0 && isEditCommand && this.selectedEntityIds.size > 0) {
+            const ids = Array.from(this.selectedEntityIds);
+            const cmdName = activeName?.replace('Command', '').toUpperCase();
+            if (cmdName) {
+                const res = this.cmd.execute(cmdName, ids);
+                return this.handleResult(res);
+            }
         }
     }
 
@@ -202,7 +232,7 @@ export class App {
             this.viewer.removeObject(id)
           });
           this.selectedEntityIds.clear();
-          this.viewer.setHighlight([]);
+          this.viewer.clearHighlight();
           this.viewer.setPreview(null)
           this.viewer.render()
           if (actionResult.action === 'delete') this.cmd.clearActive();
@@ -221,7 +251,7 @@ export class App {
             }
         });
         this.selectedEntityIds.clear();
-        this.viewer.setHighlight([]);
+        this.viewer.clearHighlight();
         this.viewer.setPreview(null)
         this.viewer.setHelpers(null)
         this.viewer.render();
@@ -239,7 +269,7 @@ export class App {
             }
         });
         this.selectedEntityIds.clear();
-        this.viewer.setHighlight([]);
+        this.viewer.clearHighlight();
         this.viewer.setPreview(null)
         this.viewer.setHelpers(null)
         this.viewer.render();
@@ -257,7 +287,7 @@ export class App {
             }
         });
         this.selectedEntityIds.clear();
-        this.viewer.setHighlight([]);
+        this.viewer.clearHighlight();
         this.viewer.setPreview(null)
         this.viewer.setHelpers(null)
         this.viewer.render();
@@ -279,12 +309,49 @@ export class App {
             }
         });
         this.selectedEntityIds.clear();
-        this.viewer.setHighlight([]);
+        this.viewer.clearHighlight();
         this.viewer.setPreview(null);
         this.viewer.setHelpers(null);
         this.viewer.render();
         this.cmd.clearActive();
         return `Entities copied to [${newIds.join(', ')}].`;
+      }
+
+      if (actionResult.action === 'mirror' && actionResult.ids && actionResult.p1 && actionResult.p2 && actionResult.deleteOriginal !== undefined) {
+        const { ids, p1, p2, deleteOriginal } = actionResult;
+        const newIds: string[] = [];
+        
+        if (deleteOriginal) {
+          // Mirror in place - modify and update
+          ids.forEach(id => {
+            const source = this.doc.getEntity(id);
+            if (source) {
+              source.mirror(p1, p2);
+              this.addEntity(source);
+            }
+          });
+        } else {
+          // Keep originals - clone, mirror clone, add clone
+          ids.forEach(id => {
+            const source = this.doc.getEntity(id);
+            if (source) {
+              const target = source.clone(source.id + "_MIRROR_" + Math.random().toString(36).substr(2, 5));
+              target.mirror(p1, p2);
+              this.addEntity(target);
+              newIds.push(target.id);
+            }
+          });
+        }
+
+        this.selectedEntityIds.clear();
+        this.viewer.clearHighlight();
+        this.viewer.setPreview(null);
+        this.viewer.setHelpers(null);
+        this.viewer.render();
+        this.cmd.clearActive();
+        return deleteOriginal 
+          ? `Entities mirrored and originals deleted.`
+          : `Entities mirrored to [${newIds.join(', ')}].`;
       }
 
       if (actionResult.action === 'create3d' && actionResult.entity) {

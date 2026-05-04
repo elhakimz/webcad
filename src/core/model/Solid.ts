@@ -1,6 +1,6 @@
 
 import { Entity, BoundingBox } from "./Entity";
-import { rotatePoint } from "../engine/MathUtils"
+import { rotatePoint, reflectPointAcrossLine } from "../engine/MathUtils"
 
 export class Solid extends Entity {
   vertices: { x: number; y: number }[];
@@ -29,6 +29,14 @@ export class Solid extends Entity {
     this.vertices.forEach(v => {
       v.x = baseX + (v.x - baseX) * factor;
       v.y = baseY + (v.y - baseY) * factor;
+    });
+  }
+
+  mirror(p1: { x: number; y: number }, p2: { x: number; y: number }) {
+    this.vertices.forEach(v => {
+      const reflected = reflectPointAcrossLine({ x: v.x, y: v.y }, p1, p2);
+      v.x = reflected.x;
+      v.y = reflected.y;
     });
   }
 

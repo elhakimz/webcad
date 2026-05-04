@@ -228,16 +228,16 @@ export function computeBoundingBox(vertices: Point[]): { minX: number; minY: num
   return { minX, minY, maxX, maxY };
 }
 
-export function generateHatchLines(vertices: Point[], spacing: number, angle: number): Line[] {
+export function generateHatchLines(vertices: Point[], spacing: number, angle: number, originX = 0, originY = 0): Line[] {
   const bbox = computeBoundingBox(vertices);
   const diag = Math.sqrt((bbox.maxX - bbox.minX) ** 2 + (bbox.maxY - bbox.minY) ** 2) * 2;
-  
+
   const rad = (angle * Math.PI) / 180;
   const dirX = Math.cos(rad);
   const dirY = Math.sin(rad);
   const normX = -dirY;
   const normY = dirX;
-  
+
   let minProj = Infinity;
   let maxProj = -Infinity;
   const corners = [
@@ -251,12 +251,17 @@ export function generateHatchLines(vertices: Point[], spacing: number, angle: nu
     minProj = Math.min(minProj, proj);
     maxProj = Math.max(maxProj, proj);
   }
-  
+
+  const originOffset = originX * normX + originY * normY;
   minProj -= spacing * 2;
   maxProj += spacing * 2;
-  
+
+  const startIdx = Math.floor((minProj - originOffset) / spacing);
+  const endIdx = Math.ceil((maxProj - originOffset) / spacing);
+
   const lines: Line[] = [];
-  for (let d = minProj; d <= maxProj; d += spacing) {
+  for (let i = startIdx; i <= endIdx; i++) {
+    const d = i * spacing + originOffset;
     const baseX = normX * d;
     const baseY = normY * d;
     lines.push({

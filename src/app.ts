@@ -171,6 +171,16 @@ export class App {
     }
 
     const result = this.cmd.inputPoint(x, y)
+
+    const cmdName = this.cmd.active?.constructor.name;
+    if (cmdName === 'HatchCommand' && this.cmd.active && 'vertices' in this.cmd.active) {
+      const hatchCmd = this.cmd.active as { vertices: { x: number; y: number }[]; step: number };
+      if (hatchCmd.step === 0 && hatchCmd.vertices.length > 0) {
+        const lastPt = hatchCmd.vertices[hatchCmd.vertices.length - 1];
+        this.viewer.addBoundaryMarker(lastPt.x, lastPt.y);
+      }
+    }
+
     return this.handleResult(result) || (this.cmd.active?.getPrompt ? this.cmd.active.getPrompt() : undefined);
   }
 
@@ -200,6 +210,7 @@ export class App {
           this.cmd.clearActive();
           this.viewer.setHelpers(null);
           this.viewer.setPreview(null);
+          this.viewer.clearBoundaryMarkers();
         }
 
         if (result && typeof result === 'object' && 'action' in result && result.action === 'close') {

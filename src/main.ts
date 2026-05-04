@@ -17,6 +17,7 @@ const menu = new Menu((cmd) => {
   cmdLine.print(`Command: ${cmd}`)
   const res = app.execute(cmd)
   cmdLine.print(typeof res === 'string' ? res : "")
+  updatePrompt()
 })
 
 // Correct initial sizing and handle resize
@@ -59,14 +60,15 @@ function updatePrompt() {
     cmdLine.setPrompt(prompt);
     
     // Auto-focus command line for specific inputs that primarily expect text/numbers
-    const shouldFocus = 
-      prompt === "Text:" || 
+    const shouldFocus =
+      prompt === "Text:" ||
       prompt.startsWith("POLYGON Number of sides") ||
       prompt.includes("(I/C) <I>:") ||
       prompt.startsWith("Height <") ||
       prompt.startsWith("Rotation angle <") ||
       prompt.startsWith("Diameter") ||
-      prompt.startsWith("ZOOM [All/Window]");
+      prompt.startsWith("ZOOM [All/Window]") ||
+      prompt.includes("Pattern name <");
 
     if (shouldFocus) {
       cmdLine.focus();

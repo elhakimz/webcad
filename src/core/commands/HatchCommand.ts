@@ -1,15 +1,16 @@
 import { Hatch } from "../model/Hatch"
 import { Command, CommandResponse } from "./types"
 import { FormatUtils } from "../engine/FormatUtils"
+import { getPattern, getAllPatternNames } from "../io/Patterns"
 
-let idCounter = 0
+let idCounter = 0;
 
 export class HatchCommand implements Command {
   vertices: { x: number; y: number }[] = [];
   pattern = "ANSI31";
   scale = 1;
   angle = 0;
-  step = 0; // 0=selecting boundary, 1=pattern, 2=scale, 3=angle
+  step = 0;
 
   onPoint(x: number, y: number): CommandResponse {
     if (this.step === 0) {
@@ -21,30 +22,30 @@ export class HatchCommand implements Command {
   }
 
   onInput(text: string): CommandResponse | undefined {
-    const val = text.trim().toUpperCase();
+    const val = text.trim();
 
-    // Step 0: Enter to finish boundary and go to pattern
     if (this.step === 0) {
       if (val === "") {
         if (this.vertices.length >= 3) {
           this.step = 1;
-          return `Pattern name <${this.pattern}>:`;
+          return `Pattern name <${this.pattern}>`;
         }
         return "Requires at least 3 points. Select next point:";
       }
     }
 
-    // Step 1: Pattern name
     if (this.step === 1) {
-      if (val === "" || val === "ANSI31" || val === "ANSI32" || val === "AR-CONCRETE") {
+      const upperVal = val.toUpperCase();
+      const patterns = getAllPatternNames().join(", ");
+
+      if (val === "" || getPattern(upperVal) || getPattern(val)) {
         this.pattern = val || "ANSI31";
         this.step = 2;
         return `Pattern scale <${this.scale.toFixed(1)}>:`;
       }
-      return `Pattern name <${this.pattern}>:`;
+      return `Pattern name <ANSI31> (${patterns}):`;
     }
 
-    // Step 2: Pattern scale
     if (this.step === 2) {
       const parsed = parseFloat(text);
       if (!isNaN(parsed) && parsed > 0) {
@@ -54,25 +55,22 @@ export class HatchCommand implements Command {
       return `Pattern angle <${this.angle.toFixed(0)}>:`;
     }
 
-    // Step 3: Pattern angle - create hatch
     if (this.step === 3) {
       const parsed = parseFloat(text);
       if (!isNaN(parsed)) {
         this.angle = parsed;
       }
-      
-      // Create hatch entity with boundary vertices
+
       const hatch = new Hatch("H" + (++idCounter), [...this.vertices], this.pattern, this.scale, this.angle);
-      
-      // Reset for next hatch
+
       this.vertices = [];
       this.step = 0;
-      
+
       return { action: "close", entity: hatch };
     }
 
-    // Exit commands
-    if (val === "E" || val === "EXIT" || val === "QUIT") {
+    const upperVal = val.toUpperCase();
+    if (upperVal === "E" || upperVal === "EXIT" || upperVal === "QUIT") {
       if (this.vertices.length >= 3) {
         const hatch = new Hatch("H" + (++idCounter), [...this.vertices], this.pattern, this.scale, this.angle);
         this.vertices = [];
@@ -84,8 +82,9 @@ export class HatchCommand implements Command {
   }
 
   getPrompt() {
+    const patterns = getAllPatternNames().join(", ");
     if (this.step === 0) return "Select boundary point:";
-    if (this.step === 1) return `Pattern name <${this.pattern}>:`;
+    if (this.step === 1) return `Pattern name <ANSI31> (${patterns}):`;
     if (this.step === 2) return `Pattern scale <${this.scale.toFixed(1)}>:`;
     return `Pattern angle <${this.angle.toFixed(0)}>:`;
   }

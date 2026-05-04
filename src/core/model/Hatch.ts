@@ -1,27 +1,35 @@
 import { Entity, BoundingBox } from "./Entity"
 import { rotatePoint, reflectPointAcrossLine } from "../engine/MathUtils"
+import { getPattern } from "../io/Patterns"
+import type { LineFamily } from "../engine/PATConverter"
 
 export class Hatch extends Entity {
   boundaryVertices: { x: number; y: number }[];
   pattern: string;
-  scale: number;
+  patternScale: number;
   angle: number;
   color: number;
+  private _patternData: { name: string; lines: LineFamily[] } | null = null;
 
   constructor(
-    id: string, 
-    boundaryVertices: { x: number; y: number }[], 
-    pattern: string = "ANSI31", 
-    scale: number = 1, 
+    id: string,
+    boundaryVertices: { x: number; y: number }[],
+    pattern: string = "ANSI31",
+    patternScale: number = 1,
     angle: number = 0,
     color: number = 0x00ff00
   ) {
     super(id);
     this.boundaryVertices = boundaryVertices;
     this.pattern = pattern;
-    this.scale = scale;
+    this.patternScale = patternScale;
     this.angle = angle;
     this.color = color;
+    this._patternData = getPattern(pattern) || null;
+  }
+
+  getPatternData(): { name: string; lines: LineFamily[] } | null {
+    return this._patternData;
   }
 
   move(dx: number, dy: number) {
@@ -45,7 +53,7 @@ export class Hatch extends Entity {
       v.x = baseX + (v.x - baseX) * factor;
       v.y = baseY + (v.y - baseY) * factor;
     });
-    this.scale *= Math.abs(factor);
+    this.patternScale *= Math.abs(factor);
   }
 
   mirror(p1: { x: number; y: number }, p2: { x: number; y: number }) {
@@ -72,11 +80,11 @@ export class Hatch extends Entity {
 
   clone(newId: string): Hatch {
     return new Hatch(
-      newId, 
-      this.boundaryVertices.map(v => ({ ...v })), 
-      this.pattern, 
-      this.scale, 
-      this.angle, 
+      newId,
+      this.boundaryVertices.map(v => ({ ...v })),
+      this.pattern,
+      this.patternScale,
+      this.angle,
       this.color
     );
   }

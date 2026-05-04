@@ -21,6 +21,7 @@ export class Viewer {
   private lastPanPos = new THREE.Vector2()
   private previewObject: THREE.Object3D | null = null
   private helperGroup: THREE.Group = new THREE.Group()
+  private boundaryGroup: THREE.Group = new THREE.Group()
   private cursorGroup: THREE.Group = new THREE.Group()
   private textQueue: Text[] = []
   private selectionBox: THREE.Line | null = null
@@ -29,6 +30,7 @@ export class Viewer {
     this.canvas = canvas
     this.scene = new THREE.Scene()
     this.scene.add(this.helperGroup);
+    this.scene.add(this.boundaryGroup);
     this.scene.add(this.cursorGroup);
     this.cursorGroup.renderOrder = 999; // Render on top
 
@@ -294,6 +296,34 @@ export class Viewer {
     this.render();
   }
 
+  addBoundaryMarker(x: number, y: number) {
+    const size = 5;
+    const positions = new Float32Array([
+      x - size, y - size, 0,
+      x + size, y + size, 0,
+      x + size, y - size, 0,
+      x - size, y + size, 0
+    ]);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const mat = new THREE.LineBasicMaterial({ color: 0x00ffff });
+    const marker = new THREE.LineSegments(geo, mat);
+    this.boundaryGroup.add(marker);
+    this.render();
+  }
+
+  clearBoundaryMarkers() {
+    while (this.boundaryGroup.children.length > 0) {
+      const obj = this.boundaryGroup.children[0];
+      this.boundaryGroup.remove(obj);
+      if (obj instanceof THREE.Line) {
+        obj.geometry.dispose();
+        (obj.material as THREE.Material).dispose();
+      }
+    }
+    this.render();
+  }
+
   private setupEvents() {
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault()
@@ -375,15 +405,21 @@ export class Viewer {
   }
 
   addPoint(x: number, y: number, id?: string) {
-    const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(x, y, 0)
+    const size = 2;
+    const positions = new Float32Array([
+      x - size, y - size, 0,
+      x + size, y + size, 0,
+      x + size, y - size, 0,
+      x - size, y + size, 0
     ]);
-    const mat = new THREE.PointsMaterial({ color: 0x00ff00, size: 5, sizeAttenuation: false });
-    const point = new THREE.Points(geo, mat);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const mat = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    const lines = new THREE.LineSegments(geo, mat);
     if (id) {
-      point.name = id;
+      lines.name = id;
     }
-    this.scene.add(point);
+    this.scene.add(lines);
   }
 
   addPolyline(entity: Polyline) {
@@ -412,40 +448,112 @@ export class Viewer {
   addHatch(entity: Hatch) {
     if (entity.boundaryVertices.length < 3) return;
 
-    const spacing = 8 / entity.scale;
-    const angle = entity.angle;
-    
-    const lines = generateHatchLines(entity.boundaryVertices, spacing, angle);
+    const patternData = entity.getPatternData();
     const allSegments: { x1: number; y1: number; x2: number; y2: number }[] = [];
-    
-    for (const line of lines) {
-      const segments = clipLineWithPolygon(line, entity.boundaryVertices);
-      for (const seg of segments) {
-        allSegments.push({ x1: seg.p1.x, y1: seg.p1.y, x2: seg.p2.x, y2: seg.p2.y });
+    const vertices = entity.boundaryVertices;
+
+    if (patternData && patternData.lines.length > 0) {
+      for (const lineDef of patternData.lines) {
+        const effectiveAngle = lineDef.angle + entity.angle;
+        const spacing = lineDef.spacing * entity.patternScale;
+        const offsetX = lineDef.offset[0];
+        const offsetY = lineDef.offset[1];
+        const lines = generateHatchLines(vertices, spacing, effectiveAngle, offsetX, offsetY);
+
+        for (const line of lines) {
+          const segments = clipLineWithPolygon(line, entity.boundaryVertices);
+          for (const seg of segments) {
+            if (lineDef.dashPattern.length === 0) {
+              allSegments.push({ x1: seg.p1.x, y1: seg.p1.y, x2: seg.p2.x, y2: seg.p2.y });
+            } else {
+              const dashed = this.generateDashedLine(seg.p1, seg.p2, lineDef.dashPattern);
+              allSegments.push(...dashed);
+            }
+          }
+        }
+      }
+    } else {
+      const spacing = 8 / entity.patternScale;
+      const angle = entity.angle;
+      const lines = generateHatchLines(vertices, spacing, angle);
+
+      for (const line of lines) {
+        const segments = clipLineWithPolygon(line, entity.boundaryVertices);
+        for (const seg of segments) {
+          allSegments.push({ x1: seg.p1.x, y1: seg.p1.y, x2: seg.p2.x, y2: seg.p2.y });
+        }
       }
     }
-    
+
     if (allSegments.length === 0) return;
-    
+
     const positions: number[] = [];
     for (const seg of allSegments) {
       positions.push(seg.x1, seg.y1, 0);
       positions.push(seg.x2, seg.y2, 0);
     }
-    
+
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    
-    const material = new THREE.LineBasicMaterial({ 
+
+    const material = new THREE.LineBasicMaterial({
       color: 0x00ff00,
       linewidth: 1
     });
-    
+
     const mesh = new THREE.LineSegments(geometry, material);
     mesh.position.z = 0.1;
     mesh.renderOrder = 500;
     mesh.name = entity.id;
     this.scene.add(mesh);
+  }
+
+  private generateDashedLine(
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+    dashPattern: number[]
+  ): { x1: number; y1: number; x2: number; y2: number }[] {
+    const segments: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+
+    if (len === 0 || dashPattern.length === 0) {
+      segments.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y });
+      return segments;
+    }
+
+    const ux = dx / len;
+    const uy = dy / len;
+
+    let current = 0;
+    let dashIndex = 0;
+    let startOffset = 0;
+
+    while (current < len) {
+      const dashLen = Math.abs(dashPattern[dashIndex % dashPattern.length]);
+      const gapLen = Math.abs(dashPattern[(dashIndex + 1) % dashPattern.length]);
+
+      if (dashPattern[dashIndex % dashPattern.length] > 0) {
+        const segStart = current + startOffset;
+        const segEnd = Math.min(current + dashLen, len);
+
+        if (segEnd > segStart) {
+          segments.push({
+            x1: p1.x + ux * segStart,
+            y1: p1.y + uy * segStart,
+            x2: p1.x + ux * segEnd,
+            y2: p1.y + uy * segEnd
+          });
+        }
+      }
+
+      current += dashLen + gapLen;
+      dashIndex += 2;
+      startOffset = 0;
+    }
+
+    return segments;
   }
 
   addMesh(geometry: THREE.BufferGeometry, id?: string) {

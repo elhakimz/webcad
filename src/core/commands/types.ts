@@ -17,5 +17,6 @@ export interface Command {
   onPoint(x: number, y: number): CommandResponse;
   onInput?(text: string): CommandResponse | undefined;
   getPreview?(x: number, y: number): Entity | null;
+  getReferencePoints?(): { x: number, y: number }[];
   step?: number;
 }

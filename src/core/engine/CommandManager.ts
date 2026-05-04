@@ -5,6 +5,7 @@ import { EraseCommand } from "../commands/EraseCommand"
 import { MoveCommand } from "../commands/MoveCommand"
 import { ZoomCommand } from "../commands/ZoomCommand"
 import { Test3DCommand } from "../commands/Test3DCommand"
+import { ArcCommand } from "../commands/ArcCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 
@@ -36,6 +37,10 @@ export class CommandManager {
     if(cmd === "TEST3D"){
       this.active = new Test3DCommand()
       return "TEST3D started: pick insertion point"
+    }
+    if(cmd === "ARC"){
+      this.active = new ArcCommand()
+      return "ARC command started: start point"
     }
     return "Unknown command: " + cmd
   }

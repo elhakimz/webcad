@@ -28,7 +28,7 @@ export class Menu {
       { label: 'DIM:', submenu: [{ label: 'DIM' }] },
       { label: 'DISPLAY', submenu: [{ label: 'ZOOM' }, { label: 'PAN' }] },
       { label: 'DRAW', submenu: [
-        { label: 'ARC' },
+        { label: 'ARC', command: 'ARC' },
         { label: 'CIRCLE', command: 'CIRCLE' },
         { label: 'LINE:', command: 'LINE' },
         { label: 'POINT' },

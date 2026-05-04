@@ -7,27 +7,32 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 ## 🚀 Features
 
 ### 📐 Precision Drafting
+-   **Geometric Kernel:** Integrated **OpenCascade.js** (OCCT) for professional-grade 2D/3D operations and file processing.
 -   **Command Engine:** Robust state-machine based command system.
 -   **Coordinate Parser:** Supports absolute (`x,y`), relative Cartesian (`@dx,dy`), and relative Polar (`@dist<angle`) inputs.
--   **Visual Cues:** Crosshair cursor and real-time "rubber-banding" previews during object creation.
+-   **Visual Feedback:**
+    -   Crosshair cursor and real-time "rubber-banding" previews.
+    -   Temporary **Visual Axes** (drafting aids) for precise alignment.
+    -   Formatted input echoing (e.g., `P1[X:10.00, Y:20.00, Z:0.00]`, `[R:50.00]`).
 
 ### ⌨️ Classic Commands
--   **LINE:** Continuous segment drawing with support for `Undo` (U) and `Close` (C) directly via keyboard shortcuts or command line.
--   **CIRCLE:** Define by center and radius (via click or typed distance).
--   **ERASE:** Interactive object selection and removal using Three.js raycasting.
--   **MOVE:** Translate entities via base point and displacement.
--   **ZOOM:** Integrated viewport controls including `Zoom Window` and `Zoom All/Extents`.
+-   **LINE:** Continuous drawing with `Undo` (U), `Close` (C), and `Exit` (E/Enter) shortcuts.
+-   **ARC:** 3-Point arc implementation (Start, Second Point, End).
+-   **CIRCLE:** Center/Radius and Center/Diameter methods (toggle via `D`/`R` keys).
+-   **ERASE:** Interactive object selection and removal.
+-   **MOVE:** Precise translation via base point and displacement.
+-   **ZOOM:** `Zoom Window` and `Zoom All/Extents` (automatic fit).
 
 ### 🖥️ Authentic DOS UI
+-   **Main Menu:** Classic text-based startup screen (Begin NEW drawing, Exit, etc.).
 -   **Hierarchical Side Menu:** Fully interactive menu navigation (e.g., `DRAW` -> `LINE:`).
--   **Command Area:** Multi-line status log and persistent command prompt.
+-   **Command Area:** Multi-line status log with persistent command prompt.
 -   **Status Bar:** Real-time world coordinate tracking and active layer display.
--   **Retro Aesthetics:** Monospace typography and classic color palettes.
 
 ### 🖱️ Viewport Controls
 -   **Pan:** Middle-click and drag.
 -   **Zoom:** Mouse wheel (centered on cursor).
--   **Dynamic Mapping:** Automatic screen-to-world coordinate conversion for pixel-perfect accuracy at any zoom level.
+-   **Dynamic Mapping:** Automatic screen-to-world coordinate conversion with pixel-perfect accuracy.
 
 ## 🛠️ Installation & Usage
 
@@ -60,17 +65,19 @@ npm run test:ui
 
 ## 🏗️ Architecture
 
--   **`src/core/commands/`**: Command state machines (Line, Circle, Move, etc.).
--   **`src/core/engine/`**: Input routing, coordinate parsing, and command management.
+-   **`src/core/commands/`**: Command state machines (Line, Circle, Arc, etc.).
+-   **`src/core/engine/`**: Input routing, math utilities, and coordinate parsing.
+-   **`src/core/io/`**: **OpenCascade Service** for CAD kernel operations.
 -   **`src/core/model/`**: CAD entity definitions and the central `Document` store.
--   **`src/ui/`**: DOS-style UI components (`Menu`, `CommandLine`, `StatusBar`).
--   **`src/render/`**: Three.js viewport wrapper (`Viewer.ts`) managing scene, camera, and interaction.
+-   **`src/ui/`**: DOS-style screens and components (`MainMenuScreen`, `Menu`, `CommandLine`).
+-   **`src/render/`**: Three.js viewport managing scene, camera, lighting, and drafting aids.
 
 ## 📍 Roadmap Priorities
+-   [ ] **Modeling:** Implement **PLINE** (Polyline) and **POINT** entities.
 -   [ ] **Manipulation:** Implement `COPY`, `ROTATE`, and `SCALE`.
 -   [ ] **Selection:** Window and Crossing selection systems.
 -   [ ] **Precision:** Snap engine (Endpoint, Midpoint, Grid).
--   [ ] **I/O:** DXF import and export layers.
+-   [ ] **I/O:** DXF import and export layers using OCCT.
 
 ## 📄 License
 MIT

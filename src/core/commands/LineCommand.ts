@@ -1,5 +1,6 @@
 import { Line } from "../model/Line"
 import { Command, CommandResponse } from "./types"
+import { FormatUtils } from "../engine/FormatUtils"
 
 let idCounter = 0
 
@@ -9,9 +10,11 @@ export class LineCommand implements Command {
 
   onPoint(x: number, y: number): CommandResponse {
     this.points.push({ x, y });
+    const pLabel = "P" + this.points.length;
+    const echo = FormatUtils.formatPoint(x, y, pLabel);
 
     if (this.points.length === 1) {
-      return "To point:"
+      return `${echo}\nTo point:`;
     } else {
       const last = this.points[this.points.length - 2];
       const line = new Line("L" + (++idCounter), last.x, last.y, x, y);
@@ -23,7 +26,7 @@ export class LineCommand implements Command {
   onInput(text: string) {
     const val = text.trim().toUpperCase();
 
-    if (val === "" || val === "EXIT" || val === "QUIT") {
+    if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
       return { action: "finish" };
     }
 
@@ -53,5 +56,12 @@ export class LineCommand implements Command {
       return new Line("PREVIEW", last.x, last.y, x, y);
     }
     return null;
+  }
+
+  getReferencePoints() {
+    if (this.points.length > 0) {
+      return [this.points[this.points.length - 1]];
+    }
+    return [];
   }
 }

@@ -56,7 +56,8 @@ export class OpenCascadeService {
     const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
     
     while (explorer.More()) {
-      const face = oc.TopoDS.Face(explorer.Current());
+      const faceShape = explorer.Current();
+      const face = oc.TopoDS.Face_1(faceShape);
       const location = new oc.TopLoc_Location_1();
       const triangulation = oc.BRep_Tool.Triangulation(face, location);
 

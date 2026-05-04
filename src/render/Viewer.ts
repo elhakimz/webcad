@@ -2,6 +2,7 @@ import * as THREE from "three"
 import { Entity } from "../core/model/Entity"
 import { Line } from "../core/model/Line"
 import { Circle } from "../core/model/Circle"
+import { Arc } from "../core/model/Arc"
 
 export class Viewer {
   scene: THREE.Scene
@@ -12,10 +13,12 @@ export class Viewer {
   private isPanning = false
   private lastPanPos = new THREE.Vector2()
   private previewObject: THREE.Object3D | null = null
+  private helperGroup: THREE.Group = new THREE.Group()
 
   constructor(canvas:HTMLCanvasElement){
     this.canvas = canvas
     this.scene = new THREE.Scene()
+    this.scene.add(this.helperGroup);
 
     // Setup Orthographic Camera with dummy bounds, resize() will set them correctly
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1000)
@@ -87,11 +90,51 @@ export class Viewer {
         const geo = new THREE.BufferGeometry().setFromPoints(points);
         const mat = new THREE.LineBasicMaterial({ color: previewColor });
         this.previewObject = new THREE.LineLoop(geo, mat);
+      } else if (entity instanceof Arc) {
+        const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, entity.startAngle, entity.endAngle, !entity.ccw, 0);
+        const points = curve.getPoints(50);
+        const geo = new THREE.BufferGeometry().setFromPoints(points);
+        const mat = new THREE.LineBasicMaterial({ color: previewColor });
+        this.previewObject = new THREE.Line(geo, mat);
       }
 
       if (this.previewObject) {
         this.scene.add(this.previewObject);
       }
+    }
+
+    this.render();
+  }
+
+  setHelpers(points: { x: number, y: number }[] | null) {
+    // Clear existing helpers
+    while (this.helperGroup.children.length > 0) {
+      const obj = this.helperGroup.children[0];
+      this.helperGroup.remove(obj);
+      if (obj instanceof THREE.Line) {
+        obj.geometry.dispose();
+        (obj.material as THREE.Material).dispose();
+      }
+    }
+
+    if (points) {
+      const helperColor = 0x555555;
+      const size = 10000; // Infinite-ish
+
+      points.forEach(pt => {
+        const hGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(pt.x - size, pt.y, 0),
+          new THREE.Vector3(pt.x + size, pt.y, 0)
+        ]);
+        const vGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(pt.x, pt.y - size, 0),
+          new THREE.Vector3(pt.x, pt.y + size, 0)
+        ]);
+
+        const mat = new THREE.LineBasicMaterial({ color: helperColor });
+        this.helperGroup.add(new THREE.Line(hGeo, mat));
+        this.helperGroup.add(new THREE.Line(vGeo, mat));
+      });
     }
 
     this.render();
@@ -163,6 +206,18 @@ export class Viewer {
       circle.name = id;
     }
     this.scene.add(circle);
+  }
+
+  addArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean, id?: string) {
+    const curve = new THREE.EllipseCurve(cx, cy, r, r, startAngle, endAngle, !ccw, 0);
+    const points = curve.getPoints(50);
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    const arc = new THREE.Line(geo, mat);
+    if (id) {
+      arc.name = id;
+    }
+    this.scene.add(arc);
   }
 
   addMesh(geometry: THREE.BufferGeometry, id?: string) {
@@ -251,6 +306,11 @@ export class Viewer {
         minY = Math.min(minY, e.y1, e.y2);
         maxY = Math.max(maxY, e.y1, e.y2);
       } else if (e instanceof Circle) {
+        minX = Math.min(minX, e.cx - e.r);
+        maxX = Math.max(maxX, e.cx + e.r);
+        minY = Math.min(minY, e.cy - e.r);
+        maxY = Math.max(maxY, e.cy + e.r);
+      } else if (e instanceof Arc) {
         minX = Math.min(minX, e.cx - e.r);
         maxX = Math.max(maxX, e.cx + e.r);
         minY = Math.min(minY, e.cy - e.r);

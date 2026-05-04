@@ -68,9 +68,15 @@ window.addEventListener("keydown", (e) => {
   // Only handle if a command is active
   if (app.cmd.active) {
     const key = e.key.toLowerCase()
-    if (key === 'c' || key === 'u') {
-      cmdLine.print(`Command: ${key.toUpperCase()}`)
-      const res = app.inputText(key.toUpperCase())
+    const allowedKeys = ['c', 'u', 'd', 'r', 'e', 'enter']
+    
+    if (allowedKeys.includes(key)) {
+      const inputVal = key === 'enter' ? "" : key.toUpperCase()
+      if (inputVal !== "") {
+        cmdLine.print(`Command: ${inputVal}`)
+      }
+      
+      const res = app.inputText(inputVal)
       if (typeof res === 'string') {
         cmdLine.print(res)
       }

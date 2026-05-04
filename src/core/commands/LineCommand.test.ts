@@ -60,4 +60,11 @@ describe('LineCommand (Classic Behavior)', () => {
     const res = cmd.onInput('') as CommandAction
     expect(res.action).toBe('finish')
   })
+
+  it('should finish on "E" input', () => {
+    const cmd = new LineCommand()
+    cmd.onPoint(0, 0)
+    const res = cmd.onInput('E') as CommandAction
+    expect(res.action).toBe('finish')
+  })
 })

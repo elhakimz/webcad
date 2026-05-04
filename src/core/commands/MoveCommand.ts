@@ -32,4 +32,11 @@ export class MoveCommand implements Command {
       return { action: "move", id: this.targetId, dx, dy };
     }
   }
+
+  getReferencePoints() {
+    if (this.step >= 1) {
+      return [{ x: this.baseX, y: this.baseY }];
+    }
+    return [];
+  }
 }

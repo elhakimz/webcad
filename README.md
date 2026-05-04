@@ -17,10 +17,15 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 
 ### ⌨️ Classic Commands
 -   **LINE:** Continuous drawing with `Undo` (U), `Close` (C), and `Exit` (E/Enter) shortcuts.
+-   **PLINE:** Connected sequences of line and arc segments with interactive mode switching.
 -   **ARC:** 3-Point arc implementation (Start, Second Point, End).
 -   **CIRCLE:** Center/Radius and Center/Diameter methods (toggle via `D`/`R` keys).
+-   **POLYGON:** Regular polygons via Center/Radius or Edge methods.
+-   **SOLID:** Solid-filled 2D planar triangles and quadrilaterals with chaining.
+-   **TEXT:** Single-line annotations with configurable height and rotation.
 -   **ERASE:** Interactive object selection and removal.
--   **MOVE:** Precise translation via base point and displacement.
+-   **MOVE / COPY:** Precise translation or duplication via base point and displacement.
+-   **ROTATE / SCALE:** Geometric transformations around a base point.
 -   **ZOOM:** `Zoom Window` and `Zoom All/Extents` (automatic fit).
 
 ### 🖥️ Authentic DOS UI
@@ -29,10 +34,11 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **Command Area:** Multi-line status log with persistent command prompt.
 -   **Status Bar:** Real-time world coordinate tracking and active layer display.
 
-### 🖱️ Viewport Controls
--   **Pan:** Middle-click and drag.
--   **Zoom:** Mouse wheel (centered on cursor).
--   **Dynamic Mapping:** Automatic screen-to-world coordinate conversion with pixel-perfect accuracy.
+### 🖱️ Selection & Interaction
+-   **Selection Engine:** Advanced AABB-based hit-testing and precise geometry selection.
+-   **Box Selection:** Supports both **Window** (entirely inside) and **Crossing** (intersects) modes.
+-   **Dynamic Previews:** Real-time geometric previews for all draw and edit commands.
+-   **Pan & Zoom:** Intuitive middle-click pan and cursor-centered scroll zoom.
 
 ## 🛠️ Installation & Usage
 
@@ -73,10 +79,9 @@ npm run test:ui
 -   **`src/render/`**: Three.js viewport managing scene, camera, lighting, and drafting aids.
 
 ## 📍 Roadmap Priorities
--   [ ] **Modeling:** Implement **PLINE** (Polyline) and **POINT** entities.
--   [ ] **Manipulation:** Implement `COPY`, `ROTATE`, and `SCALE`.
--   [ ] **Selection:** Window and Crossing selection systems.
--   [ ] **Precision:** Snap engine (Endpoint, Midpoint, Grid).
+-   [ ] **Modeling:** Implement **TRACE** (wide lines) and **HATCH** (pattern filling).
+-   [ ] **Precision:** Snap engine (Endpoint, Midpoint, Center).
+-   [ ] **Blocks:** Block definition and insertion system.
 -   [ ] **I/O:** DXF import and export layers using OCCT.
 
 ## 📄 License

@@ -239,4 +239,77 @@ test.describe('AutoCAD 2.18 DOS UI', () => {
       await expect(page.locator('#command-log')).toContainText('Text created.');
     }
   });
+
+  test('should support selecting and erasing an entity', async ({ page }) => {
+    const cmdInput = page.locator('#cmd');
+    const canvas = page.locator('#c');
+    const box = await canvas.boundingBox();
+    if (box) {
+      // 1. Draw a line
+      await cmdInput.fill('LINE');
+      await cmdInput.press('Enter');
+      await page.mouse.click(box.x + 100, box.y + 100);
+      await page.mouse.click(box.x + 300, box.y + 100);
+      await page.keyboard.press('Escape');
+
+      // 2. Erase it
+      await cmdInput.fill('ERASE');
+      await cmdInput.press('Enter');
+      // Click near the middle of the line (with tolerance)
+      await page.mouse.click(box.x + 200, box.y + 101);
+      
+      await expect(page.locator('#command-log')).toContainText('removed.');
+    }
+  });
+
+  test('should support selecting and moving an entity', async ({ page }) => {
+    const cmdInput = page.locator('#cmd');
+    const canvas = page.locator('#c');
+    const box = await canvas.boundingBox();
+    if (box) {
+      // 1. Draw a point
+      await cmdInput.fill('POINT');
+      await cmdInput.press('Enter');
+      await page.mouse.click(box.x + 150, box.y + 150);
+
+      // 2. Move it
+      await cmdInput.fill('MOVE');
+      await cmdInput.press('Enter');
+      // Select the point
+      await page.mouse.click(box.x + 150, box.y + 150);
+      await expect(page.locator('#command-prompt')).toContainText('Base point:');
+      
+      // Specify base and second point
+      await page.mouse.click(box.x + 150, box.y + 150);
+      await page.mouse.click(box.x + 250, box.y + 250);
+
+      await expect(page.locator('#command-log')).toContainText('moved.');
+    }
+  });
+
+  test('should support selecting and copying an entity', async ({ page }) => {
+    const cmdInput = page.locator('#cmd');
+    const canvas = page.locator('#c');
+    const box = await canvas.boundingBox();
+    if (box) {
+      // 1. Draw a circle
+      await cmdInput.fill('CIRCLE');
+      await cmdInput.press('Enter');
+      await page.mouse.click(box.x + 100, box.y + 100); // Center
+      await cmdInput.fill('50'); // Radius
+      await cmdInput.press('Enter');
+
+      // 2. Copy it
+      await cmdInput.fill('COPY');
+      await cmdInput.press('Enter');
+      // Select the circle (click on the edge)
+      await page.mouse.click(box.x + 150, box.y + 100);
+      await expect(page.locator('#command-prompt')).toContainText('Base point:');
+      
+      await page.mouse.click(box.x + 100, box.y + 100);
+      await page.mouse.click(box.x + 200, box.y + 200);
+
+      await expect(page.locator('#command-log')).toContainText('copied to');
+    }
+  });
 });

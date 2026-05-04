@@ -3,6 +3,7 @@ import { LineCommand } from "../commands/LineCommand"
 import { CircleCommand } from "../commands/CircleCommand"
 import { EraseCommand } from "../commands/EraseCommand"
 import { MoveCommand } from "../commands/MoveCommand"
+import { CopyCommand } from "../commands/CopyCommand"
 import { ZoomCommand } from "../commands/ZoomCommand"
 import { Test3DCommand } from "../commands/Test3DCommand"
 import { ArcCommand } from "../commands/ArcCommand"
@@ -33,6 +34,10 @@ export class CommandManager {
     if(cmd === "MOVE"){
       this.active = new MoveCommand()
       return "MOVE command started: select object"
+    }
+    if(cmd === "COPY"){
+      this.active = new CopyCommand()
+      return "COPY command started: select object"
     }
     if(cmd === "ZOOM" || cmd === "Z"){
       this.active = new ZoomCommand()

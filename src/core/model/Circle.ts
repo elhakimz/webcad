@@ -1,4 +1,5 @@
-import { Entity } from "./Entity"
+
+import { Entity, BoundingBox } from "./Entity"
 
 export class Circle extends Entity {
   cx: number;
@@ -16,4 +17,18 @@ export class Circle extends Entity {
     this.cx += dx;
     this.cy += dy;
   }
+
+  getBoundingBox(): BoundingBox {
+    return {
+      minX: this.cx - this.r,
+      minY: this.cy - this.r,
+      maxX: this.cx + this.r,
+      maxY: this.cy + this.r
+    };
+  }
+
+  clone(newId: string): Circle {
+    return new Circle(newId, this.cx, this.cy, this.r);
+  }
 }
+

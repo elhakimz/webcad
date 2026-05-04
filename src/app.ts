@@ -12,6 +12,7 @@ import { Polyline } from "./core/model/Polyline"
 import { Text } from "./core/model/Text"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
 import { FormatUtils } from "./core/engine/FormatUtils"
+import { SelectionEngine } from "./core/engine/SelectionEngine"
 import * as THREE from "three"
 
 export class App {
@@ -62,15 +63,16 @@ export class App {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
     const { x, y } = worldPt;
 
-    // If ERASE or MOVE is active and in selection step, try to pick an entity
+    // If ERASE, MOVE or COPY is active and in selection step, try to pick an entity
     const activeName = this.cmd.active?.constructor.name;
     const isSelectionStep = this.cmd.active && this.cmd.active.step === 0;
 
-    if (isSelectionStep && (activeName === 'EraseCommand' || activeName === 'MoveCommand')) {
-      const id = this.viewer.pickEntity(screenX, screenY) // PickEntity still uses screen coords
-      if (id) {
+    if (isSelectionStep && (activeName === 'EraseCommand' || activeName === 'MoveCommand' || activeName === 'CopyCommand')) {
+      const tolerance = 5 / this.viewer.camera.zoom;
+      const entity = SelectionEngine.getEntityAt(x, y, tolerance, this.doc.getAllEntities());
+      if (entity) {
         // Forward the ID as string input to the command
-        const res = this.cmd.inputString(id)
+        const res = this.cmd.inputString(entity.id)
         return this.handleResult(res)
       }
     }
@@ -92,33 +94,14 @@ export class App {
       }
 
       if (entity) {
-        // Handle replacement if entity already exists (for PLINE updates)
-        if (this.doc.getEntity(entity.id)) {
-          this.viewer.removeObject(entity.id);
-        }
-
-        this.doc.addEntity(entity)
-        if (entity instanceof Line) {
-          this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id)
-        } else if (entity instanceof Circle) {
-          this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id)
-        } else if (entity instanceof Arc) {
-          this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id)
-        } else if (entity instanceof Point) {
-          this.viewer.addPoint(entity.x, entity.y, entity.id)
-        } else if (entity instanceof Polyline) {
-          this.viewer.addPolyline(entity)
-        } else if (entity instanceof Text) {
-          this.viewer.addText(entity)
-        }
-        this.viewer.setPreview(null)
-        this.viewer.render()
+        this.addEntity(entity);
         
         if (entity instanceof Circle || entity instanceof Arc || entity instanceof Point || entity instanceof Text) {
           this.cmd.clearActive();
         }
 
-        this.viewer.setHelpers(null)
+        this.viewer.setHelpers(null);
+        this.viewer.setPreview(null);
 
         if (result && typeof result === 'object' && 'action' in result && result.action === 'close') {
            return "Command finished.";
@@ -171,6 +154,21 @@ export class App {
         }
       }
 
+      if (actionResult.action === 'copy' && actionResult.id && actionResult.dx !== undefined) {
+        const source = this.doc.getEntity(actionResult.id);
+        if (source) {
+          const newId = source.id + "_COPY_" + Math.random().toString(36).substr(2, 5);
+          const copy = source.clone(newId);
+          copy.move(actionResult.dx, actionResult.dy!);
+          this.addEntity(copy);
+          this.viewer.setPreview(null);
+          this.viewer.setHelpers(null);
+          this.viewer.render();
+          this.cmd.clearActive();
+          return `Entity ${source.id} copied to ${newId}.`;
+        }
+      }
+
       if (actionResult.action === 'create3d' && actionResult.entity) {
         const ocService = OpenCascadeService.getInstance();
         const geometry = ocService.shapeToBufferGeometry((actionResult.entity as { id: string, shape: any }).shape);
@@ -205,5 +203,27 @@ export class App {
       }
     }
     return result
+  }
+
+  private addEntity(entity: Entity) {
+    if (this.doc.getEntity(entity.id)) {
+      this.viewer.removeObject(entity.id);
+    }
+
+    this.doc.addEntity(entity);
+    if (entity instanceof Line) {
+      this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id);
+    } else if (entity instanceof Circle) {
+      this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id);
+    } else if (entity instanceof Arc) {
+      this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id);
+    } else if (entity instanceof Point) {
+      this.viewer.addPoint(entity.x, entity.y, entity.id);
+    } else if (entity instanceof Polyline) {
+      this.viewer.addPolyline(entity);
+    } else if (entity instanceof Text) {
+      this.viewer.addText(entity);
+    }
+    this.viewer.render();
   }
 }

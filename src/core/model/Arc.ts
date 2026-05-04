@@ -1,4 +1,5 @@
-import { Entity } from "./Entity";
+
+import { Entity, BoundingBox } from "./Entity";
 
 export class Arc extends Entity {
   cx: number;
@@ -22,4 +23,19 @@ export class Arc extends Entity {
     this.cx += dx;
     this.cy += dy;
   }
+
+  getBoundingBox(): BoundingBox {
+    // For broad-phase, using the full circle bounding box is sufficient.
+    return {
+      minX: this.cx - this.r,
+      minY: this.cy - this.r,
+      maxX: this.cx + this.r,
+      maxY: this.cy + this.r
+    };
+  }
+
+  clone(newId: string): Arc {
+    return new Arc(newId, this.cx, this.cy, this.r, this.startAngle, this.endAngle, this.ccw);
+  }
 }
+

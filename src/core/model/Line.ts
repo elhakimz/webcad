@@ -1,5 +1,5 @@
 
-import { Entity } from "./Entity"
+import { Entity, BoundingBox } from "./Entity"
 
 export class Line extends Entity {
   x1:number; y1:number; x2:number; y2:number;
@@ -14,5 +14,18 @@ export class Line extends Entity {
     this.y1 += dy;
     this.x2 += dx;
     this.y2 += dy;
+  }
+
+  getBoundingBox(): BoundingBox {
+    return {
+      minX: Math.min(this.x1, this.x2),
+      minY: Math.min(this.y1, this.y2),
+      maxX: Math.max(this.x1, this.x2),
+      maxY: Math.max(this.y1, this.y2)
+    };
+  }
+
+  clone(newId: string): Line {
+    return new Line(newId, this.x1, this.y1, this.x2, this.y2);
   }
 }

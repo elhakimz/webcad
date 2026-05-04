@@ -1,4 +1,5 @@
-import { Entity } from "./Entity"
+
+import { Entity, BoundingBox } from "./Entity"
 
 export class Point extends Entity {
   x: number;
@@ -14,4 +15,18 @@ export class Point extends Entity {
     this.x += dx;
     this.y += dy;
   }
+
+  getBoundingBox(): BoundingBox {
+    return {
+      minX: this.x,
+      minY: this.y,
+      maxX: this.x,
+      maxY: this.y
+    };
+  }
+
+  clone(newId: string): Point {
+    return new Point(newId, this.x, this.y);
+  }
 }
+

@@ -128,3 +128,54 @@ export function calculatePolygonVerticesByEdge(
   return vertices;
 }
 
+export function distancePointToPoint(x1: number, y1: number, x2: number, y2: number): number {
+  return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+}
+
+export function distancePointToLineSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+  if (l2 === 0) return distancePointToPoint(px, py, x1, y1);
+  let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return distancePointToPoint(px, py, x1 + t * (x2 - x1), y1 + t * (y2 - y1));
+}
+
+export function distancePointToCircle(px: number, py: number, cx: number, cy: number, r: number): number {
+  const d = distancePointToPoint(px, py, cx, cy);
+  return Math.abs(d - r);
+}
+
+export function distancePointToArc(px: number, py: number, cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean): number {
+  let angle = Math.atan2(py - cy, px - cx);
+  
+  // Normalize angles to [0, 2PI)
+  const normalize = (a: number) => {
+    while (a < 0) a += Math.PI * 2;
+    while (a >= Math.PI * 2) a -= Math.PI * 2;
+    return a;
+  };
+
+  const s = normalize(startAngle);
+  const e = normalize(endAngle);
+  const a = normalize(angle);
+
+  let withinArc = false;
+  if (ccw) {
+    if (s <= e) withinArc = (a >= s && a <= e);
+    else withinArc = (a >= s || a <= e);
+  } else {
+    // CW is equivalent to CCW from e to s
+    if (e <= s) withinArc = (a >= e && a <= s);
+    else withinArc = (a >= e || a <= s);
+  }
+
+  if (withinArc) {
+    return distancePointToCircle(px, py, cx, cy, r);
+  } else {
+    // Distance to nearest endpoint
+    const d1 = distancePointToPoint(px, py, cx + r * Math.cos(startAngle), cy + r * Math.sin(startAngle));
+    const d2 = distancePointToPoint(px, py, cx + r * Math.cos(endAngle), cy + r * Math.sin(endAngle));
+    return Math.min(d1, d2);
+  }
+}
+

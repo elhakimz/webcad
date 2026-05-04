@@ -1,4 +1,5 @@
-import { Entity } from "./Entity"
+
+import { Entity, BoundingBox } from "./Entity"
 
 export class Text extends Entity {
   x: number;
@@ -20,4 +21,20 @@ export class Text extends Entity {
     this.x += dx;
     this.y += dy;
   }
+
+  getBoundingBox(): BoundingBox {
+    // Rough estimate based on character count and height
+    const width = this.text.length * this.height * 0.6; // Average aspect ratio
+    return {
+      minX: Math.min(this.x, this.x + width), // Simplified for rotation
+      minY: Math.min(this.y, this.y + this.height),
+      maxX: Math.max(this.x, this.x + width),
+      maxY: Math.max(this.y, this.y + this.height)
+    };
+  }
+
+  clone(newId: string): Text {
+    return new Text(newId, this.x, this.y, this.height, this.rotation, this.text);
+  }
 }
+

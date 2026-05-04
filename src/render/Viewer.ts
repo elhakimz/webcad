@@ -395,28 +395,6 @@ export class Viewer {
     this.scene.add(mesh);
   }
 
-  pickEntity(clientX: number, clientY: number): string | null {
-    const raycaster = new THREE.Raycaster();
-    raycaster.params.Line = { threshold: 5 / this.camera.zoom }; 
-    raycaster.params.Points = { threshold: 5 / this.camera.zoom };
-
-    const mouse = this.getNormalizedDeviceCoordinates(clientX, clientY);
-
-    raycaster.setFromCamera(mouse, this.camera);
-    const intersects = raycaster.intersectObjects(this.scene.children, true);
-
-    if (intersects.length > 0) {
-      // Find the top-level object with a name (the entity ID)
-      let obj = intersects[0].object;
-      while (obj && !obj.name && obj.parent) {
-        obj = obj.parent;
-      }
-      return obj.name || null;
-    }
-    return null;
-  }
-
-
   removeObject(id: string) {
     const obj = this.scene.getObjectByName(id);
     if (obj) {
@@ -467,46 +445,22 @@ export class Viewer {
     this.render();
   }
 
-
   zoomAll(entities: Entity[]) {
     if (entities.length === 0) return;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     entities.forEach(e => {
-      if (e instanceof Line) {
-        minX = Math.min(minX, e.x1, e.x2);
-        maxX = Math.max(maxX, e.x1, e.x2);
-        minY = Math.min(minY, e.y1, e.y2);
-        maxY = Math.max(maxY, e.y1, e.y2);
-      } else if (e instanceof Circle) {
-        minX = Math.min(minX, e.cx - e.r);
-        maxX = Math.max(maxX, e.cx + e.r);
-        minY = Math.min(minY, e.cy - e.r);
-        maxY = Math.max(maxY, e.cy + e.r);
-      } else if (e instanceof Arc) {
-        minX = Math.min(minX, e.cx - e.r);
-        maxX = Math.max(maxX, e.cx + e.r);
-        minY = Math.min(minY, e.cy - e.r);
-        maxY = Math.max(maxY, e.cy + e.r);
-      } else if (e instanceof Point) {
-        minX = Math.min(minX, e.x);
-        maxX = Math.max(maxX, e.x);
-        minY = Math.min(minY, e.y);
-        maxY = Math.max(maxY, e.y);
-      } else if (e instanceof Polyline) {
-        e.vertices.forEach(v => {
-          minX = Math.min(minX, v.x);
-          maxX = Math.max(maxX, v.x);
-          minY = Math.min(minY, v.y);
-          maxY = Math.max(maxY, v.y);
-        });
-      } else if (e instanceof Text) {
-        minX = Math.min(minX, e.x);
-        maxX = Math.max(maxX, e.x + e.text.length * e.height); // Rough estimate
-        minY = Math.min(minY, e.y);
-        maxY = Math.max(maxY, e.y + e.height);
-      }
+      const box = e.getBoundingBox();
+      minX = Math.min(minX, box.minX);
+      maxX = Math.max(maxX, box.maxX);
+      minY = Math.min(minY, box.minY);
+      maxY = Math.max(maxY, box.maxY);
     });
-    const margin = Math.max(maxX - minX, maxY - minY) * 0.1;
+    
+    if (minX === Infinity) return;
+
+    const width = maxX - minX;
+    const height = maxY - minY;
+    const margin = Math.max(width, height) * 0.1 || 10;
     this.zoomWindow({x: minX - margin, y: minY - margin}, {x: maxX + margin, y: maxY + margin});
   }
 

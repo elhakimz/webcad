@@ -1,4 +1,11 @@
 
+export interface BoundingBox {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
 export abstract class Entity {
   id: string
   layer: string = "0"
@@ -7,4 +14,6 @@ export abstract class Entity {
   }
 
   abstract move(dx: number, dy: number): void;
+  abstract getBoundingBox(): BoundingBox;
+  abstract clone(newId: string): Entity;
 }

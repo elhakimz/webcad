@@ -25,7 +25,7 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **TRACE:** Solid filled lines of specified width.
 -   **POINT:** Single point entities.
 -   **TEXT:** Single-line annotations with configurable height and rotation.
--   **HATCH:** Pattern fill with ANSI31/ANSI32 crosshatching.
+-   **HATCH:** Pattern fill with full .PAT file support (ANSI31, ANSI32, ANSI33, ANSI37, ANSI38, AR-CONC, AR-BRICK, DOTS, GRID, DIAGCROSS).
 -   **ERASE:** Interactive object selection and removal.
 -   **MOVE / COPY:** Precise translation or duplication via base point and displacement.
 -   **ROTATE / SCALE:** Geometric transformations around a base point.
@@ -84,7 +84,6 @@ npm run test:ui
 -   **`src/render/`**: Three.js viewport managing scene, camera, lighting, and drafting aids.
 
 ## 📍 Roadmap Priorities
--   [ ] **Modeling:** Implement **TRACE** (wide lines) and **HATCH** (pattern filling).
 -   [ ] **Precision:** Snap engine (Endpoint, Midpoint, Center).
 -   [ ] **Blocks:** Block definition and insertion system.
 -   [ ] **I/O:** DXF import and export layers using OCCT.

@@ -1,0 +1,34 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>WebCAD - AutoCAD 2.18</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div id="app">
+    <div id="status-bar">
+      <div id="layer-info">Layer 0</div>
+      <div id="coords-info">0.0000, 0.0000</div>
+    </div>
+    <div id="main-area">
+      <div id="viewport-container">
+        <canvas id="c"></canvas>
+      </div>
+      <div id="side-menu">
+        <div class="menu-header">ROOT<br>MENU</div>
+        <div id="menu-items"></div>
+      </div>
+    </div>
+    <div id="command-area">
+      <div id="command-log"></div>
+      <div id="command-input-container">
+        <span id="command-prompt">Command:</span>
+        <input id="cmd" autocomplete="off" />
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

@@ -22,8 +22,10 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **CIRCLE:** Center/Radius and Center/Diameter methods (toggle via `D`/`R` keys).
 -   **POLYGON:** Regular polygons via Center/Radius or Edge methods.
 -   **SOLID:** Solid-filled 2D planar triangles and quadrilaterals with chaining.
+-   **TRACE:** Solid filled lines of specified width.
 -   **POINT:** Single point entities.
 -   **TEXT:** Single-line annotations with configurable height and rotation.
+-   **HATCH:** Pattern fill with ANSI31/ANSI32 crosshatching.
 -   **ERASE:** Interactive object selection and removal.
 -   **MOVE / COPY:** Precise translation or duplication via base point and displacement.
 -   **ROTATE / SCALE:** Geometric transformations around a base point.

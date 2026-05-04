@@ -35,6 +35,8 @@ export class Menu {
         { label: 'POINT', command: 'POINT' },
         { label: 'POLYGON', command: 'POLYGON' },
         { label: 'SOLID', command: 'SOLID' },
+        { label: 'TRACE', command: 'TRACE' },
+        { label: 'HATCH', command: 'HATCH' },
         { label: 'TEXT' }
       ]},
       { label: 'EDIT', submenu: [

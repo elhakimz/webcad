@@ -1,7 +1,7 @@
 import { Entity } from "../model/Entity";
 
 export type CommandAction = {
-  action: 'finish' | 'close' | 'delete' | 'undo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror';
+  action: 'finish' | 'close' | 'delete' | 'undo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch';
   id?: string;
   ids?: string[];
   entity?: Entity;
@@ -14,6 +14,15 @@ export type CommandAction = {
   zoomType?: 'window' | 'all' | 'extents';
   p1?: { x: number; y: number };
   p2?: { x: number; y: number };
+  fromX?: number;
+  fromY?: number;
+  toX?: number;
+  toY?: number;
+  width?: number;
+  boundaryId?: string;
+  pattern?: string;
+  patternScale?: number;
+  patternAngle?: number;
 };
 
 export type CommandResponse = string | Entity | CommandAction;

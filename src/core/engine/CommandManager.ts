@@ -14,7 +14,9 @@ import { PointCommand } from "../commands/PointCommand"
 import { PolylineCommand } from "../commands/PolylineCommand"
 import { PolygonCommand } from "../commands/PolygonCommand"
 import { TextCommand } from "../commands/TextCommand"
+import { TraceCommand } from "../commands/TraceCommand"
 import { SolidCommand } from "../commands/SolidCommand"
+import { HatchCommand } from "../commands/HatchCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 
@@ -89,6 +91,14 @@ export class CommandManager {
     if(cmd === "SOLID"){
       this.active = new SolidCommand()
       return "SOLID First point:"
+    }
+    if(cmd === "TRACE"){
+      this.active = new TraceCommand()
+      return "TRACE line width <0.10>:"
+    }
+    if(cmd === "HATCH"){
+      this.active = new HatchCommand()
+      return "HATCH: Select boundary point:"
     }
     return "Unknown command: " + cmd
   }

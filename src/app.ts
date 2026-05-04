@@ -11,6 +11,8 @@ import { Point } from "./core/model/Point"
 import { Polyline } from "./core/model/Polyline"
 import { Text } from "./core/model/Text"
 import { Solid } from "./core/model/Solid"
+import { Trace } from "./core/model/Trace"
+import { Hatch } from "./core/model/Hatch"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
@@ -173,11 +175,14 @@ export class App {
   }
 
   private handleResult(result: CommandResponse | undefined) {
+    console.log('handleResult called', result);
     if (result && typeof result === 'object') {
       // Case: New Entity Created (Standard or via 'close')
       let entity: Entity | undefined;
       
-      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid) {
+      console.log('Result is object, checking type');
+      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Trace || result instanceof Hatch) {
+        console.log('Direct entity detected');
         entity = result;
       } else if ('action' in result && result.action === 'close' && result.entity) {
         entity = result.entity;
@@ -189,7 +194,7 @@ export class App {
         
         // Only clear active command for single-shot commands
         const activeName = this.cmd.active?.constructor.name;
-        const isMultiStep = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand';
+        const isMultiStep = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand';
 
         if (!isMultiStep || (result && typeof result === 'object' && 'action' in result && result.action === 'close')) {
           this.cmd.clearActive();
@@ -410,6 +415,10 @@ export class App {
       this.viewer.addText(entity);
     } else if (entity instanceof Solid) {
       this.viewer.addSolid(entity);
+    } else if (entity instanceof Trace) {
+      this.viewer.addTrace(entity);
+    } else if (entity instanceof Hatch) {
+      this.viewer.addHatch(entity);
     }
     this.viewer.render();
   }

@@ -8,7 +8,7 @@ import { Point } from "../core/model/Point"
 import { Polyline } from "../core/model/Polyline"
 import { Text } from "../core/model/Text"
 import { Solid } from "../core/model/Solid"
-import { bulgeToArc } from "../core/engine/MathUtils"
+import { bulgeToArc, generateHatchLines, clipLineWithPolygon } from "../core/engine/MathUtils"
 
 export class Viewer {
   scene: THREE.Scene
@@ -407,6 +407,45 @@ export class Viewer {
     const obj = this.createSolidObject(entity, 0x00ff00);
     obj.name = entity.id;
     this.scene.add(obj);
+  }
+
+  addHatch(entity: Hatch) {
+    if (entity.boundaryVertices.length < 3) return;
+
+    const spacing = 8 / entity.scale;
+    const angle = entity.angle;
+    
+    const lines = generateHatchLines(entity.boundaryVertices, spacing, angle);
+    const allSegments: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    
+    for (const line of lines) {
+      const segments = clipLineWithPolygon(line, entity.boundaryVertices);
+      for (const seg of segments) {
+        allSegments.push({ x1: seg.p1.x, y1: seg.p1.y, x2: seg.p2.x, y2: seg.p2.y });
+      }
+    }
+    
+    if (allSegments.length === 0) return;
+    
+    const positions: number[] = [];
+    for (const seg of allSegments) {
+      positions.push(seg.x1, seg.y1, 0);
+      positions.push(seg.x2, seg.y2, 0);
+    }
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    
+    const material = new THREE.LineBasicMaterial({ 
+      color: 0x00ff00,
+      linewidth: 1
+    });
+    
+    const mesh = new THREE.LineSegments(geometry, material);
+    mesh.position.z = 0.1;
+    mesh.renderOrder = 500;
+    mesh.name = entity.id;
+    this.scene.add(mesh);
   }
 
   addMesh(geometry: THREE.BufferGeometry, id?: string) {

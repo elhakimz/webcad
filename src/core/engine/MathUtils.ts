@@ -212,3 +212,109 @@ export function reflectPointAcrossLine(point: Point, lineP1: Point, lineP2: Poin
   };
 }
 
+export interface Line {
+  p1: Point;
+  p2: Point;
+}
+
+export function computeBoundingBox(vertices: Point[]): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const v of vertices) {
+    minX = Math.min(minX, v.x);
+    minY = Math.min(minY, v.y);
+    maxX = Math.max(maxX, v.x);
+    maxY = Math.max(maxY, v.y);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+export function generateHatchLines(vertices: Point[], spacing: number, angle: number): Line[] {
+  const bbox = computeBoundingBox(vertices);
+  const diag = Math.sqrt((bbox.maxX - bbox.minX) ** 2 + (bbox.maxY - bbox.minY) ** 2) * 2;
+  
+  const rad = (angle * Math.PI) / 180;
+  const dirX = Math.cos(rad);
+  const dirY = Math.sin(rad);
+  const normX = -dirY;
+  const normY = dirX;
+  
+  let minProj = Infinity;
+  let maxProj = -Infinity;
+  const corners = [
+    { x: bbox.minX, y: bbox.minY },
+    { x: bbox.maxX, y: bbox.minY },
+    { x: bbox.maxX, y: bbox.maxY },
+    { x: bbox.minX, y: bbox.maxY }
+  ];
+  for (const c of corners) {
+    const proj = c.x * normX + c.y * normY;
+    minProj = Math.min(minProj, proj);
+    maxProj = Math.max(maxProj, proj);
+  }
+  
+  minProj -= spacing * 2;
+  maxProj += spacing * 2;
+  
+  const lines: Line[] = [];
+  for (let d = minProj; d <= maxProj; d += spacing) {
+    const baseX = normX * d;
+    const baseY = normY * d;
+    lines.push({
+      p1: { x: baseX - dirX * diag, y: baseY - dirY * diag },
+      p2: { x: baseX + dirX * diag, y: baseY + dirY * diag }
+    });
+  }
+  return lines;
+}
+
+export function lineSegmentIntersection(line: Line, segStart: Point, segEnd: Point): Point | null {
+  const lx1 = line.p1.x, ly1 = line.p1.y;
+  const lx2 = line.p2.x, ly2 = line.p2.y;
+  const sx1 = segStart.x, sy1 = segStart.y;
+  const sx2 = segEnd.x, sy2 = segEnd.y;
+  
+  const dx1 = lx2 - lx1, dy1 = ly2 - ly1;
+  const dx2 = sx2 - sx1, dy2 = sy2 - sy1;
+  
+  const denom = dx1 * dy2 - dy1 * dx2;
+  if (Math.abs(denom) < 1e-6) return null;
+  
+  const t = ((sx1 - lx1) * dy2 - (sy1 - ly1) * dx2) / denom;
+  const u = ((sx1 - lx1) * dy1 - (sy1 - ly1) * dx1) / denom;
+  
+  if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+    return { x: lx1 + t * dx1, y: ly1 + t * dy1 };
+  }
+  return null;
+}
+
+export function clipLineWithPolygon(line: Line, vertices: Point[]): Line[] {
+  const intersections: Point[] = [];
+  
+  for (let i = 0; i < vertices.length; i++) {
+    const j = (i + 1) % vertices.length;
+    const pt = lineSegmentIntersection(line, vertices[i], vertices[j]);
+    if (pt) intersections.push(pt);
+  }
+  
+  if (intersections.length < 2) return [];
+  
+  const lx1 = line.p1.x, ly1 = line.p1.y;
+  const lx2 = line.p2.x, ly2 = line.p2.y;
+  const dirX = lx2 - lx1, dirY = ly2 - ly1;
+  
+  intersections.sort((a, b) => {
+    const da = (a.x - lx1) * dirX + (a.y - ly1) * dirY;
+    const db = (b.x - lx1) * dirX + (b.y - ly1) * dirY;
+    return da - db;
+  });
+  
+  const segments: Line[] = [];
+  for (let i = 0; i < intersections.length - 1; i += 2) {
+    if (i + 1 < intersections.length) {
+      segments.push({ p1: intersections[i], p2: intersections[i + 1] });
+    }
+  }
+  return segments;
+}
+

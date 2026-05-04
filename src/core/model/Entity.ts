@@ -14,6 +14,8 @@ export abstract class Entity {
   }
 
   abstract move(dx: number, dy: number): void;
+  abstract rotate(baseX: number, baseY: number, angleRad: number): void;
+  abstract scale(baseX: number, baseY: number, factor: number): void;
   abstract getBoundingBox(): BoundingBox;
   abstract clone(newId: string): Entity;
 }

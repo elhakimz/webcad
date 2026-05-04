@@ -1,5 +1,6 @@
 
 import { Entity, BoundingBox } from "./Entity"
+import { rotatePoint } from "../engine/MathUtils"
 
 export class Text extends Entity {
   x: number;
@@ -20,6 +21,19 @@ export class Text extends Entity {
   move(dx: number, dy: number) {
     this.x += dx;
     this.y += dy;
+  }
+
+  rotate(baseX: number, baseY: number, angleRad: number) {
+    const p = rotatePoint(this.x, this.y, baseX, baseY, angleRad);
+    this.x = p.x;
+    this.y = p.y;
+    this.rotation += angleRad * (180 / Math.PI);
+  }
+
+  scale(baseX: number, baseY: number, factor: number) {
+    this.x = baseX + (this.x - baseX) * factor;
+    this.y = baseY + (this.y - baseY) * factor;
+    this.height *= Math.abs(factor);
   }
 
   getBoundingBox(): BoundingBox {

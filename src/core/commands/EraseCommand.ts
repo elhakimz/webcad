@@ -2,6 +2,13 @@ import { Command, CommandResponse } from "./types"
 
 export class EraseCommand implements Command {
   step = 0
+  ids: string[] = []
+
+  constructor(ids?: string[]) {
+    if (ids && ids.length > 0) {
+      this.ids = ids;
+    }
+  }
 
   onInput(text: string): CommandResponse | undefined {
     // If we receive an ID directly (from hit-test in App)

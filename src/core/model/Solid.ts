@@ -2,20 +2,12 @@
 import { Entity, BoundingBox } from "./Entity";
 import { rotatePoint } from "../engine/MathUtils"
 
-export interface PolylineVertex {
-  x: number;
-  y: number;
-  bulge: number;
-}
+export class Solid extends Entity {
+  vertices: { x: number; y: number }[];
 
-export class Polyline extends Entity {
-  vertices: PolylineVertex[];
-  closed: boolean;
-
-  constructor(id: string, vertices: PolylineVertex[], closed: boolean = false) {
+  constructor(id: string, vertices: { x: number; y: number }[]) {
     super(id);
     this.vertices = vertices;
-    this.closed = closed;
   }
 
   move(dx: number, dy: number) {
@@ -49,14 +41,10 @@ export class Polyline extends Entity {
       maxX = Math.max(maxX, v.x);
       maxY = Math.max(maxY, v.y);
     });
-    // Note: This doesn't account for arc segments (bulges) yet, 
-    // but for broad-phase AABB, vertex extents are often enough 
-    // unless the arc goes far beyond the chord.
     return { minX, minY, maxX, maxY };
   }
 
-  clone(newId: string): Polyline {
-    return new Polyline(newId, this.vertices.map(v => ({ ...v })), this.closed);
+  clone(newId: string): Solid {
+    return new Solid(newId, this.vertices.map(v => ({ ...v })));
   }
 }
-

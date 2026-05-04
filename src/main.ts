@@ -153,13 +153,14 @@ cmdLine.onCommand((val) => {
 })
 
 // simple click input
-window.addEventListener("click",(e)=>{
-  // Only handle clicks inside the viewport
-  if (e.target !== canvas) return
+canvas.addEventListener("pointerdown", (e) => {
+  app.pointerDown(e.clientX, e.clientY);
+});
 
-  const res = app.click(e.clientX, e.clientY)
-  if (typeof res === 'string') {
-    cmdLine.print(res)
+canvas.addEventListener("pointerup", (e) => {
+  const res = app.pointerUp(e.clientX, e.clientY);
+  if (typeof res === 'string' && res) {
+    cmdLine.print(res);
   }
-  updatePrompt()
-})
+  updatePrompt();
+});

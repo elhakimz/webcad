@@ -53,7 +53,7 @@ export class CircleCommand implements Command {
     const circle = new Circle("C" + (++idCounter), this.cx, this.cy, r);
     this.step = 0;
     this.isDiameterMode = false;
-    (circle as any)._echo = echo;
+    (circle as unknown as { _echo: string })._echo = echo;
     return circle;
   }
 

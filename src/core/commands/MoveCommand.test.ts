@@ -9,7 +9,7 @@ describe('MoveCommand', () => {
     // Step 0: Select object
     const res1 = cmd.onInput('L1')
     expect(cmd.step).toBe(1)
-    expect(cmd.targetId).toBe('L1')
+    expect(cmd.targetIds).toContain('L1')
     expect(res1).toBe('Base point:')
 
     // Step 1: Base point
@@ -23,7 +23,7 @@ describe('MoveCommand', () => {
     const res3 = cmd.onPoint(150, 120) as CommandAction
     expect(cmd.step).toBe(0)
     expect(res3.action).toBe('move')
-    expect(res3.id).toBe('L1')
+    expect(res3.ids).toContain('L1')
     expect(res3.dx).toBe(50)
     expect(res3.dy).toBe(20)
   })

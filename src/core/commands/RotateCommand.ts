@@ -1,6 +1,6 @@
 import { Command, CommandResponse } from "./types"
 
-export class MoveCommand implements Command {
+export class RotateCommand implements Command {
   step = 0
   targetIds: string[] = []
   baseX = 0
@@ -20,26 +20,39 @@ export class MoveCommand implements Command {
       this.step = 1;
       return "Base point:";
     }
+
+    if (this.step === 2) {
+      const val = parseFloat(text);
+      if (!isNaN(val)) {
+        const angle = val * (Math.PI / 180);
+        return this.finish(angle);
+      }
+    }
   }
 
   onPoint(x: number, y: number): CommandResponse {
     if (this.step === 0) {
-      return "Select entity to move";
+      return "Select entity to rotate";
     }
 
     if (this.step === 1) {
       this.baseX = x;
       this.baseY = y;
       this.step = 2;
-      return "Second point:";
+      return "Rotation angle:";
     } else {
-      const dx = x - this.baseX;
-      const dy = y - this.baseY;
-      const ids = [...this.targetIds];
-      this.step = 0;
-      this.targetIds = [];
-      return { action: "move", ids, dx, dy };
+      const angle = Math.atan2(y - this.baseY, x - this.baseX);
+      return this.finish(angle);
     }
+  }
+
+  private finish(angle: number) {
+    const ids = [...this.targetIds];
+    const bx = this.baseX;
+    const by = this.baseY;
+    this.step = 0;
+    this.targetIds = [];
+    return { action: "rotate", ids, baseX: bx, baseY: by, angle } as const;
   }
 
   getReferencePoints() {
@@ -50,8 +63,8 @@ export class MoveCommand implements Command {
   }
 
   getPrompt() {
-    if (this.step === 0) return "Select entity to move:";
+    if (this.step === 0) return "Select entity to rotate:";
     if (this.step === 1) return "Base point:";
-    return "Second point:";
+    return "Rotation angle:";
   }
 }

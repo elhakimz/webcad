@@ -7,6 +7,7 @@ import { Arc } from "../core/model/Arc"
 import { Point } from "../core/model/Point"
 import { Polyline } from "../core/model/Polyline"
 import { Text } from "../core/model/Text"
+import { Solid } from "../core/model/Solid"
 import { bulgeToArc } from "../core/engine/MathUtils"
 
 export class Viewer {
@@ -22,6 +23,7 @@ export class Viewer {
   private helperGroup: THREE.Group = new THREE.Group()
   private cursorGroup: THREE.Group = new THREE.Group()
   private textQueue: Text[] = []
+  private selectionBox: THREE.Line | null = null
 
   constructor(canvas:HTMLCanvasElement){
     this.canvas = canvas
@@ -169,6 +171,8 @@ export class Viewer {
         this.previewObject = this.createPolylineObject(entity, previewColor);
       } else if (entity instanceof Text) {
         this.previewObject = this.createTextObject(entity, previewColor);
+      } else if (entity instanceof Solid) {
+        this.previewObject = this.createSolidObject(entity, previewColor);
       }
 
       if (this.previewObject) {
@@ -207,6 +211,21 @@ export class Viewer {
     mesh.add(hitBox);
     
     return mesh;
+  }
+
+  private createSolidObject(entity: Solid, color: number): THREE.Object3D {
+    const shape = new THREE.Shape();
+    if (entity.vertices.length > 0) {
+      shape.moveTo(entity.vertices[0].x, entity.vertices[0].y);
+      for (let i = 1; i < entity.vertices.length; i++) {
+        shape.lineTo(entity.vertices[i].x, entity.vertices[i].y);
+      }
+      shape.closePath();
+    }
+
+    const geometry = new THREE.ShapeGeometry(shape);
+    const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+    return new THREE.Mesh(geometry, mat);
   }
 
   private createPolylineObject(entity: Polyline, color: number): THREE.Object3D {
@@ -315,6 +334,7 @@ export class Viewer {
     const mouse = this.getNormalizedDeviceCoordinates(clientX, clientY);
     const vec = new THREE.Vector3(mouse.x, mouse.y, 0.5);
     vec.unproject(this.camera)
+    console.log(`[Viewer] screenToWorld: (${clientX}, ${clientY}) -> NDC: (${mouse.x.toFixed(3)}, ${mouse.y.toFixed(3)}) -> World: (${vec.x.toFixed(3)}, ${vec.y.toFixed(3)})`);
     return { x: vec.x, y: vec.y }
   }
 
@@ -384,6 +404,12 @@ export class Viewer {
     this.render();
   }
 
+  addSolid(entity: Solid) {
+    const obj = this.createSolidObject(entity, 0x00ff00);
+    obj.name = entity.id;
+    this.scene.add(obj);
+  }
+
   addMesh(geometry: THREE.BufferGeometry, id?: string) {
     const mat = new THREE.MeshStandardMaterial({ 
       color: 0x00ff00,
@@ -418,6 +444,63 @@ export class Viewer {
       obj.position.x += dx;
       obj.position.y += dy;
     }
+  }
+
+  setHighlight(ids: string[]) {
+    const highlightColor = 0xffff00; // Yellow
+    const normalColor = 0x00ff00; // Green
+
+    this.scene.traverse((obj) => {
+      // Only affect drawing objects (they have a name/id)
+      if (obj.name && obj.name !== "PREVIEW" && !obj.name.startsWith("CURSOR") && 
+          (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points || obj instanceof THREE.Mesh)) {
+        
+        const isHighlighted = ids.includes(obj.name);
+        const color = isHighlighted ? highlightColor : normalColor;
+        
+        if (Array.isArray(obj.material)) {
+            obj.material.forEach(m => {
+                if ('color' in m) (m as THREE.MeshBasicMaterial).color.set(color);
+            });
+        } else if ('color' in obj.material) {
+            (obj.material as THREE.MeshBasicMaterial).color.set(color);
+        }
+      }
+    });
+    this.render();
+  }
+
+  setSelectionBox(p1: {x: number, y: number} | null, p2?: {x: number, y: number}, isCrossing?: boolean) {
+    if (this.selectionBox) {
+        this.scene.remove(this.selectionBox);
+        this.selectionBox.geometry.dispose();
+        (this.selectionBox.material as THREE.Material).dispose();
+        this.selectionBox = null;
+    }
+
+    if (p1 && p2) {
+        const minX = Math.min(p1.x, p2.x);
+        const maxX = Math.max(p1.x, p2.x);
+        const minY = Math.min(p1.y, p2.y);
+        const maxY = Math.max(p1.y, p2.y);
+
+        const pts = [
+            new THREE.Vector3(minX, minY, 0),
+            new THREE.Vector3(maxX, minY, 0),
+            new THREE.Vector3(maxX, maxY, 0),
+            new THREE.Vector3(minX, maxY, 0),
+            new THREE.Vector3(minX, minY, 0)
+        ];
+        const geo = new THREE.BufferGeometry().setFromPoints(pts);
+        
+        const color = isCrossing ? 0x00ff00 : 0x0000ff; // Green for crossing, Blue for window
+        const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 });
+        
+        this.selectionBox = new THREE.Line(geo, mat);
+        this.selectionBox.renderOrder = 1000;
+        this.scene.add(this.selectionBox);
+    }
+    this.render();
   }
 
   zoomWindow(p1: {x: number, y: number}, p2: {x: number, y: number}) {

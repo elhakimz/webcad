@@ -1,6 +1,6 @@
 import { Command, CommandResponse } from "./types"
 
-export class MoveCommand implements Command {
+export class ScaleCommand implements Command {
   step = 0
   targetIds: string[] = []
   baseX = 0
@@ -20,26 +20,42 @@ export class MoveCommand implements Command {
       this.step = 1;
       return "Base point:";
     }
+
+    if (this.step === 2) {
+      const val = parseFloat(text);
+      if (!isNaN(val)) {
+        return this.finish(val);
+      }
+    }
   }
 
   onPoint(x: number, y: number): CommandResponse {
     if (this.step === 0) {
-      return "Select entity to move";
+      return "Select entity to scale";
     }
 
     if (this.step === 1) {
       this.baseX = x;
       this.baseY = y;
       this.step = 2;
-      return "Second point:";
+      return "Scale factor:";
     } else {
       const dx = x - this.baseX;
       const dy = y - this.baseY;
-      const ids = [...this.targetIds];
-      this.step = 0;
-      this.targetIds = [];
-      return { action: "move", ids, dx, dy };
+      const factor = Math.sqrt(dx * dx + dy * dy);
+      // Note: Using distance as factor is a bit arbitrary without a reference,
+      // but it's a common interactive pattern.
+      return this.finish(factor);
     }
+  }
+
+  private finish(factor: number) {
+    const ids = [...this.targetIds];
+    const bx = this.baseX;
+    const by = this.baseY;
+    this.step = 0;
+    this.targetIds = [];
+    return { action: "scale", ids, baseX: bx, baseY: by, factor } as const;
   }
 
   getReferencePoints() {
@@ -50,8 +66,8 @@ export class MoveCommand implements Command {
   }
 
   getPrompt() {
-    if (this.step === 0) return "Select entity to move:";
+    if (this.step === 0) return "Select entity to scale:";
     if (this.step === 1) return "Base point:";
-    return "Second point:";
+    return "Scale factor:";
   }
 }

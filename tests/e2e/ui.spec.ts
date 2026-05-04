@@ -60,7 +60,7 @@ test.describe('AutoCAD 2.18 DOS UI', () => {
       
       // Press 'u' to undo the last segment (L3)
       await page.keyboard.press('u');
-      await expect(page.locator('#command-log')).toContainText('Entity L3 removed.');
+      await expect(page.locator('#command-log')).toContainText('Entities [L3] removed.');
       
       // Press 'c' to close the sequence
       await page.keyboard.press('c');

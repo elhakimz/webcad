@@ -3,14 +3,21 @@ import { Command, CommandResponse } from "./types"
 
 export class CopyCommand implements Command {
   step = 0
-  targetId: string = ""
+  targetIds: string[] = []
   baseX = 0
   baseY = 0
+
+  constructor(ids?: string[]) {
+    if (ids && ids.length > 0) {
+      this.targetIds = ids;
+      this.step = 1;
+    }
+  }
 
   onInput(text: string): CommandResponse | undefined {
     // Step 0: Select object (receives ID)
     if (this.step === 0 && text) {
-      this.targetId = text;
+      this.targetIds = [text];
       this.step = 1;
       return "Base point:";
     }
@@ -29,8 +36,10 @@ export class CopyCommand implements Command {
     } else {
       const dx = x - this.baseX;
       const dy = y - this.baseY;
+      const ids = [...this.targetIds];
       this.step = 0;
-      return { action: "copy", id: this.targetId, dx, dy } as any; // Using 'any' for now as 'copy' isn't in CommandAction yet
+      this.targetIds = [];
+      return { action: "copy", ids, dx, dy };
     }
   }
 

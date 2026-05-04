@@ -39,7 +39,9 @@ export class Menu {
       { label: 'EDIT', submenu: [
         { label: 'ERASE', command: 'ERASE' },
         { label: 'MOVE', command: 'MOVE' },
-        { label: 'COPY' }
+        { label: 'COPY', command: 'COPY' },
+        { label: 'ROTATE', command: 'ROTATE' },
+        { label: 'SCALE', command: 'SCALE' }
       ]},
       { label: 'INQUIRY' },
       { label: 'LAYERS' },

@@ -1,5 +1,6 @@
 
 import { Entity, BoundingBox } from "./Entity"
+import { rotatePoint } from "../engine/MathUtils"
 
 export class Circle extends Entity {
   cx: number;
@@ -16,6 +17,18 @@ export class Circle extends Entity {
   move(dx: number, dy: number) {
     this.cx += dx;
     this.cy += dy;
+  }
+
+  rotate(baseX: number, baseY: number, angleRad: number) {
+    const p = rotatePoint(this.cx, this.cy, baseX, baseY, angleRad);
+    this.cx = p.x;
+    this.cy = p.y;
+  }
+
+  scale(baseX: number, baseY: number, factor: number) {
+    this.cx = baseX + (this.cx - baseX) * factor;
+    this.cy = baseY + (this.cy - baseY) * factor;
+    this.r *= Math.abs(factor);
   }
 
   getBoundingBox(): BoundingBox {

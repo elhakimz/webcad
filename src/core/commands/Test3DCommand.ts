@@ -17,7 +17,7 @@ export class Test3DCommand implements Command {
       // Return a special result that the App will handle
       return { 
         action: "create3d", 
-        entity: { id: "BOX_" + Date.now(), shape } as any 
+        entity: { id: "BOX_" + Date.now(), shape } as unknown 
       };
     } catch (err) {
       console.error(err);

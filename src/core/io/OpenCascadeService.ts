@@ -3,6 +3,7 @@ import * as THREE from "three";
 
 export class OpenCascadeService {
   private static instance: OpenCascadeService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private oc: any = null;
   private loading: Promise<void> | null = null;
 
@@ -22,6 +23,7 @@ export class OpenCascadeService {
     this.loading = (async () => {
       try {
         // initOpenCascade from opencascade.js returns a promise that resolves to the OCCT instance
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         this.oc = await (initOpenCascade as any)();
         console.log("OpenCascade.js initialized successfully");
       } catch (error) {
@@ -41,6 +43,7 @@ export class OpenCascadeService {
   /**
    * Converts an OCCT Shape to Three.js BufferGeometry via triangulation.
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   shapeToBufferGeometry(shape: any, linearDeflection: number = 0.1): THREE.BufferGeometry {
     const oc = this.OC;
 

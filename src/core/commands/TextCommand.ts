@@ -88,7 +88,7 @@ export class TextCommand implements Command {
         text // use original text to preserve spaces
       )
       this.step = 0
-      ;(textEntity as any)._echo = "Text created."
+      ;(textEntity as unknown as { _echo: string })._echo = "Text created."
       return textEntity
     }
   }

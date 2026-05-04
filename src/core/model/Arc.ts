@@ -1,5 +1,6 @@
 
 import { Entity, BoundingBox } from "./Entity";
+import { rotatePoint } from "../engine/MathUtils"
 
 export class Arc extends Entity {
   cx: number;
@@ -22,6 +23,26 @@ export class Arc extends Entity {
   move(dx: number, dy: number) {
     this.cx += dx;
     this.cy += dy;
+  }
+
+  rotate(baseX: number, baseY: number, angleRad: number) {
+    const p = rotatePoint(this.cx, this.cy, baseX, baseY, angleRad);
+    this.cx = p.x;
+    this.cy = p.y;
+    this.startAngle += angleRad;
+    this.endAngle += angleRad;
+  }
+
+  scale(baseX: number, baseY: number, factor: number) {
+    this.cx = baseX + (this.cx - baseX) * factor;
+    this.cy = baseY + (this.cy - baseY) * factor;
+    this.r *= Math.abs(factor);
+    if (factor < 0) {
+        // Reflecting across base point: swap angles and CCW? 
+        // For simple uniform scaling, negative factor is usually avoided or handled as mirror.
+        // AutoCAD usually handles factor as absolute for radius.
+        // We'll keep it simple: radius is absolute.
+    }
   }
 
   getBoundingBox(): BoundingBox {

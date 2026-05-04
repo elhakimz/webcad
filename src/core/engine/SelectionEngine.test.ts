@@ -3,7 +3,6 @@ import { describe, it, expect } from 'vitest'
 import { SelectionEngine } from './SelectionEngine'
 import { Line } from '../model/Line'
 import { Circle } from '../model/Circle'
-import { Point } from '../model/Point'
 import { Polyline } from '../model/Polyline'
 
 describe('SelectionEngine', () => {

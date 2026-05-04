@@ -4,6 +4,8 @@ import { CircleCommand } from "../commands/CircleCommand"
 import { EraseCommand } from "../commands/EraseCommand"
 import { MoveCommand } from "../commands/MoveCommand"
 import { CopyCommand } from "../commands/CopyCommand"
+import { RotateCommand } from "../commands/RotateCommand"
+import { ScaleCommand } from "../commands/ScaleCommand"
 import { ZoomCommand } from "../commands/ZoomCommand"
 import { Test3DCommand } from "../commands/Test3DCommand"
 import { ArcCommand } from "../commands/ArcCommand"
@@ -11,6 +13,7 @@ import { PointCommand } from "../commands/PointCommand"
 import { PolylineCommand } from "../commands/PolylineCommand"
 import { PolygonCommand } from "../commands/PolygonCommand"
 import { TextCommand } from "../commands/TextCommand"
+import { SolidCommand } from "../commands/SolidCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 
@@ -18,7 +21,7 @@ export class CommandManager {
   active: Command | null = null
   lastPoint: { x: number; y: number } | null = null
 
-  execute(cmd:string): CommandResponse {
+  execute(cmd:string, selection?: string[]): CommandResponse {
     if(cmd === "LINE"){
       this.active = new LineCommand()
       return "LINE command started: pick first point"
@@ -28,16 +31,27 @@ export class CommandManager {
       return "CIRCLE command started: specify center point"
     }
     if(cmd === "ERASE"){
+      if (selection && selection.length > 0) {
+        return { action: "delete", ids: [...selection] };
+      }
       this.active = new EraseCommand()
       return "ERASE command started: select object"
     }
     if(cmd === "MOVE"){
-      this.active = new MoveCommand()
-      return "MOVE command started: select object"
+      this.active = new MoveCommand(selection)
+      return selection && selection.length > 0 ? "Base point:" : "MOVE command started: select object"
     }
     if(cmd === "COPY"){
-      this.active = new CopyCommand()
-      return "COPY command started: select object"
+      this.active = new CopyCommand(selection)
+      return selection && selection.length > 0 ? "Base point:" : "COPY command started: select object"
+    }
+    if(cmd === "ROTATE"){
+      this.active = new RotateCommand(selection)
+      return selection && selection.length > 0 ? "Base point:" : "ROTATE command started: select object"
+    }
+    if(cmd === "SCALE"){
+      this.active = new ScaleCommand(selection)
+      return selection && selection.length > 0 ? "Base point:" : "SCALE command started: select object"
     }
     if(cmd === "ZOOM" || cmd === "Z"){
       this.active = new ZoomCommand()
@@ -66,6 +80,10 @@ export class CommandManager {
     if(cmd === "TEXT"){
       this.active = new TextCommand()
       return "TEXT start point:"
+    }
+    if(cmd === "SOLID"){
+      this.active = new SolidCommand()
+      return "SOLID First point:"
     }
     return "Unknown command: " + cmd
   }

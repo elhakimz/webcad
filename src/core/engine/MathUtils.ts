@@ -146,7 +146,7 @@ export function distancePointToCircle(px: number, py: number, cx: number, cy: nu
 }
 
 export function distancePointToArc(px: number, py: number, cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean): number {
-  let angle = Math.atan2(py - cy, px - cx);
+  const angle = Math.atan2(py - cy, px - cx);
   
   // Normalize angles to [0, 2PI)
   const normalize = (a: number) => {
@@ -177,5 +177,16 @@ export function distancePointToArc(px: number, py: number, cx: number, cy: numbe
     const d2 = distancePointToPoint(px, py, cx + r * Math.cos(endAngle), cy + r * Math.sin(endAngle));
     return Math.min(d1, d2);
   }
+}
+
+export function rotatePoint(x: number, y: number, cx: number, cy: number, angleRad: number) {
+  const s = Math.sin(angleRad);
+  const c = Math.cos(angleRad);
+  const dx = x - cx;
+  const dy = y - cy;
+  return {
+    x: cx + (dx * c - dy * s),
+    y: cy + (dx * s + dy * c)
+  };
 }
 

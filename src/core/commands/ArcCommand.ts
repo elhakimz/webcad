@@ -36,7 +36,7 @@ export class ArcCommand implements Command {
         params.cx, params.cy, params.r,
         params.startAngle, params.endAngle, params.ccw
       );
-      (arc as any)._echo = `${echo}\nArc created. ${FormatUtils.formatRadius(params.r)}`;
+      (arc as unknown as { _echo: string })._echo = `${echo}\nArc created. ${FormatUtils.formatRadius(params.r)}`;
       this.step = 0;
       this.p1 = null;
       this.p2 = null;

@@ -1,4 +1,4 @@
-import { Polyline, PolylineVertex } from "../model/Polyline"
+import { Polyline } from "../model/Polyline"
 import { Command, CommandResponse } from "./types"
 import { FormatUtils } from "../engine/FormatUtils"
 import { calculatePolygonVerticesByCenter, calculatePolygonVerticesByEdge, Point } from "../engine/MathUtils"
@@ -127,7 +127,7 @@ export class PolygonCommand implements Command {
     )
     const methodStr = this.method === 'edge' ? "Edge" : (this.inscribed ? "Inscribed" : "Circumscribed")
     const echo = `Polygon created (${this.sides} sides, ${methodStr}).`
-    ;(polyline as any)._echo = echo
+    ;(polyline as unknown as { _echo: string })._echo = echo
     return polyline
   }
 

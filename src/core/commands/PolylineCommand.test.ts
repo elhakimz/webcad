@@ -34,7 +34,7 @@ describe('PolylineCommand', () => {
   it('should support Undo (U)', () => {
     const cmd = new PolylineCommand()
     cmd.onPoint(0, 0)
-    const pline1 = cmd.onPoint(10, 0) as Polyline
+    cmd.onPoint(10, 0)
     const pline2 = cmd.onPoint(10, 10) as Polyline
     
     expect(cmd.vertices).toHaveLength(3)

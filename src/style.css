@@ -128,3 +128,52 @@ body {
   outline: none;
   padding: 0;
 }
+
+#main-menu-screen {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: var(--font-family);
+}
+
+#main-menu-content {
+  width: 500px;
+}
+
+.menu-title {
+  text-align: center;
+  font-size: 1.5em;
+  margin-bottom: 30px;
+  text-decoration: underline;
+}
+
+.menu-options p {
+  margin: 5px 0;
+}
+
+#main-menu-selection {
+  margin-top: 40px;
+  display: flex;
+  align-items: center;
+}
+
+#main-menu-input {
+  background: none;
+  border: none;
+  color: var(--accent-color);
+  font-family: inherit;
+  font-size: inherit;
+  outline: none;
+  margin-left: 10px;
+  width: 50px;
+}
+
+#main-menu-status {
+  margin-top: 20px;
+  color: var(--menu-border-color);
+  min-height: 1.2em;
+}

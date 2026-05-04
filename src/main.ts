@@ -1,9 +1,10 @@
-
 import { Viewer } from "./render/Viewer"
 import { App } from "./app"
 import { CommandLine } from "./ui/CommandLine"
 import { StatusBar } from "./ui/StatusBar"
 import { Menu } from "./ui/Menu"
+import { MainMenuScreen } from "./ui/MainMenuScreen"
+import { OpenCascadeService } from "./core/io/OpenCascadeService"
 
 const canvas = document.getElementById("c") as HTMLCanvasElement
 const viewer = new Viewer(canvas)
@@ -21,7 +22,31 @@ const menu = new Menu((cmd) => {
 viewer.resize()
 window.addEventListener("resize", () => viewer.resize())
 
-viewer.render()
+// Main Menu Logic
+const mainMenu = new MainMenuScreen(() => {
+  // Callback when 'Begin a NEW drawing' is selected
+  document.getElementById('drawing-editor')!.style.display = 'block';
+  viewer.resize();
+  viewer.render();
+
+  // Focus command line after transition
+  const cmdInput = document.getElementById('cmd') as HTMLInputElement;
+  cmdInput.focus();
+});
+
+// Initialize CAD Engine
+mainMenu.setEnabled(false);
+mainMenu.setStatus("Loading CAD Kernel (OpenCascade.js)...");
+
+OpenCascadeService.getInstance().init()
+  .then(() => {
+    mainMenu.setStatus("");
+    mainMenu.setEnabled(true);
+  })
+  .catch((err) => {
+    mainMenu.setStatus("Failed to load CAD Kernel.");
+    console.error(err);
+  });
 
 let lastMouseX = 0
 let lastMouseY = 0
@@ -38,12 +63,13 @@ window.addEventListener("mousemove", (e) => {
 // Global keyboard shortcuts for commands
 window.addEventListener("keydown", (e) => {
   // Ignore if typing in the command line
-  if (document.activeElement?.id === "cmd") return
+  if (document.activeElement?.id === "cmd" || document.activeElement?.id === "main-menu-input") return
 
   // Only handle if a command is active
   if (app.cmd.active) {
     const key = e.key.toLowerCase()
     if (key === 'c' || key === 'u') {
+      cmdLine.print(`Command: ${key.toUpperCase()}`)
       const res = app.inputText(key.toUpperCase())
       if (typeof res === 'string') {
         cmdLine.print(res)
@@ -61,6 +87,13 @@ cmdLine.onCommand((val) => {
     menu.goToRoot()
     cmdLine.print("Returned to root menu.")
     return
+  }
+
+  if (cleanVal === "QUIT" || cleanVal === "EXIT") {
+    document.getElementById('drawing-editor')!.style.display = 'none';
+    menu.goToRoot();
+    mainMenu.show();
+    return;
   }
 
   let res = app.inputText(cleanVal)

@@ -1,0 +1,31 @@
+import { Command, CommandResponse } from "./types"
+import { OpenCascadeService } from "../io/OpenCascadeService"
+
+export class Test3DCommand implements Command {
+  onPoint(x: number, y: number): CommandResponse {
+    const ocService = OpenCascadeService.getInstance();
+    const oc = ocService.OC;
+
+    try {
+      // Create an OCCT Box (100x100x100) at the clicked point
+      const box = new oc.BRepPrimAPI_MakeBox_3(
+        new oc.gp_Pnt_3(x, y, 0),
+        100, 100, 100
+      );
+      const shape = box.Shape();
+
+      // Return a special result that the App will handle
+      return { 
+        action: "create3d", 
+        entity: { id: "BOX_" + Date.now(), shape } as any 
+      };
+    } catch (err) {
+      console.error(err);
+      return "Failed to create 3D box.";
+    }
+  }
+
+  onInput() {
+    return "Click to place a 100x100x100 3D box.";
+  }
+}

@@ -165,6 +165,17 @@ export class Viewer {
     this.scene.add(circle);
   }
 
+  addMesh(geometry: THREE.BufferGeometry, id?: string) {
+    const mat = new THREE.MeshStandardMaterial({ 
+      color: 0x00ff00,
+      metalness: 0.1,
+      roughness: 0.5
+    });
+    const mesh = new THREE.Mesh(geometry, mat);
+    if (id) mesh.name = id;
+    this.scene.add(mesh);
+  }
+
   pickEntity(clientX: number, clientY: number): string | null {
     const raycaster = new THREE.Raycaster();
     raycaster.params.Line = { threshold: 5 / this.camera.zoom }; 

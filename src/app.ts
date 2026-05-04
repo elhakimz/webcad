@@ -6,6 +6,8 @@ import { CommandResponse, CommandAction } from "./core/commands/types"
 import { Entity } from "./core/model/Entity"
 import { Line } from "./core/model/Line"
 import { Circle } from "./core/model/Circle"
+import { OpenCascadeService } from "./core/io/OpenCascadeService"
+import * as THREE from "three"
 
 export class App {
   viewer:Viewer
@@ -16,6 +18,12 @@ export class App {
     this.viewer = viewer
     this.cmd = new CommandManager()
     this.doc = new Document()
+
+    // Add lighting for 3D meshes
+    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+    const directional = new THREE.DirectionalLight(0xffffff, 1);
+    directional.position.set(100, 100, 500);
+    this.viewer.scene.add(ambient, directional);
   }
 
   execute(cmd:string){
@@ -84,6 +92,10 @@ export class App {
           this.cmd.clearActive();
         }
 
+        if (result && typeof result === 'object' && 'action' in result && result.action === 'close') {
+           return "Command finished.";
+        }
+
         return entity;
       }
 
@@ -110,6 +122,15 @@ export class App {
           this.cmd.clearActive();
           return `Entity ${actionResult.id} moved.`
         }
+      }
+
+      if (actionResult.action === 'create3d' && actionResult.entity) {
+        const ocService = OpenCascadeService.getInstance();
+        const geometry = ocService.shapeToBufferGeometry((actionResult.entity as { id: string, shape: any }).shape);
+        this.viewer.addMesh(geometry, actionResult.entity.id);
+        this.viewer.render();
+        this.cmd.clearActive();
+        return `3D Entity ${actionResult.entity.id} created using OpenCascade.js.`;
       }
 
       if (actionResult.action === 'zoom') {

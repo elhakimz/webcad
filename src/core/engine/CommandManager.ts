@@ -9,6 +9,7 @@ import { ArcCommand } from "../commands/ArcCommand"
 import { PointCommand } from "../commands/PointCommand"
 import { PolylineCommand } from "../commands/PolylineCommand"
 import { PolygonCommand } from "../commands/PolygonCommand"
+import { TextCommand } from "../commands/TextCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 
@@ -56,6 +57,10 @@ export class CommandManager {
     if(cmd === "POLYGON"){
       this.active = new PolygonCommand()
       return "POLYGON Number of sides <4>:"
+    }
+    if(cmd === "TEXT"){
+      this.active = new TextCommand()
+      return "TEXT start point:"
     }
     return "Unknown command: " + cmd
   }

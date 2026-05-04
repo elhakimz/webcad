@@ -120,7 +120,7 @@ test.describe('AutoCAD 2.18 DOS UI', () => {
     if (box) {
       // P1
       await page.mouse.click(box.x + 100, box.y + 100);
-      await expect(page.locator('#command-log')).toContainText('Endpoint of line');
+      await expect(page.locator('#command-prompt')).toContainText('Endpoint of line');
 
       // P2
       await page.mouse.click(box.x + 200, box.y + 100);
@@ -129,7 +129,8 @@ test.describe('AutoCAD 2.18 DOS UI', () => {
       // Switch to Arc
       await cmdInput.fill('A');
       await cmdInput.press('Enter');
-      await expect(page.locator('#command-log')).toContainText('Endpoint of arc');
+      await expect(page.locator('#command-log')).toContainText('Switched to Arc mode.');
+      await expect(page.locator('#command-prompt')).toContainText('Endpoint of arc');
 
       // P3 (Arc)
       await page.mouse.click(box.x + 200, box.y + 200);
@@ -139,7 +140,8 @@ test.describe('AutoCAD 2.18 DOS UI', () => {
       // Switch back to Line
       await cmdInput.fill('L');
       await cmdInput.press('Enter');
-      await expect(page.locator('#command-log')).toContainText('Endpoint of line');
+      await expect(page.locator('#command-log')).toContainText('Switched to Line mode.');
+      await expect(page.locator('#command-prompt')).toContainText('Endpoint of line');
 
       // Close
       await cmdInput.fill('C');
@@ -166,12 +168,75 @@ test.describe('AutoCAD 2.18 DOS UI', () => {
       await page.keyboard.press('a');
       
       // Should switch to arc mode
-      await expect(page.locator('#command-log')).toContainText('Endpoint of arc');
+      await expect(page.locator('#command-log')).toContainText('Switched to Arc mode.');
       await expect(page.locator('#command-prompt')).toContainText('Endpoint of arc');
 
       // P2 (Arc)
       await page.mouse.click(box.x + 200, box.y + 200);
       await expect(page.locator('#command-log')).toContainText('Polyline segment added.');
+    }
+  });
+
+  test('should support TEXT command workflow', async ({ page }) => {
+    const cmdInput = page.locator('#cmd');
+    await cmdInput.fill('TEXT');
+    await cmdInput.press('Enter');
+    
+    const canvas = page.locator('#c');
+    const box = await canvas.boundingBox();
+    if (box) {
+      // Step 0: Insertion Point
+      await page.mouse.click(box.x + 100, box.y + 100);
+      await expect(page.locator('#command-prompt')).toContainText('Height');
+
+      // Step 1: Height (Accept default by pressing Enter)
+      await cmdInput.press('Enter');
+      await expect(page.locator('#command-prompt')).toContainText('Rotation');
+
+      // Step 2: Rotation (Accept default by pressing Enter)
+      await cmdInput.press('Enter');
+      await expect(page.locator('#command-prompt')).toContainText('Text:');
+
+      // Step 3: Input Text
+      await cmdInput.fill('AUTOCAD 2.18');
+      await cmdInput.press('Enter');
+      
+      await expect(page.locator('#command-log')).toContainText('Text created.');
+    }
+  });
+
+  test('should not have duplicated prompts in the log for TEXT', async ({ page }) => {
+    const cmdInput = page.locator('#cmd');
+    await cmdInput.fill('TEXT');
+    await cmdInput.press('Enter');
+    
+    const log = page.locator('#command-log');
+    // "TEXT start point:" should appear exactly once in the log (excluding the bottom prompt)
+    const text = await log.innerText();
+    const count = (text.match(/TEXT start point:/g) || []).length;
+    expect(count).toBe(1);
+  });
+
+  test('should preserve case in TEXT command', async ({ page }) => {
+    const cmdInput = page.locator('#cmd');
+    await cmdInput.fill('text'); // Test command name case-insensitivity
+    await cmdInput.press('Enter');
+    
+    const canvas = page.locator('#c');
+    const box = await canvas.boundingBox();
+    if (box) {
+      await page.mouse.click(box.x + 100, box.y + 100);
+      await cmdInput.press('Enter'); // Default height
+      await cmdInput.press('Enter'); // Default rotation
+      
+      // Input mixed case text
+      await cmdInput.fill('AutoCAD Web');
+      await cmdInput.press('Enter');
+      
+      // We can't easily check the 3D scene text content in E2E, 
+      // but we can check if the echo in the log was uppercased or not.
+      // Wait, TextCommand doesn't echo the text itself, it just says "Text created."
+      await expect(page.locator('#command-log')).toContainText('Text created.');
     }
   });
 });

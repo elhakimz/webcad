@@ -16,8 +16,7 @@ export class PolylineCommand implements Command {
     if (isFirst) {
       this.vertices.push({ x, y, bulge: 0 });
       this.drawnEntityId = "PL" + (++idCounter);
-      const echo = FormatUtils.formatPoint(x, y, "P1");
-      return `${echo}\n${this.getPrompt()}`;
+      return FormatUtils.formatPoint(x, y, "P1");
     }
 
     const lastV = this.vertices[this.vertices.length - 1];
@@ -66,7 +65,7 @@ export class PolylineCommand implements Command {
         const pline = new Polyline(this.drawnEntityId!, [...this.vertices], true);
         return { action: "close", entity: pline };
       }
-      return "Requires at least 3 points to close. <Endpoint of " + (this.mode === 'arc' ? "arc" : "line") + ">:";
+      return "Requires at least 3 points to close.";
     }
 
     if (val === "U" || val === "UNDO") {
@@ -96,17 +95,17 @@ export class PolylineCommand implements Command {
 
         return { action: "undo", id: this.drawnEntityId || undefined };
       }
-      return "Nothing to undo. <Endpoint of " + (this.mode === 'arc' ? "arc" : "line") + ">:";
+      return "Nothing to undo.";
     }
 
     if (val === "A" || val === "ARC") {
       this.mode = 'arc';
-      return "Angle/CEnter/CLose/Direction/Halfwidth/Line/Radius/Second pt/Undo/Width/<Endpoint of arc>:";
+      return "Switched to Arc mode.";
     }
 
     if (val === "L" || val === "LINE") {
       this.mode = 'line';
-      return "Arc/Close/Halfwidth/Length/Undo/Width/<Endpoint of line>:";
+      return "Switched to Line mode.";
     }
   }
 

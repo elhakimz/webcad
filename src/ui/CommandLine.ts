@@ -41,4 +41,8 @@ export class CommandLine {
   setPrompt(text: string) {
     this.promptEl.textContent = text;
   }
+
+  focus() {
+    this.inputEl.focus();
+  }
 }

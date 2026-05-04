@@ -54,7 +54,22 @@ let lastMouseY = 0
 function updatePrompt() {
   const activeCmd = app.cmd.active;
   if (activeCmd && activeCmd.getPrompt) {
-    cmdLine.setPrompt(activeCmd.getPrompt());
+    const prompt = activeCmd.getPrompt();
+    cmdLine.setPrompt(prompt);
+    
+    // Auto-focus command line for specific inputs that primarily expect text/numbers
+    const shouldFocus = 
+      prompt === "Text:" || 
+      prompt.startsWith("POLYGON Number of sides") ||
+      prompt.includes("(I/C) <I>:") ||
+      prompt.startsWith("Height <") ||
+      prompt.startsWith("Rotation angle <") ||
+      prompt.startsWith("Diameter") ||
+      prompt.startsWith("ZOOM [All/Window]");
+
+    if (shouldFocus) {
+      cmdLine.focus();
+    }
   } else {
     cmdLine.setPrompt("Command:");
   }
@@ -109,25 +124,26 @@ window.addEventListener("keydown", (e) => {
 })
 
 cmdLine.onCommand((val) => {
-  const cleanVal = val.trim().toUpperCase()
+  const trimmedUpper = val.trim().toUpperCase()
 
-  if (cleanVal === "MENU") {
+  if (trimmedUpper === "MENU") {
     menu.goToRoot()
     cmdLine.print("Returned to root menu.")
     updatePrompt()
     return
   }
 
-  if (cleanVal === "QUIT" || cleanVal === "EXIT") {
+  if (trimmedUpper === "QUIT" || trimmedUpper === "EXIT") {
     document.getElementById('drawing-editor')!.style.display = 'none';
     menu.goToRoot();
     mainMenu.show();
     return;
   }
 
-  let res = app.inputText(cleanVal)
+  // Pass raw value for text preservation, handle matching inside
+  let res = app.inputText(val)
   if (!res || typeof res === 'string' && res.startsWith("Unknown")) {
-    res = app.execute(cleanVal)
+    res = app.execute(trimmedUpper)
   }
   
   if (typeof res === 'string') {

@@ -21,6 +21,7 @@ export class Viewer {
   private previewObject: THREE.Object3D | null = null
   private helperGroup: THREE.Group = new THREE.Group()
   private cursorGroup: THREE.Group = new THREE.Group()
+  private textQueue: Text[] = []
 
   constructor(canvas:HTMLCanvasElement){
     this.canvas = canvas
@@ -44,8 +45,10 @@ export class Viewer {
 
   private loadFont() {
     const loader = new FontLoader();
-    loader.load('fonts/helvetiker_regular.typeface.json', (font) => {
+    loader.load('/fonts/helvetiker_regular.typeface.json', (font) => {
       this.font = font;
+      this.textQueue.forEach(entity => this.addText(entity));
+      this.textQueue = [];
       this.render();
     });
   }
@@ -188,6 +191,20 @@ export class Viewer {
     
     mesh.position.set(entity.x, entity.y, 0);
     mesh.rotation.z = entity.rotation * (Math.PI / 180);
+    mesh.renderOrder = 10;
+
+    // Create an invisible hit-box for better picking
+    geometry.computeBoundingBox();
+    const bbox = geometry.boundingBox!;
+    const width = bbox.max.x - bbox.min.x;
+    const height = bbox.max.y - bbox.min.y;
+    
+    const hitBoxGeo = new THREE.PlaneGeometry(width || 0.1, height || 0.1);
+    const hitBoxMat = new THREE.MeshBasicMaterial({ visible: false });
+    const hitBox = new THREE.Mesh(hitBoxGeo, hitBoxMat);
+    // Align hitBox to the text (PlaneGeometry is centered, text is from bottom-left)
+    hitBox.position.set(width / 2, height / 2, 0);
+    mesh.add(hitBox);
     
     return mesh;
   }
@@ -357,9 +374,14 @@ export class Viewer {
   }
 
   addText(entity: Text) {
+    if (!this.font) {
+      this.textQueue.push(entity);
+      return;
+    }
     const obj = this.createTextObject(entity, 0x00ff00);
     obj.name = entity.id;
     this.scene.add(obj);
+    this.render();
   }
 
   addMesh(geometry: THREE.BufferGeometry, id?: string) {

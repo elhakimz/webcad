@@ -108,11 +108,13 @@ export class App {
           this.viewer.addPoint(entity.x, entity.y, entity.id)
         } else if (entity instanceof Polyline) {
           this.viewer.addPolyline(entity)
+        } else if (entity instanceof Text) {
+          this.viewer.addText(entity)
         }
         this.viewer.setPreview(null)
         this.viewer.render()
         
-        if (entity instanceof Circle || entity instanceof Arc || entity instanceof Point) {
+        if (entity instanceof Circle || entity instanceof Arc || entity instanceof Point || entity instanceof Text) {
           this.cmd.clearActive();
         }
 
@@ -136,11 +138,7 @@ export class App {
 
         if (entity instanceof Polyline) {
           const last = entity.vertices[entity.vertices.length - 1];
-          const echo = `${FormatUtils.formatPoint(last.x, last.y, "P" + entity.vertices.length)}\nPolyline segment added.`;
-          if (this.cmd.active && this.cmd.active.getPrompt) {
-            return `${echo}\n${this.cmd.active.getPrompt()}`;
-          }
-          return echo;
+          return `${FormatUtils.formatPoint(last.x, last.y, "P" + entity.vertices.length)}\nPolyline segment added.`;
         }
 
         return entity;

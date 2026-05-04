@@ -17,26 +17,30 @@ export class TextCommand implements Command {
       this.x = x
       this.y = y
       this.step = 1
-      const echo = FormatUtils.formatPoint(x, y, "Start point")
-      return `${echo}\nHeight <${this.height}>:`
+      return FormatUtils.formatPoint(x, y, "Start point")
     }
     
     if (this.step === 1) {
       // Use point to determine height
       const dx = x - this.x
       const dy = y - this.y
-      this.height = Math.sqrt(dx * dx + dy * dy) || 10
+      const h = Math.sqrt(dx * dx + dy * dy)
+      if (h > 1e-6) {
+        this.height = h
+      }
       this.step = 2
-      return `Height set to ${this.height.toFixed(2)}\nRotation angle <${this.rotation}>:`
+      return `Height set to ${this.height.toFixed(4)}`
     }
 
     if (this.step === 2) {
       // Use point to determine rotation
       const dx = x - this.x
       const dy = y - this.y
-      this.rotation = Math.atan2(dy, dx) * (180 / Math.PI)
+      if (Math.abs(dx) > 1e-6 || Math.abs(dy) > 1e-6) {
+        this.rotation = Math.atan2(dy, dx) * (180 / Math.PI)
+      }
       this.step = 3
-      return `Rotation set to ${this.rotation.toFixed(2)}\nText:`
+      return `Rotation set to ${this.rotation.toFixed(2)}`
     }
 
     return "Waiting for text input."
@@ -55,11 +59,11 @@ export class TextCommand implements Command {
         if (!isNaN(h) && h > 0) {
           this.height = h
         } else {
-          return "Invalid height. Height <10>:"
+          return "Invalid height."
         }
       }
       this.step = 2
-      return `Rotation angle <${this.rotation}>:`
+      return `Height set to ${this.height.toFixed(4)}`
     }
 
     if (this.step === 2) {
@@ -68,11 +72,11 @@ export class TextCommand implements Command {
         if (!isNaN(r)) {
           this.rotation = r
         } else {
-          return "Invalid rotation angle. Rotation angle <0>:"
+          return "Invalid rotation angle."
         }
       }
       this.step = 3
-      return "Text:"
+      return `Rotation set to ${this.rotation.toFixed(2)}`
     }
 
     if (this.step === 3) {
@@ -89,10 +93,34 @@ export class TextCommand implements Command {
     }
   }
 
+  getPrompt() {
+    if (this.step === 0) return "TEXT start point:"
+    if (this.step === 1) return `Height <${this.height.toFixed(4)}>:`
+    if (this.step === 2) return `Rotation angle <${this.rotation.toFixed(2)}>:`
+    if (this.step === 3) return "Text:"
+    return ""
+  }
+
   getPreview(x: number, y: number) {
     if (this.step === 1) {
-      // Just show insertion point crosshair or similar
-      return null
+      // Show line from insertion point to mouse to indicate height
+      const dx = x - this.x;
+      const dy = y - this.y;
+      const h = Math.sqrt(dx * dx + dy * dy) || this.height;
+      return new Text("PREVIEW", this.x, this.y, h, this.rotation, "Abc");
+    }
+    if (this.step === 2) {
+      // Show line from insertion point to mouse to indicate rotation
+      const dx = x - this.x;
+      const dy = y - this.y;
+      let r = this.rotation;
+      if (Math.abs(dx) > 1e-6 || Math.abs(dy) > 1e-6) {
+        r = Math.atan2(dy, dx) * (180 / Math.PI);
+      }
+      return new Text("PREVIEW", this.x, this.y, this.height, r, "Abc");
+    }
+    if (this.step === 3) {
+        return new Text("PREVIEW", this.x, this.y, this.height, this.rotation, "Abc");
     }
     return null
   }

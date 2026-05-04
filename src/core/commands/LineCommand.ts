@@ -64,4 +64,9 @@ export class LineCommand implements Command {
     }
     return [];
   }
+
+  getPrompt() {
+    if (this.points.length === 0) return "LINE specify first point:";
+    return "To point:";
+  }
 }

@@ -1,10 +1,12 @@
 import * as THREE from "three"
+import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js'
 import { Entity } from "../core/model/Entity"
 import { Line } from "../core/model/Line"
 import { Circle } from "../core/model/Circle"
 import { Arc } from "../core/model/Arc"
 import { Point } from "../core/model/Point"
 import { Polyline } from "../core/model/Polyline"
+import { Text } from "../core/model/Text"
 import { bulgeToArc } from "../core/engine/MathUtils"
 
 export class Viewer {
@@ -12,16 +14,20 @@ export class Viewer {
   camera: THREE.OrthographicCamera
   renderer: THREE.WebGLRenderer
   canvas: HTMLCanvasElement
+  font: Font | null = null
 
   private isPanning = false
   private lastPanPos = new THREE.Vector2()
   private previewObject: THREE.Object3D | null = null
   private helperGroup: THREE.Group = new THREE.Group()
+  private cursorGroup: THREE.Group = new THREE.Group()
 
   constructor(canvas:HTMLCanvasElement){
     this.canvas = canvas
     this.scene = new THREE.Scene()
     this.scene.add(this.helperGroup);
+    this.scene.add(this.cursorGroup);
+    this.cursorGroup.renderOrder = 999; // Render on top
 
     // Setup Orthographic Camera with dummy bounds, resize() will set them correctly
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1000)
@@ -32,6 +38,53 @@ export class Viewer {
     this.camera.position.set(this.camera.right, this.camera.top, 500) 
 
     this.setupEvents()
+    this.initCursor()
+    this.loadFont()
+  }
+
+  private loadFont() {
+    const loader = new FontLoader();
+    loader.load('fonts/helvetiker_regular.typeface.json', (font) => {
+      this.font = font;
+      this.render();
+    });
+  }
+
+  private initCursor() {
+    const cursorColor = 0x555555; // Brighter grey for the full-screen crosshair
+    const size = 1000000; // Large enough to cover the drawing plane
+
+    const hGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-size, 0, 0),
+      new THREE.Vector3(size, 0, 0)
+    ]);
+    const vGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, -size, 0),
+      new THREE.Vector3(0, size, 0)
+    ]);
+
+    const mat = new THREE.LineBasicMaterial({ color: cursorColor });
+    this.cursorGroup.add(new THREE.Line(hGeo, mat));
+    this.cursorGroup.add(new THREE.Line(vGeo, mat));
+
+    // Add static origin axes
+    const originColor = 0x222222;
+    const oHGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-size, 0, 0),
+      new THREE.Vector3(size, 0, 0)
+    ]);
+    const oVGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, -size, 0),
+      new THREE.Vector3(0, size, 0)
+    ]);
+    const oMat = new THREE.LineBasicMaterial({ color: originColor });
+    this.scene.add(new THREE.Line(oHGeo, oMat));
+    this.scene.add(new THREE.Line(oVGeo, oMat));
+  }
+
+  setCursor(x: number, y: number) {
+    this.cursorGroup.position.set(x, y, 0);
+    this.render();
   }
 
   resize() {
@@ -67,9 +120,9 @@ export class Viewer {
   setPreview(entity: Entity | null) {
     if (this.previewObject) {
       this.scene.remove(this.previewObject);
-      if (this.previewObject instanceof THREE.Line || this.previewObject instanceof THREE.LineLoop || this.previewObject instanceof THREE.Points || this.previewObject instanceof THREE.Group) {
+      if (this.previewObject instanceof THREE.Line || this.previewObject instanceof THREE.LineLoop || this.previewObject instanceof THREE.Points || this.previewObject instanceof THREE.Group || this.previewObject instanceof THREE.Mesh) {
         this.previewObject.traverse((obj) => {
-          if (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points) {
+          if (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points || obj instanceof THREE.Mesh) {
             obj.geometry.dispose();
             if (Array.isArray(obj.material)) {
               obj.material.forEach(m => m.dispose());
@@ -111,6 +164,8 @@ export class Viewer {
         this.previewObject = new THREE.Points(geo, mat);
       } else if (entity instanceof Polyline) {
         this.previewObject = this.createPolylineObject(entity, previewColor);
+      } else if (entity instanceof Text) {
+        this.previewObject = this.createTextObject(entity, previewColor);
       }
 
       if (this.previewObject) {
@@ -119,6 +174,22 @@ export class Viewer {
     }
 
     this.render();
+  }
+
+  private createTextObject(entity: Text, color: number): THREE.Object3D {
+    if (!this.font) return new THREE.Group();
+
+    const shapes = this.font.generateShapes(entity.text, entity.height);
+    const geometry = new THREE.ShapeGeometry(shapes);
+    
+    // AutoCAD text starts at insertion point, Three.js shapes also start at 0,0.
+    const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geometry, mat);
+    
+    mesh.position.set(entity.x, entity.y, 0);
+    mesh.rotation.z = entity.rotation * (Math.PI / 180);
+    
+    return mesh;
   }
 
   private createPolylineObject(entity: Polyline, color: number): THREE.Object3D {
@@ -166,7 +237,7 @@ export class Viewer {
 
     if (points) {
       const helperColor = 0x555555;
-      const size = 10000; // Infinite-ish
+      const size = 1000000; // Infinite-ish
 
       points.forEach(pt => {
         const hGeo = new THREE.BufferGeometry().setFromPoints([
@@ -281,6 +352,12 @@ export class Viewer {
 
   addPolyline(entity: Polyline) {
     const obj = this.createPolylineObject(entity, 0x00ff00);
+    obj.name = entity.id;
+    this.scene.add(obj);
+  }
+
+  addText(entity: Text) {
+    const obj = this.createTextObject(entity, 0x00ff00);
     obj.name = entity.id;
     this.scene.add(obj);
   }
@@ -400,6 +477,11 @@ export class Viewer {
           minY = Math.min(minY, v.y);
           maxY = Math.max(maxY, v.y);
         });
+      } else if (e instanceof Text) {
+        minX = Math.min(minX, e.x);
+        maxX = Math.max(maxX, e.x + e.text.length * e.height); // Rough estimate
+        minY = Math.min(minY, e.y);
+        maxY = Math.max(maxY, e.y + e.height);
       }
     });
     const margin = Math.max(maxX - minX, maxY - minY) * 0.1;

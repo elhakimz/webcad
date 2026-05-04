@@ -18,4 +18,8 @@ export class EraseCommand implements Command {
     this.step = 0;
     return { action: "delete", id } as const;
   }
+
+  getPrompt() {
+    return "Select entity to erase:";
+  }
 }

@@ -109,4 +109,69 @@ test.describe('AutoCAD 2.18 DOS UI', () => {
       await expect(page.locator('#coords-info')).not.toHaveText('0.0000, 0.0000');
     }
   });
+
+  test('should support PLINE with Arc mode switching', async ({ page }) => {
+    const cmdInput = page.locator('#cmd');
+    await cmdInput.fill('PLINE');
+    await cmdInput.press('Enter');
+    
+    const canvas = page.locator('#c');
+    const box = await canvas.boundingBox();
+    if (box) {
+      // P1
+      await page.mouse.click(box.x + 100, box.y + 100);
+      await expect(page.locator('#command-log')).toContainText('Endpoint of line');
+
+      // P2
+      await page.mouse.click(box.x + 200, box.y + 100);
+      await expect(page.locator('#command-log')).toContainText('Polyline segment added.');
+
+      // Switch to Arc
+      await cmdInput.fill('A');
+      await cmdInput.press('Enter');
+      await expect(page.locator('#command-log')).toContainText('Endpoint of arc');
+
+      // P3 (Arc)
+      await page.mouse.click(box.x + 200, box.y + 200);
+      await expect(page.locator('#command-log')).toContainText('Polyline segment added.');
+      await expect(page.locator('#command-prompt')).toContainText('Endpoint of arc');
+
+      // Switch back to Line
+      await cmdInput.fill('L');
+      await cmdInput.press('Enter');
+      await expect(page.locator('#command-log')).toContainText('Endpoint of line');
+
+      // Close
+      await cmdInput.fill('C');
+      await cmdInput.press('Enter');
+      await expect(page.locator('#command-log')).toContainText('Command finished.');
+    }
+  });
+
+  test('should support PLINE shortcut "A" from viewport', async ({ page }) => {
+    const cmdInput = page.locator('#cmd');
+    await cmdInput.fill('PLINE');
+    await cmdInput.press('Enter');
+    
+    const canvas = page.locator('#c');
+    const box = await canvas.boundingBox();
+    if (box) {
+      // P1
+      await page.mouse.click(box.x + 100, box.y + 100);
+      
+      // Ensure focus is NOT on cmd input (click canvas)
+      await canvas.click();
+      
+      // Press 'a' on keyboard
+      await page.keyboard.press('a');
+      
+      // Should switch to arc mode
+      await expect(page.locator('#command-log')).toContainText('Endpoint of arc');
+      await expect(page.locator('#command-prompt')).toContainText('Endpoint of arc');
+
+      // P2 (Arc)
+      await page.mouse.click(box.x + 200, box.y + 200);
+      await expect(page.locator('#command-log')).toContainText('Polyline segment added.');
+    }
+  });
 });

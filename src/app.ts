@@ -9,6 +9,7 @@ import { Circle } from "./core/model/Circle"
 import { Arc } from "./core/model/Arc"
 import { Point } from "./core/model/Point"
 import { Polyline } from "./core/model/Polyline"
+import { Text } from "./core/model/Text"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import * as THREE from "three"
@@ -41,6 +42,8 @@ export class App {
 
   move(screenX: number, screenY: number) {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
+    this.viewer.setCursor(worldPt.x, worldPt.y);
+
     if (this.cmd.active && this.cmd.active.getPreview) {
       const preview = this.cmd.active.getPreview(worldPt.x, worldPt.y);
       this.viewer.setPreview(preview);
@@ -81,7 +84,7 @@ export class App {
       // Case: New Entity Created (Standard or via 'close')
       let entity: Entity | undefined;
       
-      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline) {
+      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text) {
         entity = result;
       } else if ('action' in result && result.action === 'close' && result.entity) {
         entity = result.entity;
@@ -133,7 +136,11 @@ export class App {
 
         if (entity instanceof Polyline) {
           const last = entity.vertices[entity.vertices.length - 1];
-          return `${FormatUtils.formatPoint(last.x, last.y, "P" + entity.vertices.length)}\nPolyline segment added.`;
+          const echo = `${FormatUtils.formatPoint(last.x, last.y, "P" + entity.vertices.length)}\nPolyline segment added.`;
+          if (this.cmd.active && this.cmd.active.getPrompt) {
+            return `${echo}\n${this.cmd.active.getPrompt()}`;
+          }
+          return echo;
         }
 
         return entity;

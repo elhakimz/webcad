@@ -138,4 +138,18 @@ export class PolygonCommand implements Command {
     }
     return []
   }
+
+  getPrompt() {
+    if (this.step === 0) return "POLYGON Number of sides <4>:";
+    if (this.step === 1) return "Edge/<Center of polygon>:";
+    if (this.step === 2) {
+      if (this.method === 'edge') return "First endpoint of edge:";
+      return "Inscribed in circle/Circumscribed about circle (I/C) <I>:";
+    }
+    if (this.step === 3) {
+      if (this.method === 'edge') return "Second endpoint of edge:";
+      return "Radius of circle:";
+    }
+    return "";
+  }
 }

@@ -39,4 +39,10 @@ export class MoveCommand implements Command {
     }
     return [];
   }
+
+  getPrompt() {
+    if (this.step === 0) return "Select entity to move:";
+    if (this.step === 1) return "Base point:";
+    return "Second point:";
+  }
 }

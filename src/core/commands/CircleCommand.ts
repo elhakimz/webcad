@@ -72,4 +72,10 @@ export class CircleCommand implements Command {
     }
     return [];
   }
+
+  getPrompt() {
+    if (this.step === 0) return "CIRCLE specify center point:";
+    if (this.step === 2 || this.isDiameterMode) return "Diameter:";
+    return "Diameter/<Radius>:";
+  }
 }

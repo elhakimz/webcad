@@ -70,4 +70,10 @@ export class ArcCommand implements Command {
     if (this.p2) pts.push(this.p2);
     return pts;
   }
+
+  getPrompt() {
+    if (this.step === 0) return "ARC specify start point:";
+    if (this.step === 1) return "Second point:";
+    return "End point:";
+  }
 }

@@ -51,6 +51,15 @@ OpenCascadeService.getInstance().init()
 let lastMouseX = 0
 let lastMouseY = 0
 
+function updatePrompt() {
+  const activeCmd = app.cmd.active;
+  if (activeCmd && activeCmd.getPrompt) {
+    cmdLine.setPrompt(activeCmd.getPrompt());
+  } else {
+    cmdLine.setPrompt("Command:");
+  }
+}
+
 // Update coordinate display on mouse move
 window.addEventListener("mousemove", (e) => {
   lastMouseX = e.clientX
@@ -64,13 +73,25 @@ window.addEventListener("mousemove", (e) => {
 window.addEventListener("keydown", (e) => {
   // Ignore if typing in the command line
   if (document.activeElement?.id === "cmd" || document.activeElement?.id === "main-menu-input") return
+  if (e.ctrlKey || e.altKey || e.metaKey) return
 
   // Only handle if a command is active
   if (app.cmd.active) {
     const key = e.key.toLowerCase()
-    const allowedKeys = ['c', 'u', 'd', 'r', 'e', 'enter']
+    const isLetter = key.length === 1 && key >= 'a' && key <= 'z'
+    const isAction = key === 'enter' || key === 'escape'
     
-    if (allowedKeys.includes(key)) {
+    if (isLetter || isAction) {
+      if (key === 'escape') {
+        cmdLine.print("*Cancel*")
+        app.cmd.clearActive()
+        viewer.setPreview(null)
+        viewer.setHelpers(null)
+        viewer.render()
+        updatePrompt()
+        return
+      }
+
       const inputVal = key === 'enter' ? "" : key.toUpperCase()
       if (inputVal !== "") {
         cmdLine.print(`Command: ${inputVal}`)
@@ -82,6 +103,7 @@ window.addEventListener("keydown", (e) => {
       }
       // Force preview update to the current mouse position
       app.move(lastMouseX, lastMouseY)
+      updatePrompt()
     }
   }
 })
@@ -92,6 +114,7 @@ cmdLine.onCommand((val) => {
   if (cleanVal === "MENU") {
     menu.goToRoot()
     cmdLine.print("Returned to root menu.")
+    updatePrompt()
     return
   }
 
@@ -110,6 +133,7 @@ cmdLine.onCommand((val) => {
   if (typeof res === 'string') {
     cmdLine.print(res)
   }
+  updatePrompt()
 })
 
 // simple click input
@@ -121,4 +145,5 @@ window.addEventListener("click",(e)=>{
   if (typeof res === 'string') {
     cmdLine.print(res)
   }
+  updatePrompt()
 })

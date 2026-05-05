@@ -20,6 +20,8 @@ import { SelectionEngine } from "./core/engine/SelectionEngine"
 import { SnapEngine, SnapPoint } from "./core/engine/SnapEngine"
 import * as THREE from "three"
 
+import { Layer } from "./core/model/Layer"
+
 export class App {
   viewer:Viewer
   cmd:CommandManager
@@ -27,15 +29,15 @@ export class App {
   selectedEntityIds: Set<string> = new Set()
   private selectionStartPoint: { x: number, y: number } | null = null
   private commandLinePrint: ((msg: string) => void) | null = null
-  private statusBarUpdate: ((layer: string) => void) | null = null
+  private statusBarUpdate: ((layer: Layer) => void) | null = null
 
   setCommandLine(printFn: (msg: string) => void) {
     this.commandLinePrint = printFn;
   }
 
-  setStatusBar(updateFn: (layer: string) => void) {
+  setStatusBar(updateFn: (layer: Layer) => void) {
     this.statusBarUpdate = updateFn;
-    updateFn(this.doc.layers.currentLayerName);
+    updateFn(this.doc.layers.getCurrentLayer());
   }
 
   constructor(viewer:Viewer){
@@ -541,7 +543,7 @@ export class App {
         const layer = this.doc.layers.createLayer(name)
         if (layer) {
           this.doc.layers.setCurrentLayer(name)
-          if (this.statusBarUpdate) this.statusBarUpdate(name)
+          if (this.statusBarUpdate) this.statusBarUpdate(layer)
           console.log("[LAYER DEBUG] Created layer:", name, "Current:", this.doc.layers.currentLayerName, "Layers:", Array.from(this.doc.layers.layers.keys()))
           return `Layer "${name}" created and set as current.`
         }
@@ -552,7 +554,7 @@ export class App {
         const name = actionResult.name as string
         const layer = this.doc.layers.setCurrentLayer(name)
         if (layer) {
-          if (this.statusBarUpdate) this.statusBarUpdate(name)
+          if (this.statusBarUpdate) this.statusBarUpdate(layer)
           console.log("[LAYER DEBUG] Set current layer:", name, "All layers:", this.getLayerDebugInfo())
           return `Layer "${name}" is now current.`
         }
@@ -566,6 +568,7 @@ export class App {
           if (layer) layer.isVisible = true
         }
         this.updateLayerVisibility()
+        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
         return "Layers turned ON."
       }
 
@@ -576,6 +579,7 @@ export class App {
           if (layer) layer.isVisible = false
         }
         this.updateLayerVisibility()
+        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
         console.log("[LAYER DEBUG] Turned OFF:", actionResult.names, "Layers:", this.getLayerDebugInfo())
         return "Layers turned OFF."
       }
@@ -587,6 +591,7 @@ export class App {
           if (layer) layer.isFrozen = true
         }
         this.updateLayerVisibility()
+        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
         return "Layers frozen."
       }
 
@@ -596,6 +601,7 @@ export class App {
           const layer = this.doc.layers.getLayer(name)
           if (layer) layer.isFrozen = false
         }
+        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
         return "Layers thawed."
       }
 
@@ -605,6 +611,7 @@ export class App {
           const layer = this.doc.layers.getLayer(name)
           if (layer) layer.isLocked = true
         }
+        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
         return "Layers locked."
       }
 
@@ -614,6 +621,7 @@ export class App {
           const layer = this.doc.layers.getLayer(name)
           if (layer) layer.isLocked = false
         }
+        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
         return "Layers unlocked."
       }
 
@@ -624,6 +632,7 @@ export class App {
           const layer = this.doc.layers.getLayer(name)
           if (layer) layer.color = color
         }
+        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
         return `Layer color set to ${color}.`
       }
 
@@ -634,6 +643,7 @@ export class App {
           const layer = this.doc.layers.getLayer(name)
           if (layer) layer.linetype = linetype
         }
+        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
         return `Layer linetype set to ${linetype}.`
       }
 

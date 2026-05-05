@@ -1,3 +1,5 @@
+import { Layer } from "../core/model/Layer";
+
 export class StatusBar {
   private layerEl: HTMLElement;
   private coordsEl: HTMLElement;
@@ -7,8 +9,9 @@ export class StatusBar {
     this.coordsEl = document.getElementById('coords-info')!;
   }
 
-  updateLayer(name: string) {
-    this.layerEl.textContent = `Layer ${name}`;
+  updateLayer(layer: Layer) {
+    const status = layer.isVisible ? "ON" : "OFF";
+    this.layerEl.textContent = `Layer ${layer.name} [${status}] C:${layer.color} L:${layer.linetype}`;
   }
 
   updateCoordinates(x: number, y: number) {

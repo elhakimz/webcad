@@ -12,6 +12,7 @@ import { Solid } from "../core/model/Solid"
 import { Trace } from "../core/model/Trace"
 import { Shape } from "../core/model/Shape"
 import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb } from "../core/engine/MathUtils"
+import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
 
 export class Viewer {
   scene: THREE.Scene
@@ -30,6 +31,7 @@ export class Viewer {
   private boundaryGroup: THREE.Group = new THREE.Group()
   private baseLineGroup: THREE.Group = new THREE.Group()
   private cursorGroup: THREE.Group = new THREE.Group()
+  private snapMarkerGroup: THREE.Group = new THREE.Group()
   private persistentMarkerGroup: THREE.Group = new THREE.Group()
   private textQueue: Text[] = []
   private selectionBox: THREE.Line | null = null
@@ -41,7 +43,9 @@ export class Viewer {
     this.scene.add(this.boundaryGroup);
     this.scene.add(this.baseLineGroup);
     this.scene.add(this.cursorGroup);
+    this.scene.add(this.snapMarkerGroup);
     this.cursorGroup.renderOrder = 999; // Render on top
+    this.snapMarkerGroup.renderOrder = 1000; // Render snap on top of cursor
 
     // Setup Orthographic Camera with dummy bounds, resize() will set them correctly
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1000)
@@ -1086,6 +1090,62 @@ export class Viewer {
   setPanStartPosition(x: number, y: number) {
     this.panStartX = x
     this.panStartY = y
+  }
+
+  setSnapMarker(snap: SnapPoint | null) {
+    while (this.snapMarkerGroup.children.length > 0) {
+      const obj = this.snapMarkerGroup.children[0];
+      this.snapMarkerGroup.remove(obj);
+      if (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points) {
+        obj.geometry.dispose();
+        (obj.material as THREE.Material).dispose();
+      }
+    }
+
+    if (snap) {
+      const color = 0xffff00; // Yellow for snaps
+      const size = 6 / this.camera.zoom;
+      let geo: THREE.BufferGeometry | null = null;
+      let mat = new THREE.LineBasicMaterial({ color });
+      let mesh: THREE.Object3D | null = null;
+
+      switch (snap.type) {
+        case SnapType.ENDPOINT:
+          // Square
+          geo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-size, -size, 0),
+            new THREE.Vector3(size, -size, 0),
+            new THREE.Vector3(size, size, 0),
+            new THREE.Vector3(-size, size, 0),
+            new THREE.Vector3(-size, -size, 0)
+          ]);
+          mesh = new THREE.Line(geo, mat);
+          break;
+        case SnapType.MIDPOINT:
+          // Triangle
+          geo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, size, 0),
+            new THREE.Vector3(-size, -size, 0),
+            new THREE.Vector3(size, -size, 0),
+            new THREE.Vector3(0, size, 0)
+          ]);
+          mesh = new THREE.Line(geo, mat);
+          break;
+        case SnapType.CENTER:
+          // Circle
+          const curve = new THREE.EllipseCurve(0, 0, size, size, 0, 2 * Math.PI, false, 0);
+          const points = curve.getPoints(16);
+          geo = new THREE.BufferGeometry().setFromPoints(points);
+          mesh = new THREE.LineLoop(geo, mat);
+          break;
+      }
+
+      if (mesh) {
+        mesh.position.set(snap.x, snap.y, 0);
+        this.snapMarkerGroup.add(mesh);
+      }
+    }
+    this.render();
   }
 
   render(){

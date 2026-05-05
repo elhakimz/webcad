@@ -17,6 +17,7 @@ import { Hatch } from "./core/model/Hatch"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
+import { SnapEngine, SnapPoint } from "./core/engine/SnapEngine"
 import * as THREE from "three"
 
 export class App {
@@ -47,6 +48,16 @@ export class App {
     const directional = new THREE.DirectionalLight(0xffffff, 1);
     directional.position.set(100, 100, 500);
     this.viewer.scene.add(ambient, directional);
+  }
+
+  private getSnappedPoint(worldX: number, worldY: number): { x: number, y: number, snap: SnapPoint | null } {
+    const tolerance = 10 / this.viewer.camera.zoom;
+    const snap = SnapEngine.getSnapPoint(worldX, worldY, this.doc.getAllEntities(), tolerance);
+    return {
+      x: snap ? snap.x : worldX,
+      y: snap ? snap.y : worldY,
+      snap
+    };
   }
 
   private isEditCommand(name?: string): boolean {
@@ -101,21 +112,25 @@ export class App {
 
   move(screenX: number, screenY: number) {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
-    this.viewer.setCursor(worldPt.x, worldPt.y);
+    const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
+    const { x, y, snap } = snapped;
+
+    this.viewer.setCursor(x, y);
+    this.viewer.setSnapMarker(snap);
 
     if (this.cmd.active?.constructor.name === 'SketchCommand') {
       const sketchCmd = this.cmd.active as any;
       if (sketchCmd.updateSketch) {
-        sketchCmd.updateSketch(worldPt.x, worldPt.y);
+        sketchCmd.updateSketch(x, y);
       }
     }
 
     if (this.selectionStartPoint) {
-        this.viewer.setSelectionBox(this.selectionStartPoint, worldPt);
+        this.viewer.setSelectionBox(this.selectionStartPoint, worldPt); // Box selection uses raw mouse
     }
 
     if (this.cmd.active && this.cmd.active.getPreview) {
-      const preview = this.cmd.active.getPreview(worldPt.x, worldPt.y);
+      const preview = this.cmd.active.getPreview(x, y);
       this.viewer.setPreview(preview);
     } else {
       this.viewer.setPreview(null);
@@ -130,7 +145,7 @@ export class App {
     if (this.cmd.active && (this.cmd.active as any).getBasePoint) {
       const basePt = (this.cmd.active as any).getBasePoint();
       if (basePt && this.cmd.active && this.cmd.active.step >= 1) {
-        this.viewer.setBaseLine(basePt, worldPt);
+        this.viewer.setBaseLine(basePt, { x, y });
       } else {
         this.viewer.setBaseLine(null, null);
       }
@@ -141,11 +156,13 @@ export class App {
 
   pointerDown(screenX: number, screenY: number) {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
+    const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
+    const { x, y } = snapped;
 
     if (this.cmd.active?.constructor.name === 'SketchCommand') {
       const sketchCmd = this.cmd.active as any;
       if (sketchCmd.startSketch) {
-        const res = sketchCmd.startSketch(worldPt.x, worldPt.y);
+        const res = sketchCmd.startSketch(x, y);
         if (res) this.handleResult(res);
         return;
       }
@@ -207,7 +224,8 @@ export class App {
 
   click(screenX:number, screenY:number){
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
-    const { x, y } = worldPt;
+    const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
+    const { x, y } = snapped;
 
     // Handle initial selection step for edit commands if clicking an entity
     const activeName = this.cmd.active?.constructor.name;
@@ -221,7 +239,8 @@ export class App {
             ? this.doc.getAllEntities().filter(e => e.layer === currentLayer)
             : this.doc.getAllEntities();
 
-        const entity = SelectionEngine.getEntityAt(x, y, tolerance, selectableEntities);
+        // Use original raw coordinate for single-click object selection (snapping is for geometry points)
+        const entity = SelectionEngine.getEntityAt(worldPt.x, worldPt.y, tolerance, selectableEntities);
         if (entity) {
             if (this.selectedEntityIds.has(entity.id)) {
                 this.selectedEntityIds.delete(entity.id);

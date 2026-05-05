@@ -32,7 +32,7 @@ export class SolidCommand implements Command {
       
       const solid = new Solid("S" + (++idCounter), [p1, p2, p4, p3]);
       
-      // AutoCAD chaining: new P1=P3, new P2=P4
+      // WebCAD chaining: new P1=P3, new P2=P4
       this.points = [p3, p4];
       this.step = 2;
       

@@ -66,6 +66,13 @@ export class MirrorCommand implements Command {
     return [];
   }
 
+  getBasePoint(): { x: number; y: number } | null {
+    if (this.step >= 2) {
+      return this.p1;
+    }
+    return null;
+  }
+
   getPrompt() {
     if (this.step === 0) return "Select objects to mirror:";
     if (this.step === 1) return "First point of mirror line:";

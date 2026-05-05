@@ -17,6 +17,8 @@ import { TextCommand } from "../commands/TextCommand"
 import { TraceCommand } from "../commands/TraceCommand"
 import { SolidCommand } from "../commands/SolidCommand"
 import { HatchCommand } from "../commands/HatchCommand"
+import { SketchCommand } from "../commands/SketchCommand"
+import { ShapeCommand } from "../commands/ShapeCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 
@@ -99,6 +101,14 @@ export class CommandManager {
     if(cmd === "HATCH"){
       this.active = new HatchCommand()
       return "HATCH: Select boundary point:"
+    }
+    if(cmd === "SKETCH"){
+      this.active = new SketchCommand()
+      return "Sketch tolerance <2.0>:"
+    }
+    if(cmd === "SHAPE"){
+      this.active = new ShapeCommand()
+      return "Enter shape name:"
     }
     return "Unknown command: " + cmd
   }

@@ -22,7 +22,7 @@ export class Menu {
 
   private setupInitialMenu() {
     const root: MenuItem[] = [
-      { label: 'AutoCAD', command: 'CANCEL' },
+      { label: 'WebCAD', command: 'CANCEL' },
       { label: '****', command: 'CANCEL' },
       { label: 'BLOCKS', submenu: [{ label: 'BLOCK' }, { label: 'INSERT' }] },
       { label: 'DIM:', submenu: [{ label: 'DIM' }] },
@@ -37,6 +37,8 @@ export class Menu {
         { label: 'SOLID', command: 'SOLID' },
         { label: 'TRACE', command: 'TRACE' },
         { label: 'HATCH', command: 'HATCH' },
+        { label: 'SKETCH', command: 'SKETCH' },
+        { label: 'SHAPE', command: 'SHAPE' },
         { label: 'TEXT' }
       ]},
       { label: 'EDIT', submenu: [

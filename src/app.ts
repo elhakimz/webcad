@@ -12,6 +12,7 @@ import { Polyline } from "./core/model/Polyline"
 import { Text } from "./core/model/Text"
 import { Solid } from "./core/model/Solid"
 import { Trace } from "./core/model/Trace"
+import { Shape } from "./core/model/Shape"
 import { Hatch } from "./core/model/Hatch"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
 import { FormatUtils } from "./core/engine/FormatUtils"
@@ -69,6 +70,13 @@ export class App {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
     this.viewer.setCursor(worldPt.x, worldPt.y);
 
+    if (this.cmd.active?.constructor.name === 'SketchCommand') {
+      const sketchCmd = this.cmd.active as any;
+      if (sketchCmd.updateSketch) {
+        sketchCmd.updateSketch(worldPt.x, worldPt.y);
+      }
+    }
+
     if (this.selectionStartPoint) {
         this.viewer.setSelectionBox(this.selectionStartPoint, worldPt);
     }
@@ -85,14 +93,43 @@ export class App {
     } else {
       this.viewer.setHelpers(null);
     }
+
+    if (this.cmd.active && (this.cmd.active as any).getBasePoint) {
+      const basePt = (this.cmd.active as any).getBasePoint();
+      if (basePt && this.cmd.active && this.cmd.active.step >= 1) {
+        this.viewer.setBaseLine(basePt, worldPt);
+      } else {
+        this.viewer.setBaseLine(null, null);
+      }
+    } else {
+      this.viewer.setBaseLine(null, null);
+    }
   }
 
   pointerDown(screenX: number, screenY: number) {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
+
+    if (this.cmd.active?.constructor.name === 'SketchCommand') {
+      const sketchCmd = this.cmd.active as any;
+      if (sketchCmd.startSketch) {
+        const res = sketchCmd.startSketch(worldPt.x, worldPt.y);
+        if (res) this.handleResult(res);
+        return;
+      }
+    }
+
     this.selectionStartPoint = worldPt;
   }
 
   pointerUp(screenX: number, screenY: number): CommandResponse | undefined {
+    if (this.cmd.active?.constructor.name === 'SketchCommand') {
+      const sketchCmd = this.cmd.active as any;
+      if (sketchCmd.finishSketch) {
+        const res = sketchCmd.finishSketch();
+        if (res) return this.handleResult(res);
+      }
+    }
+
     if (!this.selectionStartPoint) return;
 
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
@@ -210,6 +247,7 @@ export class App {
           this.cmd.clearActive();
           this.viewer.setHelpers(null);
           this.viewer.setPreview(null);
+          this.viewer.setBaseLine(null, null);
           this.viewer.clearBoundaryMarkers();
         }
 
@@ -428,6 +466,8 @@ export class App {
       this.viewer.addSolid(entity);
     } else if (entity instanceof Trace) {
       this.viewer.addTrace(entity);
+    } else if (entity instanceof Shape) {
+      this.viewer.addShape(entity);
     } else if (entity instanceof Hatch) {
       this.viewer.addHatch(entity);
     }

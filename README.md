@@ -90,3 +90,7 @@ npm run test:ui
 
 ## 📄 License
 MIT
+
+---
+
+**Note:** AutoCAD is an Autodesk product. This project is a modern web-based recreation of the classic AutoCAD 2.18 interface for educational and demonstration purposes.

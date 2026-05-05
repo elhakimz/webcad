@@ -8,6 +8,8 @@ import { Point } from "../core/model/Point"
 import { Polyline } from "../core/model/Polyline"
 import { Text } from "../core/model/Text"
 import { Solid } from "../core/model/Solid"
+import { Trace } from "../core/model/Trace"
+import { Shape } from "../core/model/Shape"
 import { bulgeToArc, generateHatchLines, clipLineWithPolygon } from "../core/engine/MathUtils"
 
 export class Viewer {
@@ -22,6 +24,7 @@ export class Viewer {
   private previewObject: THREE.Object3D | null = null
   private helperGroup: THREE.Group = new THREE.Group()
   private boundaryGroup: THREE.Group = new THREE.Group()
+  private baseLineGroup: THREE.Group = new THREE.Group()
   private cursorGroup: THREE.Group = new THREE.Group()
   private textQueue: Text[] = []
   private selectionBox: THREE.Line | null = null
@@ -31,6 +34,7 @@ export class Viewer {
     this.scene = new THREE.Scene()
     this.scene.add(this.helperGroup);
     this.scene.add(this.boundaryGroup);
+    this.scene.add(this.baseLineGroup);
     this.scene.add(this.cursorGroup);
     this.cursorGroup.renderOrder = 999; // Render on top
 
@@ -191,7 +195,7 @@ export class Viewer {
     const shapes = this.font.generateShapes(entity.text, entity.height);
     const geometry = new THREE.ShapeGeometry(shapes);
     
-    // AutoCAD text starts at insertion point, Three.js shapes also start at 0,0.
+    // WebCAD text starts at insertion point, Three.js shapes also start at 0,0.
     const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geometry, mat);
     
@@ -324,6 +328,28 @@ export class Viewer {
     this.render();
   }
 
+  setBaseLine(p1: { x: number; y: number } | null, p2: { x: number; y: number } | null) {
+    while (this.baseLineGroup.children.length > 0) {
+      const obj = this.baseLineGroup.children[0];
+      this.baseLineGroup.remove(obj);
+      if (obj instanceof THREE.Line) {
+        obj.geometry.dispose();
+        (obj.material as THREE.Material).dispose();
+      }
+    }
+
+    if (p1 && p2) {
+      const positions = new Float32Array([p1.x, p1.y, 0, p2.x, p2.y, 0]);
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const material = new THREE.LineBasicMaterial({ color: 0x00ffff });
+      const line = new THREE.Line(geometry, material);
+      this.baseLineGroup.add(line);
+    }
+
+    this.render();
+  }
+
   private setupEvents() {
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault()
@@ -443,6 +469,96 @@ export class Viewer {
     const obj = this.createSolidObject(entity, 0x00ff00);
     obj.name = entity.id;
     this.scene.add(obj);
+  }
+
+  addTrace(entity: Trace) {
+    const dx = entity.x2 - entity.x1;
+    const dy = entity.y2 - entity.y1;
+    const len = Math.sqrt(dx * dx + dy * dy);
+
+    if (len === 0) return;
+
+    const ux = dx / len;
+    const uy = dy / len;
+
+    const halfW = entity.width / 2;
+    const px = -uy * halfW;
+    const py = ux * halfW;
+
+    const vertices = new Float32Array([
+      entity.x1 + px, entity.y1 + py, 0,
+      entity.x2 + px, entity.y2 + py, 0,
+      entity.x2 - px, entity.y2 - py, 0,
+      entity.x1 - px, entity.y1 - py, 0
+    ]);
+
+    const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+
+    const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = entity.id;
+    this.scene.add(mesh);
+  }
+
+  addShape(entity: Shape) {
+    if (entity.segments.length === 0) return;
+
+    const positions: number[] = [];
+    const rad = (entity.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    for (const seg of entity.segments as { x1: number; y1: number; x2: number; y2: number; isArc?: boolean; cx?: number; cy?: number; r?: number; startAngle?: number; endAngle?: number }[]) {
+      if (seg.isArc && seg.cx !== undefined && seg.cy !== undefined && seg.r !== undefined && seg.startAngle !== undefined && seg.endAngle !== undefined) {
+        const arcPositions = this.createArcGeometry(seg.cx, seg.cy, seg.r, seg.startAngle, seg.endAngle);
+        for (const p of arcPositions) {
+          const sx = p.x * entity.shapeScale;
+          const sy = p.y * entity.shapeScale;
+          const rx = sx * cos - sy * sin + entity.x;
+          const ry = sx * sin + sy * cos + entity.y;
+          positions.push(rx, ry, 0);
+        }
+      } else {
+        const sx1 = seg.x1 * entity.shapeScale;
+        const sy1 = seg.y1 * entity.shapeScale;
+        const sx2 = seg.x2 * entity.shapeScale;
+        const sy2 = seg.y2 * entity.shapeScale;
+
+        const rx1 = sx1 * cos - sy1 * sin + entity.x;
+        const ry1 = sx1 * sin + sy1 * cos + entity.y;
+        const rx2 = sx2 * cos - sy2 * sin + entity.x;
+        const ry2 = sx2 * sin + sy2 * cos + entity.y;
+
+        positions.push(rx1, ry1, 0, rx2, ry2, 0);
+      }
+    }
+
+    if (positions.length === 0) return;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+    const material = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    const lines = new THREE.LineSegments(geometry, material);
+    lines.name = entity.id;
+    this.scene.add(lines);
+  }
+
+  private createArcGeometry(cx: number, cy: number, r: number, startAngle: number, endAngle: number): { x: number; y: number }[] {
+    const points: { x: number; y: number }[] = [];
+    const segments = 16;
+
+    points.push({ x: cx + r * Math.cos(startAngle), y: cy + r * Math.sin(startAngle) });
+
+    for (let i = 1; i <= segments; i++) {
+      const angle = startAngle + (endAngle - startAngle) * i / segments;
+      points.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+    }
+
+    return points;
   }
 
   addHatch(entity: Hatch) {

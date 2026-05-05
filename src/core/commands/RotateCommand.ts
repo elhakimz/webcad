@@ -62,6 +62,13 @@ export class RotateCommand implements Command {
     return [];
   }
 
+  getBasePoint(): { x: number; y: number } | null {
+    if (this.step >= 1) {
+      return { x: this.baseX, y: this.baseY };
+    }
+    return null;
+  }
+
   getPrompt() {
     if (this.step === 0) return "Select entity to rotate:";
     if (this.step === 1) return "Base point:";

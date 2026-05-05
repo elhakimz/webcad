@@ -40,7 +40,7 @@ export class PolygonCommand implements Command {
       } else {
         // If in center mode and we click a point instead of I/C, 
         // we might just treat it as I and use this point as radius?
-        // Classic AutoCAD requires I/C input. 
+        // Classic WebCAD requires I/C input. 
         // But for better UX, maybe we default to I.
         return "Please enter I or C to choose method."
       }

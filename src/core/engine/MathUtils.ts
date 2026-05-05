@@ -323,3 +323,23 @@ export function clipLineWithPolygon(line: Line, vertices: Point[]): Line[] {
   return segments;
 }
 
+export function aciToRgb(aci?: number): number {
+  const colors: Record<number, number> = {
+    1: 0xff0000,
+    2: 0xffff00,
+    3: 0x00ff00,
+    4: 0x00ffff,
+    5: 0x0000ff,
+    6: 0xff00ff,
+    7: 0xffffff,
+    8: 0x808080,
+    9: 0xc0c0c0,
+  };
+  
+  if (aci !== undefined && colors[aci] !== undefined) {
+    return colors[aci];
+  }
+
+  return 0xffffff; // Default to white
+}
+

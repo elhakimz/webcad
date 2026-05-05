@@ -136,8 +136,7 @@ export class PolylineCommand implements Command {
       });
       previewVertices.push({ x, y, bulge: 0 });
       
-      const allPoints = [...previewVertices.map(v => ({ x: v.x, y: v.y })), { x, y }];
-      return { type: 'plinepoints', id: 'pline-points', points: allPoints } as any;
+      return new Polyline("PREVIEW", previewVertices, false);
     }
     return null;
   }

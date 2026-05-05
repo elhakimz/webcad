@@ -49,11 +49,31 @@ export class App {
     this.viewer.scene.add(ambient, directional);
   }
 
+  private isEditCommand(name?: string): boolean {
+    if (!name) return false;
+    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand'];
+    const cmdName = name.endsWith('Command') ? name : name.charAt(0).toUpperCase() + name.slice(1).toLowerCase() + 'Command';
+    return editCommands.includes(cmdName);
+  }
+
   execute(cmd:string){
     if (cmd === 'PAN' || cmd === 'P') {
       this.viewer.setLeftPanEnabled(true);
     }
-    const res = this.cmd.execute(cmd, Array.from(this.selectedEntityIds));
+
+    const cmdName = cmd.toUpperCase();
+    const isEdit = ['ERASE', 'MOVE', 'COPY', 'ROTATE', 'SCALE', 'MIRROR'].includes(cmdName);
+    let selection = Array.from(this.selectedEntityIds);
+
+    if (isEdit) {
+      const currentLayer = this.doc.layers.currentLayerName;
+      selection = selection.filter(id => {
+        const entity = this.doc.getEntity(id);
+        return entity && entity.layer === currentLayer;
+      });
+    }
+
+    const res = this.cmd.execute(cmd, selection);
     return this.handleResult(res);
   }
 
@@ -61,11 +81,15 @@ export class App {
     // Handle Enter key (empty text) when there are selected entities and command is at step 0
     if (text === "" && this.selectedEntityIds.size > 0) {
       const activeName = this.cmd.active?.constructor.name;
-      const isEditCommand = activeName === 'EraseCommand' || activeName === 'MoveCommand' || activeName === 'CopyCommand' || activeName === 'RotateCommand' || activeName === 'ScaleCommand' || activeName === 'MirrorCommand';
+      const isEditCommand = this.isEditCommand(activeName);
       if (isEditCommand && this.cmd.active && this.cmd.active.step === 0) {
-        const ids = Array.from(this.selectedEntityIds);
+        const currentLayer = this.doc.layers.currentLayerName;
+        const ids = Array.from(this.selectedEntityIds).filter(id => {
+          const entity = this.doc.getEntity(id);
+          return entity && entity.layer === currentLayer;
+        });
         const cmdName = activeName?.replace('Command', '').toUpperCase();
-        if (cmdName) {
+        if (cmdName && ids.length > 0) {
           const res = this.cmd.execute(cmdName, ids);
           return this.handleResult(res);
         }
@@ -147,7 +171,7 @@ export class App {
     const tolerance = 5 / this.viewer.camera.zoom;
 
     const activeName = this.cmd.active?.constructor.name;
-    const isEditCommand = activeName === 'EraseCommand' || activeName === 'MoveCommand' || activeName === 'CopyCommand' || activeName === 'RotateCommand' || activeName === 'ScaleCommand' || activeName === 'MirrorCommand';
+    const isEditCommand = this.isEditCommand(activeName);
     const isSelectionStep = !this.cmd.active || (this.cmd.active && this.cmd.active.step === 0 && isEditCommand);
 
     let result: CommandResponse | undefined;
@@ -159,10 +183,15 @@ export class App {
         // Box selection only allowed during selection steps
         const isCrossing = worldPt.x < this.selectionStartPoint.x;
         let found: Entity[] = [];
+        const currentLayer = this.doc.layers.currentLayerName;
+        const selectableEntities = isEditCommand 
+          ? this.doc.getAllEntities().filter(e => e.layer === currentLayer)
+          : this.doc.getAllEntities();
+
         if (isCrossing) {
-            found = SelectionEngine.getEntitiesInCrossing(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, this.doc.getAllEntities());
+            found = SelectionEngine.getEntitiesInCrossing(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, selectableEntities);
         } else {
-            found = SelectionEngine.getEntitiesInWindow(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, this.doc.getAllEntities());
+            found = SelectionEngine.getEntitiesInWindow(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, selectableEntities);
         }
         
         found.forEach(e => this.selectedEntityIds.add(e.id));
@@ -182,12 +211,17 @@ export class App {
 
     // Handle initial selection step for edit commands if clicking an entity
     const activeName = this.cmd.active?.constructor.name;
-    const isEditCommand = activeName === 'EraseCommand' || activeName === 'MoveCommand' || activeName === 'CopyCommand' || activeName === 'RotateCommand' || activeName === 'ScaleCommand' || activeName === 'MirrorCommand';
+    const isEditCommand = this.isEditCommand(activeName);
     const isSelectionStep = !this.cmd.active || (this.cmd.active && this.cmd.active.step === 0 && isEditCommand);
     const tolerance = 5 / this.viewer.camera.zoom;
 
     if (isSelectionStep) {
-        const entity = SelectionEngine.getEntityAt(x, y, tolerance, this.doc.getAllEntities());
+        const currentLayer = this.doc.layers.currentLayerName;
+        const selectableEntities = isEditCommand 
+            ? this.doc.getAllEntities().filter(e => e.layer === currentLayer)
+            : this.doc.getAllEntities();
+
+        const entity = SelectionEngine.getEntityAt(x, y, tolerance, selectableEntities);
         if (entity) {
             if (this.selectedEntityIds.has(entity.id)) {
                 this.selectedEntityIds.delete(entity.id);
@@ -207,9 +241,12 @@ export class App {
 
         // If there's an active edit command at step 0 and user has selected entities, re-run command with selection
         if (this.cmd.active && this.cmd.active.step === 0 && isEditCommand && this.selectedEntityIds.size > 0) {
-            const ids = Array.from(this.selectedEntityIds);
+            const ids = Array.from(this.selectedEntityIds).filter(id => {
+                const e = this.doc.getEntity(id);
+                return e && e.layer === currentLayer;
+            });
             const cmdName = activeName?.replace('Command', '').toUpperCase();
-            if (cmdName) {
+            if (cmdName && ids.length > 0) {
                 const res = this.cmd.execute(cmdName, ids);
                 return this.handleResult(res);
             }
@@ -606,7 +643,6 @@ export class App {
     }
 
     entity.layer = this.doc.layers.currentLayerName;
-    console.log("[ADD ENTITY DEBUG] Setting entity layer to:", this.doc.layers.currentLayerName);
 
     this.doc.addEntity(entity);
     if (recordHistory) {
@@ -616,26 +652,31 @@ export class App {
     const layerObj = this.doc.layers.getLayer(layer);
     const isVisible = layerObj ? layerObj.isVisible && !layerObj.isFrozen : true;
 
+    console.log("layerObj", layerObj);
+    
+    const layerColor = layerObj ? layerObj.color : layerObj.color;
+    console.log("[APP DEBUG] entity:", entity.id, "layer:", layer, "layerColor:", layerColor, "layerObj.color:", layerObj?.color);
+
     if (entity instanceof Line) {
-      this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id, layer, isVisible);
+      this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id, layer, layerObj.color, isVisible);
     } else if (entity instanceof Circle) {
-      this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id, layer, isVisible);
+      this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id, layer, layerColor, isVisible);
     } else if (entity instanceof Arc) {
-      this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id, layer, isVisible);
+      this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id, layer, layerColor, isVisible);
     } else if (entity instanceof Point) {
-      this.viewer.addPoint(entity.x, entity.y, entity.id, layer, isVisible);
+      this.viewer.addPoint(entity.x, entity.y, entity.id, layer, layerColor, isVisible);
     } else if (entity instanceof Polyline) {
-      this.viewer.addPolyline(entity, layer, isVisible);
+      this.viewer.addPolyline(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Text) {
-      this.viewer.addText(entity, layer, isVisible);
+      this.viewer.addText(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Solid) {
-      this.viewer.addSolid(entity, layer, isVisible);
+      this.viewer.addSolid(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Trace) {
-      this.viewer.addTrace(entity, layer, isVisible);
+      this.viewer.addTrace(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Shape) {
-      this.viewer.addShape(entity, layer, isVisible);
+      this.viewer.addShape(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Hatch) {
-      this.viewer.addHatch(entity, layer, isVisible);
+      this.viewer.addHatch(entity, layer, layerColor, isVisible);
     }
     this.viewer.render();
   }

@@ -10,7 +10,7 @@ import { Text } from "../core/model/Text"
 import { Solid } from "../core/model/Solid"
 import { Trace } from "../core/model/Trace"
 import { Shape } from "../core/model/Shape"
-import { bulgeToArc, generateHatchLines, clipLineWithPolygon } from "../core/engine/MathUtils"
+import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb } from "../core/engine/MathUtils"
 
 export class Viewer {
   scene: THREE.Scene
@@ -444,12 +444,13 @@ export class Viewer {
     return { x: vec.x, y: vec.y }
   }
 
-  addLine(x1:number,y1:number,x2:number,y2:number, id?: string, layer?: string, isVisible = true){
+  addLine(x1:number,y1:number,x2:number,y2:number, id?: string, layer?: string, color?: number, isVisible = true){
+    const rgb = aciToRgb(color);
     const geo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(x1,y1,0),
       new THREE.Vector3(x2,y2,0)
     ])
-    const mat = new THREE.LineBasicMaterial({color:0x00ff00})
+    const mat = new THREE.LineBasicMaterial({color: rgb});
     const line = new THREE.Line(geo,mat)
     if (id) {
       line.name = id;
@@ -461,11 +462,11 @@ export class Viewer {
     this.scene.add(line)
   }
 
-  addCircle(cx:number, cy:number, r:number, id?: string, layer?: string, isVisible = true){
+  addCircle(cx:number, cy:number, r:number, id?: string, layer?: string, color?: number, isVisible = true){
     const curve = new THREE.EllipseCurve(cx, cy, r, r, 0, 2 * Math.PI, false, 0);
     const points = curve.getPoints(50);
     const geo = new THREE.BufferGeometry().setFromPoints(points);
-    const mat = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    const mat = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
     const circle = new THREE.LineLoop(geo, mat);
     if (id) {
       circle.name = id;
@@ -477,11 +478,11 @@ export class Viewer {
     this.scene.add(circle);
   }
 
-  addArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean, id?: string, layer?: string, isVisible = true) {
+  addArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean, id?: string, layer?: string, color?: number, isVisible = true) {
     const curve = new THREE.EllipseCurve(cx, cy, r, r, startAngle, endAngle, !ccw, 0);
     const points = curve.getPoints(50);
     const geo = new THREE.BufferGeometry().setFromPoints(points);
-    const mat = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    const mat = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
     const arc = new THREE.Line(geo, mat);
     if (id) {
       arc.name = id;
@@ -493,7 +494,7 @@ export class Viewer {
     this.scene.add(arc);
   }
 
-  addPoint(x: number, y: number, id?: string, layer?: string, isVisible = true) {
+  addPoint(x: number, y: number, id?: string, layer?: string, color?: number, isVisible = true) {
     const size = 2;
     const positions = new Float32Array([
       x - size, y - size, 0,
@@ -503,7 +504,7 @@ export class Viewer {
     ]);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    const mat = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
     const lines = new THREE.LineSegments(geo, mat);
     if (id) {
       lines.name = id;
@@ -515,8 +516,8 @@ export class Viewer {
     this.scene.add(lines);
   }
 
-  addPolyline(entity: Polyline, layer?: string, isVisible = true) {
-    const obj = this.createPolylineObject(entity, 0x00ff00);
+  addPolyline(entity: Polyline, layer?: string, color?: number, isVisible = true) {
+    const obj = this.createPolylineObject(entity, aciToRgb(color));
     obj.name = entity.id;
     if (layer) {
       (obj as any).userData = { layer };
@@ -525,12 +526,12 @@ export class Viewer {
     this.scene.add(obj);
   }
 
-  addText(entity: Text, layer?: string, isVisible = true) {
+  addText(entity: Text, layer?: string, color?: number, isVisible = true) {
     if (!this.font) {
       this.textQueue.push(entity);
       return;
     }
-    const obj = this.createTextObject(entity, 0x00ff00);
+    const obj = this.createTextObject(entity, aciToRgb(color));
     obj.name = entity.id;
     if (layer) {
       (obj as any).userData = { layer };
@@ -540,8 +541,8 @@ export class Viewer {
     this.render();
   }
 
-  addSolid(entity: Solid, layer?: string, isVisible = true) {
-    const obj = this.createSolidObject(entity, 0x00ff00);
+  addSolid(entity: Solid, layer?: string, color?: number, isVisible = true) {
+    const obj = this.createSolidObject(entity, aciToRgb(color));
     obj.name = entity.id;
     if (layer) {
       (obj as any).userData = { layer };
@@ -550,7 +551,7 @@ export class Viewer {
     this.scene.add(obj);
   }
 
-  addTrace(entity: Trace, layer?: string, isVisible = true) {
+  addTrace(entity: Trace, layer?: string, color?: number, isVisible = true) {
     const dx = entity.x2 - entity.x1;
     const dy = entity.y2 - entity.y1;
     const len = Math.sqrt(dx * dx + dy * dy);
@@ -576,7 +577,7 @@ export class Viewer {
     geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
 
-    const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+    const material = new THREE.MeshBasicMaterial({ color: aciToRgb(color), side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = entity.id;
     if (layer) {
@@ -586,7 +587,7 @@ export class Viewer {
     this.scene.add(mesh);
   }
 
-  addShape(entity: Shape, layer?: string, isVisible = true) {
+  addShape(entity: Shape, layer?: string, color?: number, isVisible = true) {
     if (entity.segments.length === 0) return;
 
     const positions: number[] = [];
@@ -624,7 +625,7 @@ export class Viewer {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
 
-    const material = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    const material = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
     const lines = new THREE.LineSegments(geometry, material);
     lines.name = entity.id;
     if (layer) {
@@ -648,7 +649,7 @@ export class Viewer {
     return points;
   }
 
-  addHatch(entity: Hatch, layer?: string, isVisible = true) {
+  addHatch(entity: Hatch, layer?: string, color?: number, isVisible = true) {
     if (entity.boundaryVertices.length < 3) return;
 
     const patternData = entity.getPatternData();
@@ -700,7 +701,7 @@ export class Viewer {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
 
     const material = new THREE.LineBasicMaterial({
-      color: 0x00ff00,
+      color: aciToRgb(color),
       linewidth: 1
     });
 
@@ -893,15 +894,28 @@ export class Viewer {
           if (child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Mesh) {
             const childName = obj.name + '_' + child.uuid;
             const originalColor = this.originalColors.get(childName);
-            const targetColor = isHighlighted ? highlightColor : (originalColor ?? 0x00ff00);
             
-            if (child.material) {
-              if (Array.isArray(child.material)) {
-                child.material.forEach(m => {
-                  if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
-                });
-              } else if ('color' in child.material) {
-                (child.material as THREE.MeshBasicMaterial).color.set(targetColor);
+            if (isHighlighted) {
+              const targetColor = highlightColor;
+              if (child.material) {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(m => {
+                    if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
+                  });
+                } else if ('color' in child.material) {
+                  (child.material as THREE.MeshBasicMaterial).color.set(targetColor);
+                }
+              }
+            } else if (originalColor !== undefined) {
+              const targetColor = originalColor;
+              if (child.material) {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(m => {
+                    if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
+                  });
+                } else if ('color' in child.material) {
+                  (child.material as THREE.MeshBasicMaterial).color.set(targetColor);
+                }
               }
             }
           }
@@ -909,14 +923,25 @@ export class Viewer {
       } else if (obj.material) {
         // Handle regular objects
         const originalColor = this.originalColors.get(obj.name!);
-        const targetColor = isHighlighted ? highlightColor : (originalColor ?? 0x00ff00);
         
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach(m => {
-            if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
-          });
-        } else if ('color' in obj.material) {
-          (obj.material as THREE.MeshBasicMaterial).color.set(targetColor);
+        if (isHighlighted) {
+          const targetColor = highlightColor;
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(m => {
+              if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
+            });
+          } else if ('color' in obj.material) {
+            (obj.material as THREE.MeshBasicMaterial).color.set(targetColor);
+          }
+        } else if (originalColor !== undefined) {
+          const targetColor = originalColor;
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(m => {
+              if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
+            });
+          } else if ('color' in obj.material) {
+            (obj.material as THREE.MeshBasicMaterial).color.set(targetColor);
+          }
         }
       }
     });

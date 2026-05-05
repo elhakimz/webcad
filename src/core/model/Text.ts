@@ -55,7 +55,10 @@ export class Text extends Entity {
   }
 
   clone(newId: string): Text {
-    return new Text(newId, this.x, this.y, this.height, this.rotation, this.text);
+    const copy = new Text(newId, this.x, this.y, this.height, this.rotation, this.text);
+    copy.layer = this.layer;
+    copy.properties = { ...this.properties };
+    return copy;
   }
 }
 

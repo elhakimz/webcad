@@ -288,18 +288,7 @@ export class Viewer {
 
   private createPolylineObject(entity: Polyline, color: number, linetype?: string): THREE.Object3D {
     const group = new THREE.Group();
-    const dashSettings = linetype ? getLinetypeSettings(linetype) : null;
-    
-    let mat: THREE.LineBasicMaterial;
-    if (dashSettings) {
-      mat = new THREE.LineDashedMaterial({ 
-        color, 
-        dashSize: dashSettings.dashSize / this.camera.zoom, 
-        gapSize: dashSettings.gapSize / this.camera.zoom 
-      });
-    } else {
-      mat = new THREE.LineBasicMaterial({ color });
-    }
+    const mat = this.getLineMaterial(color, linetype);
 
     for (let i = 0; i < entity.vertices.length - (entity.closed ? 0 : 1); i++) {
       const v1 = entity.vertices[i];
@@ -312,7 +301,7 @@ export class Viewer {
           new THREE.Vector3(v2.x, v2.y, 0)
         ]);
         const line = new THREE.Line(geo, mat);
-        if (dashSettings) line.computeLineDistances();
+        if (mat instanceof THREE.LineDashedMaterial) line.computeLineDistances();
         group.add(line);
       } else {
         // Arc segment
@@ -325,7 +314,7 @@ export class Viewer {
           const points = curve.getPoints(20);
           const geo = new THREE.BufferGeometry().setFromPoints(points);
           const arc = new THREE.Line(geo, mat);
-          if (dashSettings) arc.computeLineDistances();
+          if (mat instanceof THREE.LineDashedMaterial) arc.computeLineDistances();
           group.add(arc);
         }
       }
@@ -471,20 +460,9 @@ export class Viewer {
       new THREE.Vector3(x2,y2,0)
     ])
     
-    let mat: THREE.LineBasicMaterial;
-    const dashSettings = linetype ? getLinetypeSettings(linetype) : null;
-    if (dashSettings) {
-      mat = new THREE.LineDashedMaterial({ 
-        color: rgb, 
-        dashSize: dashSettings.dashSize / this.camera.zoom, 
-        gapSize: dashSettings.gapSize / this.camera.zoom 
-      });
-    } else {
-      mat = new THREE.LineBasicMaterial({ color: rgb });
-    }
-
-    const line = new THREE.Line(geo,mat)
-    if (dashSettings) line.computeLineDistances();
+    const mat = this.getLineMaterial(rgb, linetype);
+    const line = new THREE.Line(geo, mat)
+    if (mat instanceof THREE.LineDashedMaterial) line.computeLineDistances();
 
     if (id) {
       line.name = id;
@@ -502,20 +480,9 @@ export class Viewer {
     const geo = new THREE.BufferGeometry().setFromPoints(points);
     const rgb = aciToRgb(color);
 
-    let mat: THREE.LineBasicMaterial;
-    const dashSettings = linetype ? getLinetypeSettings(linetype) : null;
-    if (dashSettings) {
-      mat = new THREE.LineDashedMaterial({ 
-        color: rgb, 
-        dashSize: dashSettings.dashSize / this.camera.zoom, 
-        gapSize: dashSettings.gapSize / this.camera.zoom 
-      });
-    } else {
-      mat = new THREE.LineBasicMaterial({ color: rgb });
-    }
-
+    const mat = this.getLineMaterial(rgb, linetype);
     const circle = new THREE.LineLoop(geo, mat);
-    if (dashSettings) circle.computeLineDistances();
+    if (mat instanceof THREE.LineDashedMaterial) circle.computeLineDistances();
 
     if (id) {
       circle.name = id;
@@ -533,20 +500,9 @@ export class Viewer {
     const geo = new THREE.BufferGeometry().setFromPoints(points);
     const rgb = aciToRgb(color);
 
-    let mat: THREE.LineBasicMaterial;
-    const dashSettings = linetype ? getLinetypeSettings(linetype) : null;
-    if (dashSettings) {
-      mat = new THREE.LineDashedMaterial({ 
-        color: rgb, 
-        dashSize: dashSettings.dashSize / this.camera.zoom, 
-        gapSize: dashSettings.gapSize / this.camera.zoom 
-      });
-    } else {
-      mat = new THREE.LineBasicMaterial({ color: rgb });
-    }
-
+    const mat = this.getLineMaterial(rgb, linetype);
     const arc = new THREE.Line(geo, mat);
-    if (dashSettings) arc.computeLineDistances();
+    if (mat instanceof THREE.LineDashedMaterial) arc.computeLineDistances();
 
     if (id) {
       arc.name = id;
@@ -1210,5 +1166,17 @@ export class Viewer {
 
   render(){
     this.renderer.render(this.scene,this.camera)
+  }
+
+  private getLineMaterial(color: number, linetype?: string): THREE.LineBasicMaterial {
+    const dashSettings = linetype ? getLinetypeSettings(linetype) : null;
+    if (dashSettings) {
+      return new THREE.LineDashedMaterial({ 
+        color, 
+        dashSize: dashSettings.dashSize / this.camera.zoom, 
+        gapSize: dashSettings.gapSize / this.camera.zoom 
+      });
+    }
+    return new THREE.LineBasicMaterial({ color });
   }
 }

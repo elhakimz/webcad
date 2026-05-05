@@ -79,7 +79,7 @@ export class Hatch extends Entity {
   }
 
   clone(newId: string): Hatch {
-    return new Hatch(
+    const copy = new Hatch(
       newId,
       this.boundaryVertices.map(v => ({ ...v })),
       this.pattern,
@@ -87,5 +87,8 @@ export class Hatch extends Entity {
       this.angle,
       this.color
     );
+    copy.layer = this.layer;
+    copy.properties = { ...this.properties };
+    return copy;
   }
 }

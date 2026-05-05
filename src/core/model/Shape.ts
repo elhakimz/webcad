@@ -85,7 +85,7 @@ export class Shape extends Entity {
   }
 
   clone(newId: string): Shape {
-    return new Shape(
+    const copy = new Shape(
       newId,
       this.shapeName,
       this.x,
@@ -94,5 +94,8 @@ export class Shape extends Entity {
       this.rotation,
       this.segments.map(s => ({ ...s }))
     );
+    copy.layer = this.layer;
+    copy.properties = { ...this.properties };
+    return copy;
   }
 }

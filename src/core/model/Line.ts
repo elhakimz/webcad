@@ -52,6 +52,9 @@ export class Line extends Entity {
   }
 
   clone(newId: string): Line {
-    return new Line(newId, this.x1, this.y1, this.x2, this.y2);
+    const copy = new Line(newId, this.x1, this.y1, this.x2, this.y2);
+    copy.layer = this.layer;
+    copy.properties = { ...this.properties };
+    return copy;
   }
 }

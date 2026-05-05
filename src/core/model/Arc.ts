@@ -59,7 +59,10 @@ export class Arc extends Entity {
   }
 
   clone(newId: string): Arc {
-    return new Arc(newId, this.cx, this.cy, this.r, this.startAngle, this.endAngle, this.ccw);
+    const copy = new Arc(newId, this.cx, this.cy, this.r, this.startAngle, this.endAngle, this.ccw);
+    copy.layer = this.layer;
+    copy.properties = { ...this.properties };
+    return copy;
   }
 }
 

@@ -64,7 +64,10 @@ export class Polyline extends Entity {
   }
 
   clone(newId: string): Polyline {
-    return new Polyline(newId, this.vertices.map(v => ({ ...v })), this.closed);
+    const copy = new Polyline(newId, this.vertices.map(v => ({ ...v })), this.closed);
+    copy.layer = this.layer;
+    copy.properties = { ...this.properties };
+    return copy;
   }
 }
 

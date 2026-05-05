@@ -61,6 +61,9 @@ export class Trace extends Entity {
   }
 
   clone(newId: string): Trace {
-    return new Trace(newId, this.x1, this.y1, this.x2, this.y2, this.width);
+    const copy = new Trace(newId, this.x1, this.y1, this.x2, this.y2, this.width);
+    copy.layer = this.layer;
+    copy.properties = { ...this.properties };
+    return copy;
   }
 }

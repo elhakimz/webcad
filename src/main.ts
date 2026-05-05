@@ -68,7 +68,9 @@ function updatePrompt() {
       prompt.startsWith("Rotation angle <") ||
       prompt.startsWith("Diameter") ||
       prompt.startsWith("ZOOM [All/Window]") ||
-      prompt.includes("Pattern name <");
+      prompt.includes("Pattern name <") ||
+      prompt.startsWith("Enter shape name") ||
+      prompt.startsWith("Scale <");
 
     if (shouldFocus) {
       cmdLine.focus();

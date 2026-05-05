@@ -22,7 +22,8 @@ export class ShapeCommand implements Command {
 
     if (this.step === 0) {
       if (val === "") {
-        return "Enter shape name:";
+        const names = Array.from(defaultShapes.keys()).sort().join(", ");
+        return `Available shapes: ${names}. Enter shape name:`;
       }
 
       if (val.toUpperCase() === "LIST") {
@@ -96,6 +97,16 @@ export class ShapeCommand implements Command {
     this.rotation = 0;
     this.step = 0;
     this.selectedShape = null;
+  }
+
+  getPreview(x: number, y: number) {
+    if (this.step === 1) {
+      return { type: 'xmarker', id: 'shape-ip', x, y } as any;
+    }
+    if (this.step >= 2) {
+      return { type: 'xmarker', id: 'shape-ip', x: this.x, y: this.y } as any;
+    }
+    return null;
   }
 
   getPrompt() {

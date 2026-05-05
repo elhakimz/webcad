@@ -1,4 +1,4 @@
-import { Command, CommandResponse } from "./types"
+import { Command, CommandResponse, Entity } from "./types"
 
 export class ZoomCommand implements Command {
   step = 0
@@ -39,6 +39,7 @@ export class ZoomCommand implements Command {
       const p2 = { x, y };
       const p1 = this.p1!;
       this.step = 0;
+      this.p1 = null;
       return { action: "zoom", zoomType: "window", p1, p2 };
     } else if (this.step === 10) {
       this.center = { x, y };
@@ -46,6 +47,17 @@ export class ZoomCommand implements Command {
       return "Specify zoom factor:";
     }
     return { action: "zoom", zoomType: "all" };
+  }
+
+  getReferencePoints() {
+    return [];
+  }
+
+  getPreview(x: number, y: number): Entity | null {
+    if (this.step === 1 && this.p1) {
+      return { type: 'zoomwindow', id: 'zoom-window', x1: this.p1.x, y1: this.p1.y, x2: x, y2: y } as Entity;
+    }
+    return null;
   }
 
   getPrompt() {

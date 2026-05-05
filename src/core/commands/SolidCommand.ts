@@ -42,6 +42,49 @@ export class SolidCommand implements Command {
 
   onInput(text: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
+    if (val === "C" || val === "CLOSE") {
+      if (this.points.length === 3) {
+        // Triangle case: P1, P2, P3
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        const p3 = this.points[2];
+        const solid = new Solid("S" + (++idCounter), [p1, p2, p3]);
+        this.points = [];
+        this.step = 0;
+        return { action: "close", entity: solid };
+      } else if (this.points.length >= 2) {
+        // Close with available points
+        const p1 = this.points[0];
+        const p2 = this.points[1];
+        const solid = new Solid("S" + (++idCounter), [p1, p2]);
+        this.points = [];
+        this.step = 0;
+        return { action: "close", entity: solid };
+      }
+      return "Not enough points to close.";
+    }
+    if (val === "U" || val === "UNDO") {
+      if (this.points.length > 0) {
+        this.points.pop();
+        if (this.points.length === 0) {
+          this.step = 0;
+          return "SOLID started.";
+        }
+        if (this.points.length === 1) {
+          this.step = 1;
+          return "Second point:";
+        }
+        if (this.points.length === 2) {
+          this.step = 2;
+          return "Third point:";
+        }
+        if (this.points.length === 3) {
+          this.step = 3;
+          return "Fourth point:";
+        }
+      }
+      return "Nothing to undo.";
+    }
     if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
         if (this.points.length === 3) {
             // Triangle case: P1, P2, P3
@@ -59,13 +102,10 @@ export class SolidCommand implements Command {
   }
 
   getPreview(x: number, y: number) {
-    if (this.points.length === 2) {
-        // Triangle preview
-        return new Solid("PREVIEW", [this.points[0], this.points[1], {x, y}]);
-    }
-    if (this.points.length === 3) {
-        // Quad preview (P1, P2, P4=current, P3)
-        return new Solid("PREVIEW", [this.points[0], this.points[1], {x, y}, this.points[2]]);
+    const allPoints = [...this.points.map(p => ({ x: p.x, y: p.y }))];
+    if (this.points.length >= 1 && this.points.length <= 3) {
+      allPoints.push({ x, y });
+      return { type: 'solidpoints', id: 'solid-points', points: allPoints } as any;
     }
     return null;
   }
@@ -83,5 +123,9 @@ export class SolidCommand implements Command {
     if (this.step === 2) return "Third point:";
     if (this.step === 3) return "Fourth point:";
     return "Third point:";
+  }
+
+  getCommandOptions() {
+    return ["Close"];
   }
 }

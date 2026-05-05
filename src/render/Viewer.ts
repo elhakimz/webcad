@@ -29,6 +29,7 @@ export class Viewer {
   private boundaryGroup: THREE.Group = new THREE.Group()
   private baseLineGroup: THREE.Group = new THREE.Group()
   private cursorGroup: THREE.Group = new THREE.Group()
+  private persistentMarkerGroup: THREE.Group = new THREE.Group()
   private textQueue: Text[] = []
   private selectionBox: THREE.Line | null = null
 
@@ -176,6 +177,49 @@ export class Viewer {
         ]);
         const mat = new THREE.PointsMaterial({ color: previewColor, size: 5, sizeAttenuation: false });
         this.previewObject = new THREE.Points(geo, mat);
+      } else if ((entity as any).type === 'xmarker') {
+        const m = entity as { x: number, y: number, size?: number };
+        const size = m.size || 10 / this.camera.zoom;
+        const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(m.x - size, m.y - size, 0),
+          new THREE.Vector3(m.x + size, m.y + size, 0),
+          new THREE.Vector3(m.x - size, m.y + size, 0),
+          new THREE.Vector3(m.x + size, m.y - size, 0)
+        ]);
+        const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
+        this.previewObject = new THREE.LineSegments(geo, mat);
+      } else if ((entity as any).type === 'zoomwindow') {
+        const w = entity as { x1: number, y1: number, x2: number, y2: number };
+        const size = 10 / this.camera.zoom;
+        const group = new THREE.Group();
+        const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
+        const createX = (x: number, y: number) => {
+          const geo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(x - size, y - size, 0),
+            new THREE.Vector3(x + size, y + size, 0),
+            new THREE.Vector3(x - size, y + size, 0),
+            new THREE.Vector3(x + size, y - size, 0)
+          ]);
+          group.add(new THREE.LineSegments(geo, mat));
+        };
+        createX(w.x1, w.y1);
+        createX(w.x2, w.y2);
+        this.previewObject = group;
+      } else if ((entity as any).type === 'plinepoints' || (entity as any).type === 'solidpoints') {
+        const p = entity as { points: { x: number, y: number }[] };
+        const size = 10 / this.camera.zoom;
+        const group = new THREE.Group();
+        const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
+        p.points.forEach(pt => {
+          const geo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(pt.x - size, pt.y - size, 0),
+            new THREE.Vector3(pt.x + size, pt.y + size, 0),
+            new THREE.Vector3(pt.x - size, pt.y + size, 0),
+            new THREE.Vector3(pt.x + size, pt.y - size, 0)
+          ]);
+          group.add(new THREE.LineSegments(geo, mat));
+        });
+        this.previewObject = group;
       } else if (entity instanceof Polyline) {
         this.previewObject = this.createPolylineObject(entity, previewColor);
       } else if (entity instanceof Text) {

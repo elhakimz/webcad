@@ -8,6 +8,7 @@ import { RotateCommand } from "../commands/RotateCommand"
 import { ScaleCommand } from "../commands/ScaleCommand"
 import { MirrorCommand } from "../commands/MirrorCommand"
 import { ZoomCommand } from "../commands/ZoomCommand"
+import { PanCommand } from "../commands/PanCommand"
 import { Test3DCommand } from "../commands/Test3DCommand"
 import { ArcCommand } from "../commands/ArcCommand"
 import { PointCommand } from "../commands/PointCommand"
@@ -65,6 +66,10 @@ export class CommandManager {
     if(cmd === "ZOOM" || cmd === "Z"){
       this.active = new ZoomCommand()
       return "ZOOM [All/Window] <Window corner>:"
+    }
+    if(cmd === "PAN" || cmd === "P"){
+      this.active = new PanCommand()
+      return "PAN command: Click and drag to pan. Press ESC to exit."
     }
     if(cmd === "TEST3D"){
       this.active = new Test3DCommand()

@@ -20,7 +20,10 @@ export class Viewer {
   font: Font | null = null
 
   private isPanning = false
+  private isLeftPanEnabled = false
   private lastPanPos = new THREE.Vector2()
+  private panStartX = 0
+  private panStartY = 0
   private previewObject: THREE.Object3D | null = null
   private helperGroup: THREE.Group = new THREE.Group()
   private boundaryGroup: THREE.Group = new THREE.Group()
@@ -360,9 +363,13 @@ export class Viewer {
     }, { passive: false })
 
     this.canvas.addEventListener('pointerdown', (e) => {
-      if (e.button === 1) { // Middle button
+      if (e.button === 1 || (e.button === 0 && this.isLeftPanEnabled)) { // Middle button or left when enabled
         this.isPanning = true
         this.lastPanPos.set(e.clientX, e.clientY)
+        if (this.isLeftPanEnabled) {
+          this.panStartX = this.camera.position.x
+          this.panStartY = this.camera.position.y
+        }
         this.canvas.setPointerCapture(e.pointerId)
       }
     })
@@ -914,6 +921,24 @@ export class Viewer {
     const height = maxY - minY;
     const margin = Math.max(width, height) * 0.1 || 10;
     this.zoomWindow({x: minX - margin, y: minY - margin}, {x: maxX + margin, y: maxY + margin});
+  }
+
+  setLeftPanEnabled(enabled: boolean) {
+    this.isLeftPanEnabled = enabled
+    if (enabled) {
+      this.panStartX = this.camera.position.x
+      this.panStartY = this.camera.position.y
+    }
+    if (!enabled) this.isPanning = false
+  }
+
+  getPanStartPosition() {
+    return { x: this.panStartX, y: this.panStartY }
+  }
+
+  setPanStartPosition(x: number, y: number) {
+    this.panStartX = x
+    this.panStartY = y
   }
 
   render(){

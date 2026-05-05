@@ -44,6 +44,9 @@ export class App {
   }
 
   execute(cmd:string){
+    if (cmd === 'PAN' || cmd === 'P') {
+      this.viewer.setLeftPanEnabled(true);
+    }
     const res = this.cmd.execute(cmd, Array.from(this.selectedEntityIds));
     return this.handleResult(res);
   }
@@ -431,6 +434,13 @@ export class App {
           this.viewer.setHelpers(null)
           this.cmd.clearActive();
           return "Zoomed to extents."
+        } else if (actionResult.zoomType === 'factor') {
+          const factor = actionResult.factor as number;
+          this.viewer.zoomByFactor(factor);
+          this.viewer.setPreview(null)
+          this.viewer.setHelpers(null)
+          this.cmd.clearActive();
+          return `Zoomed by ${factor}x.`
         }
       }
 

@@ -89,7 +89,36 @@ window.addEventListener("mousemove", (e) => {
 
 // Global keyboard shortcuts for commands
 window.addEventListener("keydown", (e) => {
-  // Ignore if typing in the command line
+  // Always handle ESC to cancel commands
+  if (e.key === 'Escape' && app.cmd.active) {
+    // If PAN is active, reset to original position
+    if (app.cmd.active.constructor.name === 'PanCommand') {
+      const startPos = viewer.getPanStartPosition()
+      viewer.camera.position.x = startPos.x
+      viewer.camera.position.y = startPos.y
+    }
+    cmdLine.print("*Cancel*")
+    app.cmd.clearActive()
+    viewer.setLeftPanEnabled(false)
+    viewer.setPreview(null)
+    viewer.setHelpers(null)
+    viewer.render()
+    updatePrompt()
+    return
+  }
+
+  // Handle Enter to accept PAN
+  if (e.key === 'Enter' && app.cmd.active) {
+    if (app.cmd.active.constructor.name === 'PanCommand') {
+      cmdLine.print("PAN command ended.")
+      app.cmd.clearActive()
+      viewer.setLeftPanEnabled(false)
+      updatePrompt()
+      return
+    }
+  }
+
+  // Ignore if typing in the command line (except for ESC which is handled above)
   if (document.activeElement?.id === "cmd" || document.activeElement?.id === "main-menu-input") return
   if (e.ctrlKey || e.altKey || e.metaKey) return
 
@@ -97,18 +126,9 @@ window.addEventListener("keydown", (e) => {
   if (app.cmd.active) {
     const key = e.key.toLowerCase()
     const isLetter = key.length === 1 && key >= 'a' && key <= 'z'
-    const isAction = key === 'enter' || key === 'escape'
-    
+    const isAction = key === 'enter'
+
     if (isLetter || isAction) {
-      if (key === 'escape') {
-        cmdLine.print("*Cancel*")
-        app.cmd.clearActive()
-        viewer.setPreview(null)
-        viewer.setHelpers(null)
-        viewer.render()
-        updatePrompt()
-        return
-      }
 
       const inputVal = key === 'enter' ? "" : key.toUpperCase()
       if (inputVal !== "") {

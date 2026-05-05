@@ -8,6 +8,7 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 
 ### 📐 Precision Drafting
 -   **Geometric Kernel:** Integrated **OpenCascade.js** (OCCT) for professional-grade 2D/3D operations and file processing.
+-   **Snap Engine:** Real-time geometric snapping (Endpoint, Midpoint, Center) with visual markers.
 -   **Command Engine:** Robust state-machine based command system.
 -   **Coordinate Parser:** Supports absolute (`x,y`), relative Cartesian (`@dx,dy`), and relative Polar (`@dist<angle`) inputs.
 -   **Visual Feedback:**
@@ -24,8 +25,11 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **SOLID:** Solid-filled 2D planar triangles and quadrilaterals with chaining.
 -   **TRACE:** Solid filled lines of specified width.
 -   **POINT:** Single point entities.
--   **TEXT:** Single-line annotations with configurable height and rotation.
+-   **TEXT:** Single-line annotations with configurable height and rotation (using `osifont` ISO 3098).
 -   **HATCH:** Pattern fill with full .PAT file support (ANSI31, ANSI32, ANSI33, ANSI37, ANSI38, AR-CONC, AR-BRICK, DOTS, GRID, DIAGCROSS).
+-   **LAYER:** Professional layer management (New, Set, On/Off, Freeze/Thaw, Lock/Unlock, Color, Linetype).
+-   **LINETYPE (LTYPE):** Global and per-layer linetype definitions (CONTINUOUS, DASHED, HIDDEN, DOTTED, CENTER, PHANTOM).
+-   **REGEN:** Global viewport regeneration to synchronize display properties.
 -   **ERASE:** Interactive object selection and removal.
 -   **MOVE / COPY:** Precise translation or duplication via base point and displacement.
 -   **ROTATE / SCALE:** Geometric transformations around a base point.
@@ -36,7 +40,7 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **Main Menu:** Classic text-based startup screen (Begin NEW drawing, Exit, etc.).
 -   **Hierarchical Side Menu:** Fully interactive menu navigation (e.g., `DRAW` -> `LINE:`).
 -   **Command Area:** Multi-line status log with persistent command prompt.
--   **Status Bar:** Real-time world coordinate tracking and active layer display.
+-   **Status Bar:** Real-time world coordinate tracking and rich active layer info (Status, Color, Linetype).
 
 ### 🖱️ Selection & Interaction
 -   **Selection Engine:** Advanced AABB-based hit-testing and precise geometry selection.
@@ -84,9 +88,10 @@ npm run test:ui
 -   **`src/render/`**: Three.js viewport managing scene, camera, lighting, and drafting aids.
 
 ## 📍 Roadmap Priorities
--   [ ] **Precision:** Snap engine (Endpoint, Midpoint, Center).
 -   [ ] **Blocks:** Block definition and insertion system.
 -   [ ] **I/O:** DXF import and export layers using OCCT.
+-   [ ] **Trimming:** TRIM and EXTEND commands.
+-   [ ] **Aids:** GRID snap and ORTHO mode.
 
 ## 📄 License
 MIT

@@ -1,5 +1,6 @@
 import * as THREE from "three"
 import { FontLoader, Font } from 'three/examples/jsm/loaders/FontLoader.js'
+import { TTFLoader } from 'three/examples/jsm/loaders/TTFLoader.js'
 import { Entity } from "../core/model/Entity"
 import { Line } from "../core/model/Line"
 import { Circle } from "../core/model/Circle"
@@ -56,9 +57,9 @@ export class Viewer {
   }
 
   private loadFont() {
-    const loader = new FontLoader();
-    loader.load('/fonts/helvetiker_regular.typeface.json', (font) => {
-      this.font = font;
+    const loader = new TTFLoader();
+    loader.load('/fonts/osifont.ttf', (json) => {
+      this.font = new Font(json);
       this.textQueue.forEach(entity => this.addText(entity));
       this.textQueue = [];
       this.render();

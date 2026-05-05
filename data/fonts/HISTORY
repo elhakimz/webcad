@@ -1,0 +1,34 @@
+2022-02-24
+- removed (ЭёЁ), removed Russian support in protest of invasion of Ukraine
+
+2021-12-07
+- fixed kerning in P.*, fixed E, removed Belarusian support
+
+2018-09-07
+- fixed kerning in E-F-C-D-L-T-Y-Z-c-r-
+- fixed typo in Belarusian
+
+2016-05-16
+- added GPL version 2 with font exception version
+- added LGPL version 3 with font exception version
+
+2016-03-14
+- added Māori to supported languages
+
+2015-05-06
+- added ЂЋћђ (Montenegrin, Serbian)
+- increased right bearing of к
+
+2015-05-04
+- added ЎўІі (Belarusian)
+- added Ӂӂ (Moldovian)
+- added әҒғҚқҢңӨөҰұҺһ (Kazakh)
+- added ЀѐЍѝЌќЃѓЏџЅѕЉљЊњ (Macedonian)
+- added ЇїҐґЄє (Ukrainian)
+
+2015-05-01
+- cleaned up russian glyphs, added hints
+- added Ḡḡ (100% Georgian romanization)
+- added ʺʹ (100% Kazakh romanization)
+- added Ŭŭ (100% Belarus romanization)
+- added new editable sample page

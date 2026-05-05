@@ -91,6 +91,28 @@ window.addEventListener("mousemove", (e) => {
 
 // Global keyboard shortcuts for commands
 window.addEventListener("keydown", (e) => {
+  // Handle Ctrl+Z for undo
+  if (e.ctrlKey && e.key === 'z') {
+    e.preventDefault()
+    const res = app.execute('UNDO')
+    if (typeof res === 'string') {
+      cmdLine.print(res)
+    }
+    updatePrompt()
+    return
+  }
+
+  // Handle Ctrl+Y for redo
+  if (e.ctrlKey && e.key === 'y') {
+    e.preventDefault()
+    const res = app.execute('REDO')
+    if (typeof res === 'string') {
+      cmdLine.print(res)
+    }
+    updatePrompt()
+    return
+  }
+
   // Always handle ESC to cancel commands
   if (e.key === 'Escape' && app.cmd.active) {
     // If PAN is active, reset to original position

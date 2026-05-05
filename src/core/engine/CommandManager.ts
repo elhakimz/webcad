@@ -115,6 +115,12 @@ export class CommandManager {
       this.active = new ShapeCommand()
       return "Enter shape name:"
     }
+    if(cmd === "UNDO" || cmd === "U"){
+      return { action: "undo" }
+    }
+    if(cmd === "REDO" || cmd === "R"){
+      return { action: "redo" }
+    }
     return "Unknown command: " + cmd
   }
 

@@ -751,6 +751,29 @@ export class Viewer {
     }
   }
 
+  clear() {
+    const toRemove: THREE.Object3D[] = [];
+    this.scene.traverse((obj) => {
+      if (obj.name && obj.name !== 'helperGroup' && obj.name !== 'boundaryGroup' && 
+          obj.name !== 'baseLineGroup' && obj.name !== 'cursorGroup' && obj.name !== 'persistentMarkerGroup') {
+        toRemove.push(obj);
+      }
+    });
+    for (const obj of toRemove) {
+      this.scene.remove(obj);
+      obj.traverse((child) => {
+        if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
+          child.geometry.dispose();
+          if (Array.isArray(child.material)) {
+            child.material.forEach(m => m.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
+    }
+  }
+
   moveObject(id: string, dx: number, dy: number) {
     const obj = this.scene.getObjectByName(id);
     if (obj) {

@@ -444,6 +444,22 @@ export class App {
         }
       }
 
+      if (actionResult.action === 'undo') {
+        const actions = this.doc.undo();
+        this.syncFromDocument();
+        this.viewer.setPreview(null)
+        this.viewer.setHelpers(null)
+        return actions.length > 0 ? "Undo successful." : "Nothing to undo."
+      }
+
+      if (actionResult.action === 'redo') {
+        const actions = this.doc.redo();
+        this.syncFromDocument();
+        this.viewer.setPreview(null)
+        this.viewer.setHelpers(null)
+        return actions.length > 0 ? "Redo successful." : "Nothing to redo."
+      }
+
       if (actionResult.action === 'finish') {
         this.viewer.setPreview(null)
         this.viewer.setHelpers(null)
@@ -454,12 +470,15 @@ export class App {
     return result
   }
 
-  private addEntity(entity: Entity) {
+  private addEntity(entity: Entity, recordHistory = true) {
     if (this.doc.getEntity(entity.id)) {
       this.viewer.removeObject(entity.id);
     }
 
     this.doc.addEntity(entity);
+    if (recordHistory) {
+      this.doc.recordAdd(entity);
+    }
     if (entity instanceof Line) {
       this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id);
     } else if (entity instanceof Circle) {
@@ -480,6 +499,14 @@ export class App {
       this.viewer.addShape(entity);
     } else if (entity instanceof Hatch) {
       this.viewer.addHatch(entity);
+    }
+    this.viewer.render();
+  }
+
+  private syncFromDocument() {
+    this.viewer.clear();
+    for (const entity of this.doc.getAllEntities()) {
+      this.addEntity(entity, false);
     }
     this.viewer.render();
   }

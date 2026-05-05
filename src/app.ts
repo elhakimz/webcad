@@ -26,9 +26,15 @@ export class App {
   selectedEntityIds: Set<string> = new Set()
   private selectionStartPoint: { x: number, y: number } | null = null
   private commandLinePrint: ((msg: string) => void) | null = null
+  private statusBarUpdate: ((layer: string) => void) | null = null
 
   setCommandLine(printFn: (msg: string) => void) {
     this.commandLinePrint = printFn;
+  }
+
+  setStatusBar(updateFn: (layer: string) => void) {
+    this.statusBarUpdate = updateFn;
+    updateFn(this.doc.layers.currentLayerName);
   }
 
   constructor(viewer:Viewer){
@@ -460,6 +466,130 @@ export class App {
         return actions.length > 0 ? "Redo successful." : "Nothing to redo."
       }
 
+      if (actionResult.action === 'layerList') {
+        const layers = this.doc.layers.listLayers()
+        let output = "Layer list:\n"
+        for (const layer of layers) {
+          const current = layer.name === this.doc.layers.currentLayerName ? " <Current>" : ""
+          const frozen = layer.isFrozen ? " Frozen" : ""
+          const locked = layer.isLocked ? " Locked" : ""
+          const visible = !layer.isVisible ? " Hidden" : ""
+          output += `  ${layer.name} Color:${layer.color} ${layer.linetype}${current}${frozen}${locked}${visible}\n`
+        }
+        this.cmd.clearActive()
+        return output
+      }
+
+      if (actionResult.action === 'layerNew') {
+        const name = actionResult.name as string
+        const layer = this.doc.layers.createLayer(name)
+        if (layer) {
+          this.doc.layers.setCurrentLayer(name)
+          if (this.statusBarUpdate) this.statusBarUpdate(name)
+          console.log("[LAYER DEBUG] Created layer:", name, "Current:", this.doc.layers.currentLayerName, "Layers:", Array.from(this.doc.layers.layers.keys()))
+          return `Layer "${name}" created and set as current.`
+        }
+        return `Layer "${name}" already exists.`
+      }
+
+      if (actionResult.action === 'layerSetCurrent') {
+        const name = actionResult.name as string
+        const layer = this.doc.layers.setCurrentLayer(name)
+        if (layer) {
+          if (this.statusBarUpdate) this.statusBarUpdate(name)
+          console.log("[LAYER DEBUG] Set current layer:", name, "All layers:", this.getLayerDebugInfo())
+          return `Layer "${name}" is now current.`
+        }
+        return `Cannot set layer "${name}" as current (not found or frozen).`
+      }
+
+      if (actionResult.action === 'layerOn') {
+        const names = (actionResult.names as string).split(/[,\s]+/)
+        for (const name of names) {
+          const layer = this.doc.layers.getLayer(name)
+          if (layer) layer.isVisible = true
+        }
+        this.updateLayerVisibility()
+        return "Layers turned ON."
+      }
+
+      if (actionResult.action === 'layerOff') {
+        const names = (actionResult.names as string).split(/[,\s]+/)
+        for (const name of names) {
+          const layer = this.doc.layers.getLayer(name)
+          if (layer) layer.isVisible = false
+        }
+        this.updateLayerVisibility()
+        console.log("[LAYER DEBUG] Turned OFF:", actionResult.names, "Layers:", this.getLayerDebugInfo())
+        return "Layers turned OFF."
+      }
+
+      if (actionResult.action === 'layerFreeze') {
+        const names = (actionResult.names as string).split(/[,\s]+/)
+        for (const name of names) {
+          const layer = this.doc.layers.getLayer(name)
+          if (layer) layer.isFrozen = true
+        }
+        this.updateLayerVisibility()
+        return "Layers frozen."
+      }
+
+      if (actionResult.action === 'layerThaw') {
+        const names = (actionResult.names as string).split(/[,\s]+/)
+        for (const name of names) {
+          const layer = this.doc.layers.getLayer(name)
+          if (layer) layer.isFrozen = false
+        }
+        return "Layers thawed."
+      }
+
+      if (actionResult.action === 'layerLock') {
+        const names = (actionResult.names as string).split(/[,\s]+/)
+        for (const name of names) {
+          const layer = this.doc.layers.getLayer(name)
+          if (layer) layer.isLocked = true
+        }
+        return "Layers locked."
+      }
+
+      if (actionResult.action === 'layerUnlock') {
+        const names = (actionResult.names as string).split(/[,\s]+/)
+        for (const name of names) {
+          const layer = this.doc.layers.getLayer(name)
+          if (layer) layer.isLocked = false
+        }
+        return "Layers unlocked."
+      }
+
+      if (actionResult.action === 'layerColor') {
+        const color = actionResult.color as number
+        const names = (actionResult.names as string).split(/[,\s]+/)
+        for (const name of names) {
+          const layer = this.doc.layers.getLayer(name)
+          if (layer) layer.color = color
+        }
+        return `Layer color set to ${color}.`
+      }
+
+      if (actionResult.action === 'layerLinetype') {
+        const linetype = actionResult.linetype as string
+        const names = (actionResult.names as string).split(/[,\s]+/)
+        for (const name of names) {
+          const layer = this.doc.layers.getLayer(name)
+          if (layer) layer.linetype = linetype
+        }
+        return `Layer linetype set to ${linetype}.`
+      }
+
+      if (actionResult.action === 'layerDelete') {
+        const names = (actionResult.names as string).split(/[,\s]+/)
+        let deleted = 0
+        for (const name of names) {
+          if (this.doc.layers.deleteLayer(name)) deleted++
+        }
+        return `Deleted ${deleted} layer(s).`
+      }
+
       if (actionResult.action === 'finish') {
         this.viewer.setPreview(null)
         this.viewer.setHelpers(null)
@@ -475,30 +605,37 @@ export class App {
       this.viewer.removeObject(entity.id);
     }
 
+    entity.layer = this.doc.layers.currentLayerName;
+    console.log("[ADD ENTITY DEBUG] Setting entity layer to:", this.doc.layers.currentLayerName);
+
     this.doc.addEntity(entity);
     if (recordHistory) {
       this.doc.recordAdd(entity);
     }
+    const layer = entity.layer;
+    const layerObj = this.doc.layers.getLayer(layer);
+    const isVisible = layerObj ? layerObj.isVisible && !layerObj.isFrozen : true;
+
     if (entity instanceof Line) {
-      this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id);
+      this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id, layer, isVisible);
     } else if (entity instanceof Circle) {
-      this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id);
+      this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id, layer, isVisible);
     } else if (entity instanceof Arc) {
-      this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id);
+      this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id, layer, isVisible);
     } else if (entity instanceof Point) {
-      this.viewer.addPoint(entity.x, entity.y, entity.id);
+      this.viewer.addPoint(entity.x, entity.y, entity.id, layer, isVisible);
     } else if (entity instanceof Polyline) {
-      this.viewer.addPolyline(entity);
+      this.viewer.addPolyline(entity, layer, isVisible);
     } else if (entity instanceof Text) {
-      this.viewer.addText(entity);
+      this.viewer.addText(entity, layer, isVisible);
     } else if (entity instanceof Solid) {
-      this.viewer.addSolid(entity);
+      this.viewer.addSolid(entity, layer, isVisible);
     } else if (entity instanceof Trace) {
-      this.viewer.addTrace(entity);
+      this.viewer.addTrace(entity, layer, isVisible);
     } else if (entity instanceof Shape) {
-      this.viewer.addShape(entity);
+      this.viewer.addShape(entity, layer, isVisible);
     } else if (entity instanceof Hatch) {
-      this.viewer.addHatch(entity);
+      this.viewer.addHatch(entity, layer, isVisible);
     }
     this.viewer.render();
   }
@@ -509,5 +646,22 @@ export class App {
       this.addEntity(entity, false);
     }
     this.viewer.render();
+  }
+
+  private updateLayerVisibility() {
+    const layerMap = new Map<string, { isVisible: boolean, isFrozen: boolean }>()
+    for (const layer of this.doc.layers.layers.values()) {
+      layerMap.set(layer.name, { isVisible: layer.isVisible, isFrozen: layer.isFrozen })
+    }
+    console.log("[LAYER DEBUG] updateLayerVisibility:", this.getLayerDebugInfo())
+    this.viewer.updateLayerVisibility(layerMap)
+  }
+
+  private getLayerDebugInfo() {
+    const info: string[] = []
+    for (const [name, layer] of this.doc.layers.layers) {
+      info.push(`${name}(v:${layer.isVisible},f:${layer.isFrozen},l:${layer.isLocked})`)
+    }
+    return info.join(", ")
   }
 }

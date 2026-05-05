@@ -20,6 +20,7 @@ import { SolidCommand } from "../commands/SolidCommand"
 import { HatchCommand } from "../commands/HatchCommand"
 import { SketchCommand } from "../commands/SketchCommand"
 import { ShapeCommand } from "../commands/ShapeCommand"
+import { LayerCommand } from "../commands/LayerCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 
@@ -114,6 +115,10 @@ export class CommandManager {
     if(cmd === "SHAPE"){
       this.active = new ShapeCommand()
       return "Enter shape name:"
+    }
+    if(cmd === "LAYER" || cmd === "LA"){
+      this.active = new LayerCommand()
+      return "Enter layer option [?/N/S/ON/OFF/F/T/L/U/C/LT/D]:"
     }
     if(cmd === "UNDO" || cmd === "U"){
       return { action: "undo" }

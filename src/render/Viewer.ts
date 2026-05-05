@@ -444,7 +444,7 @@ export class Viewer {
     return { x: vec.x, y: vec.y }
   }
 
-  addLine(x1:number,y1:number,x2:number,y2:number, id?: string){
+  addLine(x1:number,y1:number,x2:number,y2:number, id?: string, layer?: string, isVisible = true){
     const geo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(x1,y1,0),
       new THREE.Vector3(x2,y2,0)
@@ -454,10 +454,14 @@ export class Viewer {
     if (id) {
       line.name = id;
     }
+    if (layer) {
+      (line as any).userData = { layer };
+    }
+    line.visible = isVisible;
     this.scene.add(line)
   }
 
-  addCircle(cx:number, cy:number, r:number, id?: string){
+  addCircle(cx:number, cy:number, r:number, id?: string, layer?: string, isVisible = true){
     const curve = new THREE.EllipseCurve(cx, cy, r, r, 0, 2 * Math.PI, false, 0);
     const points = curve.getPoints(50);
     const geo = new THREE.BufferGeometry().setFromPoints(points);
@@ -466,10 +470,14 @@ export class Viewer {
     if (id) {
       circle.name = id;
     }
+    if (layer) {
+      (circle as any).userData = { layer };
+    }
+    circle.visible = isVisible;
     this.scene.add(circle);
   }
 
-  addArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean, id?: string) {
+  addArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean, id?: string, layer?: string, isVisible = true) {
     const curve = new THREE.EllipseCurve(cx, cy, r, r, startAngle, endAngle, !ccw, 0);
     const points = curve.getPoints(50);
     const geo = new THREE.BufferGeometry().setFromPoints(points);
@@ -478,10 +486,14 @@ export class Viewer {
     if (id) {
       arc.name = id;
     }
+    if (layer) {
+      (arc as any).userData = { layer };
+    }
+    arc.visible = isVisible;
     this.scene.add(arc);
   }
 
-  addPoint(x: number, y: number, id?: string) {
+  addPoint(x: number, y: number, id?: string, layer?: string, isVisible = true) {
     const size = 2;
     const positions = new Float32Array([
       x - size, y - size, 0,
@@ -496,33 +508,49 @@ export class Viewer {
     if (id) {
       lines.name = id;
     }
+    if (layer) {
+      (lines as any).userData = { layer };
+    }
+    lines.visible = isVisible;
     this.scene.add(lines);
   }
 
-  addPolyline(entity: Polyline) {
+  addPolyline(entity: Polyline, layer?: string, isVisible = true) {
     const obj = this.createPolylineObject(entity, 0x00ff00);
     obj.name = entity.id;
+    if (layer) {
+      (obj as any).userData = { layer };
+    }
+    obj.visible = isVisible;
     this.scene.add(obj);
   }
 
-  addText(entity: Text) {
+  addText(entity: Text, layer?: string, isVisible = true) {
     if (!this.font) {
       this.textQueue.push(entity);
       return;
     }
     const obj = this.createTextObject(entity, 0x00ff00);
     obj.name = entity.id;
+    if (layer) {
+      (obj as any).userData = { layer };
+    }
+    obj.visible = isVisible;
     this.scene.add(obj);
     this.render();
   }
 
-  addSolid(entity: Solid) {
+  addSolid(entity: Solid, layer?: string, isVisible = true) {
     const obj = this.createSolidObject(entity, 0x00ff00);
     obj.name = entity.id;
+    if (layer) {
+      (obj as any).userData = { layer };
+    }
+    obj.visible = isVisible;
     this.scene.add(obj);
   }
 
-  addTrace(entity: Trace) {
+  addTrace(entity: Trace, layer?: string, isVisible = true) {
     const dx = entity.x2 - entity.x1;
     const dy = entity.y2 - entity.y1;
     const len = Math.sqrt(dx * dx + dy * dy);
@@ -551,10 +579,14 @@ export class Viewer {
     const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = entity.id;
+    if (layer) {
+      (mesh as any).userData = { layer };
+    }
+    mesh.visible = isVisible;
     this.scene.add(mesh);
   }
 
-  addShape(entity: Shape) {
+  addShape(entity: Shape, layer?: string, isVisible = true) {
     if (entity.segments.length === 0) return;
 
     const positions: number[] = [];
@@ -595,6 +627,10 @@ export class Viewer {
     const material = new THREE.LineBasicMaterial({ color: 0x00ff00 });
     const lines = new THREE.LineSegments(geometry, material);
     lines.name = entity.id;
+    if (layer) {
+      (lines as any).userData = { layer };
+    }
+    lines.visible = isVisible;
     this.scene.add(lines);
   }
 
@@ -612,7 +648,7 @@ export class Viewer {
     return points;
   }
 
-  addHatch(entity: Hatch) {
+  addHatch(entity: Hatch, layer?: string, isVisible = true) {
     if (entity.boundaryVertices.length < 3) return;
 
     const patternData = entity.getPatternData();
@@ -672,6 +708,10 @@ export class Viewer {
     mesh.position.z = 0.1;
     mesh.renderOrder = 500;
     mesh.name = entity.id;
+    if (layer) {
+      (mesh as any).userData = { layer };
+    }
+    mesh.visible = isVisible;
     this.scene.add(mesh);
   }
 
@@ -780,6 +820,20 @@ export class Viewer {
       obj.position.x += dx;
       obj.position.y += dy;
     }
+  }
+
+  updateLayerVisibility(layerMap: Map<string, { isVisible: boolean, isFrozen: boolean }>) {
+    this.scene.traverse((obj) => {
+      if (obj instanceof THREE.Mesh || obj instanceof THREE.Line || 
+          obj instanceof THREE.LineLoop || obj instanceof THREE.Points) {
+        const layerName = (obj as any).userData?.layer || "0";
+        const layerInfo = layerMap.get(layerName);
+        if (layerInfo) {
+          obj.visible = layerInfo.isVisible && !layerInfo.isFrozen;
+        }
+      }
+    });
+    this.render();
   }
 
   private originalColors: Map<string, number> = new Map();

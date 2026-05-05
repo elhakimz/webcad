@@ -1,9 +1,11 @@
 import { Entity } from "./Entity"
 import { HistoryManager, HistoryAction } from "./HistoryManager"
+import { LayerManager } from "./Layer"
 
 export class Document {
   entities: Map<string, Entity> = new Map()
   history = new HistoryManager()
+  layers = new LayerManager()
 
   addEntity(entity: Entity) {
     this.entities.set(entity.id, entity)

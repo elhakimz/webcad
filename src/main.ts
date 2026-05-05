@@ -13,6 +13,7 @@ const app = new App(viewer)
 const cmdLine = new CommandLine()
 app.setCommandLine((msg: string) => cmdLine.print(msg))
 const statusBar = new StatusBar()
+app.setStatusBar((layer: string) => statusBar.updateLayer(layer))
 const menu = new Menu((cmd) => {
   cmdLine.print(`Command: ${cmd}`)
   const res = app.execute(cmd)

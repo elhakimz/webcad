@@ -21,6 +21,7 @@ import { HatchCommand } from "../commands/HatchCommand"
 import { SketchCommand } from "../commands/SketchCommand"
 import { ShapeCommand } from "../commands/ShapeCommand"
 import { LayerCommand } from "../commands/LayerCommand"
+import { LinetypeCommand } from "../commands/LinetypeCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 
@@ -125,6 +126,13 @@ export class CommandManager {
     else if(cmdName === "LAYER" || cmdName === "LA"){
       this.active = new LayerCommand()
       response = "Enter layer option [?/N/S/ON/OFF/F/T/L/U/C/LT/D]:"
+    }
+    else if(cmdName === "LINETYPE" || cmdName === "LTYPE" || cmdName === "LT"){
+      this.active = new LinetypeCommand()
+      response = "Enter linetype option [?/Set] <?>:"
+    }
+    else if(cmdName === "REGEN"){
+      return { action: "regen" }
     }
     else if(cmdName === "UNDO" || cmdName === "U"){
       return { action: "undo" }

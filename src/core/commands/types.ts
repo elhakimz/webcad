@@ -1,7 +1,7 @@
 import { Entity } from "../model/Entity";
 
 export type CommandAction = {
-  action: 'finish' | 'close' | 'delete' | 'undo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch';
+  action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen';
   id?: string;
   ids?: string[];
   entity?: Entity;
@@ -23,6 +23,11 @@ export type CommandAction = {
   pattern?: string;
   patternScale?: number;
   patternAngle?: number;
+  name?: string;
+  names?: string;
+  color?: number;
+  linetype?: string;
+  filter?: string;
 };
 
 export type CommandResponse = string | Entity | CommandAction;

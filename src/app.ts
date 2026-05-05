@@ -21,6 +21,7 @@ import { SnapEngine, SnapPoint } from "./core/engine/SnapEngine"
 import * as THREE from "three"
 
 import { Layer } from "./core/model/Layer"
+import { LINETYPES } from "./core/engine/MathUtils"
 
 export class App {
   viewer:Viewer
@@ -386,7 +387,7 @@ export class App {
             const entity = this.doc.getEntity(id);
             if (entity) {
                 entity.rotate(actionResult.baseX!, actionResult.baseY!, actionResult.angle!);
-                this.addEntity(entity); // addEntity replaces existing
+                this.addEntity(entity, true, false); // Keep existing layer
             }
         });
         this.selectedEntityIds.clear();
@@ -404,7 +405,7 @@ export class App {
             const entity = this.doc.getEntity(id);
             if (entity) {
                 entity.scale(actionResult.baseX!, actionResult.baseY!, actionResult.factor!);
-                this.addEntity(entity); // addEntity replaces existing
+                this.addEntity(entity, true, false); // Keep existing layer
             }
         });
         this.selectedEntityIds.clear();
@@ -425,7 +426,7 @@ export class App {
                 const newId = source.id + "_COPY_" + Math.random().toString(36).substr(2, 5);
                 const copy = source.clone(newId);
                 copy.move(actionResult.dx!, actionResult.dy!);
-                this.addEntity(copy);
+                this.addEntity(copy, true, false); // Keep source layer
                 newIds.push(newId);
             }
         });
@@ -448,7 +449,7 @@ export class App {
             const source = this.doc.getEntity(id);
             if (source) {
               source.mirror(p1, p2);
-              this.addEntity(source);
+              this.addEntity(source, true, false); // Keep layer
             }
           });
         } else {
@@ -458,7 +459,7 @@ export class App {
             if (source) {
               const target = source.clone(source.id + "_MIRROR_" + Math.random().toString(36).substr(2, 5));
               target.mirror(p1, p2);
-              this.addEntity(target);
+              this.addEntity(target, true, false); // Keep source layer
               newIds.push(target.id);
             }
           });
@@ -522,6 +523,12 @@ export class App {
         this.viewer.setPreview(null)
         this.viewer.setHelpers(null)
         return actions.length > 0 ? "Redo successful." : "Nothing to redo."
+      }
+
+      if (actionResult.action === 'regen') {
+        this.syncFromDocument();
+        this.cmd.clearActive();
+        return "Regenerating drawing."
       }
 
       if (actionResult.action === 'layerList') {
@@ -656,6 +663,21 @@ export class App {
         return `Deleted ${deleted} layer(s).`
       }
 
+      if (actionResult.action === 'linetypeList') {
+        let output = "Available linetypes:\n  CONTINUOUS\n"
+        for (const lt of Object.keys(LINETYPES)) {
+          output += `  ${lt}\n`
+        }
+        this.cmd.clearActive()
+        return output
+      }
+
+      if (actionResult.action === 'linetypeSet') {
+        const lt = actionResult.linetype as string
+        this.cmd.clearActive()
+        return `Current linetype set to ${lt} (Note: entities currently inherit from Layer).`
+      }
+
       if (actionResult.action === 'finish') {
         this.viewer.setPreview(null)
         this.viewer.setHelpers(null)
@@ -666,12 +688,14 @@ export class App {
     return result
   }
 
-  private addEntity(entity: Entity, recordHistory = true) {
+  private addEntity(entity: Entity, recordHistory = true, useCurrentLayer = true) {
     if (this.doc.getEntity(entity.id)) {
       this.viewer.removeObject(entity.id);
     }
 
-    entity.layer = this.doc.layers.currentLayerName;
+    if (useCurrentLayer) {
+      entity.layer = this.doc.layers.currentLayerName;
+    }
 
     this.doc.addEntity(entity);
     if (recordHistory) {
@@ -683,19 +707,20 @@ export class App {
 
     console.log("layerObj", layerObj);
     
-    const layerColor = layerObj ? layerObj.color : layerObj.color;
-    console.log("[APP DEBUG] entity:", entity.id, "layer:", layer, "layerColor:", layerColor, "layerObj.color:", layerObj?.color);
+    const layerColor = layerObj ? layerObj.color : 7;
+    const linetype = layerObj ? layerObj.linetype : "CONTINUOUS";
+    console.log("[APP DEBUG] entity:", entity.id, "layer:", layer, "layerColor:", layerColor, "linetype:", linetype);
 
     if (entity instanceof Line) {
-      this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id, layer, layerObj.color, isVisible);
+      this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id, layer, layerColor, isVisible, linetype);
     } else if (entity instanceof Circle) {
-      this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id, layer, layerColor, isVisible);
+      this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id, layer, layerColor, isVisible, linetype);
     } else if (entity instanceof Arc) {
-      this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id, layer, layerColor, isVisible);
+      this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id, layer, layerColor, isVisible, linetype);
     } else if (entity instanceof Point) {
       this.viewer.addPoint(entity.x, entity.y, entity.id, layer, layerColor, isVisible);
     } else if (entity instanceof Polyline) {
-      this.viewer.addPolyline(entity, layer, layerColor, isVisible);
+      this.viewer.addPolyline(entity, layer, layerColor, isVisible, linetype);
     } else if (entity instanceof Text) {
       this.viewer.addText(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Solid) {
@@ -713,7 +738,7 @@ export class App {
   private syncFromDocument() {
     this.viewer.clear();
     for (const entity of this.doc.getAllEntities()) {
-      this.addEntity(entity, false);
+      this.addEntity(entity, false, false);
     }
     this.viewer.render();
   }

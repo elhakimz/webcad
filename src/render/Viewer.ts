@@ -11,7 +11,7 @@ import { Text } from "../core/model/Text"
 import { Solid } from "../core/model/Solid"
 import { Trace } from "../core/model/Trace"
 import { Shape } from "../core/model/Shape"
-import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb } from "../core/engine/MathUtils"
+import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb, getLinetypeSettings } from "../core/engine/MathUtils"
 import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
 
 export class Viewer {
@@ -286,9 +286,20 @@ export class Viewer {
     return new THREE.Mesh(geometry, mat);
   }
 
-  private createPolylineObject(entity: Polyline, color: number): THREE.Object3D {
+  private createPolylineObject(entity: Polyline, color: number, linetype?: string): THREE.Object3D {
     const group = new THREE.Group();
-    const mat = new THREE.LineBasicMaterial({ color });
+    const dashSettings = linetype ? getLinetypeSettings(linetype) : null;
+    
+    let mat: THREE.LineBasicMaterial;
+    if (dashSettings) {
+      mat = new THREE.LineDashedMaterial({ 
+        color, 
+        dashSize: dashSettings.dashSize / this.camera.zoom, 
+        gapSize: dashSettings.gapSize / this.camera.zoom 
+      });
+    } else {
+      mat = new THREE.LineBasicMaterial({ color });
+    }
 
     for (let i = 0; i < entity.vertices.length - (entity.closed ? 0 : 1); i++) {
       const v1 = entity.vertices[i];
@@ -300,7 +311,9 @@ export class Viewer {
           new THREE.Vector3(v1.x, v1.y, 0),
           new THREE.Vector3(v2.x, v2.y, 0)
         ]);
-        group.add(new THREE.Line(geo, mat));
+        const line = new THREE.Line(geo, mat);
+        if (dashSettings) line.computeLineDistances();
+        group.add(line);
       } else {
         // Arc segment
         const arcParams = bulgeToArc(v1, v2, v1.bulge);
@@ -311,7 +324,9 @@ export class Viewer {
           );
           const points = curve.getPoints(20);
           const geo = new THREE.BufferGeometry().setFromPoints(points);
-          group.add(new THREE.Line(geo, mat));
+          const arc = new THREE.Line(geo, mat);
+          if (dashSettings) arc.computeLineDistances();
+          group.add(arc);
         }
       }
     }
@@ -449,14 +464,28 @@ export class Viewer {
     return { x: vec.x, y: vec.y }
   }
 
-  addLine(x1:number,y1:number,x2:number,y2:number, id?: string, layer?: string, color?: number, isVisible = true){
+  addLine(x1:number,y1:number,x2:number,y2:number, id?: string, layer?: string, color?: number, isVisible = true, linetype?: string){
     const rgb = aciToRgb(color);
     const geo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(x1,y1,0),
       new THREE.Vector3(x2,y2,0)
     ])
-    const mat = new THREE.LineBasicMaterial({color: rgb});
+    
+    let mat: THREE.LineBasicMaterial;
+    const dashSettings = linetype ? getLinetypeSettings(linetype) : null;
+    if (dashSettings) {
+      mat = new THREE.LineDashedMaterial({ 
+        color: rgb, 
+        dashSize: dashSettings.dashSize / this.camera.zoom, 
+        gapSize: dashSettings.gapSize / this.camera.zoom 
+      });
+    } else {
+      mat = new THREE.LineBasicMaterial({ color: rgb });
+    }
+
     const line = new THREE.Line(geo,mat)
+    if (dashSettings) line.computeLineDistances();
+
     if (id) {
       line.name = id;
     }
@@ -467,12 +496,27 @@ export class Viewer {
     this.scene.add(line)
   }
 
-  addCircle(cx:number, cy:number, r:number, id?: string, layer?: string, color?: number, isVisible = true){
+  addCircle(cx:number, cy:number, r:number, id?: string, layer?: string, color?: number, isVisible = true, linetype?: string){
     const curve = new THREE.EllipseCurve(cx, cy, r, r, 0, 2 * Math.PI, false, 0);
     const points = curve.getPoints(50);
     const geo = new THREE.BufferGeometry().setFromPoints(points);
-    const mat = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
+    const rgb = aciToRgb(color);
+
+    let mat: THREE.LineBasicMaterial;
+    const dashSettings = linetype ? getLinetypeSettings(linetype) : null;
+    if (dashSettings) {
+      mat = new THREE.LineDashedMaterial({ 
+        color: rgb, 
+        dashSize: dashSettings.dashSize / this.camera.zoom, 
+        gapSize: dashSettings.gapSize / this.camera.zoom 
+      });
+    } else {
+      mat = new THREE.LineBasicMaterial({ color: rgb });
+    }
+
     const circle = new THREE.LineLoop(geo, mat);
+    if (dashSettings) circle.computeLineDistances();
+
     if (id) {
       circle.name = id;
     }
@@ -483,12 +527,27 @@ export class Viewer {
     this.scene.add(circle);
   }
 
-  addArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean, id?: string, layer?: string, color?: number, isVisible = true) {
+  addArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean, id?: string, layer?: string, color?: number, isVisible = true, linetype?: string) {
     const curve = new THREE.EllipseCurve(cx, cy, r, r, startAngle, endAngle, !ccw, 0);
     const points = curve.getPoints(50);
     const geo = new THREE.BufferGeometry().setFromPoints(points);
-    const mat = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
+    const rgb = aciToRgb(color);
+
+    let mat: THREE.LineBasicMaterial;
+    const dashSettings = linetype ? getLinetypeSettings(linetype) : null;
+    if (dashSettings) {
+      mat = new THREE.LineDashedMaterial({ 
+        color: rgb, 
+        dashSize: dashSettings.dashSize / this.camera.zoom, 
+        gapSize: dashSettings.gapSize / this.camera.zoom 
+      });
+    } else {
+      mat = new THREE.LineBasicMaterial({ color: rgb });
+    }
+
     const arc = new THREE.Line(geo, mat);
+    if (dashSettings) arc.computeLineDistances();
+
     if (id) {
       arc.name = id;
     }
@@ -521,8 +580,8 @@ export class Viewer {
     this.scene.add(lines);
   }
 
-  addPolyline(entity: Polyline, layer?: string, color?: number, isVisible = true) {
-    const obj = this.createPolylineObject(entity, aciToRgb(color));
+  addPolyline(entity: Polyline, layer?: string, color?: number, isVisible = true, linetype?: string) {
+    const obj = this.createPolylineObject(entity, aciToRgb(color), linetype);
     obj.name = entity.id;
     if (layer) {
       (obj as any).userData = { layer };
@@ -530,6 +589,7 @@ export class Viewer {
     obj.visible = isVisible;
     this.scene.add(obj);
   }
+
 
   addText(entity: Text, layer?: string, color?: number, isVisible = true) {
     if (!this.font) {

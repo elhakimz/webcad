@@ -1,8 +1,13 @@
 import { Command, CommandResponse } from "./types"
+import { LINETYPES } from "../engine/MathUtils"
 
 export class LayerCommand implements Command {
   step = 0
   pendingValue = ""
+
+  private getLinetypeListString(): string {
+    return "CONTINUOUS, " + Object.keys(LINETYPES).join(", ");
+  }
 
   onInput(text: string): CommandResponse | undefined {
     const val = text.trim()
@@ -52,7 +57,7 @@ export class LayerCommand implements Command {
       }
       if (opt === "LT") {
         this.step = 65
-        return "Enter linetype name:"
+        return `Linetype name(s) (or ?) [${this.getLinetypeListString()}]:`
       }
       if (opt === "D") {
         this.step = 70
@@ -108,6 +113,9 @@ export class LayerCommand implements Command {
       return { action: "layerColor", color: parseInt(this.pendingValue) || 7, names: val }
     }
     if (this.step === 65) {
+      if (val === "?") {
+        return { action: "linetypeList" }
+      }
       this.pendingValue = val
       this.step = 66
       return "Enter layer name(s) for linetype change:"

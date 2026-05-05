@@ -26,7 +26,11 @@ export class Menu {
       { label: '****', command: 'CANCEL' },
       { label: 'BLOCKS', submenu: [{ label: 'BLOCK' }, { label: 'INSERT' }] },
       { label: 'DIM:', submenu: [{ label: 'DIM' }] },
-      { label: 'DISPLAY', submenu: [{ label: 'ZOOM' }, { label: 'PAN' }] },
+      { label: 'DISPLAY', submenu: [
+        { label: 'ZOOM', command: 'ZOOM' },
+        { label: 'PAN', command: 'PAN' },
+        { label: 'REGEN', command: 'REGEN' }
+      ] },
       { label: 'DRAW', submenu: [
         { label: 'ARC', command: 'ARC' },
         { label: 'CIRCLE', command: 'CIRCLE' },
@@ -66,7 +70,11 @@ export class Menu {
       ]},
       { label: 'MODES' },
       { label: 'PLOT' },
-      { label: 'UTILITY' },
+      { label: 'UTILITY', submenu: [
+        { label: 'LTYPE', command: 'LINETYPE' },
+        { label: 'SCRIPT' },
+        { label: 'MENU' }
+      ]},
       { label: '3D' },
       { label: 'SAVE:' }
     ];

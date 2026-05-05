@@ -1,5 +1,6 @@
 # WebCAD Lessons
 
+- **Command Engine Options:** Enhanced `CommandManager.execute` to support space-separated command options (e.g., "LAYER N"). This enables side menu items to trigger specific sub-modes or options directly, improving workflow efficiency.
 - **Snap Engine Integration:** Implement precision drafting by snapping coordinates in the orchestration layer (`App.ts`). Distinguish between "raw" mouse position (for selection) and "snapped" coordinates (for geometric point input).
 - **Visual Feedback for Snaps:** Use distinct geometric shapes (Square for Endpoint, Triangle for Midpoint, Circle for Center) in a dedicated viewport layer (`snapMarkerGroup`) to provide professional-grade drafting feedback.
 - **Layer Constraints:** Constrain EDIT commands to the current layer by filtering selectable entities in the orchestration layer (`App.ts`). This prevents accidental modifications across layers.

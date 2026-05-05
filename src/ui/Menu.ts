@@ -50,7 +50,20 @@ export class Menu {
         { label: 'MIRROR', command: 'MIRROR' }
       ]},
       { label: 'INQUIRY' },
-      { label: 'LAYERS' },
+      { label: 'LAYERS', submenu: [
+        { label: 'LIST', command: 'LAYER ?' },
+        { label: 'NEW', command: 'LAYER N' },
+        { label: 'SET', command: 'LAYER S' },
+        { label: 'ON', command: 'LAYER ON' },
+        { label: 'OFF', command: 'LAYER OFF' },
+        { label: 'FREEZE', command: 'LAYER F' },
+        { label: 'THAW', command: 'LAYER T' },
+        { label: 'LOCK', command: 'LAYER L' },
+        { label: 'UNLOCK', command: 'LAYER U' },
+        { label: 'COLOR', command: 'LAYER C' },
+        { label: 'LTYPE', command: 'LAYER LT' },
+        { label: 'DELETE', command: 'LAYER D' }
+      ]},
       { label: 'MODES' },
       { label: 'PLOT' },
       { label: 'UTILITY' },

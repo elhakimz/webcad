@@ -16,6 +16,7 @@
 - [ ] Implement ARRAY command <!-- id: 5 -->
 
 ## Done
+- [x] Add direct layer management commands (New, Set, On/Off, etc.) to the `LAYERS` side menu <!-- id: 16 -->
 - [x] Implement Snap Engine (Endpoint, Midpoint, Center) <!-- id: 1 -->
 - [x] Restore solid technical text rendering with `osifont` <!-- id: 14 -->
 - [x] Use `osifont.ttf` (ISO 3098) as default technical font <!-- id: 15 -->

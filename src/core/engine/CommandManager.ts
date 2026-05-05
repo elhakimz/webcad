@@ -29,104 +29,122 @@ export class CommandManager {
   lastPoint: { x: number; y: number } | null = null
 
   execute(cmd:string, selection?: string[]): CommandResponse {
-    if(cmd === "LINE"){
+    const parts = cmd.trim().split(/\s+/);
+    const cmdName = parts[0].toUpperCase();
+    const args = parts.slice(1);
+
+    let response: CommandResponse | undefined;
+
+    if(cmdName === "LINE"){
       this.active = new LineCommand()
-      return "LINE command started: pick first point"
+      response = "LINE command started: pick first point"
     }
-    if(cmd === "CIRCLE"){
+    else if(cmdName === "CIRCLE"){
       this.active = new CircleCommand()
-      return "CIRCLE command started: specify center point"
+      response = "CIRCLE command started: specify center point"
     }
-    if(cmd === "ERASE"){
+    else if(cmdName === "ERASE"){
       if (selection && selection.length > 0) {
         return { action: "delete", ids: [...selection] };
       }
       this.active = new EraseCommand()
-      return "ERASE command started: select object"
+      response = "ERASE command started: select object"
     }
-    if(cmd === "MOVE"){
+    else if(cmdName === "MOVE"){
       this.active = new MoveCommand(selection)
-      return selection && selection.length > 0 ? "Base point:" : "MOVE command started: select object"
+      response = selection && selection.length > 0 ? "Base point:" : "MOVE command started: select object"
     }
-    if(cmd === "COPY"){
+    else if(cmdName === "COPY"){
       this.active = new CopyCommand(selection)
-      return selection && selection.length > 0 ? "Base point:" : "COPY command started: select object"
+      response = selection && selection.length > 0 ? "Base point:" : "COPY command started: select object"
     }
-    if(cmd === "ROTATE"){
+    else if(cmdName === "ROTATE"){
       this.active = new RotateCommand(selection)
-      return selection && selection.length > 0 ? "Base point:" : "ROTATE command started: select object"
+      response = selection && selection.length > 0 ? "Base point:" : "ROTATE command started: select object"
     }
-    if(cmd === "SCALE"){
+    else if(cmdName === "SCALE"){
       this.active = new ScaleCommand(selection)
-      return selection && selection.length > 0 ? "Base point:" : "SCALE command started: select object"
+      response = selection && selection.length > 0 ? "Base point:" : "SCALE command started: select object"
     }
-    if(cmd === "MIRROR"){
+    else if(cmdName === "MIRROR"){
       this.active = new MirrorCommand(selection)
-      return selection && selection.length > 0 ? "First point of mirror line:" : "MIRROR command started: select objects to mirror"
+      response = selection && selection.length > 0 ? "First point of mirror line:" : "MIRROR command started: select objects to mirror"
     }
-    if(cmd === "ZOOM" || cmd === "Z"){
+    else if(cmdName === "ZOOM" || cmdName === "Z"){
       this.active = new ZoomCommand()
-      return "ZOOM [All/Window] <Window corner>:"
+      response = "ZOOM [All/Window] <Window corner>:"
     }
-    if(cmd === "PAN" || cmd === "P"){
+    else if(cmdName === "PAN" || cmdName === "P"){
       this.active = new PanCommand()
-      return "PAN command: Click and drag to pan. Press ESC to exit."
+      response = "PAN command: Click and drag to pan. Press ESC to exit."
     }
-    if(cmd === "TEST3D"){
+    else if(cmdName === "TEST3D"){
       this.active = new Test3DCommand()
-      return "TEST3D started: pick insertion point"
+      response = "TEST3D started: pick insertion point"
     }
-    if(cmd === "ARC"){
+    else if(cmdName === "ARC"){
       this.active = new ArcCommand()
-      return "ARC command started: start point"
+      response = "ARC command started: start point"
     }
-    if(cmd === "POINT"){
+    else if(cmdName === "POINT"){
       this.active = new PointCommand()
-      return "POINT command started: pick point"
+      response = "POINT command started: pick point"
     }
-    if(cmd === "PLINE"){
+    else if(cmdName === "PLINE"){
       this.active = new PolylineCommand()
-      return "PLINE command started: specify start point"
+      response = "PLINE command started: specify start point"
     }
-    if(cmd === "POLYGON"){
+    else if(cmdName === "POLYGON"){
       this.active = new PolygonCommand()
-      return "POLYGON Number of sides <4>:"
+      response = "POLYGON Number of sides <4>:"
     }
-    if(cmd === "TEXT"){
+    else if(cmdName === "TEXT"){
       this.active = new TextCommand()
-      return "TEXT start point:"
+      response = "TEXT start point:"
     }
-    if(cmd === "SOLID"){
+    else if(cmdName === "SOLID"){
       this.active = new SolidCommand()
-      return "SOLID First point:"
+      response = "SOLID First point:"
     }
-    if(cmd === "TRACE"){
+    else if(cmdName === "TRACE"){
       this.active = new TraceCommand()
-      return "TRACE line width <0.10>:"
+      response = "TRACE line width <0.10>:"
     }
-    if(cmd === "HATCH"){
+    else if(cmdName === "HATCH"){
       this.active = new HatchCommand()
-      return "HATCH: Select boundary point:"
+      response = "HATCH: Select boundary point:"
     }
-    if(cmd === "SKETCH"){
+    else if(cmdName === "SKETCH"){
       this.active = new SketchCommand()
-      return "Sketch tolerance <2.0>:"
+      response = "Sketch tolerance <2.0>:"
     }
-    if(cmd === "SHAPE"){
+    else if(cmdName === "SHAPE"){
       this.active = new ShapeCommand()
-      return "Enter shape name:"
+      response = "Enter shape name:"
     }
-    if(cmd === "LAYER" || cmd === "LA"){
+    else if(cmdName === "LAYER" || cmdName === "LA"){
       this.active = new LayerCommand()
-      return "Enter layer option [?/N/S/ON/OFF/F/T/L/U/C/LT/D]:"
+      response = "Enter layer option [?/N/S/ON/OFF/F/T/L/U/C/LT/D]:"
     }
-    if(cmd === "UNDO" || cmd === "U"){
+    else if(cmdName === "UNDO" || cmdName === "U"){
       return { action: "undo" }
     }
-    if(cmd === "REDO" || cmd === "R"){
+    else if(cmdName === "REDO" || cmdName === "R"){
       return { action: "redo" }
     }
-    return "Unknown command: " + cmd
+    else {
+      return "Unknown command: " + cmdName
+    }
+
+    // Feed additional arguments if provided
+    for (const arg of args) {
+      if (this.active) {
+        const nextRes = this.inputString(arg);
+        if (nextRes) response = nextRes;
+      }
+    }
+
+    return response;
   }
 
   inputPoint(x:number,y:number): CommandResponse | undefined {

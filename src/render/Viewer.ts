@@ -240,30 +240,45 @@ export class Viewer {
     if (!this.font) return new THREE.Group();
 
     const shapes = this.font.generateShapes(entity.text, entity.height);
-    const geometry = new THREE.ShapeGeometry(shapes);
-    
-    // WebCAD text starts at insertion point, Three.js shapes also start at 0,0.
-    const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
-    const mesh = new THREE.Mesh(geometry, mat);
-    
-    mesh.position.set(entity.x, entity.y, 0);
-    mesh.rotation.z = entity.rotation * (Math.PI / 180);
-    mesh.renderOrder = 10;
+    const group = new THREE.Group();
+    const mat = new THREE.LineBasicMaterial({ color });
 
-    // Create an invisible hit-box for better picking
-    geometry.computeBoundingBox();
-    const bbox = geometry.boundingBox!;
-    const width = bbox.max.x - bbox.min.x;
-    const height = bbox.max.y - bbox.min.y;
+    let totalWidth = 0;
+    let maxHeight = 0;
+
+    shapes.forEach(shape => {
+      // Get points for the outer contour
+      const points = shape.getPoints(12);
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      group.add(new THREE.Line(geo, mat));
+
+      // Get points for any holes (e.g., in 'O' or 'P')
+      shape.holes.forEach(hole => {
+        const holePoints = hole.getPoints(12);
+        const holeGeo = new THREE.BufferGeometry().setFromPoints(holePoints);
+        group.add(new THREE.Line(holeGeo, mat));
+      });
+
+      // Simple bounding calculation for hit-box
+      const box = shape.getPoints(4); 
+      box.forEach(p => {
+        totalWidth = Math.max(totalWidth, p.x);
+        maxHeight = Math.max(maxHeight, p.y);
+      });
+    });
     
-    const hitBoxGeo = new THREE.PlaneGeometry(width || 0.1, height || 0.1);
+    group.position.set(entity.x, entity.y, 0);
+    group.rotation.z = entity.rotation * (Math.PI / 180);
+    group.renderOrder = 10;
+
+    // Create an invisible hit-box for picking
+    const hitBoxGeo = new THREE.PlaneGeometry(totalWidth || 0.1, maxHeight || 0.1);
     const hitBoxMat = new THREE.MeshBasicMaterial({ visible: false });
     const hitBox = new THREE.Mesh(hitBoxGeo, hitBoxMat);
-    // Align hitBox to the text (PlaneGeometry is centered, text is from bottom-left)
-    hitBox.position.set(width / 2, height / 2, 0);
-    mesh.add(hitBox);
+    hitBox.position.set(totalWidth / 2, maxHeight / 2, 0);
+    group.add(hitBox);
     
-    return mesh;
+    return group;
   }
 
   private createSolidObject(entity: Solid, color: number): THREE.Object3D {

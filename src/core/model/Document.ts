@@ -1,5 +1,5 @@
 import { Entity, BoundingBox } from "./Entity"
-import { HistoryManager, HistoryAction } from "./HistoryManager"
+import { HistoryManager } from "./HistoryManager"
 import { LayerManager } from "./Layer"
 import { BlockManager } from "./Block"
 import { Quadtree } from "../engine/Quadtree"
@@ -83,7 +83,7 @@ export class Document {
     // For now, recordTransform is the preferred way.
   }
 
-  recordBatch(_actions: any[]) {
+  recordBatch(_actions: unknown[]) {
   }
 
   undo() {

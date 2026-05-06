@@ -1,13 +1,26 @@
 import { Entity, BoundingBox } from "./Entity"
 import { rotatePoint, reflectPointAcrossLine } from "../engine/MathUtils"
 
+export interface ShapeSegment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  isArc?: boolean;
+  cx?: number;
+  cy?: number;
+  r?: number;
+  startAngle?: number;
+  endAngle?: number;
+}
+
 export class Shape extends Entity {
   shapeName: string;
   x: number;
   y: number;
   shapeScale: number;
   rotation: number;
-  segments: { x1: number; y1: number; x2: number; y2: number }[];
+  segments: ShapeSegment[];
 
   constructor(
     id: string,
@@ -16,7 +29,7 @@ export class Shape extends Entity {
     y: number,
     shapeScale: number,
     rotation: number,
-    segments: { x1: number; y1: number; x2: number; y2: number }[]
+    segments: ShapeSegment[]
   ) {
     super(id);
     this.shapeName = shapeName;

@@ -45,7 +45,7 @@ export class CommandManager {
   active: Command | null = null
   lastPoint: { x: number; y: number } | null = null
 
-  execute(cmd:string, units: UnitsConfig, selection?: string[], entities?: Map<string, any>): CommandResponse {
+  execute(cmd:string, units: UnitsConfig, selection?: string[], entities?: Map<string, Entity>): CommandResponse {
     const parts = cmd.trim().split(/\s+/);
     const cmdName = parts[0].toUpperCase();
     const args = parts.slice(1);

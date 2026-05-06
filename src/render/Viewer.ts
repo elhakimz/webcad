@@ -25,7 +25,7 @@ export class Viewer {
   camera: THREE.OrthographicCamera
   renderer: THREE.WebGLRenderer
   canvas: HTMLCanvasElement
-  font: any = null
+  font: Font | null = null
 
   private isPanning = false
   private isLeftPanEnabled = false
@@ -73,13 +73,14 @@ export class Viewer {
 
   private loadFont() {
     const loader = new TTFLoader();
-    loader.load('/fonts/osifont.ttf', (json: any) => {
+    loader.load('/fonts/osifont.ttf', (json: object) => {
       this.font = new Font(json);
       this.textQueue.forEach(entity => this.addText(entity));
       this.textQueue = [];
       this.render();
     });
   }
+
 
   private initCursor() {
     const cursorColor = 0x555555; // Brighter grey for the full-screen crosshair
@@ -731,8 +732,8 @@ export class Viewer {
     const sin = Math.sin(rad);
 
     for (const seg of entity.segments) {
-      if ((seg as any).isArc && (seg as any).cx !== undefined && (seg as any).cy !== undefined && (seg as any).r !== undefined && (seg as any).startAngle !== undefined && (seg as any).endAngle !== undefined) {
-        const arcPositions = this.createArcGeometry((seg as any).cx, (seg as any).cy, (seg as any).r, (seg as any).startAngle, (seg as any).endAngle);
+      if (seg.isArc && seg.cx !== undefined && seg.cy !== undefined && seg.r !== undefined && seg.startAngle !== undefined && seg.endAngle !== undefined) {
+        const arcPositions = this.createArcGeometry(seg.cx, seg.cy, seg.r, seg.startAngle, seg.endAngle);
         for (const p of arcPositions) {
           const sx = p.x * entity.shapeScale;
           const sy = p.y * entity.shapeScale;

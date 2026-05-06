@@ -1,4 +1,3 @@
-import { Polyline } from "../model/Polyline"
 import { Command, CommandResponse, CommandAction } from "./types"
 import { UnitsConfig } from "../model/Document"
 

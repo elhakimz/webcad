@@ -59,14 +59,14 @@ describe('TextCommand', () => {
     cmd.onPoint(0, 0, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     
     // During height selection
-    const _preview1 = null as any
+    const _preview1: import('./types').PreviewObject | null = null
     // removed
     // removed
     
     cmd.onInput('10', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     
     // During rotation selection
-    const _preview2 = null as any
+    const _preview2: import('./types').PreviewObject | null = null
     // removed
   })
 })

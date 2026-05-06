@@ -497,13 +497,13 @@ export function getCircleCircleIntersections(c1: Point, r1: number, c2: Point, r
 }
 
 export function getEntityEntityIntersections(e1: unknown, e2: unknown): Point[] {
-    const getCircleData = (e: any) => {
-        if (e instanceof CircleEntity) return { cx: e.cx, cy: e.cy, r: e.r, isArc: false };
+    const getCircleData = (e: unknown) => {
+        if (e instanceof CircleEntity) return { cx: e.cx, cy: e.cy, r: e.r, isArc: false, s: 0, e: 0, ccw: true };
         if (e instanceof ArcEntity) return { cx: e.cx, cy: e.cy, r: e.r, isArc: true, s: e.startAngle, e: e.endAngle, ccw: e.ccw };
         return null;
     };
 
-    const isPointOnArc = (p: Point, arc: any) => {
+    const isPointOnArc = (p: Point, arc: { cx: number, cy: number, r: number, isArc: boolean, s: number, e: number, ccw: boolean }) => {
         const angle = Math.atan2(p.y - arc.cy, p.x - arc.cx);
         const normalize = (a: number) => {
             while (a < 0) a += Math.PI * 2;

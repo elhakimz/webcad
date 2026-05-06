@@ -34,7 +34,7 @@ export class FilletCommand implements Command {
       if (this.step === 1) {
           this.id2 = text;
           if (pickPt) this.pick2 = pickPt;
-          return { action: "fillet", id1: this.id1, id2: this.id2, radius: this.radius, pick1: this.pick1, pick2: this.pick2 } as any;
+          return { action: "fillet", id1: this.id1, id2: this.id2, radius: this.radius, pick1: this.pick1, pick2: this.pick2 } as CommandAction;
       }
   }
 

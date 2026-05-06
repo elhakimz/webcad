@@ -93,7 +93,7 @@ export class MainMenuScreen {
       } else {
         this.status.textContent = "Error fetching file list.";
       }
-    } catch (_e) {
+    } catch {
       this.status.textContent = "Network error fetching files.";
     }
   }

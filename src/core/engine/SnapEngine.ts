@@ -95,8 +95,9 @@ export class SnapEngine {
       snaps.push({ x: entity.cx + entity.r * Math.cos(midAngle), y: entity.cy + entity.r * Math.sin(midAngle), type: SnapType.MIDPOINT });
     } 
     else if (entity instanceof Polyline) {
-      if (entity.properties.center) {
-        snaps.push({ x: (entity.properties.center as any).x, y: (entity.properties.center as any).y, type: SnapType.CENTER });
+      const center = entity.properties.center as { x: number, y: number } | undefined;
+      if (center) {
+        snaps.push({ x: center.x, y: center.y, type: SnapType.CENTER });
       }
       for (let i = 0; i < entity.vertices.length; i++) {
         snaps.push({ x: entity.vertices[i].x, y: entity.vertices[i].y, type: SnapType.ENDPOINT });

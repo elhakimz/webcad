@@ -343,15 +343,16 @@ export function aciToRgb(aci?: number): number {
   return 0xffffff; // Default to white
 }
 
-export const LINETYPES: Record<string, { dashSize: number; gapSize: number }> = {
-  'DASHED': { dashSize: 5, gapSize: 3 },
-  'HIDDEN': { dashSize: 2, gapSize: 2 },
-  'DOTTED': { dashSize: 1, gapSize: 2 },
-  'CENTER': { dashSize: 10, gapSize: 2 },
-  'PHANTOM': { dashSize: 10, gapSize: 4 },
+export const LINETYPES: Record<string, number[]> = {
+  'DASHED': [5, 3],
+  'HIDDEN': [2, 2],
+  'DOTTED': [0.5, 2],
+  'CENTER': [10, 2, 2, 2],
+  'PHANTOM': [10, 2, 2, 2, 2, 2],
+  'DASHDOT': [10, 3, 1, 3],
 };
 
-export function getLinetypeSettings(linetype: string): { dashSize: number; gapSize: number } | null {
+export function getLinetypeSettings(linetype: string): number[] | null {
   const name = linetype.toUpperCase();
   if (LINETYPES[name]) {
     return LINETYPES[name];

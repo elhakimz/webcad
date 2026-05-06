@@ -6,7 +6,7 @@ export class TransformHandler implements ActionHandler {
     return ['move', 'rotate', 'scale', 'copy', 'mirror'].includes(action.action);
   }
 
-  handle(action: CommandAction, context: AppContext): CommandResponse | undefined {
+  async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
     const { doc, viewer, cmd, selectedEntityIds, addEntity } = context;
 
     if (action.action === 'move' && (action.id || action.ids) && action.dx !== undefined) {

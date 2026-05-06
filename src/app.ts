@@ -357,7 +357,7 @@ export class App {
       if (entity) {
         const activeName = this.cmd.active?.constructor.name;
         // Continuous commands remain active after creating an entity
-        const isContinuous = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand';
+        const isContinuous = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand' || activeName === 'LayerCommand';
         
         // Some continuous commands update the SAME entity ID during interaction (Polyline, Solid)
         // Others create a NEW entity ID for every segment (Line, Trace)
@@ -414,7 +414,10 @@ export class App {
       const actionResult = await this.dispatcher.dispatch(result as CommandAction, appContext);
       if (actionResult !== undefined) {
         // If the action resulted in clearing the active command, ensure markers are cleared too
-        if (!this.cmd.active) {
+        const activeName = this.cmd.active?.constructor.name;
+        const isContinuous = activeName === 'LayerCommand'; // Actions that keep command active
+
+        if (!this.cmd.active || (this.cmd.active && !isContinuous)) {
             this.terminateActiveCommand();
         }
         return actionResult;

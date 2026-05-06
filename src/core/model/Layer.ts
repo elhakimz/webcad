@@ -44,11 +44,16 @@ export class LayerManager {
     return layer
   }
 
-  createLayer(name: string): Layer | null {
-    if (this.layers.has(name)) return null
-    const layer = new Layer(name)
-    this.layers.set(name, layer)
-    return layer
+  createLayer(name: string, color = 7, linetype = "CONTINUOUS"): Layer {
+    let layer = this.layers.get(name);
+    if (layer) {
+        layer.color = color;
+        layer.linetype = linetype;
+    } else {
+        layer = new Layer(name, color, linetype);
+        this.layers.set(name, layer);
+    }
+    return layer;
   }
 
   deleteLayer(name: string): boolean {

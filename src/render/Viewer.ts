@@ -11,6 +11,7 @@ import { Text } from "../core/model/Text"
 import { Solid } from "../core/model/Solid"
 import { Trace } from "../core/model/Trace"
 import { Shape } from "../core/model/Shape"
+import { Hatch } from "../core/model/Hatch"
 import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb, getLinetypeSettings } from "../core/engine/MathUtils"
 import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
 
@@ -162,7 +163,6 @@ export class Viewer {
     if (!enabled) return;
 
     // Create a large grid around the current view
-    // In a production app, we would dynamically update this on pan
     const count = 100; // 100x100 grid of dots
     const positions = [];
     
@@ -332,7 +332,6 @@ export class Viewer {
     const shapes = this.font.generateShapes(entity.text, entity.height);
     const geometry = new THREE.ShapeGeometry(shapes);
     
-    // WebCAD text starts at insertion point, Three.js shapes also start at 0,0.
     const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geometry, mat);
     
@@ -340,7 +339,6 @@ export class Viewer {
     mesh.rotation.z = entity.rotation * (Math.PI / 180);
     mesh.renderOrder = 10;
 
-    // Create an invisible hit-box for better picking
     geometry.computeBoundingBox();
     const bbox = geometry.boundingBox!;
     const width = bbox.max.x - bbox.min.x;
@@ -349,7 +347,6 @@ export class Viewer {
     const hitBoxGeo = new THREE.PlaneGeometry(width || 0.1, height || 0.1);
     const hitBoxMat = new THREE.MeshBasicMaterial({ visible: false });
     const hitBox = new THREE.Mesh(hitBoxGeo, hitBoxMat);
-    // Align hitBox to the text (PlaneGeometry is centered, text is from bottom-left)
     hitBox.position.set(width / 2, height / 2, 0);
     mesh.add(hitBox);
     
@@ -373,7 +370,8 @@ export class Viewer {
 
   private createPolylineObject(entity: Polyline, color: number, linetype?: string): THREE.Object3D {
     const group = new THREE.Group();
-    const mat = this.getLineMaterial(color, linetype);
+    const pattern = linetype ? getLinetypeSettings(linetype) : null;
+    const material = new THREE.LineBasicMaterial({ color });
 
     for (let i = 0; i < entity.vertices.length - (entity.closed ? 0 : 1); i++) {
       const v1 = entity.vertices[i];
@@ -381,13 +379,22 @@ export class Viewer {
 
       if (Math.abs(v1.bulge) < 1e-6) {
         // Line segment
-        const geo = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(v1.x, v1.y, 0),
-          new THREE.Vector3(v2.x, v2.y, 0)
-        ]);
-        const line = new THREE.Line(geo, mat);
-        if (mat instanceof THREE.LineDashedMaterial) line.computeLineDistances();
-        group.add(line);
+        if (pattern) {
+            const dashed = this.generateDashedLine({ x: v1.x, y: v1.y }, { x: v2.x, y: v2.y }, pattern);
+            dashed.forEach(seg => {
+                const geo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(seg.x1, seg.y1, 0),
+                    new THREE.Vector3(seg.x2, seg.y2, 0)
+                ]);
+                group.add(new THREE.Line(geo, material));
+            });
+        } else {
+            const geo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(v1.x, v1.y, 0),
+                new THREE.Vector3(v2.x, v2.y, 0)
+            ]);
+            group.add(new THREE.Line(geo, material));
+        }
       } else {
         // Arc segment
         const arcParams = bulgeToArc(v1, v2, v1.bulge);
@@ -396,11 +403,26 @@ export class Viewer {
             arcParams.cx, arcParams.cy, arcParams.r, arcParams.r,
             arcParams.startAngle, arcParams.endAngle, !arcParams.ccw, 0
           );
-          const points = curve.getPoints(20);
-          const geo = new THREE.BufferGeometry().setFromPoints(points);
-          const arc = new THREE.Line(geo, mat);
-          if (mat instanceof THREE.LineDashedMaterial) arc.computeLineDistances();
-          group.add(arc);
+          const points = curve.getPoints(50);
+          
+          if (pattern) {
+              // Dash an arc by segmenting it
+              for (let j = 0; j < points.length - 1; j++) {
+                  const p1 = points[j];
+                  const p2 = points[j+1];
+                  const dashed = this.generateDashedLine({ x: p1.x, y: p1.y }, { x: p2.x, y: p2.y }, pattern);
+                  dashed.forEach(seg => {
+                      const geo = new THREE.BufferGeometry().setFromPoints([
+                          new THREE.Vector3(seg.x1, seg.y1, 0),
+                          new THREE.Vector3(seg.x2, seg.y2, 0)
+                      ]);
+                      group.add(new THREE.Line(geo, material));
+                  });
+              }
+          } else {
+              const geo = new THREE.BufferGeometry().setFromPoints(points);
+              group.add(new THREE.Line(geo, material));
+          }
         }
       }
     }
@@ -408,7 +430,6 @@ export class Viewer {
   }
 
   setHelpers(points: { x: number, y: number }[] | null) {
-    // Clear existing helpers
     while (this.helperGroup.children.length > 0) {
       const obj = this.helperGroup.children[0];
       this.helperGroup.remove(obj);
@@ -420,7 +441,7 @@ export class Viewer {
 
     if (points) {
       const helperColor = 0x555555;
-      const size = 1000000; // Infinite-ish
+      const size = 1000000; 
 
       points.forEach(pt => {
         const hGeo = new THREE.BufferGeometry().setFromPoints([
@@ -436,7 +457,6 @@ export class Viewer {
         this.helperGroup.add(new THREE.Line(hGeo, mat));
         this.helperGroup.add(new THREE.Line(vGeo, mat));
 
-        // Add X marker at the point
         const xSize = 5 / this.camera.zoom;
         const xPositions = new Float32Array([
           pt.x - xSize, pt.y - xSize, 0,
@@ -515,7 +535,7 @@ export class Viewer {
     }, { passive: false })
 
     this.canvas.addEventListener('pointerdown', (e) => {
-      if (e.button === 1 || (e.button === 0 && this.isLeftPanEnabled)) { // Middle button or left when enabled
+      if (e.button === 1 || (e.button === 0 && this.isLeftPanEnabled)) { 
         this.isPanning = true
         this.lastPanPos.set(e.clientX, e.clientY)
         if (this.isLeftPanEnabled) {
@@ -553,73 +573,104 @@ export class Viewer {
   }
 
   addLine(x1:number,y1:number,x2:number,y2:number, id?: string, layer?: string, color?: number, isVisible = true, linetype?: string){
+    const pattern = linetype ? getLinetypeSettings(linetype) : null;
     const rgb = aciToRgb(color);
-    const geo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(x1,y1,0),
-      new THREE.Vector3(x2,y2,0)
-    ])
-    
-    const mat = this.getLineMaterial(rgb, linetype);
+    const material = new THREE.LineBasicMaterial({ color: rgb });
+    let obj: THREE.Object3D;
 
-
-
-    const line = new THREE.Line(geo, mat)
-    if (mat instanceof THREE.LineDashedMaterial) line.computeLineDistances();
-
-    if (id) {
-      line.name = id;
+    if (pattern) {
+        const group = new THREE.Group();
+        const dashed = this.generateDashedLine({ x: x1, y: y1 }, { x: x2, y: y2 }, pattern);
+        dashed.forEach(seg => {
+            const geo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(seg.x1, seg.y1, 0),
+                new THREE.Vector3(seg.x2, seg.y2, 0)
+            ]);
+            group.add(new THREE.Line(geo, material));
+        });
+        obj = group;
+    } else {
+        const geo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(x1, y1, 0),
+            new THREE.Vector3(x2, y2, 0)
+        ]);
+        obj = new THREE.Line(geo, material);
     }
-    if (layer) {
-      (line as any).userData = { layer };
-    }
-    line.visible = isVisible;
-    this.scene.add(line)
+
+    if (id) obj.name = id;
+    if (layer) (obj as any).userData = { layer };
+    obj.visible = isVisible;
+    this.scene.add(obj);
   }
 
   addCircle(cx:number, cy:number, r:number, id?: string, layer?: string, color?: number, isVisible = true, linetype?: string){
-    const curve = new THREE.EllipseCurve(cx, cy, r, r, 0, 2 * Math.PI, false, 0);
-    const points = curve.getPoints(50);
-    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const pattern = linetype ? getLinetypeSettings(linetype) : null;
     const rgb = aciToRgb(color);
+    const material = new THREE.LineBasicMaterial({ color: rgb });
+    let obj: THREE.Object3D;
 
-    const mat = this.getLineMaterial(rgb, linetype);
+    const curve = new THREE.EllipseCurve(cx, cy, r, r, 0, 2 * Math.PI, false, 0);
+    const points = curve.getPoints(100);
 
-
-
-    const circle = new THREE.LineLoop(geo, mat);
-    if (mat instanceof THREE.LineDashedMaterial) circle.computeLineDistances();
-
-    if (id) {
-      circle.name = id;
+    if (pattern) {
+        const group = new THREE.Group();
+        for (let i = 0; i < points.length - 1; i++) {
+            const p1 = points[i];
+            const p2 = points[i+1];
+            const dashed = this.generateDashedLine({ x: p1.x, y: p1.y }, { x: p2.x, y: p2.y }, pattern);
+            dashed.forEach(seg => {
+                const geo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(seg.x1, seg.y1, 0),
+                    new THREE.Vector3(seg.x2, seg.y2, 0)
+                ]);
+                group.add(new THREE.Line(geo, material));
+            });
+        }
+        obj = group;
+    } else {
+        const geo = new THREE.BufferGeometry().setFromPoints(points);
+        obj = new THREE.LineLoop(geo, material);
     }
-    if (layer) {
-      (circle as any).userData = { layer };
-    }
-    circle.visible = isVisible;
-    this.scene.add(circle);
+
+    if (id) obj.name = id;
+    if (layer) (obj as any).userData = { layer };
+    obj.visible = isVisible;
+    this.scene.add(obj);
   }
 
   addArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean, id?: string, layer?: string, color?: number, isVisible = true, linetype?: string) {
+    const pattern = linetype ? getLinetypeSettings(linetype) : null;
+    const rgb = aciToRgb(color);
+    const material = new THREE.LineBasicMaterial({ color: rgb });
+    let obj: THREE.Object3D;
+
     const curve = new THREE.EllipseCurve(cx, cy, r, r, startAngle, endAngle, !ccw, 0);
     const points = curve.getPoints(50);
-    const geo = new THREE.BufferGeometry().setFromPoints(points);
-    const rgb = aciToRgb(color);
 
-    const mat = this.getLineMaterial(rgb, linetype);
-
-
-
-    const arc = new THREE.Line(geo, mat);
-    if (mat instanceof THREE.LineDashedMaterial) arc.computeLineDistances();
-
-    if (id) {
-      arc.name = id;
+    if (pattern) {
+        const group = new THREE.Group();
+        for (let i = 0; i < points.length - 1; i++) {
+            const p1 = points[i];
+            const p2 = points[i+1];
+            const dashed = this.generateDashedLine({ x: p1.x, y: p1.y }, { x: p2.x, y: p2.y }, pattern);
+            dashed.forEach(seg => {
+                const geo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(seg.x1, seg.y1, 0),
+                    new THREE.Vector3(seg.x2, seg.y2, 0)
+                ]);
+                group.add(new THREE.Line(geo, material));
+            });
+        }
+        obj = group;
+    } else {
+        const geo = new THREE.BufferGeometry().setFromPoints(points);
+        obj = new THREE.Line(geo, material);
     }
-    if (layer) {
-      (arc as any).userData = { layer };
-    }
-    arc.visible = isVisible;
-    this.scene.add(arc);
+
+    if (id) obj.name = id;
+    if (layer) (obj as any).userData = { layer };
+    obj.visible = isVisible;
+    this.scene.add(obj);
   }
 
   addPoint(x: number, y: number, id?: string, layer?: string, color?: number, isVisible = true) {
@@ -865,14 +916,16 @@ export class Viewer {
 
     let current = 0;
     let dashIndex = 0;
-    let startOffset = 0;
 
     while (current < len) {
       const dashLen = Math.abs(dashPattern[dashIndex % dashPattern.length]);
-      const gapLen = Math.abs(dashPattern[(dashIndex + 1) % dashPattern.length]);
+      const isGap = dashPattern[dashIndex % dashPattern.length] === 0; // Not used in our array format but for clarity
+      
+      // In our array format [dash, gap, dash, gap], even indices are dashes, odd are gaps
+      const isDash = (dashIndex % 2 === 0);
 
-      if (dashPattern[dashIndex % dashPattern.length] > 0) {
-        const segStart = current + startOffset;
+      if (isDash) {
+        const segStart = current;
         const segEnd = Math.min(current + dashLen, len);
 
         if (segEnd > segStart) {
@@ -885,9 +938,8 @@ export class Viewer {
         }
       }
 
-      current += dashLen + gapLen;
-      dashIndex += 2;
-      startOffset = 0;
+      current += dashLen;
+      dashIndex++;
     }
 
     return segments;
@@ -971,7 +1023,6 @@ export class Viewer {
   setHighlight(ids: string[]) {
     const highlightColor = 0xffff00; // Yellow
 
-    // Collect all objects to process
     const objectsToProcess: THREE.Object3D[] = [];
     this.scene.traverse((obj) => {
       if (obj.name && obj.name !== "PREVIEW" && !obj.name.startsWith("CURSOR")) {
@@ -979,11 +1030,9 @@ export class Viewer {
       }
     });
 
-    // First pass: capture current colors for highlighted items (including Group children)
     objectsToProcess.forEach(obj => {
       const isHighlighted = ids.includes(obj.name!);
       
-      // Handle Groups - capture colors from all children
       if (isHighlighted && obj instanceof THREE.Group) {
         obj.traverse((child) => {
           if (child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Mesh) {
@@ -999,25 +1048,23 @@ export class Viewer {
             }
           }
         });
-      } else if (isHighlighted && obj.material) {
-        // Handle regular objects
-        if (!this.originalColors.has(obj.name)) {
-          if (Array.isArray(obj.material)) {
-            if (obj.material.length > 0 && 'color' in obj.material[0]) {
-              this.originalColors.set(obj.name, (obj.material[0] as THREE.MeshBasicMaterial).color.getHex());
+      } else if (isHighlighted && (obj as any).material) {
+        if (!this.originalColors.has(obj.name!)) {
+          const mat = (obj as any).material;
+          if (Array.isArray(mat)) {
+            if (mat.length > 0 && 'color' in mat[0]) {
+              this.originalColors.set(obj.name!, (mat[0] as THREE.MeshBasicMaterial).color.getHex());
             }
-          } else if ('color' in obj.material) {
-            this.originalColors.set(obj.name, (obj.material as THREE.MeshBasicMaterial).color.getHex());
+          } else if ('color' in mat) {
+            this.originalColors.set(obj.name!, (mat as THREE.MeshBasicMaterial).color.getHex());
           }
         }
       }
     });
 
-    // Second pass: apply highlight or restore original color
     objectsToProcess.forEach(obj => {
       const isHighlighted = ids.includes(obj.name!);
       
-      // Handle Groups - apply highlight to all children
       if (obj instanceof THREE.Group) {
         obj.traverse((child) => {
           if (child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Mesh) {
@@ -1049,27 +1096,27 @@ export class Viewer {
             }
           }
         });
-      } else if (obj.material) {
-        // Handle regular objects
+      } else if ((obj as any).material) {
+        const mat = (obj as any).material;
         const originalColor = this.originalColors.get(obj.name!);
         
         if (isHighlighted) {
           const targetColor = highlightColor;
-          if (Array.isArray(obj.material)) {
-            obj.material.forEach(m => {
+          if (Array.isArray(mat)) {
+            mat.forEach(m => {
               if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
             });
-          } else if ('color' in obj.material) {
-            (obj.material as THREE.MeshBasicMaterial).color.set(targetColor);
+          } else if ('color' in mat) {
+            (mat as THREE.MeshBasicMaterial).color.set(targetColor);
           }
         } else if (originalColor !== undefined) {
           const targetColor = originalColor;
-          if (Array.isArray(obj.material)) {
-            obj.material.forEach(m => {
+          if (Array.isArray(mat)) {
+            mat.forEach(m => {
               if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
             });
-          } else if ('color' in obj.material) {
-            (obj.material as THREE.MeshBasicMaterial).color.set(targetColor);
+          } else if ('color' in mat) {
+            (mat as THREE.MeshBasicMaterial).color.set(targetColor);
           }
         }
       }
@@ -1078,9 +1125,7 @@ export class Viewer {
   }
 
   clearHighlight() {
-    // Restore original colors
     this.scene.traverse((obj) => {
-      // Handle Groups - restore colors to all children
       if (obj instanceof THREE.Group) {
         obj.traverse((child) => {
           if (child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Mesh) {
@@ -1097,15 +1142,15 @@ export class Viewer {
             }
           }
         });
-      } else if (obj.name && this.originalColors.has(obj.name) && obj.material) {
-        // Handle regular objects
+      } else if (obj.name && this.originalColors.has(obj.name) && (obj as any).material) {
+        const mat = (obj as any).material;
         const originalColor = this.originalColors.get(obj.name)!;
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach(m => {
+        if (Array.isArray(mat)) {
+          mat.forEach(m => {
             if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(originalColor);
           });
-        } else if ('color' in obj.material) {
-          (obj.material as THREE.MeshBasicMaterial).color.set(originalColor);
+        } else if ('color' in mat) {
+          (mat as THREE.MeshBasicMaterial).color.set(originalColor);
         }
       }
     });
@@ -1136,16 +1181,9 @@ export class Viewer {
         ];
         const geo = new THREE.BufferGeometry().setFromPoints(pts);
         
-        const mat = new THREE.LineDashedMaterial({ 
-            color: 0xffff00, 
-            dashSize: 5, 
-            gapSize: 3,
-            transparent: true, 
-            opacity: 0.8 
-        });
+        const mat = new THREE.LineBasicMaterial({ color: 0xffff00 });
         
         const line = new THREE.Line(geo, mat);
-        line.computeLineDistances();
         line.renderOrder = 1000;
         
         this.selectionBox = line;
@@ -1227,7 +1265,7 @@ export class Viewer {
     }
 
     if (snap) {
-      const color = 0xffff00; // Yellow for snaps
+      const color = 0xffff00; 
       const size = 6 / this.camera.zoom;
       let geo: THREE.BufferGeometry | null = null;
       const mat = new THREE.LineBasicMaterial({ color });
@@ -1235,7 +1273,6 @@ export class Viewer {
 
       switch (snap.type) {
         case SnapType.ENDPOINT:
-          // Square
           geo = new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(-size, -size, 0),
             new THREE.Vector3(size, -size, 0),
@@ -1246,7 +1283,6 @@ export class Viewer {
           mesh = new THREE.Line(geo, mat);
           break;
         case SnapType.MIDPOINT:
-          // Triangle
           geo = new THREE.BufferGeometry().setFromPoints([
             new THREE.Vector3(0, size, 0),
             new THREE.Vector3(-size, -size, 0),
@@ -1256,7 +1292,6 @@ export class Viewer {
           mesh = new THREE.Line(geo, mat);
           break;
         case SnapType.CENTER:
-          // Circle
           const curve = new THREE.EllipseCurve(0, 0, size, size, 0, 2 * Math.PI, false, 0);
           const points = curve.getPoints(16);
           geo = new THREE.BufferGeometry().setFromPoints(points);
@@ -1272,19 +1307,11 @@ export class Viewer {
     this.render();
   }
 
-  render(){
-    this.renderer.render(this.scene,this.camera)
+  private getLineMaterial(color: number, linetype?: string): THREE.LineBasicMaterial {
+    return new THREE.LineBasicMaterial({ color });
   }
 
-  private getLineMaterial(color: number, linetype?: string): THREE.LineBasicMaterial {
-    const dashSettings = linetype ? getLinetypeSettings(linetype) : null;
-    if (dashSettings) {
-      return new THREE.LineDashedMaterial({ 
-        color, 
-        dashSize: dashSettings.dashSize / this.camera.zoom, 
-        gapSize: dashSettings.gapSize / this.camera.zoom 
-      });
-    }
-    return new THREE.LineBasicMaterial({ color });
+  render(){
+    this.renderer.render(this.scene,this.camera)
   }
 }

@@ -6,7 +6,7 @@ export class ViewHandler implements ActionHandler {
     return action.action === 'zoom';
   }
 
-  handle(action: CommandAction, context: AppContext): CommandResponse | undefined {
+  async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
     const { viewer, cmd, doc } = context;
 
     if (action.zoomType === 'window' && action.p1 && action.p2) {

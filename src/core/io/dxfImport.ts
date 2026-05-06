@@ -65,8 +65,8 @@ export class DXFImporter {
               let linetype = "CONTINUOUS";
               while (i < groups.length && groups[i].code !== 0) {
                 if (groups[i].code === 2) name = groups[i].value;
-                if (groups[i].code === 62) color = parseInt(groups[i].value);
-                if (groups[i].code === 6) linetype = groups[i].value;
+                if (groups[i].code === 62) color = Math.abs(parseInt(groups[i].value)); // Use absolute for color
+                if (groups[i].code === 6) linetype = groups[i].value.toUpperCase();
                 i++;
               }
               doc.layers.createLayer(name, color, linetype);

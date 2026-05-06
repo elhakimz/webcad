@@ -7,7 +7,7 @@ export class SystemHandler implements ActionHandler {
     return ['undo', 'redo', 'regen', 'delete', 'finish', 'create3d'].includes(action.action);
   }
 
-  handle(action: CommandAction, context: AppContext): CommandResponse | undefined {
+  async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
     const { doc, viewer, cmd, syncFromDocument, selectedEntityIds } = context;
 
     if (action.action === 'undo') {

@@ -12,8 +12,8 @@ export class LayerHandler implements ActionHandler {
     return layerActions.includes(action.action);
   }
 
-  handle(action: CommandAction, context: AppContext): CommandResponse | undefined {
-    const { doc, cmd, updateLayerVisibility, onStatusBarUpdate } = context;
+  async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
+    const { doc, cmd, updateLayerVisibility, onStatusBarUpdate, syncFromDocument } = context;
 
     if (action.action === 'layerList') {
       const layers = doc.layers.listLayers();
@@ -31,13 +31,13 @@ export class LayerHandler implements ActionHandler {
 
     if (action.action === 'layerNew') {
       const name = action.name as string;
+      const exists = !!doc.layers.getLayer(name);
       const layer = doc.layers.createLayer(name);
-      if (layer) {
-        doc.layers.setCurrentLayer(name);
-        onStatusBarUpdate(layer);
-        return `Layer "${name}" created and set as current.`;
-      }
-      return `Layer "${name}" already exists.`;
+      doc.layers.setCurrentLayer(name);
+      onStatusBarUpdate(layer);
+      return exists 
+        ? `Layer "${name}" already exists. Set as current.`
+        : `Layer "${name}" created and set as current.`;
     }
 
     if (action.action === 'layerSetCurrent') {
@@ -86,6 +86,7 @@ export class LayerHandler implements ActionHandler {
         const layer = doc.layers.getLayer(name);
         if (layer) layer.color = color;
       }
+      syncFromDocument();
       onStatusBarUpdate(doc.layers.getCurrentLayer());
       return `Layer color set to ${color}.`;
     }
@@ -97,6 +98,7 @@ export class LayerHandler implements ActionHandler {
         const layer = doc.layers.getLayer(name);
         if (layer) layer.linetype = linetype;
       }
+      syncFromDocument();
       onStatusBarUpdate(doc.layers.getCurrentLayer());
       return `Layer linetype set to ${linetype}.`;
     }

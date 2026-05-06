@@ -6,6 +6,13 @@ export class Document {
   entities: Map<string, Entity> = new Map()
   history = new HistoryManager()
   layers = new LayerManager()
+  private idCounters: Map<string, number> = new Map()
+
+  getNextId(prefix: string): string {
+    const count = (this.idCounters.get(prefix) || 0) + 1;
+    this.idCounters.set(prefix, count);
+    return prefix + count;
+  }
 
   addEntity(entity: Entity) {
     this.entities.set(entity.id, entity)

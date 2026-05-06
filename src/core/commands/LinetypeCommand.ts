@@ -1,47 +1,28 @@
 import { Command, CommandResponse } from "./types"
-import { LINETYPES } from "../engine/MathUtils"
 
 export class LinetypeCommand implements Command {
-  step = 0
-
-  private getLinetypeListString(): string {
-    return "CONTINUOUS, " + Object.keys(LINETYPES).join(", ");
+  onPoint(x: number, y: number, id: string): CommandResponse {
+    return "Enter linetype option [?/Set] <?>:";
   }
 
-  onInput(text: string): CommandResponse | undefined {
-    const val = text.trim().toUpperCase()
+  onInput(text: string, id: string): CommandResponse | undefined {
+    const val = text.trim().toUpperCase();
+    const parts = val.split(/\s+/);
+    const opt = parts[0];
 
-    if (this.step === 0) {
-      if (val === "" || val === "?") {
-        return { action: "linetypeList" }
-      }
-      
-      if (val === "S" || val === "SET") {
-        this.step = 10
-        return `Linetype name(s) (or ?) [${this.getLinetypeListString()}] <CONTINUOUS>:`
-      }
-
-      return "Invalid option. Enter linetype option [?/Set] <?>:"
+    if (opt === "?" || opt === "" || opt === "LIST") {
+      return { action: "linetypeList" };
+    }
+    if (opt === "S" || opt === "SET") {
+      const lt = parts[1] || "";
+      if (lt) return { action: "linetypeSet", linetype: lt };
+      return "New current linetype name:";
     }
 
-    if (this.step === 10) {
-      if (val === "?") {
-        return { action: "linetypeList" }
-      }
-      this.step = 0
-      const lt = val || "CONTINUOUS"
-      return { action: "linetypeSet", linetype: lt }
-    }
-
-    this.step = 0
-    return "Invalid option"
-  }
-
-  onPoint(x: number, y: number): CommandResponse {
-    return "Enter linetype option [?/Set] <?>:"
+    return "Invalid linetype option. [?/Set] <?>:";
   }
 
   getPrompt() {
-    return "Enter linetype option [?/Set] <?>:"
+    return "Enter linetype option [?/Set] <?>:";
   }
 }

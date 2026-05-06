@@ -1,4 +1,3 @@
-
 import { Command, CommandResponse } from "./types"
 
 export class CopyCommand implements Command {
@@ -14,7 +13,7 @@ export class CopyCommand implements Command {
     }
   }
 
-  onInput(text: string): CommandResponse | undefined {
+  onInput(text: string, id: string): CommandResponse | undefined {
     // Step 0: Select object (receives ID)
     if (this.step === 0 && text) {
       this.targetIds = [text];
@@ -23,7 +22,7 @@ export class CopyCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number): CommandResponse {
+  onPoint(x: number, y: number, id: string): CommandResponse {
     if (this.step === 0) {
       return "Select entity to copy";
     }

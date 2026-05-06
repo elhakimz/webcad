@@ -5,7 +5,7 @@ export class ZoomCommand implements Command {
   p1: { x: number; y: number } | null = null
   center: { x: number; y: number } | null = null
 
-  onInput(text: string): CommandResponse | undefined {
+  onInput(text: string, id: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     
     if (val === "" || val === "A" || val === "ALL" || val === "E" || val === "EXTENTS") {
@@ -30,7 +30,7 @@ export class ZoomCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number): CommandResponse {
+  onPoint(x: number, y: number, id: string): CommandResponse {
     if (this.step === 0) {
       this.p1 = { x, y };
       this.step = 1;

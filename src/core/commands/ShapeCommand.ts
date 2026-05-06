@@ -4,8 +4,6 @@ import { FormatUtils } from "../engine/FormatUtils"
 import { parseSHP, executeShape, Shape as ShapeData } from "../io/SHPParser"
 import shapeFile from "../../../data/shapes.shp?raw"
 
-let idCounter = 0;
-
 const defaultShapes = parseSHP(shapeFile || "");
 
 export class ShapeCommand implements Command {
@@ -17,7 +15,7 @@ export class ShapeCommand implements Command {
   step = 0;
   selectedShape: ShapeData | null = null;
 
-  onInput(text: string): CommandResponse | undefined {
+  onInput(text: string, id: string): CommandResponse | undefined {
     const val = text.trim();
 
     if (this.step === 0) {
@@ -59,7 +57,7 @@ export class ShapeCommand implements Command {
 
       const segments = this.selectedShape ? executeShape(this.selectedShape) : [];
       const shape = new Shape(
-        "SH" + (++idCounter),
+        id,
         this.shapeName,
         this.x,
         this.y,

@@ -40,11 +40,23 @@ export class Arc extends Entity {
   }
 
   mirror(p1: { x: number; y: number }, p2: { x: number; y: number }) {
-    const reflected = reflectPointAcrossLine({ x: this.cx, y: this.cy }, p1, p2);
-    this.cx = reflected.x;
-    this.cy = reflected.y;
-    this.startAngle = Math.PI - this.startAngle;
-    this.endAngle = Math.PI - this.endAngle;
+    const pStart = {
+      x: this.cx + this.r * Math.cos(this.startAngle),
+      y: this.cy + this.r * Math.sin(this.startAngle)
+    };
+    const pEnd = {
+      x: this.cx + this.r * Math.cos(this.endAngle),
+      y: this.cy + this.r * Math.sin(this.endAngle)
+    };
+
+    const reflectedCenter = reflectPointAcrossLine({ x: this.cx, y: this.cy }, p1, p2);
+    const reflectedStart = reflectPointAcrossLine(pStart, p1, p2);
+    const reflectedEnd = reflectPointAcrossLine(pEnd, p1, p2);
+
+    this.cx = reflectedCenter.x;
+    this.cy = reflectedCenter.y;
+    this.startAngle = Math.atan2(reflectedStart.y - this.cy, reflectedStart.x - this.cx);
+    this.endAngle = Math.atan2(reflectedEnd.y - this.cy, reflectedEnd.x - this.cx);
     this.ccw = !this.ccw;
   }
 
@@ -61,7 +73,7 @@ export class Arc extends Entity {
   clone(newId: string): Arc {
     const copy = new Arc(newId, this.cx, this.cy, this.r, this.startAngle, this.endAngle, this.ccw);
     copy.layer = this.layer;
-    copy.properties = { ...this.properties };
+    copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }
 }

@@ -95,7 +95,7 @@ export class Shape extends Entity {
       this.segments.map(s => ({ ...s }))
     );
     copy.layer = this.layer;
-    copy.properties = { ...this.properties };
+    copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }
 }

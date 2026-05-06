@@ -2,64 +2,63 @@ import { Trace } from "../model/Trace"
 import { Command, CommandResponse } from "./types"
 import { FormatUtils } from "../engine/FormatUtils"
 
-let idCounter = 0
-
 export class TraceCommand implements Command {
-  width = 0.1;
-  points: { x: number; y: number }[] = [];
-  step = 0;
+  step = 0
+  width = 0.1
+  points: { x: number; y: number }[] = []
+  drawnEntityId: string | null = null
 
-  onPoint(x: number, y: number): CommandResponse {
-    const pLabel = "P" + (this.points.length + 1);
+  onPoint(x: number, y: number, id: string): CommandResponse {
+    if (this.step === 0) {
+      // Allow point input if width is already set or default
+      this.step = 1;
+    }
+
+    this.points.push({ x, y });
+    const pLabel = "P" + this.points.length;
     const echo = FormatUtils.formatPoint(x, y, pLabel);
 
-    if (this.step === 1) {
-      this.points.push({ x, y });
-      this.step = 2;
+    if (this.points.length === 1) {
+      this.drawnEntityId = id;
       return `${echo}\nTo point:`;
-    } else if (this.step === 2) {
-      const from = this.points[this.points.length - 1];
-      const trace = new Trace("T" + (++idCounter), from.x, from.y, x, y, this.width);
-      
-      // Continue chain: set new from point
-      this.points.push({ x, y });
-      
+    } else {
+      const last = this.points[this.points.length - 2];
+      const trace = new Trace(id, last.x, last.y, x, y, this.width);
       return trace;
     }
-    return "";
   }
 
-  onInput(text: string): CommandResponse | undefined {
+  onInput(text: string, id: string) {
     const val = text.trim().toUpperCase();
-
     if (this.step === 0) {
-      // Setting width
-      const parsed = parseFloat(text);
-      if (!isNaN(parsed) && parsed > 0) {
-        this.width = parsed;
+      const n = parseFloat(text);
+      if (!isNaN(n) && n > 0) {
+        this.width = n;
+        this.step = 1;
+        return "From point:";
       }
-      this.step = 1;
-      return "From point:";
+      if (text === "") {
+        this.step = 1;
+        return "From point:";
+      }
+    }
+
+    if (val === "U" || val === "UNDO") {
+        if (this.points.length >= 1) {
+            this.points.pop();
+            return { action: "undo", id: this.drawnEntityId || undefined };
+        }
     }
 
     if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
       return { action: "finish" };
     }
-
-    if (val === "U" || val === "UNDO") {
-      if (this.points.length >= 2) {
-        this.points.pop();
-        const lastId = "T" + idCounter;
-        return { action: "undo", id: lastId };
-      }
-      return "Nothing to undo. To point:";
-    }
   }
 
   getPreview(x: number, y: number) {
-    if (this.step === 2 && this.points.length >= 1) {
-      const from = this.points[this.points.length - 1];
-      return new Trace("PREVIEW", from.x, from.y, x, y, this.width);
+    if (this.points.length > 0) {
+      const last = this.points[this.points.length - 1];
+      return new Trace("PREVIEW", last.x, last.y, x, y, this.width);
     }
     return null;
   }
@@ -72,8 +71,8 @@ export class TraceCommand implements Command {
   }
 
   getPrompt() {
-    if (this.step === 0) return `TRACE line width <${this.width.toFixed(2)}>:`;
-    if (this.step === 1) return "From point:";
+    if (this.step === 0) return "TRACE line width <0.10>:";
+    if (this.points.length === 0) return "From point:";
     return "To point:";
   }
 }

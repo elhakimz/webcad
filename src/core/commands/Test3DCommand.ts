@@ -1,31 +1,33 @@
 import { Command, CommandResponse } from "./types"
-import { OpenCascadeService } from "../io/OpenCascadeService"
 
 export class Test3DCommand implements Command {
-  onPoint(x: number, y: number): CommandResponse {
-    const ocService = OpenCascadeService.getInstance();
-    const oc = ocService.OC;
+  step = 0;
+  x = 0;
+  y = 0;
 
-    try {
-      // Create an OCCT Box between two points (100x100x100)
-      const p1 = new oc.gp_Pnt_3(x, y, 0);
-      const p2 = new oc.gp_Pnt_3(x + 100, y + 100, 100);
-      
-      const box = new oc.BRepPrimAPI_MakeBox_3(p1, p2);
-      const shape = box.Shape();
-
-      // Return a special result that the App will handle
-      return { 
-        action: "create3d", 
-        entity: { id: "BOX_" + Date.now(), shape } as unknown 
-      };
-    } catch (err) {
-      console.error(err);
-      return "Failed to create 3D box.";
+  onPoint(x: number, y: number, id: string): CommandResponse {
+    if (this.step === 0) {
+      this.x = x;
+      this.y = y;
+      this.step = 1;
+      return "TEST3D: select height:";
+    } else {
+      const h = Math.abs(y - this.y) || 10;
+      return { action: "create3d", entity: { id, shape: { type: 'box', x: this.x, y: this.y, h } } } as any;
     }
   }
 
-  onInput() {
-    return "Click to place a 100x100x100 3D box.";
+  onInput(text: string, id: string) {
+    if (this.step === 1) {
+      const h = parseFloat(text);
+      if (!isNaN(h)) {
+        return { action: "create3d", entity: { id, shape: { type: 'box', x: this.x, y: this.y, h } } } as any;
+      }
+    }
+  }
+
+  getPrompt() {
+    if (this.step === 0) return "TEST3D started: pick insertion point:";
+    return "TEST3D: specify height:";
   }
 }

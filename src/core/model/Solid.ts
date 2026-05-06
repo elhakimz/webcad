@@ -55,7 +55,7 @@ export class Solid extends Entity {
   clone(newId: string): Solid {
     const copy = new Solid(newId, this.vertices.map(v => ({ ...v })));
     copy.layer = this.layer;
-    copy.properties = { ...this.properties };
+    copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }
 }

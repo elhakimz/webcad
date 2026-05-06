@@ -1,74 +1,73 @@
-import { Arc } from "../model/Arc";
-import { Command, CommandResponse } from "./types";
-import { calculateArcFrom3Points, Point } from "../engine/MathUtils";
-import { FormatUtils } from "../engine/FormatUtils";
-
-let idCounter = 0;
+import { Arc } from "../model/Arc"
+import { Command, CommandResponse } from "./types"
+import { FormatUtils } from "../engine/FormatUtils"
 
 export class ArcCommand implements Command {
-  step = 0;
-  p1: Point | null = null;
-  p2: Point | null = null;
+  step = 0
+  p1 = { x: 0, y: 0 }
+  p2 = { x: 0, y: 0 }
+  p3 = { x: 0, y: 0 }
 
-  onPoint(x: number, y: number): CommandResponse {
+  onPoint(x: number, y: number, id: string): CommandResponse {
     if (this.step === 0) {
-      this.p1 = { x, y };
-      this.step = 1;
-      const echo = FormatUtils.formatPoint(x, y, "P1");
-      return `${echo}\nSecond point:`;
+      this.p1 = { x, y }
+      this.step = 1
+      return FormatUtils.formatPoint(x, y, "P1") + "\nSecond point:"
     } else if (this.step === 1) {
-      this.p2 = { x, y };
-      this.step = 2;
-      const echo = FormatUtils.formatPoint(x, y, "P2");
-      return `${echo}\nEnd point:`;
+      this.p2 = { x, y }
+      this.step = 2
+      return FormatUtils.formatPoint(x, y, "P2") + "\nEnd point:"
     } else {
-      const p3 = { x, y };
-      const echo = FormatUtils.formatPoint(x, y, "P3");
-      const params = calculateArcFrom3Points(this.p1!, this.p2!, p3);
-      if (!params) {
-        this.step = 0;
-        this.p1 = null;
-        this.p2 = null;
-        return "Points are collinear. Start point of arc:";
+      this.p3 = { x, y }
+      const arc = this.calculateArc(this.p1, this.p2, this.p3, id)
+      if (!arc) {
+          this.step = 0;
+          return "Points are collinear. Start point of arc:";
       }
-      const arc = new Arc(
-        "A" + (++idCounter),
-        params.cx, params.cy, params.r,
-        params.startAngle, params.endAngle, params.ccw
-      );
-      (arc as unknown as { _echo: string })._echo = `${echo}\nArc created. ${FormatUtils.formatRadius(params.r)}`;
-      this.step = 0;
-      this.p1 = null;
-      this.p2 = null;
-      return arc;
+      this.step = 0
+      return arc
     }
   }
 
-  onInput(text: string): CommandResponse | undefined {
-    if (text.trim().toUpperCase() === "CANCEL" || text.trim().toUpperCase() === "") {
-      return { action: "finish" };
-    }
+  private calculateArc(p1: { x: number, y: number }, p2: { x: number, y: number }, p3: { x: number, y: number }, id: string): Arc | null {
+    // Standard 3-point arc calculation
+    const x1 = p1.x, y1 = p1.y
+    const x2 = p2.x, y2 = p2.y
+    const x3 = p3.x, y3 = p3.y
+
+    const D = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2))
+    if (Math.abs(D) < 1e-6) return null
+
+    const cx = ((x1 * x1 + y1 * y1) * (y2 - y3) + (x2 * x2 + y2 * y2) * (y3 - y1) + (x3 * x3 + y3 * y3) * (y1 - y2)) / D
+    const cy = ((x1 * x1 + y1 * y1) * (x3 - x2) + (x2 * x2 + y2 * y2) * (x1 - x3) + (x3 * x3 + y3 * y3) * (x2 - x1)) / D
+    const r = Math.sqrt((x1 - cx) * (x1 - cx) + (y1 - cy) * (y1 - cy))
+
+    const startAngle = Math.atan2(y1 - cy, x1 - cx)
+    const midAngle = Math.atan2(y2 - cy, x2 - cx)
+    const endAngle = Math.atan2(y3 - cy, x3 - cx)
+
+    // Determine direction (CCW or CW)
+    const cross = (x2 - x1) * (y3 - y2) - (y2 - y1) * (x3 - x2)
+    const ccw = cross > 0
+
+    const arc = new Arc(id, cx, cy, r, startAngle, endAngle, ccw)
+    const echo = `Arc created. ${FormatUtils.formatRadius(r)}`
+    ;(arc as unknown as { _echo: string })._echo = echo
+    return arc
   }
 
-  getPreview(x: number, y: number): Arc | null {
-    if (this.step === 2 && this.p1 && this.p2) {
-      const params = calculateArcFrom3Points(this.p1, this.p2, { x, y });
-      if (params) {
-        return new Arc(
-          "PREVIEW",
-          params.cx, params.cy, params.r,
-          params.startAngle, params.endAngle, params.ccw
-        );
-      }
+  getPreview(x: number, y: number) {
+    if (this.step === 2) {
+      const arc = this.calculateArc(this.p1, this.p2, { x, y }, "PREVIEW")
+      return arc
     }
-    return null;
+    return null
   }
 
   getReferencePoints() {
-    const pts = [];
-    if (this.p1) pts.push(this.p1);
-    if (this.p2) pts.push(this.p2);
-    return pts;
+    if (this.step === 1) return [this.p1]
+    if (this.step === 2) return [this.p1, this.p2]
+    return []
   }
 
   getPrompt() {

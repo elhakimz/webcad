@@ -2,20 +2,18 @@ import { Polyline, PolylineVertex } from "../model/Polyline"
 import { Command, CommandResponse } from "./types"
 import { FormatUtils } from "../engine/FormatUtils"
 
-let idCounter = 0
-
 export class PolylineCommand implements Command {
   vertices: PolylineVertex[] = []
   mode: 'line' | 'arc' = 'line'
   drawnEntityId: string | null = null
   lastTangentAngle: number | null = null
 
-  onPoint(x: number, y: number): CommandResponse {
+  onPoint(x: number, y: number, id: string): CommandResponse {
     const isFirst = this.vertices.length === 0;
     
     if (isFirst) {
       this.vertices.push({ x, y, bulge: 0 });
-      this.drawnEntityId = "PL" + (++idCounter);
+      this.drawnEntityId = id;
       return FormatUtils.formatPoint(x, y, "P1");
     }
 
@@ -53,7 +51,7 @@ export class PolylineCommand implements Command {
   }
 
 
-  onInput(text: string) {
+  onInput(text: string, id: string) {
     const val = text.trim().toUpperCase();
 
     if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
@@ -136,7 +134,9 @@ export class PolylineCommand implements Command {
       });
       previewVertices.push({ x, y, bulge: 0 });
       
-      return new Polyline("PREVIEW", previewVertices, false);
+      const preview = new Polyline("PREVIEW", previewVertices, false);
+      (preview as any).type = 'polyline_preview';
+      return preview;
     }
     return null;
   }

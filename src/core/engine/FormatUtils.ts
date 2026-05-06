@@ -14,4 +14,9 @@ export class FormatUtils {
   static formatDistance(d: number): string {
     return `Distance: ${d.toFixed(2)}`;
   }
+
+  static formatAngle(angleRad: number): string {
+    const deg = (angleRad * 180 / Math.PI);
+    return `[Angle:${deg.toFixed(1)}°]`;
+  }
 }

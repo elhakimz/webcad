@@ -2,21 +2,22 @@ import { Point } from "../model/Point"
 import { Command, CommandResponse } from "./types"
 import { FormatUtils } from "../engine/FormatUtils"
 
-let idCounter = 0
-
 export class PointCommand implements Command {
-  onPoint(x: number, y: number): CommandResponse {
-    const echo = FormatUtils.formatPoint(x, y, "Point");
-    const point = new Point("PT" + (++idCounter), x, y);
-    // Add echo to the point object for App to use
-    (point as unknown as { _echo: string })._echo = `${echo}\nPoint created.`;
-    return point;
+  onPoint(x: number, y: number, id: string): CommandResponse {
+    const point = new Point(id, x, y)
+    const echo = FormatUtils.formatPoint(x, y, "Point")
+    ;(point as unknown as { _echo: string })._echo = echo
+    return point
   }
 
-  onInput(text: string) {
+  onInput(text: string, id: string) {
     const val = text.trim().toUpperCase();
     if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
       return { action: "finish" };
     }
+  }
+
+  getPrompt() {
+    return "POINT specify point:";
   }
 }

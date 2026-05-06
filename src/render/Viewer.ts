@@ -35,6 +35,7 @@ export class Viewer {
   private persistentMarkerGroup: THREE.Group = new THREE.Group()
   private textQueue: Text[] = []
   private selectionBox: THREE.Line | null = null
+  private objects: Map<string, THREE.Object3D> = new Map()
 
   constructor(canvas:HTMLCanvasElement){
     this.canvas = canvas
@@ -225,8 +226,16 @@ export class Viewer {
           group.add(new THREE.LineSegments(geo, mat));
         });
         this.previewObject = group;
-      } else if (entity instanceof Polyline) {
-        this.previewObject = this.createPolylineObject(entity, previewColor);
+      } else if (entity instanceof Polyline || (entity as any).type === 'polyline_preview') {
+        this.previewObject = this.createPolylineObject(entity as Polyline, previewColor);
+      } else if ((entity as any).type === 'rotation_preview') {
+        const { angle, baseX, baseY } = entity as any;
+        const radius = 20 / this.camera.zoom;
+        const curve = new THREE.EllipseCurve(baseX, baseY, radius, radius, 0, angle, angle < 0, 0);
+        const points = curve.getPoints(20);
+        const geo = new THREE.BufferGeometry().setFromPoints(points);
+        const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
+        this.previewObject = new THREE.Line(geo, mat);
       } else if (entity instanceof Text) {
         this.previewObject = this.createTextObject(entity, previewColor);
       } else if (entity instanceof Solid) {

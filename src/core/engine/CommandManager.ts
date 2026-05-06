@@ -29,7 +29,7 @@ export class CommandManager {
   active: Command | null = null
   lastPoint: { x: number; y: number } | null = null
 
-  execute(cmd:string, selection?: string[]): CommandResponse {
+  execute(cmd:string, selection?: string[], entities?: Map<string, any>): CommandResponse {
     const parts = cmd.trim().split(/\s+/);
     const cmdName = parts[0].toUpperCase();
     const args = parts.slice(1);
@@ -60,7 +60,8 @@ export class CommandManager {
       response = selection && selection.length > 0 ? "Base point:" : "COPY command started: select object"
     }
     else if(cmdName === "ROTATE"){
-      this.active = new RotateCommand(selection)
+      const targetEntities = selection ? selection.map(id => entities?.get(id)).filter(Boolean) : [];
+      this.active = new RotateCommand(selection, targetEntities)
       response = selection && selection.length > 0 ? "Base point:" : "ROTATE command started: select object"
     }
     else if(cmdName === "SCALE"){
@@ -155,22 +156,41 @@ export class CommandManager {
     return response;
   }
 
-  inputPoint(x:number,y:number): CommandResponse | undefined {
+  inputPoint(x:number,y:number, idGenerator?: (prefix: string) => string): CommandResponse | undefined {
     this.lastPoint = { x, y }
     if(this.active){
-      return this.active.onPoint(x,y)
+      const id = idGenerator ? idGenerator(this.getPrefix(this.active)) : `TMP_${Date.now()}`;
+      return this.active.onPoint(x,y, id)
     }
   }
 
-  inputString(text:string): CommandResponse | undefined {
+  inputString(text:string, idGenerator?: (prefix: string) => string): CommandResponse | undefined {
     const pt = CoordinateParser.parseCoordinate(text, this.lastPoint || undefined)
     if (pt) {
-      return this.inputPoint(pt.x, pt.y)
+      return this.inputPoint(pt.x, pt.y, idGenerator)
     }
 
     if(this.active && this.active.onInput){
-      return this.active.onInput(text)
+      const id = idGenerator ? idGenerator(this.getPrefix(this.active)) : `TMP_${Date.now()}`;
+      return this.active.onInput(text, id)
     }
+  }
+
+  private getPrefix(cmd: Command): string {
+    const name = cmd.constructor.name;
+    const prefixMap: Record<string, string> = {
+      'LineCommand': 'L',
+      'CircleCommand': 'C',
+      'ArcCommand': 'A',
+      'PointCommand': 'PT',
+      'PolylineCommand': 'PL',
+      'PolygonCommand': 'PG',
+      'TextCommand': 'TX',
+      'SolidCommand': 'SD',
+      'TraceCommand': 'TR',
+      'HatchCommand': 'H'
+    };
+    return prefixMap[name] || 'E';
   }
 
   clearActive(){

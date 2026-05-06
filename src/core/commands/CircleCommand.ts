@@ -2,15 +2,13 @@ import { Circle } from "../model/Circle"
 import { Command, CommandResponse } from "./types"
 import { FormatUtils } from "../engine/FormatUtils"
 
-let idCounter = 0
-
 export class CircleCommand implements Command {
   step = 0
   cx = 0;
   cy = 0;
   isDiameterMode = false;
 
-  onPoint(x: number, y: number): CommandResponse {
+  onPoint(x: number, y: number, id: string): CommandResponse {
     if (this.step === 0) {
       this.cx = x;
       this.cy = y;
@@ -21,11 +19,11 @@ export class CircleCommand implements Command {
     } else {
       const dist = Math.sqrt(Math.pow(x - this.cx, 2) + Math.pow(y - this.cy, 2));
       const r = this.isDiameterMode ? dist / 2 : dist;
-      return this.finish(r);
+      return this.finish(r, id);
     }
   }
 
-  onInput(text: string): CommandResponse | undefined {
+  onInput(text: string, id: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     if (this.step === 1 || this.step === 2) {
       if (val === "D" || val === "DIAMETER") {
@@ -42,15 +40,15 @@ export class CircleCommand implements Command {
 
       const num = parseFloat(text);
       if (!isNaN(num) && num > 0) {
-        return this.finish(this.isDiameterMode ? num / 2 : num);
+        return this.finish(this.isDiameterMode ? num / 2 : num, id);
       }
       return this.isDiameterMode ? "Invalid diameter. Diameter:" : "Invalid radius or option. Diameter/<Radius>:";
     }
   }
 
-  private finish(r: number) {
+  private finish(r: number, id: string) {
     const echo = this.isDiameterMode ? FormatUtils.formatDiameter(r * 2) : FormatUtils.formatRadius(r);
-    const circle = new Circle("C" + (++idCounter), this.cx, this.cy, r);
+    const circle = new Circle(id, this.cx, this.cy, r);
     this.step = 0;
     this.isDiameterMode = false;
     (circle as unknown as { _echo: string })._echo = echo;

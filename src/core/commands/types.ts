@@ -14,6 +14,7 @@ export type CommandAction = {
   zoomType?: 'window' | 'all' | 'extents';
   p1?: { x: number; y: number };
   p2?: { x: number; y: number };
+  deleteOriginal?: boolean;
   fromX?: number;
   fromY?: number;
   toX?: number;
@@ -33,8 +34,8 @@ export type CommandAction = {
 export type CommandResponse = string | Entity | CommandAction;
 
 export interface Command {
-  onPoint(x: number, y: number): CommandResponse;
-  onInput?(text: string): CommandResponse | undefined;
+  onPoint(x: number, y: number, id: string): CommandResponse;
+  onInput?(text: string, id: string): CommandResponse | undefined;
   getPreview?(x: number, y: number): Entity | null;
   getReferencePoints?(): { x: number, y: number }[];
   getPrompt?(): string;

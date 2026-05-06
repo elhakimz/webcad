@@ -1,8 +1,6 @@
 import { Command, CommandResponse } from "./types"
 import { Polyline } from "../model/Polyline"
 
-let idCounter = 0;
-
 export class SketchCommand implements Command {
   tolerance = 2.0;
   points: { x: number; y: number }[] = [];
@@ -44,7 +42,7 @@ export class SketchCommand implements Command {
     return "";
   }
 
-  finishSketch(): CommandResponse | { action: "close"; entity: Polyline } | undefined {
+  finishSketch(id: string): CommandResponse | { action: "close"; entity: Polyline } | undefined {
     if (!this.isDrawing) return "";
     this.isDrawing = false;
 
@@ -54,7 +52,7 @@ export class SketchCommand implements Command {
     }
 
     const polyline = new Polyline(
-      "SK" + (++idCounter),
+      id,
       this.points.map(p => ({ x: p.x, y: p.y, bulge: 0 })),
       false
     );
@@ -63,6 +61,10 @@ export class SketchCommand implements Command {
     this.step = 0;
 
     return { action: "close", entity: polyline };
+  }
+
+  onPoint(): CommandResponse {
+    return "";
   }
 
 getPrompt() {

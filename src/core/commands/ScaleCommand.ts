@@ -5,6 +5,7 @@ export class ScaleCommand implements Command {
   targetIds: string[] = []
   baseX = 0
   baseY = 0
+  private lastFactor: number | null = null
 
   constructor(ids?: string[]) {
     if (ids && ids.length > 0) {
@@ -13,7 +14,7 @@ export class ScaleCommand implements Command {
     }
   }
 
-  onInput(text: string): CommandResponse | undefined {
+  onInput(text: string, id: string): CommandResponse | undefined {
     // Step 0: Select object (receives ID)
     if (this.step === 0 && text) {
       this.targetIds = [text];
@@ -23,13 +24,13 @@ export class ScaleCommand implements Command {
 
     if (this.step === 2) {
       const val = parseFloat(text);
-      if (!isNaN(val)) {
+      if (!isNaN(val) && val > 0) {
         return this.finish(val);
       }
     }
   }
 
-  onPoint(x: number, y: number): CommandResponse {
+  onPoint(x: number, y: number, id: string): CommandResponse {
     if (this.step === 0) {
       return "Select entity to scale";
     }
@@ -40,22 +41,29 @@ export class ScaleCommand implements Command {
       this.step = 2;
       return "Scale factor:";
     } else {
-      const dx = x - this.baseX;
-      const dy = y - this.baseY;
-      const factor = Math.sqrt(dx * dx + dy * dy);
-      // Note: Using distance as factor is a bit arbitrary without a reference,
-      // but it's a common interactive pattern.
-      return this.finish(factor);
+      const dist = Math.sqrt(Math.pow(x - this.baseX, 2) + Math.pow(y - this.baseY, 2));
+      const factor = dist; 
+      return this.finish(factor, `Scale factor: ${factor.toFixed(2)}`);
     }
   }
 
-  private finish(factor: number) {
+  private finish(factor: number, echo?: string) {
     const ids = [...this.targetIds];
     const bx = this.baseX;
     const by = this.baseY;
     this.step = 0;
     this.targetIds = [];
-    return { action: "scale", ids, baseX: bx, baseY: by, factor } as const;
+    const res = { action: "scale", ids, baseX: bx, baseY: by, factor } as any;
+    if (echo) res._echo = echo;
+    return res;
+  }
+
+  getPreview(x: number, y: number) {
+    if (this.step === 2) {
+      const dist = Math.sqrt(Math.pow(x - this.baseX, 2) + Math.pow(y - this.baseY, 2));
+      this.lastFactor = dist;
+    }
+    return null;
   }
 
   getReferencePoints() {
@@ -75,6 +83,7 @@ export class ScaleCommand implements Command {
   getPrompt() {
     if (this.step === 0) return "Select entity to scale:";
     if (this.step === 1) return "Base point:";
-    return "Scale factor:";
+    const factorText = this.lastFactor !== null ? ` <${this.lastFactor.toFixed(2)}>` : "";
+    return `Scale factor${factorText}:`;
   }
 }

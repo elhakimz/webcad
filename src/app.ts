@@ -14,14 +14,18 @@ import { Solid } from "./core/model/Solid"
 import { Trace } from "./core/model/Trace"
 import { Shape } from "./core/model/Shape"
 import { Hatch } from "./core/model/Hatch"
-import { OpenCascadeService } from "./core/io/OpenCascadeService"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
 import { SnapEngine, SnapPoint } from "./core/engine/SnapEngine"
 import * as THREE from "three"
 
 import { Layer } from "./core/model/Layer"
-import { LINETYPES } from "./core/engine/MathUtils"
+import { ResultDispatcher } from "./core/engine/handlers/ResultDispatcher"
+import { LayerHandler } from "./core/engine/handlers/LayerHandler"
+import { TransformHandler } from "./core/engine/handlers/TransformHandler"
+import { ViewHandler } from "./core/engine/handlers/ViewHandler"
+import { SystemHandler } from "./core/engine/handlers/SystemHandler"
+import { AppContext } from "./core/engine/handlers/types"
 
 export class App {
   viewer:Viewer
@@ -31,6 +35,7 @@ export class App {
   private selectionStartPoint: { x: number, y: number } | null = null
   private commandLinePrint: ((msg: string) => void) | null = null
   private statusBarUpdate: ((layer: Layer) => void) | null = null
+  private dispatcher: ResultDispatcher;
 
   setCommandLine(printFn: (msg: string) => void) {
     this.commandLinePrint = printFn;
@@ -51,6 +56,12 @@ export class App {
     const directional = new THREE.DirectionalLight(0xffffff, 1);
     directional.position.set(100, 100, 500);
     this.viewer.scene.add(ambient, directional);
+
+    this.dispatcher = new ResultDispatcher();
+    this.dispatcher.registerHandler(new LayerHandler());
+    this.dispatcher.registerHandler(new TransformHandler());
+    this.dispatcher.registerHandler(new ViewHandler());
+    this.dispatcher.registerHandler(new SystemHandler());
   }
 
   private getSnappedPoint(worldX: number, worldY: number): { x: number, y: number, snap: SnapPoint | null } {
@@ -87,7 +98,7 @@ export class App {
       });
     }
 
-    const res = this.cmd.execute(cmd, selection);
+    const res = this.cmd.execute(cmd, selection, this.doc.entities);
     return this.handleResult(res);
   }
 
@@ -104,12 +115,12 @@ export class App {
         });
         const cmdName = activeName?.replace('Command', '').toUpperCase();
         if (cmdName && ids.length > 0) {
-          const res = this.cmd.execute(cmdName, ids);
+          const res = this.cmd.execute(cmdName, ids, this.doc.entities);
           return this.handleResult(res);
         }
       }
     }
-    const result = this.cmd.inputString(text)
+    const result = this.cmd.inputString(text, (p) => this.doc.getNextId(p))
     return this.handleResult(result)
   }
 
@@ -178,7 +189,8 @@ export class App {
     if (this.cmd.active?.constructor.name === 'SketchCommand') {
       const sketchCmd = this.cmd.active as any;
       if (sketchCmd.finishSketch) {
-        const res = sketchCmd.finishSketch();
+        const id = this.doc.getNextId("SK");
+        const res = sketchCmd.finishSketch(id);
         if (res) return this.handleResult(res);
       }
     }
@@ -269,13 +281,13 @@ export class App {
             });
             const cmdName = activeName?.replace('Command', '').toUpperCase();
             if (cmdName && ids.length > 0) {
-                const res = this.cmd.execute(cmdName, ids);
+                const res = this.cmd.execute(cmdName, ids, this.doc.entities);
                 return this.handleResult(res);
             }
         }
     }
 
-    const result = this.cmd.inputPoint(x, y)
+    const result = this.cmd.inputPoint(x, y, (p) => this.doc.getNextId(p))
 
     const cmdName = this.cmd.active?.constructor.name;
     if (cmdName === 'HatchCommand' && this.cmd.active && 'vertices' in this.cmd.active) {
@@ -295,9 +307,7 @@ export class App {
       // Case: New Entity Created (Standard or via 'close')
       let entity: Entity | undefined;
       
-      console.log('Result is object, checking type');
       if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Trace || result instanceof Hatch) {
-        console.log('Direct entity detected');
         entity = result;
       } else if ('action' in result && result.action === 'close' && result.entity) {
         entity = result.entity;
@@ -305,11 +315,17 @@ export class App {
       }
 
       if (entity) {
-        this.addEntity(entity);
+        // For multi-step commands, we might want to update the entity in the document 
+        // without recording history yet, or use a separate "interactive" state.
+        // Current implementation uses the same ID to replace.
         
-        // Only clear active command for single-shot commands
         const activeName = this.cmd.active?.constructor.name;
         const isMultiStep = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand';
+        
+        // If it's an intermediate step of a multi-step command, don't record history
+        const isIntermediate = isMultiStep && !(result && typeof result === 'object' && 'action' in result && result.action === 'close');
+        
+        this.addEntity(entity, !isIntermediate);
 
         if (!isMultiStep || (result && typeof result === 'object' && 'action' in result && result.action === 'close')) {
           this.cmd.clearActive();
@@ -344,351 +360,25 @@ export class App {
         return entity;
       }
 
-      // Case: Specialized Actions
-      const actionResult = result as CommandAction;
-      if (actionResult.action === 'delete' || actionResult.action === 'undo') {
-        const ids = actionResult.ids || (actionResult.id ? [actionResult.id] : []);
-        if (ids.length > 0) {
-          ids.forEach(id => {
-            this.doc.removeEntity(id)
-            this.viewer.removeObject(id)
-          });
-          this.selectedEntityIds.clear();
-          this.viewer.clearHighlight();
-          this.viewer.setPreview(null)
-          this.viewer.render()
-          if (actionResult.action === 'delete') this.cmd.clearActive();
-          this.viewer.setHelpers(null)
-          return `Entities [${ids.join(', ')}] removed.`
-        }
-      }
+      // Case: Specialized Actions - Delegate to Dispatcher
+      const appContext: AppContext = {
+        doc: this.doc,
+        viewer: this.viewer,
+        cmd: this.cmd,
+        selectedEntityIds: this.selectedEntityIds,
+        addEntity: (e, rh, ucl) => this.addEntity(e, rh, ucl),
+        syncFromDocument: () => this.syncFromDocument(),
+        updateLayerVisibility: () => this.updateLayerVisibility(),
+        onStatusBarUpdate: (l) => { if (this.statusBarUpdate) this.statusBarUpdate(l); }
+      };
 
-      if (actionResult.action === 'move' && (actionResult.id || actionResult.ids) && actionResult.dx !== undefined) {
-        const ids = actionResult.ids || (actionResult.id ? [actionResult.id] : []);
-        ids.forEach(id => {
-            const entity = this.doc.getEntity(id);
-            if (entity) {
-                entity.move(actionResult.dx!, actionResult.dy!);
-                this.viewer.moveObject(id, actionResult.dx!, actionResult.dy!);
-            }
-        });
-        this.selectedEntityIds.clear();
-        this.viewer.clearHighlight();
-        this.viewer.setPreview(null)
-        this.viewer.setHelpers(null)
-        this.viewer.render();
-        this.cmd.clearActive();
-        return `Entities [${ids.join(', ')}] moved.`
-      }
-
-      if (actionResult.action === 'rotate' && (actionResult.id || actionResult.ids) && actionResult.angle !== undefined) {
-        const ids = actionResult.ids || (actionResult.id ? [actionResult.id] : []);
-        ids.forEach(id => {
-            const entity = this.doc.getEntity(id);
-            if (entity) {
-                entity.rotate(actionResult.baseX!, actionResult.baseY!, actionResult.angle!);
-                this.addEntity(entity, true, false); // Keep existing layer
-            }
-        });
-        this.selectedEntityIds.clear();
-        this.viewer.clearHighlight();
-        this.viewer.setPreview(null)
-        this.viewer.setHelpers(null)
-        this.viewer.render();
-        this.cmd.clearActive();
-        return `Entities [${ids.join(', ')}] rotated.`
-      }
-
-      if (actionResult.action === 'scale' && (actionResult.id || actionResult.ids) && actionResult.factor !== undefined) {
-        const ids = actionResult.ids || (actionResult.id ? [actionResult.id] : []);
-        ids.forEach(id => {
-            const entity = this.doc.getEntity(id);
-            if (entity) {
-                entity.scale(actionResult.baseX!, actionResult.baseY!, actionResult.factor!);
-                this.addEntity(entity, true, false); // Keep existing layer
-            }
-        });
-        this.selectedEntityIds.clear();
-        this.viewer.clearHighlight();
-        this.viewer.setPreview(null)
-        this.viewer.setHelpers(null)
-        this.viewer.render();
-        this.cmd.clearActive();
-        return `Entities [${ids.join(', ')}] scaled.`
-      }
-
-      if (actionResult.action === 'copy' && (actionResult.id || actionResult.ids) && actionResult.dx !== undefined) {
-        const ids = actionResult.ids || (actionResult.id ? [actionResult.id] : []);
-        const newIds: string[] = [];
-        ids.forEach(id => {
-            const source = this.doc.getEntity(id);
-            if (source) {
-                const newId = source.id + "_COPY_" + Math.random().toString(36).substr(2, 5);
-                const copy = source.clone(newId);
-                copy.move(actionResult.dx!, actionResult.dy!);
-                this.addEntity(copy, true, false); // Keep source layer
-                newIds.push(newId);
-            }
-        });
-        this.selectedEntityIds.clear();
-        this.viewer.clearHighlight();
-        this.viewer.setPreview(null);
-        this.viewer.setHelpers(null);
-        this.viewer.render();
-        this.cmd.clearActive();
-        return `Entities copied to [${newIds.join(', ')}].`;
-      }
-
-      if (actionResult.action === 'mirror' && actionResult.ids && actionResult.p1 && actionResult.p2 && actionResult.deleteOriginal !== undefined) {
-        const { ids, p1, p2, deleteOriginal } = actionResult;
-        const newIds: string[] = [];
-        
-        if (deleteOriginal) {
-          // Mirror in place - modify and update
-          ids.forEach(id => {
-            const source = this.doc.getEntity(id);
-            if (source) {
-              source.mirror(p1, p2);
-              this.addEntity(source, true, false); // Keep layer
-            }
-          });
-        } else {
-          // Keep originals - clone, mirror clone, add clone
-          ids.forEach(id => {
-            const source = this.doc.getEntity(id);
-            if (source) {
-              const target = source.clone(source.id + "_MIRROR_" + Math.random().toString(36).substr(2, 5));
-              target.mirror(p1, p2);
-              this.addEntity(target, true, false); // Keep source layer
-              newIds.push(target.id);
-            }
-          });
-        }
-
-        this.selectedEntityIds.clear();
-        this.viewer.clearHighlight();
-        this.viewer.setPreview(null);
-        this.viewer.setHelpers(null);
-        this.viewer.render();
-        this.cmd.clearActive();
-        return deleteOriginal 
-          ? `Entities mirrored and originals deleted.`
-          : `Entities mirrored to [${newIds.join(', ')}].`;
-      }
-
-      if (actionResult.action === 'create3d' && actionResult.entity) {
-        const ocService = OpenCascadeService.getInstance();
-        const geometry = ocService.shapeToBufferGeometry((actionResult.entity as { id: string, shape: unknown }).shape);
-        this.viewer.addMesh(geometry, actionResult.entity.id);
-        this.viewer.setHelpers(null)
-        this.viewer.render();
-        this.cmd.clearActive();
-        return `3D Entity ${actionResult.entity.id} created using OpenCascade.js.`;
-      }
-
-      if (actionResult.action === 'zoom') {
-        if (actionResult.zoomType === 'window' && actionResult.p1 && actionResult.p2) {
-          this.viewer.zoomWindow(actionResult.p1, actionResult.p2);
-          this.viewer.setPreview(null)
-          this.viewer.setHelpers(null)
-          this.cmd.clearActive();
-          return "Zoomed to window."
-        } else if (actionResult.zoomType === 'all') {
-          this.viewer.zoomAll(this.doc.getAllEntities());
-          this.viewer.setPreview(null)
-          this.viewer.setHelpers(null)
-          this.cmd.clearActive();
-          return "Zoomed to extents."
-        } else if (actionResult.zoomType === 'factor') {
-          const factor = actionResult.factor as number;
-          this.viewer.zoomByFactor(factor);
-          this.viewer.setPreview(null)
-          this.viewer.setHelpers(null)
-          this.cmd.clearActive();
-          return `Zoomed by ${factor}x.`
-        }
-      }
-
-      if (actionResult.action === 'undo') {
-        const actions = this.doc.undo();
-        this.syncFromDocument();
-        this.viewer.setPreview(null)
-        this.viewer.setHelpers(null)
-        return actions.length > 0 ? "Undo successful." : "Nothing to undo."
-      }
-
-      if (actionResult.action === 'redo') {
-        const actions = this.doc.redo();
-        this.syncFromDocument();
-        this.viewer.setPreview(null)
-        this.viewer.setHelpers(null)
-        return actions.length > 0 ? "Redo successful." : "Nothing to redo."
-      }
-
-      if (actionResult.action === 'regen') {
-        this.syncFromDocument();
-        this.cmd.clearActive();
-        return "Regenerating drawing."
-      }
-
-      if (actionResult.action === 'layerList') {
-        const layers = this.doc.layers.listLayers()
-        let output = "Layer list:\n"
-        for (const layer of layers) {
-          const current = layer.name === this.doc.layers.currentLayerName ? " <Current>" : ""
-          const frozen = layer.isFrozen ? " Frozen" : ""
-          const locked = layer.isLocked ? " Locked" : ""
-          const visible = !layer.isVisible ? " Hidden" : ""
-          output += `  ${layer.name} Color:${layer.color} ${layer.linetype}${current}${frozen}${locked}${visible}\n`
-        }
-        this.cmd.clearActive()
-        return output
-      }
-
-      if (actionResult.action === 'layerNew') {
-        const name = actionResult.name as string
-        const layer = this.doc.layers.createLayer(name)
-        if (layer) {
-          this.doc.layers.setCurrentLayer(name)
-          if (this.statusBarUpdate) this.statusBarUpdate(layer)
-          console.log("[LAYER DEBUG] Created layer:", name, "Current:", this.doc.layers.currentLayerName, "Layers:", Array.from(this.doc.layers.layers.keys()))
-          return `Layer "${name}" created and set as current.`
-        }
-        return `Layer "${name}" already exists.`
-      }
-
-      if (actionResult.action === 'layerSetCurrent') {
-        const name = actionResult.name as string
-        const layer = this.doc.layers.setCurrentLayer(name)
-        if (layer) {
-          if (this.statusBarUpdate) this.statusBarUpdate(layer)
-          console.log("[LAYER DEBUG] Set current layer:", name, "All layers:", this.getLayerDebugInfo())
-          return `Layer "${name}" is now current.`
-        }
-        return `Cannot set layer "${name}" as current (not found or frozen).`
-      }
-
-      if (actionResult.action === 'layerOn') {
-        const names = (actionResult.names as string).split(/[,\s]+/)
-        for (const name of names) {
-          const layer = this.doc.layers.getLayer(name)
-          if (layer) layer.isVisible = true
-        }
-        this.updateLayerVisibility()
-        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
-        return "Layers turned ON."
-      }
-
-      if (actionResult.action === 'layerOff') {
-        const names = (actionResult.names as string).split(/[,\s]+/)
-        for (const name of names) {
-          const layer = this.doc.layers.getLayer(name)
-          if (layer) layer.isVisible = false
-        }
-        this.updateLayerVisibility()
-        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
-        console.log("[LAYER DEBUG] Turned OFF:", actionResult.names, "Layers:", this.getLayerDebugInfo())
-        return "Layers turned OFF."
-      }
-
-      if (actionResult.action === 'layerFreeze') {
-        const names = (actionResult.names as string).split(/[,\s]+/)
-        for (const name of names) {
-          const layer = this.doc.layers.getLayer(name)
-          if (layer) layer.isFrozen = true
-        }
-        this.updateLayerVisibility()
-        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
-        return "Layers frozen."
-      }
-
-      if (actionResult.action === 'layerThaw') {
-        const names = (actionResult.names as string).split(/[,\s]+/)
-        for (const name of names) {
-          const layer = this.doc.layers.getLayer(name)
-          if (layer) layer.isFrozen = false
-        }
-        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
-        return "Layers thawed."
-      }
-
-      if (actionResult.action === 'layerLock') {
-        const names = (actionResult.names as string).split(/[,\s]+/)
-        for (const name of names) {
-          const layer = this.doc.layers.getLayer(name)
-          if (layer) layer.isLocked = true
-        }
-        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
-        return "Layers locked."
-      }
-
-      if (actionResult.action === 'layerUnlock') {
-        const names = (actionResult.names as string).split(/[,\s]+/)
-        for (const name of names) {
-          const layer = this.doc.layers.getLayer(name)
-          if (layer) layer.isLocked = false
-        }
-        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
-        return "Layers unlocked."
-      }
-
-      if (actionResult.action === 'layerColor') {
-        const color = actionResult.color as number
-        const names = (actionResult.names as string).split(/[,\s]+/)
-        for (const name of names) {
-          const layer = this.doc.layers.getLayer(name)
-          if (layer) layer.color = color
-        }
-        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
-        return `Layer color set to ${color}.`
-      }
-
-      if (actionResult.action === 'layerLinetype') {
-        const linetype = actionResult.linetype as string
-        const names = (actionResult.names as string).split(/[,\s]+/)
-        for (const name of names) {
-          const layer = this.doc.layers.getLayer(name)
-          if (layer) layer.linetype = linetype
-        }
-        if (this.statusBarUpdate) this.statusBarUpdate(this.doc.layers.getCurrentLayer())
-        return `Layer linetype set to ${linetype}.`
-      }
-
-      if (actionResult.action === 'layerDelete') {
-        const names = (actionResult.names as string).split(/[,\s]+/)
-        let deleted = 0
-        for (const name of names) {
-          if (this.doc.layers.deleteLayer(name)) deleted++
-        }
-        return `Deleted ${deleted} layer(s).`
-      }
-
-      if (actionResult.action === 'linetypeList') {
-        let output = "Available linetypes:\n  CONTINUOUS\n"
-        for (const lt of Object.keys(LINETYPES)) {
-          output += `  ${lt}\n`
-        }
-        this.cmd.clearActive()
-        return output
-      }
-
-      if (actionResult.action === 'linetypeSet') {
-        const lt = actionResult.linetype as string
-        this.cmd.clearActive()
-        return `Current linetype set to ${lt} (Note: entities currently inherit from Layer).`
-      }
-
-      if (actionResult.action === 'finish') {
-        this.viewer.setPreview(null)
-        this.viewer.setHelpers(null)
-        this.cmd.clearActive();
-        return "Command finished."
-      }
+      const actionResult = this.dispatcher.dispatch(result as CommandAction, appContext);
+      if (actionResult !== undefined) return actionResult;
     }
     return result
   }
 
-  private addEntity(entity: Entity, recordHistory = true, useCurrentLayer = true) {
+  public addEntity(entity: Entity, recordHistory = true, useCurrentLayer = true) {
     if (this.doc.getEntity(entity.id)) {
       this.viewer.removeObject(entity.id);
     }
@@ -705,11 +395,8 @@ export class App {
     const layerObj = this.doc.layers.getLayer(layer);
     const isVisible = layerObj ? layerObj.isVisible && !layerObj.isFrozen : true;
 
-    console.log("layerObj", layerObj);
-    
     const layerColor = layerObj ? layerObj.color : 7;
     const linetype = layerObj ? layerObj.linetype : "CONTINUOUS";
-    console.log("[APP DEBUG] entity:", entity.id, "layer:", layer, "layerColor:", layerColor, "linetype:", linetype);
 
     if (entity instanceof Line) {
       this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id, layer, layerColor, isVisible, linetype);
@@ -735,7 +422,7 @@ export class App {
     this.viewer.render();
   }
 
-  private syncFromDocument() {
+  public syncFromDocument() {
     this.viewer.clear();
     for (const entity of this.doc.getAllEntities()) {
       this.addEntity(entity, false, false);
@@ -743,12 +430,11 @@ export class App {
     this.viewer.render();
   }
 
-  private updateLayerVisibility() {
+  public updateLayerVisibility() {
     const layerMap = new Map<string, { isVisible: boolean, isFrozen: boolean }>()
     for (const layer of this.doc.layers.layers.values()) {
       layerMap.set(layer.name, { isVisible: layer.isVisible, isFrozen: layer.isFrozen })
     }
-    console.log("[LAYER DEBUG] updateLayerVisibility:", this.getLayerDebugInfo())
     this.viewer.updateLayerVisibility(layerMap)
   }
 
@@ -760,3 +446,4 @@ export class App {
     return info.join(", ")
   }
 }
+

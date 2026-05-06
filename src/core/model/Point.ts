@@ -46,7 +46,7 @@ export class Point extends Entity {
   clone(newId: string): Point {
     const copy = new Point(newId, this.x, this.y);
     copy.layer = this.layer;
-    copy.properties = { ...this.properties };
+    copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }
 }

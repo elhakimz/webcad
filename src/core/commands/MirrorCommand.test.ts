@@ -72,6 +72,9 @@ describe('MirrorCommand', () => {
     expect(cmd.getReferencePoints()).toEqual([])
     
     cmd.onPoint(10, 10)
-    expect(cmd.getReferencePoints()).toEqual([{ x: 10, y: 10 }, { x: 0, y: 0 }])
+    expect(cmd.getReferencePoints()).toEqual([{ x: 10, y: 10 }])
+
+    cmd.onPoint(20, 20)
+    expect(cmd.getReferencePoints()).toEqual([{ x: 10, y: 10 }, { x: 20, y: 20 }])
   })
 })

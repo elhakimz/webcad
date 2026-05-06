@@ -3,8 +3,6 @@ import { Command, CommandResponse } from "./types"
 import { FormatUtils } from "../engine/FormatUtils"
 import { calculatePolygonVerticesByCenter, calculatePolygonVerticesByEdge, Point } from "../engine/MathUtils"
 
-let idCounter = 0
-
 export class PolygonCommand implements Command {
   step = 0
   sides = 4
@@ -12,14 +10,16 @@ export class PolygonCommand implements Command {
   center: Point | null = null
   inscribed = true
   p1: Point | null = null
+  private drawnEntityId: string | null = null
 
-  onPoint(x: number, y: number): CommandResponse {
+  onPoint(x: number, y: number, id: string): CommandResponse {
     if (this.step === 0) {
       // This shouldn't happen if we follow prompt order, 
       // but if a point is clicked instead of number, we might default.
       this.center = { x, y }
       this.method = 'center'
       this.step = 2
+      this.drawnEntityId = id;
       return "Inscribed in circle/Circumscribed about circle (I/C) <I>:"
     }
 
@@ -27,6 +27,7 @@ export class PolygonCommand implements Command {
       this.center = { x, y }
       this.method = 'center'
       this.step = 2
+      this.drawnEntityId = id;
       const echo = FormatUtils.formatPoint(x, y, "Center")
       return `${echo}\nInscribed in circle/Circumscribed about circle (I/C) <I>:`
     }
@@ -35,6 +36,7 @@ export class PolygonCommand implements Command {
       if (this.method === 'edge') {
         this.p1 = { x, y }
         this.step = 3
+        this.drawnEntityId = id;
         const echo = FormatUtils.formatPoint(x, y, "P1")
         return `${echo}\nSecond endpoint of edge:`
       } else {
@@ -49,12 +51,12 @@ export class PolygonCommand implements Command {
     if (this.step === 3) {
       if (this.method === 'edge') {
         const vertices = calculatePolygonVerticesByEdge(this.p1!, { x, y }, this.sides)
-        const polyline = this.createPolyline(vertices)
+        const polyline = this.createPolyline(vertices, id)
         this.step = 0
         return polyline
       } else {
         const vertices = calculatePolygonVerticesByCenter(this.center!, this.sides, { x, y }, this.inscribed)
-        const polyline = this.createPolyline(vertices)
+        const polyline = this.createPolyline(vertices, id)
         this.step = 0
         return polyline
       }
@@ -63,7 +65,7 @@ export class PolygonCommand implements Command {
     return "Unknown state"
   }
 
-  onInput(text: string): CommandResponse | undefined {
+  onInput(text: string, id: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase()
 
     if (val === "E" || val === "EXIT" || val === "QUIT") {
@@ -114,17 +116,29 @@ export class PolygonCommand implements Command {
       } else {
         vertices = calculatePolygonVerticesByCenter(this.center!, this.sides, { x, y }, this.inscribed)
       }
-      return new Polyline("PREVIEW", vertices.map(v => ({ ...v, bulge: 0 })), true)
+      const preview = new Polyline("PREVIEW", vertices.map(v => ({ ...v, bulge: 0 })), true);
+      (preview as any).type = 'polyline_preview';
+      return preview;
     }
     return null
   }
 
-  private createPolyline(vertices: Point[]): Polyline {
+  private createPolyline(vertices: Point[], id: string): Polyline {
     const polyline = new Polyline(
-      "PL" + (++idCounter),
+      this.drawnEntityId || id,
       vertices.map(v => ({ x: v.x, y: v.y, bulge: 0 })),
       true
     )
+    polyline.properties.isPolygon = true;
+    if (this.method === 'center' && this.center) {
+      polyline.properties.center = { ...this.center };
+    } else {
+      // For edge method, calculate center as average of vertices
+      const cx = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length;
+      const cy = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length;
+      polyline.properties.center = { x: cx, y: cy };
+    }
+
     const methodStr = this.method === 'edge' ? "Edge" : (this.inscribed ? "Inscribed" : "Circumscribed")
     const echo = `Polygon created (${this.sides} sides, ${methodStr}).`
     ;(polyline as unknown as { _echo: string })._echo = echo

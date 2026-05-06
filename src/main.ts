@@ -72,6 +72,7 @@ function updatePrompt() {
       prompt.startsWith("ZOOM [All/Window]") ||
       prompt.includes("Pattern name <") ||
       prompt.startsWith("Enter shape name") ||
+      prompt.startsWith("Delete old objects?") ||
       prompt.startsWith("Scale <");
 
     if (shouldFocus) {
@@ -89,6 +90,9 @@ window.addEventListener("mousemove", (e) => {
   const worldPt = viewer.screenToWorld(e.clientX, e.clientY)
   statusBar.updateCoordinates(worldPt.x, worldPt.y)
   app.move(e.clientX, e.clientY)
+  if (app.cmd.active) {
+    updatePrompt()
+  }
 })
 
 // Global keyboard shortcuts for commands

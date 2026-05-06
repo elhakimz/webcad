@@ -10,14 +10,14 @@ export class EraseCommand implements Command {
     }
   }
 
-  onInput(text: string): CommandResponse | undefined {
+  onInput(text: string, id: string): CommandResponse | undefined {
     // If we receive an ID directly (from hit-test in App)
     if (text) {
       return this.finish(text);
     }
   }
 
-  onPoint(): CommandResponse {
+  onPoint(x: number, y: number, id: string): CommandResponse {
     return "Select entity to erase";
   }
 

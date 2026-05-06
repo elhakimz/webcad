@@ -23,6 +23,10 @@ export class Polyline extends Entity {
       v.x += dx;
       v.y += dy;
     });
+    if (this.properties.center) {
+      this.properties.center.x += dx;
+      this.properties.center.y += dy;
+    }
   }
 
   rotate(baseX: number, baseY: number, angleRad: number) {
@@ -31,6 +35,11 @@ export class Polyline extends Entity {
       v.x = p.x;
       v.y = p.y;
     });
+    if (this.properties.center) {
+      const p = rotatePoint(this.properties.center.x, this.properties.center.y, baseX, baseY, angleRad);
+      this.properties.center.x = p.x;
+      this.properties.center.y = p.y;
+    }
   }
 
   scale(baseX: number, baseY: number, factor: number) {
@@ -38,6 +47,10 @@ export class Polyline extends Entity {
       v.x = baseX + (v.x - baseX) * factor;
       v.y = baseY + (v.y - baseY) * factor;
     });
+    if (this.properties.center) {
+      this.properties.center.x = baseX + (this.properties.center.x - baseX) * factor;
+      this.properties.center.y = baseY + (this.properties.center.y - baseY) * factor;
+    }
   }
 
   mirror(p1: { x: number; y: number }, p2: { x: number; y: number }) {
@@ -45,7 +58,13 @@ export class Polyline extends Entity {
       const reflected = reflectPointAcrossLine({ x: v.x, y: v.y }, p1, p2);
       v.x = reflected.x;
       v.y = reflected.y;
+      v.bulge = -v.bulge;
     });
+    if (this.properties.center) {
+      const reflected = reflectPointAcrossLine(this.properties.center, p1, p2);
+      this.properties.center.x = reflected.x;
+      this.properties.center.y = reflected.y;
+    }
   }
 
   getBoundingBox(): BoundingBox {
@@ -66,7 +85,7 @@ export class Polyline extends Entity {
   clone(newId: string): Polyline {
     const copy = new Polyline(newId, this.vertices.map(v => ({ ...v })), this.closed);
     copy.layer = this.layer;
-    copy.properties = { ...this.properties };
+    copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }
 }

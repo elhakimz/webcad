@@ -14,7 +14,7 @@ export class BlockCommand implements Command {
     }
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
@@ -33,7 +33,7 @@ export class BlockCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string): CommandResponse {
     if (this.step === 1) {
       this.basePoint = { x, y };
       this.step = 2;
@@ -42,11 +42,11 @@ export class BlockCommand implements Command {
     return this.getPrompt();
   }
 
-  private finish() {
-    const res: any = { 
+  private finish(): CommandResponse {
+    const res: CommandResponse = { 
         action: "block", 
         name: this.blockName, 
-        basePoint: this.basePoint, 
+        basePoint: this.basePoint!, 
         ids: [...this.selectedIds] 
     };
     this.step = 0;

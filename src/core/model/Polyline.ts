@@ -24,8 +24,8 @@ export class Polyline extends Entity {
       v.y += dy;
     });
     if (this.properties.center) {
-      this.properties.center.x += dx;
-      this.properties.center.y += dy;
+      if (this.properties.center) (this.properties.center as any).x += dx;
+      if (this.properties.center) (this.properties.center as any).y += dy;
     }
   }
 
@@ -36,9 +36,9 @@ export class Polyline extends Entity {
       v.y = p.y;
     });
     if (this.properties.center) {
-      const p = rotatePoint(this.properties.center.x, this.properties.center.y, baseX, baseY, angleRad);
-      this.properties.center.x = p.x;
-      this.properties.center.y = p.y;
+      const p = rotatePoint((this.properties.center as any).x, (this.properties.center as any).y, baseX, baseY, angleRad);
+      (this.properties.center as any).x = p.x;
+      (this.properties.center as any).y = p.y;
     }
   }
 
@@ -48,8 +48,8 @@ export class Polyline extends Entity {
       v.y = baseY + (v.y - baseY) * factor;
     });
     if (this.properties.center) {
-      this.properties.center.x = baseX + (this.properties.center.x - baseX) * factor;
-      this.properties.center.y = baseY + (this.properties.center.y - baseY) * factor;
+      (this.properties.center as any).x = baseX + ((this.properties.center as any).x - baseX) * factor;
+      (this.properties.center as any).y = baseY + ((this.properties.center as any).y - baseY) * factor;
     }
   }
 
@@ -61,9 +61,9 @@ export class Polyline extends Entity {
       v.bulge = -v.bulge;
     });
     if (this.properties.center) {
-      const reflected = reflectPointAcrossLine(this.properties.center, p1, p2);
-      this.properties.center.x = reflected.x;
-      this.properties.center.y = reflected.y;
+      const reflected = reflectPointAcrossLine(this.properties.center as any, p1, p2);
+      (this.properties.center as any).x = reflected.x;
+      (this.properties.center as any).y = reflected.y;
     }
   }
 

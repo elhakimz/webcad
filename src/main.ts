@@ -260,5 +260,7 @@ canvas.addEventListener("pointerup", async (e) => {
   if (typeof res === 'string' && res) {
     cmdLine.print(res);
   }
+  // Force preview update (X markers, rubber-band) after click
+  app.move(e.clientX, e.clientY);
   updatePrompt();
 });

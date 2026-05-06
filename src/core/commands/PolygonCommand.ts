@@ -1,183 +1,110 @@
 import { Polyline } from "../model/Polyline"
-import { Command, CommandResponse } from "./types"
+import { Command, CommandResponse, PreviewObject } from "./types"
 import { FormatUtils } from "../engine/FormatUtils"
 import { calculatePolygonVerticesByCenter, calculatePolygonVerticesByEdge, Point } from "../engine/MathUtils"
 
 export class PolygonCommand implements Command {
   step = 0
-  sides = 4
-  method: 'center' | 'edge' = 'center'
+  numSides = 4
   center: Point | null = null
   inscribed = true
-  p1: Point | null = null
-  private drawnEntityId: string | null = null
-  private lastRadius: number | null = null
-  private lastAngle: number | null = null
+  edgeP1: Point | null = null
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
-    if (this.step === 0) {
-      // This shouldn't happen if we follow prompt order, 
-      // but if a point is clicked instead of number, we might default.
-      this.center = { x, y }
-      this.method = 'center'
-      this.step = 2
-      this.drawnEntityId = id;
-      return "Inscribed in circle/Circumscribed about circle (I/C) <I>:"
-    }
-
-    if (this.step === 1) {
-      this.center = { x, y }
-      this.method = 'center'
-      this.step = 2
-      this.drawnEntityId = id;
-      return FormatUtils.formatPoint(x, y, "Center")
-    }
-
-    if (this.step === 2) {
-      if (this.method === 'edge') {
-        this.p1 = { x, y }
-        this.step = 3
-        this.drawnEntityId = id;
-        return FormatUtils.formatPoint(x, y, "P1")
-      } else {
-        // If in center mode and we click a point instead of I/C, 
-        // we might just treat it as I and use this point as radius?
-        // Classic WebCAD requires I/C input. 
-        // But for better UX, maybe we default to I.
-        return "Please enter I or C to choose method."
-      }
-    }
-
-    if (this.step === 3) {
-      if (this.method === 'edge') {
-        const vertices = calculatePolygonVerticesByEdge(this.p1!, { x, y }, this.sides)
-        const polyline = this.createPolyline(vertices, id)
-        this.step = 0
-        return polyline
-      } else {
-        const dx = x - this.center!.x;
-        const dy = y - this.center!.y;
-        const dist = Math.sqrt(dx * dx + dy * dy)
-        const vertices = calculatePolygonVerticesByCenter(this.center!, this.sides, { x, y }, this.inscribed)
-        const polyline = this.createPolyline(vertices, id)
-        const echo = `Polygon created. Radius: ${dist.toFixed(2)}`
-        ;(polyline as any)._echo = echo
-        this.step = 0
-        this.lastRadius = null
-        this.lastAngle = null
-        return polyline
-      }
-    }
-
-    return "Unknown state"
-  }
-
-  onInput(text: string, id: string): CommandResponse | undefined {
-    const val = text.trim().toUpperCase()
-
-    if (val === "E" || val === "EXIT" || val === "QUIT") {
-      if (this.step === 1 && val === "E") {
-        this.method = 'edge'
-        this.step = 2
-        return "First endpoint of edge:"
-      }
-      this.lastRadius = null;
-      this.lastAngle = null;
-      return { action: "finish" }
-    }
+  onInput(text: string, _id: string): CommandResponse | undefined {
+    const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
       const n = parseInt(val)
-      if (!isNaN(n) && n >= 3 && n <= 1024) {
-        this.sides = n
+      if (!isNaN(n) && n >= 3) {
+        this.numSides = n
         this.step = 1
         return "Edge/<Center of polygon>:"
       }
-      // If empty, default to 4
-      if (val === "") {
-        this.sides = 4
-        this.step = 1
-        return "Edge/<Center of polygon>:"
-      }
-      return "Requires an integer between 3 and 1024. Number of sides <4>:"
+      return "Number of sides <4>:"
     }
 
-    if (this.step === 2 && this.method === 'center') {
-      if (val === "I" || val === "") {
-        this.inscribed = true
-        this.step = 3
-        return "Radius of polygon:"
+    if (this.step === 1) {
+      if (val === "E" || val === "EDGE") {
+        this.step = 10 // Start Edge flow
+        return "First endpoint of edge:"
       }
-      if (val === "C") {
-        this.inscribed = false
-        this.step = 3
-        return "Radius of polygon:"
-      }
-      return "Inscribed in circle/Circumscribed about circle (I/C) <I>:"
+    }
+
+    if (this.step === 2) {
+      this.inscribed = (val !== "C");
+      this.step = 3
+      return "Radius of polygon:"
     }
   }
 
-  getPreview(x: number, y: number) {
+  onPoint(x: number, y: number, id: string): CommandResponse {
+    if (this.step === 1) {
+      this.center = { x, y }
+      this.step = 2
+      return "Inscribed in circle/Circumscribed about circle (I/C) <I>:"
+    }
+
     if (this.step === 3) {
-      let vertices: Point[] = []
-      if (this.method === 'edge') {
-        vertices = calculatePolygonVerticesByEdge(this.p1!, { x, y }, this.sides)
-      } else {
-        const dx = x - this.center!.x;
-        const dy = y - this.center!.y;
-        this.lastRadius = Math.sqrt(dx * dx + dy * dy);
-        this.lastAngle = Math.atan2(dy, dx) * (180 / Math.PI);
-        vertices = calculatePolygonVerticesByCenter(this.center!, this.sides, { x, y }, this.inscribed)
-      }
-      const preview = new Polyline("PREVIEW", vertices.map(v => ({ ...v, bulge: 0 })), true);
-      (preview as any).type = 'polyline_preview';
-      return preview;
+      const vertices = calculatePolygonVerticesByCenter(this.center!, this.numSides, { x, y }, this.inscribed)
+      const poly = new Polyline(id, vertices.map(v => ({ ...v, bulge: 0 })), true)
+      
+      const dist = Math.sqrt((x - this.center!.x) ** 2 + (y - this.center!.y) ** 2)
+      const angle = Math.atan2(y - this.center!.y, x - this.center!.x) * (180 / Math.PI)
+      const echo = `Polygon created. Radius: ${FormatUtils.formatDistance(dist)} Angle: ${angle.toFixed(2)}°`
+      ;(poly as unknown as { _echo: string })._echo = echo
+      
+      this.step = 0
+      return poly
+    }
+
+    // Edge Flow
+    if (this.step === 10) {
+        this.edgeP1 = { x, y }
+        this.step = 11
+        return "Second endpoint of edge:"
+    }
+
+    if (this.step === 11) {
+        const vertices = calculatePolygonVerticesByEdge(this.edgeP1!, { x, y }, this.numSides)
+        const poly = new Polyline(id, vertices.map(v => ({ ...v, bulge: 0 })), true)
+        this.step = 0
+        return poly
+    }
+
+    return this.getPrompt()
+  }
+
+  getPreview(x: number, y: number): PreviewObject | null {
+    if (this.step === 3) {
+      const vertices = calculatePolygonVerticesByCenter(this.center!, this.numSides, { x, y }, this.inscribed)
+      return { type: 'polyline_preview', vertices: vertices.map(v => ({ ...v, bulge: 0 })), closed: true };
+    }
+    if (this.step === 11) {
+      const vertices = calculatePolygonVerticesByEdge(this.edgeP1!, { x, y }, this.numSides)
+      return { type: 'polyline_preview', vertices: vertices.map(v => ({ ...v, bulge: 0 })), closed: true };
     }
     return null
   }
 
-  private createPolyline(vertices: Point[], id: string): Polyline {
-    const polyline = new Polyline(
-      this.drawnEntityId || id,
-      vertices.map(v => ({ x: v.x, y: v.y, bulge: 0 })),
-      true
-    )
-    polyline.properties.isPolygon = true;
-    if (this.method === 'center' && this.center) {
-      polyline.properties.center = { ...this.center };
-    } else {
-      // For edge method, calculate center as average of vertices
-      const cx = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length;
-      const cy = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length;
-      polyline.properties.center = { x: cx, y: cy };
-    }
-
-    const methodStr = this.method === 'edge' ? "Edge" : (this.inscribed ? "Inscribed" : "Circumscribed")
-    const echo = `Polygon created (${this.sides} sides, ${methodStr}).`
-    ;(polyline as unknown as { _echo: string })._echo = echo
-    return polyline
-  }
-
   getReferencePoints() {
-    if (this.step === 3) {
-      if (this.method === 'edge') return [this.p1!]
-      return [this.center!]
-    }
+    if (this.step === 3) return [this.center!]
+    if (this.step === 11) return [this.edgeP1!]
     return []
   }
 
+  getBasePoint() {
+      if (this.step === 3) return this.center;
+      if (this.step === 11) return this.edgeP1;
+      return null;
+  }
+
   getPrompt() {
-    if (this.step === 0) return "POLYGON Number of sides <4>:";
+    if (this.step === 0) return "Number of sides <4>:";
     if (this.step === 1) return "Edge/<Center of polygon>:";
-    if (this.step === 2) {
-      if (this.method === 'edge') return "First endpoint of edge:";
-      return "Inscribed in circle/Circumscribed about circle (I/C) <I>:";
-    }
-    if (this.step === 3) {
-      if (this.method === 'edge') return "Second endpoint of edge:";
-      const radiusText = this.lastRadius !== null ? ` (R:${this.lastRadius.toFixed(2)} <${this.lastAngle?.toFixed(2)}°>)` : "";
-      return `Radius of polygon${radiusText}:`;
-    }
+    if (this.step === 2) return "Inscribed in circle/Circumscribed about circle (I/C) <I>:";
+    if (this.step === 3) return "Radius of polygon:";
+    if (this.step === 10) return "First endpoint of edge:";
+    if (this.step === 11) return "Second endpoint of edge:";
     return "";
   }
 }

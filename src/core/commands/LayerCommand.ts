@@ -1,144 +1,77 @@
 import { Command, CommandResponse } from "./types"
 
 export class LayerCommand implements Command {
-  step = 0;
-  private currentOption: string | null = null;
-  private pendingColor: number | null = null;
-  private pendingLinetype: string | null = null;
+  step = 0
+  option = ""
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(_x: number, _y: number, _id: string): CommandResponse {
     return this.getPrompt();
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
-    const val = text.trim();
-    const upper = val.toUpperCase();
+  onInput(text: string, _id: string): CommandResponse | undefined {
+    const val = text.trim().toUpperCase();
+    if (val === 'EXIT' || val === '') return { action: 'finish' };
 
     if (this.step === 0) {
-      if (upper === "" || upper === "E" || upper === "EXIT" || upper === "QUIT") {
-        return { action: "finish" };
-      }
-
-      const parts = upper.split(/\s+/);
-      const opt = parts[0];
-      const arg = parts.slice(1).join(" ");
-
-      if (opt === "?" || opt === "LIST") {
-        return { action: "layerList" };
-      }
-
-      if (opt === "N" || opt === "NEW") {
-        if (arg) return { action: "layerNew", name: arg };
-        this.step = 1;
-        this.currentOption = "NEW";
-        return "New layer name:";
-      }
-
-      if (opt === "S" || opt === "SET") {
-        if (arg) return { action: "layerSetCurrent", name: arg };
-        this.step = 1;
-        this.currentOption = "SET";
-        return "Layer name to set as current:";
-      }
-
-      if (["ON", "OFF", "F", "FREEZE", "T", "THAW", "L", "LOCK", "U", "UNLOCK", "D", "DELETE"].includes(opt)) {
-        const actionMap: Record<string, any> = {
-            'ON': 'layerOn', 'OFF': 'layerOff', 
-            'F': 'layerFreeze', 'FREEZE': 'layerFreeze',
-            'T': 'layerThaw', 'THAW': 'layerThaw',
-            'L': 'layerLock', 'LOCK': 'layerLock',
-            'U': 'layerUnlock', 'UNLOCK': 'layerUnlock',
-            'D': 'layerDelete', 'DELETE': 'layerDelete'
-        };
-        if (arg) return { action: actionMap[opt], names: arg };
-        this.step = 1;
-        this.currentOption = opt;
-        return `Layer name(s) for ${opt}:`;
-      }
-
-      if (opt === "C" || opt === "COLOR") {
-        const color = parseInt(parts[1]);
-        const names = parts.slice(2).join(" ");
-        if (!isNaN(color) && names) return { action: "layerColor", color, names };
-        this.step = 2; // Color first
-        this.currentOption = "COLOR";
-        return "Color (0-255):";
-      }
-
-      if (opt === "LT" || opt === "LTYPE") {
-        const lt = parts[1];
-        const names = parts.slice(2).join(" ");
-        if (lt && names) return { action: "layerLinetype", linetype: lt, names };
-        this.step = 3; // Linetype first
-        this.currentOption = "LTYPE";
-        return "Linetype name:";
-      }
-
-      return "Invalid option. " + this.getPrompt();
+      if (val === "?" || val === "LIST") return { action: "layerList" } as CommandResponse;
+      if (val === "N" || val === "NEW") { this.step = 1; this.option = "N"; return "New layer name:"; }
+      if (val === "S" || val === "SET") { this.step = 1; this.option = "S"; return "Current layer name:"; }
+      if (val === "ON") { this.step = 1; this.option = "ON"; return "Layer(s) to turn ON:"; }
+      if (val === "OFF") { this.step = 1; this.option = "OFF"; return "Layer(s) to turn OFF:"; }
+      if (val === "F" || val === "FREEZE") { this.step = 1; this.option = "F"; return "Layer(s) to FREEZE:"; }
+      if (val === "T" || val === "THAW") { this.step = 1; this.option = "T"; return "Layer(s) to THAW:"; }
+      if (val === "L" || val === "LOCK") { this.step = 1; this.option = "L"; return "Layer(s) to LOCK:"; }
+      if (val === "U" || val === "UNLOCK") { this.step = 1; this.option = "U"; return "Layer(s) to UNLOCK:"; }
+      if (val === "C" || val === "COLOR") { this.step = 1; this.option = "C"; return "Color (1-7):"; }
+      if (val === "LT" || val === "LTYPE") { this.step = 1; this.option = "LT"; return "Linetype name:"; }
+      if (val === "D" || val === "DELETE") { this.step = 1; this.option = "D"; return "Layer to delete:"; }
+      if (val === "") return { action: "finish" } as CommandResponse;
+      
+      return "Invalid option. Enter option [?/N/S/ON/OFF/F/T/L/U/C/LT/D]:";
     }
 
-    // Step 1: Awaiting names/single arg
     if (this.step === 1) {
-        const opt = this.currentOption!;
-        this.step = 0;
-        this.currentOption = null;
+      const opt = this.option;
+      this.step = 0;
+      this.option = "";
 
-        if (opt === "NEW") return { action: "layerNew", name: val };
-        if (opt === "SET") return { action: "layerSetCurrent", name: val };
-        
-        const actionMap: Record<string, any> = {
-            'ON': 'layerOn', 'OFF': 'layerOff', 
-            'F': 'layerFreeze', 'FREEZE': 'layerFreeze',
-            'T': 'layerThaw', 'THAW': 'layerThaw',
-            'L': 'layerLock', 'LOCK': 'layerLock',
-            'U': 'layerUnlock', 'UNLOCK': 'layerUnlock',
-            'D': 'layerDelete', 'DELETE': 'layerDelete'
-        };
-        return { action: actionMap[opt], names: val };
+      if (opt === "N") return { action: "layerNew", name: val } as CommandResponse;
+      if (opt === "S") return { action: "layerSetCurrent", name: val } as CommandResponse;
+      if (opt === "ON") return { action: "layerOn", names: val } as CommandResponse;
+      if (opt === "OFF") return { action: "layerOff", names: val } as CommandResponse;
+      if (opt === "F") return { action: "layerFreeze", names: val } as CommandResponse;
+      if (opt === "T") return { action: "layerThaw", names: val } as CommandResponse;
+      if (opt === "L") return { action: "layerLock", names: val } as CommandResponse;
+      if (opt === "U") return { action: "layerUnlock", names: val } as CommandResponse;
+      if (opt === "D") return { action: "layerDelete", name: val } as CommandResponse;
+
+      if (opt === "C") {
+          this.option = val; // Store color
+          this.step = 2; // Need layer name
+          return "Layer name(s) for color " + val + ":";
+      }
+
+      if (opt === "LT") {
+          this.option = val; // Store linetype
+          this.step = 2;
+          return "Layer name(s) for linetype " + val + ":";
+      }
     }
 
-    // Step 2: Color flow (Color -> Names)
     if (this.step === 2) {
-        const color = parseInt(val);
-        if (isNaN(color) || color < 0 || color > 255) return "Invalid color. Color (0-255):";
-        this.pendingColor = color;
-        this.step = 21;
-        return "Layer name(s) for this color:";
-    }
-    if (this.step === 21) {
-        const color = this.pendingColor!;
-        this.pendingColor = null;
+        const value = this.option;
+        const isColor = !isNaN(parseInt(value));
         this.step = 0;
-        return { action: "layerColor", color, names: val };
+        this.option = "";
+        if (isColor) return { action: "layerColor", color: parseInt(value), names: val } as CommandResponse;
+        return { action: "layerLinetype", linetype: value, names: val } as CommandResponse;
     }
-
-    // Step 3: Linetype flow (LT -> Names)
-    if (this.step === 3) {
-        this.pendingLinetype = val;
-        this.step = 31;
-        return "Layer name(s) for this linetype:";
-    }
-    if (this.step === 31) {
-        const lt = this.pendingLinetype!;
-        this.pendingLinetype = null;
-        this.step = 0;
-        return { action: "layerLinetype", linetype: lt, names: val };
-    }
-
-    return undefined;
   }
 
   getPrompt() {
-    if (this.step === 1) {
-        if (this.currentOption === "NEW") return "New layer name:";
-        if (this.currentOption === "SET") return "Layer name to set as current:";
-        return `Layer name(s) for ${this.currentOption}:`;
-    }
-    if (this.step === 2) return "Color (0-255):";
-    if (this.step === 21) return "Layer name(s) for this color:";
-    if (this.step === 3) return "Linetype name:";
-    if (this.step === 31) return "Layer name(s) for this linetype:";
-    
-    return "Enter layer option [?/N/S/ON/OFF/F/T/L/U/C/LT/D]:";
+    if (this.step === 0) return "Layer option [?/N/S/ON/OFF/F/T/L/U/C/LT/D]:";
+    if (this.option === "N") return "New layer name:";
+    if (this.option === "S") return "Current layer name:";
+    return "";
   }
 }

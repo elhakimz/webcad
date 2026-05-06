@@ -11,7 +11,7 @@ export class TrimCommand implements Command {
     }
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
@@ -30,11 +30,11 @@ export class TrimCommand implements Command {
       // User typed an ID to trim?
       // Typically TRIM is done by picking a segment. 
       // But we can support ID as well.
-      return { action: "trim", boundaryIds: [...this.boundaryIds], id: val } as any;
+      return { action: "trim", boundaryIds: [...this.boundaryIds], id: val } as CommandResponse;
     }
   }
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(_x: number, _y: number, _id: string): CommandResponse {
     if (this.step === 0) return "Select cutting edges:";
     if (this.step === 1) {
       // Need to find which entity is at (x,y)

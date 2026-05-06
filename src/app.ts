@@ -31,6 +31,7 @@ import { DraftingHandler } from "./core/engine/handlers/DraftingHandler"
 import { BlockHandler } from "./core/engine/handlers/BlockHandler"
 import { AppContext } from "./core/engine/handlers/types"
 import { DraftingState } from "./core/engine/DraftingState"
+import { HasBasePoint, HasUpdateSketch, HasStartSketch, HasFinishSketch, HasSelectedIds } from "./core/commands/types"
 
 export class App {
   viewer:Viewer
@@ -95,15 +96,18 @@ export class App {
     }
 
     // 2. Ortho Constraint (lowest priority)
-    if (this.drafting.orthoEnabled && this.cmd.active && (this.cmd.active as any).getBasePoint) {
-        const base = (this.cmd.active as any).getBasePoint();
-        if (base && this.cmd.active && this.cmd.active.step && this.cmd.active.step >= 1) {
-            const dx = Math.abs(x - base.x);
-            const dy = Math.abs(y - base.y);
-            if (dx > dy) {
-                y = base.y;
-            } else {
-                x = base.x;
+    if (this.drafting.orthoEnabled && this.cmd.active) {
+        const basePointCmd = this.cmd.active as unknown as HasBasePoint;
+        if (typeof basePointCmd.getBasePoint === 'function') {
+            const base = basePointCmd.getBasePoint();
+            if (base && this.cmd.active.step && this.cmd.active.step >= 1) {
+                const dx = Math.abs(x - base.x);
+                const dy = Math.abs(y - base.y);
+                if (dx > dy) {
+                    y = base.y;
+                } else {
+                    x = base.x;
+                }
             }
         }
     }
@@ -188,7 +192,7 @@ export class App {
       if (activeName === 'BlockCommand' && this.cmd.active && this.cmd.active.step === 2) {
           const ids = Array.from(this.selectedEntityIds);
           // We manually feed the IDs to the command
-          const blockCmd = this.cmd.active as any;
+          const blockCmd = this.cmd.active as unknown as HasSelectedIds;
           blockCmd.selectedIds = ids;
           // Trigger finish by passing empty string
           const result = this.cmd.inputString("", (p) => this.doc.getNextId(p));
@@ -213,11 +217,9 @@ export class App {
         this.viewer.setActivePointMarker(null, null);
     }
 
-    if (this.cmd.active?.constructor.name === 'SketchCommand') {
-      const sketchCmd = this.cmd.active as any;
-      if (sketchCmd.updateSketch) {
-        sketchCmd.updateSketch(x, y);
-      }
+    const sketchCmd = this.cmd.active as unknown as HasUpdateSketch;
+    if (sketchCmd && typeof sketchCmd.updateSketch === 'function') {
+      sketchCmd.updateSketch(x, y);
     }
 
     if (this.selectionStartPoint) {
@@ -237,9 +239,10 @@ export class App {
       this.viewer.setHelpers(null);
     }
 
-    if (this.cmd.active && (this.cmd.active as any).getBasePoint) {
-      const basePt = (this.cmd.active as any).getBasePoint();
-      if (basePt && this.cmd.active && this.cmd.active.step >= 1) {
+    const basePointCmd = this.cmd.active as unknown as HasBasePoint;
+    if (basePointCmd && typeof basePointCmd.getBasePoint === 'function') {
+      const basePt = basePointCmd.getBasePoint();
+      if (basePt && this.cmd.active && this.cmd.active.step && this.cmd.active.step >= 1) {
         this.viewer.setBaseLine(basePt, { x, y });
       } else {
         this.viewer.setBaseLine(null, null);
@@ -254,26 +257,22 @@ export class App {
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
     const { x, y } = snapped;
 
-    if (this.cmd.active?.constructor.name === 'SketchCommand') {
-      const sketchCmd = this.cmd.active as any;
-      if (sketchCmd.startSketch) {
-        const res = sketchCmd.startSketch(x, y);
-        if (res) this.handleResult(res);
-        return;
-      }
+    const sketchCmd = this.cmd.active as unknown as HasStartSketch;
+    if (sketchCmd && typeof sketchCmd.startSketch === 'function') {
+      const res = sketchCmd.startSketch(x, y);
+      if (res) this.handleResult(res as CommandResponse);
+      return;
     }
 
     this.selectionStartPoint = worldPt;
   }
 
   async pointerUp(screenX: number, screenY: number): Promise<CommandResponse | undefined> {
-    if (this.cmd.active?.constructor.name === 'SketchCommand') {
-      const sketchCmd = this.cmd.active as any;
-      if (sketchCmd.finishSketch) {
-        const id = this.doc.getNextId("SK");
-        const res = sketchCmd.finishSketch(id);
-        if (res) return await this.handleResult(res);
-      }
+    const sketchCmd = this.cmd.active as unknown as HasFinishSketch;
+    if (sketchCmd && typeof sketchCmd.finishSketch === 'function') {
+      const id = this.doc.getNextId("SK");
+      const res = sketchCmd.finishSketch(id);
+      if (res) return await this.handleResult(res as CommandResponse);
     }
 
     if (!this.selectionStartPoint) return;
@@ -356,7 +355,7 @@ export class App {
             if (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) {
                 const res = await this.cmd.inputString(entity.id, (p) => this.doc.getNextId(p));
                 if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend')) {
-                    (res as any).pickPt = { x: worldPt.x, y: worldPt.y };
+                    (res as CommandAction).pickPt = { x: worldPt.x, y: worldPt.y };
                 }
                 return await this.handleResult(res);
             }
@@ -382,15 +381,6 @@ export class App {
 
     const result = this.cmd.inputPoint(x, y, (p) => this.doc.getNextId(p))
 
-    const cmdName = this.cmd.active?.constructor.name;
-    if (cmdName === 'HatchCommand' && this.cmd.active && 'vertices' in this.cmd.active) {
-      const hatchCmd = this.cmd.active as { vertices: { x: number; y: number }[]; step: number };
-      if (hatchCmd.step === 0 && hatchCmd.vertices.length > 0) {
-        const lastPt = hatchCmd.vertices[hatchCmd.vertices.length - 1];
-        this.viewer.addBoundaryMarker(lastPt.x, lastPt.y);
-      }
-    }
-
     return await this.handleResult(result);
   }
 
@@ -399,33 +389,44 @@ export class App {
     if (result && typeof result === 'object') {
       // Case: New Entity Created (Standard or via 'close')
       let entity: Entity | undefined;
+      let isCloseAction = false;
       
       if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Trace || result instanceof Hatch || result instanceof Shape) {
         entity = result;
       } else if ('action' in result && result.action === 'close' && result.entity) {
         entity = result.entity;
-        this.cmd.clearActive();
+        isCloseAction = true;
       }
 
       if (entity) {
         const activeName = this.cmd.active?.constructor.name;
-        // Continuous commands remain active after creating an entity
+        const isPolyline = activeName === 'PolylineCommand';
+        const isSolid = activeName === 'SolidCommand';
+        const isMultiPoint = isPolyline || isSolid;
+
+        // Check if we are updating an existing entity in the same command
+        const existing = this.doc.getEntity(entity.id);
+        
+        // Start transaction only if the entity doesn't exist yet
+        if (!existing) {
+            this.doc.history.startTransaction();
+        }
+
+        // Always record history. addEntity handles recordTransform if existing, or recordAdd if new.
+        this.addEntity(entity, true);
+
+        // Commit immediately for standard entities, or at the end of a multi-point command
+        if (!isMultiPoint || isCloseAction) {
+            this.doc.history.commitTransaction();
+        }
+
         const isContinuous = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand' || activeName === 'LayerCommand' || activeName === 'OffsetCommand' || activeName === 'TrimCommand' || activeName === 'ExtendCommand';
-        
-        // Some continuous commands update the SAME entity ID during interaction (Polyline, Solid)
-        // Others create a NEW entity ID for every segment (Line, Trace)
-        const updatesExisting = activeName === 'PolylineCommand' || activeName === 'SolidCommand';
-        
-        // If it's an intermediate update of an existing entity, don't record history yet
-        const isIntermediate = updatesExisting && !(result && typeof result === 'object' && 'action' in result && result.action === 'close');      
 
-        this.addEntity(entity, !isIntermediate);
-
-        if (!isContinuous || (result && typeof result === 'object' && 'action' in result && result.action === 'close')) {
+        if (!isContinuous || isCloseAction) {
           this.terminateActiveCommand();
         }
 
-        if (result && typeof result === 'object' && 'action' in result && result.action === 'close') {
+        if (isCloseAction) {
            return "Command finished.";
         }
 
@@ -464,7 +465,13 @@ export class App {
         onStatusBarUpdate: (l) => { if (this.statusBarUpdate) this.statusBarUpdate(l); }
       };
 
-      const actionResult = await this.dispatcher.dispatch(result as CommandAction, appContext);
+      const actionResult = await (async () => {
+          this.doc.history.startTransaction();
+          const res = await this.dispatcher.dispatch(result as CommandAction, appContext);
+          this.doc.history.commitTransaction();
+          return res;
+      })();
+
       if (actionResult !== undefined) {
         // If the action resulted in clearing the active command, ensure markers are cleared too
         const activeName = this.cmd.active?.constructor.name;
@@ -480,8 +487,17 @@ export class App {
   }
 
   public addEntity(entity: Entity, recordHistory = true, useCurrentLayer = true) {
-    if (this.doc.getEntity(entity.id)) {
+    const existing = this.doc.getEntity(entity.id);
+    if (existing) {
+      if (recordHistory) {
+        // Record transformation from old state to new state
+        this.doc.recordTransform(existing.clone(existing.id), entity);
+      }
       this.viewer.removeObject(entity.id);
+    } else {
+      if (recordHistory) {
+        this.doc.recordAdd(entity);
+      }
     }
 
     if (useCurrentLayer) {
@@ -489,9 +505,6 @@ export class App {
     }
 
     this.doc.addEntity(entity);
-    if (recordHistory) {
-      this.doc.recordAdd(entity);
-    }
     const layer = entity.layer;
     const layerObj = this.doc.layers.getLayer(layer);
     const isVisible = layerObj ? layerObj.isVisible && !layerObj.isFrozen : true;
@@ -504,6 +517,7 @@ export class App {
     } else if (entity instanceof Circle) {
       this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id, layer, layerColor, isVisible, linetype);
     } else if (entity instanceof Arc) {
+
       this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id, layer, layerColor, isVisible, linetype);
     } else if (entity instanceof Point) {
       this.viewer.addPoint(entity.x, entity.y, entity.id, layer, layerColor, isVisible);
@@ -522,7 +536,12 @@ export class App {
     } else if (entity instanceof Insert) {
       const block = this.doc.blocks.getBlock(entity.blockName);
       if (block) {
-        this.viewer.addInsert(entity, block, layer, isVisible);
+        // Pass all layer properties for internal entity resolution
+        const layerProps = new Map<string, {color: number, linetype: string}>();
+        this.doc.layers.listLayers().forEach(l => {
+            layerProps.set(l.name, { color: l.color, linetype: l.linetype });
+        });
+        this.viewer.addInsert(entity, block, layerProps, layer, isVisible);
       }
     }
     this.viewer.render();
@@ -546,6 +565,7 @@ export class App {
 
   public terminateActiveCommand() {
     this.cmd.clearActive();
+    this.doc.history.commitTransaction(); // Commit any dangling transaction (e.g. from PLINE)
     this.viewer.setHelpers(null);
     this.viewer.setPreview(null);
     this.viewer.setActivePointMarker(null, null);

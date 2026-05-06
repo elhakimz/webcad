@@ -3,34 +3,25 @@ import { CommandAction, CommandResponse } from "../../commands/types";
 
 export class ViewHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return action.action === 'zoom';
+    return ['zoom', 'pan'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { viewer, cmd, doc } = context;
+    const { viewer, terminateActiveCommand } = context;
 
-    if (action.zoomType === 'window' && action.p1 && action.p2) {
-      viewer.zoomWindow(action.p1, action.p2);
-      this.cleanup(context);
-      return "Zoomed to window.";
-    } else if (action.zoomType === 'all') {
-      viewer.zoomAll(doc.getAllEntities());
-      this.cleanup(context);
-      return "Zoomed to extents.";
-    } else if (action.zoomType === 'factor') {
-      const factor = action.factor as number;
-      viewer.zoomByFactor(factor);
-      this.cleanup(context);
-      return `Zoomed by ${factor}x.`;
+    if (action.action === 'zoom') {
+      if (action.zoomType === 'all' || action.zoomType === 'extents') {
+        viewer.zoomAll(context.doc.getAllEntities());
+        terminateActiveCommand();
+        return "Zooming to all entities.";
+      }
+      if (action.zoomType === 'window' && action.p1 && action.p2) {
+        viewer.zoomWindow(action.p1, action.p2);
+        terminateActiveCommand();
+        return "Zooming to window.";
+      }
     }
 
     return undefined;
-  }
-
-  private cleanup(context: AppContext) {
-    const { viewer, cmd } = context;
-    viewer.setPreview(null);
-    viewer.setHelpers(null);
-    cmd.clearActive();
   }
 }

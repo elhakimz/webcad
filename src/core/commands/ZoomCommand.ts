@@ -1,66 +1,41 @@
-import { Command, CommandResponse, Entity } from "./types"
+import { Command, CommandResponse } from "./types"
 
 export class ZoomCommand implements Command {
   step = 0
-  p1: { x: number; y: number } | null = null
-  center: { x: number; y: number } | null = null
+  p1 = { x: 0, y: 0 }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
-    
-    if (val === "" || val === "A" || val === "ALL" || val === "E" || val === "EXTENTS") {
-      return { action: "zoom", zoomType: "all" };
+    if (val === "A" || val === "ALL") {
+      return { action: "zoom", zoomType: "all" } as CommandResponse;
     }
-    if (val === "W" || val === "WINDOW") {
-      this.step = 0;
-      this.p1 = null;
-      return "Specify first corner:";
-    }
-    if (val === "C" || val === "CENTER") {
-      this.step = 10;
-      return "Specify center point:";
-    }
-    const num = parseFloat(text);
-    if (!isNaN(num) && this.step === 10) {
-      this.center = { x: num, y: 0 };
-      return "Specify magnification or zoom factor:";
-    }
-    if (!isNaN(num)) {
-      return { action: "zoom", zoomType: "factor", factor: num };
+    if (val === "E" || val === "EXTENTS") {
+        return { action: "zoom", zoomType: "extents" } as CommandResponse;
     }
   }
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string): CommandResponse {
     if (this.step === 0) {
-      this.p1 = { x, y };
-      this.step = 1;
-      return "Specify opposite corner:";
-    } else if (this.step === 1) {
-      const p2 = { x, y };
-      const p1 = this.p1!;
-      this.step = 0;
-      this.p1 = null;
-      return { action: "zoom", zoomType: "window", p1, p2 };
-    } else if (this.step === 10) {
-      this.center = { x, y };
-      this.step = 11;
-      return "Specify zoom factor:";
+      this.p1 = { x, y }
+      this.step = 1
+      return "Second point:"
+    } else {
+      const p1 = this.p1
+      const p2 = { x, y }
+      this.step = 0
+      return { action: "zoom", zoomType: "window", p1, p2 } as CommandResponse
     }
-    return { action: "zoom", zoomType: "all" };
   }
 
-  getReferencePoints() {
-    return [];
-  }
-
-  getPreview(x: number, y: number): Entity | null {
-    if (this.step === 1 && this.p1) {
-      return { type: 'zoomwindow', id: 'zoom-window', x1: this.p1.x, y1: this.p1.y, x2: x, y2: y } as Entity;
+  getPreview(x: number, y: number): import('./types').PreviewObject | null {
+    if (this.step === 1) {
+      return { type: 'zoomwindow', id: "ZOOM_PREVIEW", x1: this.p1.x, y1: this.p1.y, x2: x, y2: y };
     }
-    return null;
+    return null
   }
 
   getPrompt() {
-    return "ZOOM [All/Window/Center/<Window corner>]:";
+    if (this.step === 0) return "All/Center/Dynamic/Extents/Left/Previous/Vmax/Window/<Scale(X/XP)>:";
+    return "Second point:";
   }
 }

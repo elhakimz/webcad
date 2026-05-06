@@ -21,16 +21,8 @@ function degToRad(a: number): number {
 function normalizeDash(dash: number[]): number[] {
   if (!dash || dash.length === 0) return [];
 
-  const result: number[] = [];
-  for (let i = 0; i < dash.length; i++) {
-    const val = dash[i];
-    if (val > 0) {
-      result.push(val);
-    } else if (val < 0) {
-      result.push(Math.abs(val));
-    }
-  }
-  return result;
+  // Preserve negative values as they indicate spaces/gaps in PAT format
+  return [...dash];
 }
 
 export function convertPATLine(line: PATLine): LineFamily {

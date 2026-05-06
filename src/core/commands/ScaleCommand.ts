@@ -1,11 +1,11 @@
 import { Command, CommandResponse } from "./types"
+import { Point } from "../engine/MathUtils"
 
 export class ScaleCommand implements Command {
   step = 0
+  basePoint: Point = { x: 0, y: 0 }
   targetIds: string[] = []
-  baseX = 0
-  baseY = 0
-  private lastFactor: number | null = null
+  factor = 1.0
 
   constructor(ids?: string[]) {
     if (ids && ids.length > 0) {
@@ -14,76 +14,67 @@ export class ScaleCommand implements Command {
     }
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
-    // Step 0: Select object (receives ID)
-    if (this.step === 0 && text) {
-      this.targetIds = [text];
+  onInput(text: string, _id: string): CommandResponse | undefined {
+    const val = text.trim().toUpperCase();
+    if (this.step === 0 && val !== "") {
+      this.targetIds = [val];
       this.step = 1;
       return "Base point:";
     }
 
     if (this.step === 2) {
-      const val = parseFloat(text);
-      if (!isNaN(val) && val > 0) {
-        return this.finish(val);
+      const n = parseFloat(val);
+      if (!isNaN(n)) {
+          const ids = [...this.targetIds];
+          const factor = n;
+          const baseX = this.basePoint.x;
+          const baseY = this.basePoint.y;
+          this.step = 0;
+          this.targetIds = [];
+          return { action: "scale", ids, factor, baseX, baseY } as CommandResponse;
       }
     }
   }
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
-    if (this.step === 0) {
-      return "Select entity to scale";
-    }
-
+  onPoint(x: number, y: number, _id: string): CommandResponse {
     if (this.step === 1) {
-      this.baseX = x;
-      this.baseY = y;
-      this.step = 2;
-      return "Scale factor:";
-    } else {
-      const dist = Math.sqrt(Math.pow(x - this.baseX, 2) + Math.pow(y - this.baseY, 2));
-      const factor = dist; 
-      return this.finish(factor, `Scale factor: ${factor.toFixed(2)}`);
+      this.basePoint = { x, y }
+      this.step = 2
+      return "Scale factor:"
+    } else if (this.step === 2) {
+      const dist = Math.sqrt((x - this.basePoint.x) ** 2 + (y - this.basePoint.y) ** 2)
+      // Reference scale of 1.0 at distance 10
+      const factor = dist / 10.0
+      const ids = [...this.targetIds];
+      const baseX = this.basePoint.x;
+      const baseY = this.basePoint.y;
+      this.step = 0;
+      this.targetIds = [];
+      return { action: "scale", ids, factor, baseX, baseY } as CommandResponse;
     }
+    return this.getPrompt();
   }
 
-  private finish(factor: number, echo?: string) {
-    const ids = [...this.targetIds];
-    const bx = this.baseX;
-    const by = this.baseY;
-    this.step = 0;
-    this.targetIds = [];
-    const res = { action: "scale", ids, baseX: bx, baseY: by, factor } as any;
-    if (echo) res._echo = echo;
-    return res;
-  }
-
-  getPreview(x: number, y: number) {
+  getPreview(x: number, y: number): any {
     if (this.step === 2) {
-      const dist = Math.sqrt(Math.pow(x - this.baseX, 2) + Math.pow(y - this.baseY, 2));
-      this.lastFactor = dist;
+      const dist = Math.sqrt((x - this.basePoint.x) ** 2 + (y - this.basePoint.y) ** 2);
+      return { type: 'scale_preview', factor: dist / 10.0, baseX: this.basePoint.x, baseY: this.basePoint.y };
     }
-    return null;
+    return null
   }
 
   getReferencePoints() {
-    if (this.step >= 1) {
-      return [{ x: this.baseX, y: this.baseY }];
-    }
-    return [];
+    if (this.step === 2) return [this.basePoint]
+    return []
   }
 
-  getBasePoint(): { x: number; y: number } | null {
-    if (this.step >= 1) {
-      return { x: this.baseX, y: this.baseY };
-    }
-    return null;
+  getBasePoint() {
+      return this.step === 2 ? this.basePoint : null;
   }
 
   getPrompt() {
-    if (this.step === 0) return "Select entity to scale:";
+    if (this.step === 0) return "Select objects:";
     if (this.step === 1) return "Base point:";
-    const factorText = this.lastFactor !== null ? ` <${this.lastFactor.toFixed(2)}>` : "";
-    return `Scale factor${factorText}:`;
+    return "Scale factor:";
   }
 }

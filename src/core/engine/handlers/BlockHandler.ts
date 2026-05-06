@@ -1,6 +1,7 @@
 import { ActionHandler, AppContext } from "./types";
 import { CommandAction, CommandResponse } from "../../commands/types";
 import { Insert } from "../../model/Insert";
+import { Entity } from "../../model/Entity";
 
 export class BlockHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -8,7 +9,7 @@ export class BlockHandler implements ActionHandler {
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, cmd, addEntity, terminateActiveCommand } = context;
+    const { doc, addEntity, terminateActiveCommand } = context;
 
     if (action.action === 'blockList') {
         const blocks = doc.blocks.listBlocks();
@@ -28,15 +29,16 @@ export class BlockHandler implements ActionHandler {
             const e = doc.getEntity(id);
             if (e) {
                 // Remove from document but keep in block definition
+                doc.recordRemove(e);
                 doc.removeEntity(id);
                 context.viewer.removeObject(id);
                 return e;
             }
             return null;
-        }).filter(Boolean);
+        }).filter((e): e is Entity => e !== null);
 
         if (blockEntities.length > 0) {
-            doc.blocks.addBlock(name, basePoint, blockEntities as any);
+            doc.blocks.addBlock(name, basePoint, blockEntities);
             context.selectedEntityIds.clear();
             terminateActiveCommand();
             return `Block "${name}" defined with ${blockEntities.length} objects.`;

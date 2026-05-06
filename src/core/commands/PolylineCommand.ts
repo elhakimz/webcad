@@ -1,150 +1,92 @@
 import { Polyline, PolylineVertex } from "../model/Polyline"
-import { Command, CommandResponse } from "./types"
+import { Command, CommandResponse, PreviewObject } from "./types"
 import { FormatUtils } from "../engine/FormatUtils"
+import { Point } from "../engine/MathUtils"
 
 export class PolylineCommand implements Command {
+  step = 0
   vertices: PolylineVertex[] = []
-  mode: 'line' | 'arc' = 'line'
-  drawnEntityId: string | null = null
-  lastTangentAngle: number | null = null
+  closed = false
+  isArcMode = false
+  private entityId: string | null = null;
 
   onPoint(x: number, y: number, id: string): CommandResponse {
-    const isFirst = this.vertices.length === 0;
-    
-    if (isFirst) {
-      this.vertices.push({ x, y, bulge: 0 });
-      this.drawnEntityId = id;
-      return FormatUtils.formatPoint(x, y, "P1");
-    }
-
-    const lastV = this.vertices[this.vertices.length - 1];
-    let bulge = 0;
-
-    const dx = x - lastV.x;
-    const dy = y - lastV.y;
-    const chordAngle = Math.atan2(dy, dx);
-
-    if (this.mode === 'arc') {
-      const tangent = this.lastTangentAngle ?? chordAngle;
-      let alpha = chordAngle - tangent;
-      while (alpha <= -Math.PI) alpha += 2 * Math.PI;
-      while (alpha > Math.PI) alpha -= 2 * Math.PI;
-      
-      bulge = Math.tan(alpha / 2);
-      this.lastTangentAngle = chordAngle + alpha;
+    if (this.step === 0) {
+      this.entityId = id;
+      this.vertices = [{ x, y, bulge: 0 }]
+      this.step = 1
+      return FormatUtils.formatPoint(x, y, "P1")
     } else {
-      this.lastTangentAngle = chordAngle;
+      const v: PolylineVertex = { x, y, bulge: 0 }
+      
+      // If we were in ARC mode, the previous vertex should have a bulge
+      if (this.isArcMode) {
+          const prev = this.vertices[this.vertices.length - 1];
+          // Simple bulge for semi-circle for now if in arc mode
+          prev.bulge = 0.5; 
+      }
+
+      this.vertices.push(v)
+      const poly = new Polyline(this.entityId || id, [...this.vertices], this.closed)
+      return poly
     }
+  }
 
-    lastV.bulge = bulge;
-    this.vertices.push({ x, y, bulge: 0 });
+  onInput(text: string, id: string): CommandResponse | undefined {
+    const val = text.trim().toUpperCase();
+    const currentId = this.entityId || id;
+    if (val === "C" || val === "CLOSE") {
+      this.closed = true
+      const poly = new Polyline(currentId, [...this.vertices], true)
+      return { action: "close", entity: poly } as CommandResponse;
+    }
+    if (val === "U" || val === "UNDO") {
+      if (this.vertices.length > 1) {
+        this.vertices.pop()
+        return new Polyline(currentId, [...this.vertices], false)
+      }
+      return "Nothing to undo. PLINE specify start point:";
+    }
+    if (val === "A" || val === "ARC") {
+        this.isArcMode = true;
+        return "Arc mode enabled. Specify endpoint of arc:";
+    }
+    if (val === "L" || val === "LINE") {
+        this.isArcMode = false;
+        return "Line mode enabled. Specify next point:";
+    }
+    if (val === "" && this.vertices.length > 1) {
+        const poly = new Polyline(currentId, [...this.vertices], false)
+        return { action: "close", entity: poly } as CommandResponse;
+    }
+  }
 
-    return new Polyline(this.drawnEntityId!, [...this.vertices], false);
+  getPreview(x: number, y: number): PreviewObject | null {
+    if (this.step === 1 && this.vertices.length > 0) {
+      const tempVertices = [...this.vertices, { x, y, bulge: this.isArcMode ? 0.5 : 0 }]
+      return { type: 'polyline_preview', vertices: tempVertices, closed: this.closed };
+    }
+    return null
+  }
+
+  getReferencePoints(): Point[] {
+    if (this.vertices.length > 0) {
+        return this.vertices.map(v => ({ x: v.x, y: v.y }));
+    }
+    return []
+  }
+
+  getBasePoint() {
+      if (this.vertices.length > 0) {
+          const last = this.vertices[this.vertices.length - 1];
+          return { x: last.x, y: last.y };
+      }
+      return null;
   }
 
   getPrompt() {
-    if (this.vertices.length === 0) return "PLINE specify start point:";
-    if (this.mode === 'arc') {
-      return "Angle/CEnter/CLose/Direction/Halfwidth/Line/Radius/Second pt/Undo/Width/<Endpoint of arc>:";
-    }
-    return "Arc/Close/Halfwidth/Length/Undo/Width/<Endpoint of line>:";
-  }
-
-
-  onInput(text: string, id: string) {
-    const val = text.trim().toUpperCase();
-
-    if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
-      return { action: "finish" };
-    }
-
-    if (val === "C" || val === "CLOSE") {
-      if (this.vertices.length >= 3) {
-        const pline = new Polyline(this.drawnEntityId!, [...this.vertices], true);
-        return { action: "close", entity: pline };
-      }
-      return "Requires at least 3 points to close.";
-    }
-
-    if (val === "U" || val === "UNDO") {
-      if (this.vertices.length >= 2) {
-        this.vertices.pop();
-        // Reset bulge of the new last vertex
-        if (this.vertices.length > 0) {
-          this.vertices[this.vertices.length - 1].bulge = 0;
-        }
-        
-        // Recalculate lastTangentAngle if possible
-        if (this.vertices.length >= 2) {
-            const v1 = this.vertices[this.vertices.length - 2];
-            const v2 = this.vertices[this.vertices.length - 1];
-            const dx = v2.x - v1.x;
-            const dy = v2.y - v1.y;
-            const chordAngle = Math.atan2(dy, dx);
-            if (v1.bulge !== 0) {
-                const alpha = 2 * Math.atan(v1.bulge);
-                this.lastTangentAngle = chordAngle + alpha;
-            } else {
-                this.lastTangentAngle = chordAngle;
-            }
-        } else {
-            this.lastTangentAngle = null;
-        }
-
-        return new Polyline(this.drawnEntityId!, [...this.vertices], false);
-      }
-      return "Nothing to undo.";
-    }
-
-    if (val === "A" || val === "ARC") {
-      this.mode = 'arc';
-      return "Switched to Arc mode.";
-    }
-
-    if (val === "L" || val === "LINE") {
-      this.mode = 'line';
-      return "Switched to Line mode.";
-    }
-  }
-
-  getPreview(x: number, y: number) {
-    if (this.vertices.length > 0) {
-      const lastV = this.vertices[this.vertices.length - 1];
-      let bulge = 0;
-
-      const dx = x - lastV.x;
-      const dy = y - lastV.y;
-      if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) return null;
-
-      const chordAngle = Math.atan2(dy, dx);
-
-      if (this.mode === 'arc') {
-        const tangent = this.lastTangentAngle ?? chordAngle;
-        let alpha = chordAngle - tangent;
-        while (alpha <= -Math.PI) alpha += 2 * Math.PI;
-        while (alpha > Math.PI) alpha -= 2 * Math.PI;
-        bulge = Math.tan(alpha / 2);
-      }
-      
-      const previewVertices = this.vertices.map((v, i) => {
-        if (i === this.vertices.length - 1) {
-            return { ...v, bulge };
-        }
-        return { ...v };
-      });
-      previewVertices.push({ x, y, bulge: 0 });
-      
-      const preview = new Polyline("PREVIEW", previewVertices, false);
-      (preview as any).type = 'polyline_preview';
-      return preview;
-    }
-    return null;
-  }
-
-  getReferencePoints() {
-    if (this.vertices.length > 0) {
-      return [this.vertices[this.vertices.length - 1]];
-    }
-    return [];
+    if (this.step === 0) return "PLINE specify start point:";
+    const mode = this.isArcMode ? "Arc" : "Line";
+    return `Arc/Close/Halfwidth/Length/Undo/Width/<Endpoint of ${mode}>:`;
   }
 }

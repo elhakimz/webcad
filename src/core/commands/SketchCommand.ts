@@ -7,7 +7,7 @@ export class SketchCommand implements Command {
   isDrawing = false;
   step = 0;
 
-  onInput(text: string): CommandResponse | undefined {
+  onInput(text: string, _id: string): CommandResponse | undefined {
     if (this.step === 0) {
       const val = parseFloat(text);
       if (!isNaN(val) && val > 0) {

@@ -22,7 +22,7 @@ import { SketchCommand } from "../commands/SketchCommand"
 import { ShapeCommand } from "../commands/ShapeCommand"
 import { LayerCommand } from "../commands/LayerCommand"
 import { LinetypeCommand } from "../commands/LinetypeCommand"
-import { SaveCommand, LoadCommand } from "../commands/IOCommands"
+import { SaveCommand, LoadCommand, NewCommand } from "../commands/IOCommands"
 import { OrthoCommand } from "../commands/OrthoCommand"
 import { GridCommand } from "../commands/GridCommand"
 import { SnapCommand } from "../commands/SnapCommand"
@@ -71,7 +71,7 @@ export class CommandManager {
     }
     else if(cmdName === "ROTATE"){
       const targetEntities = selection ? selection.map(id => entities?.get(id)).filter(Boolean) : [];
-      this.active = new RotateCommand(selection, targetEntities)
+      this.active = new RotateCommand(selection)
       response = "ROTATE"
     }
     else if(cmdName === "SCALE"){
@@ -149,6 +149,10 @@ export class CommandManager {
     else if(cmdName === "LOAD"){
       this.active = new LoadCommand()
       response = "LOAD"
+    }
+    else if(cmdName === "NEW"){
+      this.active = new NewCommand()
+      response = "NEW"
     }
     else if(cmdName === "ORTHO"){
       this.active = new OrthoCommand()

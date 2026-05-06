@@ -43,7 +43,6 @@ export class ArcCommand implements Command {
     const r = Math.sqrt((x1 - cx) * (x1 - cx) + (y1 - cy) * (y1 - cy))
 
     const startAngle = Math.atan2(y1 - cy, x1 - cx)
-    const midAngle = Math.atan2(y2 - cy, x2 - cx)
     const endAngle = Math.atan2(y3 - cy, x3 - cx)
 
     // Determine direction (CCW or CW)

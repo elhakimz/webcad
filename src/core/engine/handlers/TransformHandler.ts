@@ -14,14 +14,16 @@ export class TransformHandler implements ActionHandler {
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, viewer, selectedEntityIds, addEntity } = context;
+    const { doc, viewer, addEntity } = context;
 
     if (action.action === 'move' && (action.id || action.ids) && action.dx !== undefined) {
       const ids = action.ids || (action.id ? [action.id] : []);
       ids.forEach(id => {
         const entity = doc.getEntity(id);
         if (entity) {
+          const before = entity.clone(entity.id);
           entity.move(action.dx!, action.dy!);
+          doc.recordTransform(before, entity);
           viewer.moveObject(id, action.dx!, action.dy!);
         }
       });
@@ -34,8 +36,10 @@ export class TransformHandler implements ActionHandler {
       ids.forEach(id => {
         const entity = doc.getEntity(id);
         if (entity) {
+          const before = entity.clone(entity.id);
           entity.rotate(action.baseX!, action.baseY!, action.angle!);
-          addEntity(entity, true, false); 
+          doc.recordTransform(before, entity);
+          addEntity(entity, false, false); 
         }
       });
       this.cleanup(context);
@@ -47,8 +51,10 @@ export class TransformHandler implements ActionHandler {
       ids.forEach(id => {
         const entity = doc.getEntity(id);
         if (entity) {
+          const before = entity.clone(entity.id);
           entity.scale(action.baseX!, action.baseY!, action.factor!);
-          addEntity(entity, true, false); 
+          doc.recordTransform(before, entity);
+          addEntity(entity, false, false); 
         }
       });
       this.cleanup(context);
@@ -80,8 +86,10 @@ export class TransformHandler implements ActionHandler {
         ids.forEach(id => {
           const source = doc.getEntity(id);
           if (source) {
+            const before = source.clone(source.id);
             source.mirror(p1, p2);
-            addEntity(source, true, false);
+            doc.recordTransform(before, source);
+            addEntity(source, false, false);
           }
         });
       } else {
@@ -164,20 +172,20 @@ export class TransformHandler implements ActionHandler {
         const newId = doc.getNextId(this.getPrefix(source)) + "_OFFSET";
 
         if (source instanceof Line) {
-          const off = MathUtils.offsetLine(source.x1, source.y1, source.x2, source.y2, action.distance, action.sidePt);
+          const off = MathUtils.offsetLine(source.x1, source.y1, source.x2, source.y2, action.distance || 0, action.sidePt || {x:0, y:0});
           offsetEntity = new Line(newId, off.x1, off.y1, off.x2, off.y2);
         } else if (source instanceof CircleEntity) {
-          const off = MathUtils.offsetCircle(source.cx, source.cy, source.r, action.distance, action.sidePt);
+          const off = MathUtils.offsetCircle(source.cx, source.cy, source.r, action.distance || 0, action.sidePt || {x:0, y:0});
           offsetEntity = new CircleEntity(newId, off.cx, off.cy, off.r);
         } else if (source instanceof ArcEntity) {
-            const off = MathUtils.offsetCircle(source.cx, source.cy, source.r, action.distance, action.sidePt);
+            const off = MathUtils.offsetCircle(source.cx, source.cy, source.r, action.distance || 0, action.sidePt || {x:0, y:0});
             offsetEntity = new ArcEntity(newId, off.cx, off.cy, off.r, source.startAngle, source.endAngle, source.ccw);
         } else if (source instanceof Polyline) {
             const newVertices = source.vertices.map((v, i) => {
                 if (i < source.vertices.length - 1 || source.closed) {
                     const v2 = source.vertices[(i + 1) % source.vertices.length];
                     if (Math.abs(v.bulge) < 1e-6) {
-                        const off = MathUtils.offsetLine(v.x, v.y, v2.x, v2.y, action.distance, action.sidePt);
+                        const off = MathUtils.offsetLine(v.x, v.y, v2.x, v2.y, action.distance || 0, action.sidePt || {x:0, y:0});
                         return { x: off.x1, y: off.y1, bulge: 0 };
                     }
                 }
@@ -230,7 +238,7 @@ export class TransformHandler implements ActionHandler {
                     let removeIdx = -1;
                     let minDist = Infinity;
                     for (let i = 0; i < pts.length - 1; i++) {
-                        const d = MathUtils.distancePointToLineSegment(action.pickPt.x, action.pickPt.y, pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y);
+                        const d = MathUtils.distancePointToLineSegment(action.pickPt!.x, action.pickPt!.y, pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y);
                         if (d < minDist) {
                             minDist = d;
                             removeIdx = i;
@@ -253,9 +261,9 @@ export class TransformHandler implements ActionHandler {
                         return "Line trimmed.";
                     }
                 } else {
-                    const cx = (target as any).cx;
-                    const cy = (target as any).cy;
-                    const r = (target as any).r;
+                    const cx = (target as ArcEntity).cx || (target as CircleEntity).cx;
+                    const cy = (target as ArcEntity).cy || (target as CircleEntity).cy;
+                    const r = (target as ArcEntity).r || (target as CircleEntity).r;
                     const ccw = (target instanceof ArcEntity) ? target.ccw : true;
                     
                     const normalize = (a: number) => {
@@ -342,7 +350,7 @@ export class TransformHandler implements ActionHandler {
             const boundaries = action.boundaryIds.map(id => doc.getEntity(id)).filter(Boolean);
             
             if (target instanceof Line) {
-                let closestPt: Point | null = null;
+                let closestPt: {x:number, y:number} | null = null;
                 let minDist = Infinity;
 
                 const dirX = target.x2 - target.x1;
@@ -351,8 +359,8 @@ export class TransformHandler implements ActionHandler {
                 const ux = dirX / len;
                 const uy = dirY / len;
 
-                const d1 = Math.sqrt((action.pickPt.x - target.x1)**2 + (action.pickPt.y - target.y1)**2);
-                const d2 = Math.sqrt((action.pickPt.x - target.x2)**2 + (action.pickPt.y - target.y2)**2);
+                const d1 = Math.sqrt((action.pickPt!.x - target.x1)**2 + (action.pickPt!.y - target.y1)**2);
+                const d2 = Math.sqrt((action.pickPt!.x - target.x2)**2 + (action.pickPt!.y - target.y2)**2);
                 const isStart = d1 < d2;
 
                 boundaries.forEach(b => {
@@ -375,14 +383,16 @@ export class TransformHandler implements ActionHandler {
                 });
 
                 if (closestPt) {
+                    const before = target.clone(target.id);
                     if (isStart) {
-                        target.x1 = closestPt.x;
-                        target.y1 = closestPt.y;
+                        (target as any).x1 = (closestPt as any).x;
+                        (target as any).y1 = (closestPt as any).y;
                     } else {
-                        target.x2 = closestPt.x;
-                        target.y2 = closestPt.y;
+                        (target as any).x2 = (closestPt as any).x;
+                        (target as any).y2 = (closestPt as any).y;
                     }
-                    addEntity(target, true, false);
+                    doc.recordTransform(before, target);
+                    addEntity(target, false, false);
                     doc.updateSpatialIndex();
                     return "Line extended.";
                 }
@@ -396,8 +406,8 @@ export class TransformHandler implements ActionHandler {
                 const s = normalize(target.startAngle);
                 const e = normalize(target.endAngle);
                 
-                const d1 = Math.sqrt((action.pickPt.x - (target.cx + target.r * Math.cos(s)))**2 + (action.pickPt.y - (target.cy + target.r * Math.sin(s)))**2);
-                const d2 = Math.sqrt((action.pickPt.x - (target.cx + target.r * Math.cos(e)))**2 + (action.pickPt.y - (target.cy + target.r * Math.sin(e)))**2);
+                const d1 = Math.sqrt((action.pickPt!.x - (target.cx + target.r * Math.cos(s)))**2 + (action.pickPt!.y - (target.cy + target.r * Math.sin(s)))**2);
+                const d2 = Math.sqrt((action.pickPt!.x - (target.cx + target.r * Math.cos(e)))**2 + (action.pickPt!.y - (target.cy + target.r * Math.sin(e)))**2);
                 const isStart = d1 < d2;
 
                 let closestAngle: number | null = null;
@@ -433,10 +443,12 @@ export class TransformHandler implements ActionHandler {
                 });
 
                 if (closestAngle !== null) {
+                    const before = target.clone(target.id);
                     if (isStart) target.startAngle = closestAngle;
                     else target.endAngle = closestAngle;
                     
-                    addEntity(target, true, false);
+                    doc.recordTransform(before, target);
+                    addEntity(target, false, false);
                     doc.updateSpatialIndex();
                     return "Arc extended.";
                 }

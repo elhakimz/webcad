@@ -9,12 +9,12 @@ export class InsertCommand implements Command {
   scaleY = 1.0
   rotation = 0.0
 
-  onInput(text: string, id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
       if (val === "?") {
-          return { action: "blockList" };
+          return { action: "blockList" } as CommandResponse;
       }
       this.blockName = val;
       this.step = 1;
@@ -42,7 +42,7 @@ export class InsertCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string): CommandResponse {
     if (this.step === 1) {
       this.insertPoint = { x, y };
       this.step = 2;
@@ -51,11 +51,11 @@ export class InsertCommand implements Command {
     return this.getPrompt();
   }
 
-  private finish() {
-    const res: any = {
+  private finish(): CommandResponse {
+    const res: CommandResponse = {
       action: "insert",
       name: this.blockName,
-      point: this.insertPoint,
+      point: this.insertPoint!,
       scaleX: this.scaleX,
       scaleY: this.scaleY,
       rotation: this.rotation

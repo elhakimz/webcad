@@ -11,7 +11,7 @@ export class ExtendCommand implements Command {
     }
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
@@ -26,11 +26,11 @@ export class ExtendCommand implements Command {
 
     if (this.step === 1) {
       if (val === "") return { action: "finish" };
-      return { action: "extend", boundaryIds: [...this.boundaryIds], id: val } as any;
+      return { action: "extend", boundaryIds: [...this.boundaryIds], id: val } as CommandResponse;
     }
   }
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(_x: number, _y: number, _id: string): CommandResponse {
     if (this.step === 0) return "Select boundary edges:";
     return this.getPrompt();
   }

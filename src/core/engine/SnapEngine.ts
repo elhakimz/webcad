@@ -96,7 +96,7 @@ export class SnapEngine {
     } 
     else if (entity instanceof Polyline) {
       if (entity.properties.center) {
-        snaps.push({ x: entity.properties.center.x, y: entity.properties.center.y, type: SnapType.CENTER });
+        snaps.push({ x: (entity.properties.center as any).x, y: (entity.properties.center as any).y, type: SnapType.CENTER });
       }
       for (let i = 0; i < entity.vertices.length; i++) {
         snaps.push({ x: entity.vertices[i].x, y: entity.vertices[i].y, type: SnapType.ENDPOINT });

@@ -5,11 +5,38 @@ import { DXFImporter } from "../../io/dxfImport";
 
 export class IOHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['save', 'load'].includes(action.action);
+    return ['save', 'load', 'listFiles', 'new'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
     const { doc, syncFromDocument, terminateActiveCommand } = context;
+
+    if (action.action === 'new') {
+      doc.entities.clear();
+      doc.history.clear();
+      syncFromDocument();
+      terminateActiveCommand();
+      return "New drawing started.";
+    }
+
+    if (action.action === 'listFiles') {
+      try {
+        const response = await fetch('/api/files');
+        if (response.ok) {
+          const files = await response.json();
+          if (files.length === 0) return "No files available in the files directory.\nLoad drawing (filename.dxf or ?):";
+          
+          let msg = "Available files:\n";
+          files.forEach((f: string, i: number) => {
+            msg += `${i+1}. ${f}\n`;
+          });
+          return msg + "Load drawing (filename.dxf or ?):";
+        }
+        return "Error listing files.";
+      } catch (e) {
+        return `Network error listing files: ${e}`;
+      }
+    }
 
     if (action.action === 'save' && action.filename) {
       const exporter = new DXFExporter();

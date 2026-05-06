@@ -2,9 +2,8 @@ import { Command, CommandResponse } from "./types"
 
 export class MoveCommand implements Command {
   step = 0
+  basePoint = { x: 0, y: 0 }
   targetIds: string[] = []
-  baseX = 0
-  baseY = 0
 
   constructor(ids?: string[]) {
     if (ids && ids.length > 0) {
@@ -13,51 +12,49 @@ export class MoveCommand implements Command {
     }
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
-    // Step 0: Select object (receives ID)
-    if (this.step === 0 && text) {
-      this.targetIds = [text];
+  onInput(text: string, _id: string): CommandResponse | undefined {
+    const val = text.trim().toUpperCase();
+    if (this.step === 0 && val !== "") {
+      this.targetIds = [val];
       this.step = 1;
       return "Base point:";
     }
   }
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
-    if (this.step === 0) {
-      return "Select entity to move";
-    }
-
+  onPoint(x: number, y: number, _id: string): CommandResponse {
     if (this.step === 1) {
-      this.baseX = x;
-      this.baseY = y;
-      this.step = 2;
-      return "Second point:";
-    } else {
-      const dx = x - this.baseX;
-      const dy = y - this.baseY;
+      this.basePoint = { x, y }
+      this.step = 2
+      return "Second point:"
+    } else if (this.step === 2) {
+      const dx = x - this.basePoint.x
+      const dy = y - this.basePoint.y
       const ids = [...this.targetIds];
       this.step = 0;
       this.targetIds = [];
-      return { action: "move", ids, dx, dy };
+      return { action: "move", ids, dx, dy } as CommandResponse
     }
+    return this.getPrompt();
+  }
+
+  getPreview(x: number, y: number): any {
+    if (this.step === 2) {
+      return { type: 'move_preview', dx: x - this.basePoint.x, dy: y - this.basePoint.y };
+    }
+    return null
   }
 
   getReferencePoints() {
-    if (this.step >= 1) {
-      return [{ x: this.baseX, y: this.baseY }];
-    }
-    return [];
+    if (this.step === 2) return [this.basePoint]
+    return []
   }
 
-  getBasePoint(): { x: number; y: number } | null {
-    if (this.step >= 1) {
-      return { x: this.baseX, y: this.baseY };
-    }
-    return null;
+  getBasePoint() {
+      return this.step === 2 ? this.basePoint : null;
   }
 
   getPrompt() {
-    if (this.step === 0) return "Select entity to move:";
+    if (this.step === 0) return "Select objects:";
     if (this.step === 1) return "Base point:";
     return "Second point:";
   }

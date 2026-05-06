@@ -1,17 +1,15 @@
 import { Command, CommandResponse } from "./types"
 
 export class PanCommand implements Command {
-  onPoint(x: number, y: number, id: string): CommandResponse {
-    return "";
+  onPoint(_x: number, _y: number, _id: string): CommandResponse {
+    return this.getPrompt();
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
-    if (text.toUpperCase() === "EXIT" || text.toUpperCase() === "QUIT" || text === "") {
-        return { action: "finish" };
-    }
+  onInput(_text: string, _id: string): CommandResponse | undefined {
+    return this.getPrompt();
   }
 
   getPrompt() {
-    return "PAN command: Click and drag to pan. Press ENTER or ESC to exit.";
+    return "PAN Drag with left mouse button. Press Enter or ESC to finish.";
   }
 }

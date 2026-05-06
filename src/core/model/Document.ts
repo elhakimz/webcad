@@ -60,37 +60,23 @@ export class Document {
   }
 
   recordAdd(entity: Entity) {
-    const action: HistoryAction = {
-      type: 'ADD',
-      entityId: entity.id,
-      entityData: this.history.serializeEntity(entity),
-      previousData: null
-    }
-    this.history.recordAction(action)
+    this.history.recordAdd(entity)
   }
 
   recordRemove(entity: Entity) {
-    const action: HistoryAction = {
-      type: 'REMOVE',
-      entityId: entity.id,
-      entityData: this.history.serializeEntity(entity),
-      previousData: null
-    }
-    this.history.recordAction(action)
+    this.history.recordRemove(entity)
+  }
+
+  recordTransform(before: Entity, after: Entity) {
+    this.history.recordTransform(before, after);
   }
 
   recordModify(entity: Entity, oldData: Record<string, unknown>) {
-    const action: HistoryAction = {
-      type: 'MODIFY',
-      entityId: entity.id,
-      entityData: this.history.serializeEntity(entity),
-      previousData: { type: 'unknown', id: entity.id, data: oldData }
-    }
-    this.history.recordAction(action)
+    // This is still a bit of a hybrid, but let's at least make it do something if needed
+    // For now, recordTransform is the preferred way.
   }
 
-  recordBatch(actions: HistoryAction[]) {
-    this.history.recordBatch(actions)
+  recordBatch(actions: any[]) {
   }
 
   undo() {

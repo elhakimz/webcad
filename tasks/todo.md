@@ -3,19 +3,19 @@
 ## Ongoing
 
 ## Todo (Phase 2 & 3 Refinement)
-- [ ] Implement TRIM and EXTEND commands <!-- id: 10 -->
-- [ ] Implement GRID snap and toggle (F7) <!-- id: 11 -->
-- [ ] Implement ORTHO mode and toggle (F8) <!-- id: 12 -->
 
 ## Todo (Phase 4 — File System)
-- [ ] Implement ASCII DXF R12 Export <!-- id: 2 -->
-- [ ] Implement DXF Import parser <!-- id: 13 -->
 
 ## Todo (General Commands)
-- [ ] Implement OFFSET command <!-- id: 4 -->
-- [ ] Implement ARRAY command <!-- id: 5 -->
 
 ## Done
+- [x] Implement GRID snap and toggle (F7) <!-- id: 11 -->
+- [x] Implement ORTHO mode and toggle (F8) <!-- id: 12 -->
+- [x] Implement TRIM and EXTEND commands <!-- id: 10 -->
+- [x] Implement OFFSET command <!-- id: 4 -->
+- [x] Implement ARRAY command <!-- id: 5 -->
+- [x] Implement ASCII DXF R12 Export <!-- id: 2 -->
+- [x] Implement DXF Import parser <!-- id: 13 -->
 - [x] Implement LineType (LTYPE) support for layers and rendering <!-- id: 17 -->
 - [x] Add direct layer management commands (New, Set, On/Off, etc.) to the `LAYERS` side menu <!-- id: 16 -->
 - [x] Implement Snap Engine (Endpoint, Midpoint, Center) <!-- id: 1 -->

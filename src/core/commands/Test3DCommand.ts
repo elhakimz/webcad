@@ -1,33 +1,36 @@
 import { Command, CommandResponse } from "./types"
 
 export class Test3DCommand implements Command {
-  step = 0;
-  x = 0;
-  y = 0;
+  step = 0
+  p1 = { x: 0, y: 0 }
+  width = 10
+  height = 10
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string): CommandResponse {
     if (this.step === 0) {
-      this.x = x;
-      this.y = y;
-      this.step = 1;
-      return "TEST3D: select height:";
-    } else {
-      const h = Math.abs(y - this.y) || 10;
-      return { action: "create3d", entity: { id, shape: { type: 'box', x: this.x, y: this.y, h } } } as any;
+      this.p1 = { x, y }
+      this.step = 1
+      return "Width <10>:"
     }
+    return this.getPrompt();
   }
 
-  onInput(text: string, id: string) {
+  onInput(text: string, _id: string): CommandResponse | undefined {
+    const val = text.trim();
     if (this.step === 1) {
-      const h = parseFloat(text);
-      if (!isNaN(h)) {
-        return { action: "create3d", entity: { id, shape: { type: 'box', x: this.x, y: this.y, h } } } as any;
-      }
+      this.width = val === "" ? 10 : parseFloat(val)
+      this.step = 2
+      return "Height <10>:"
+    } else if (this.step === 2) {
+      this.height = val === "" ? 10 : parseFloat(val)
+      this.step = 0
+      return { action: "create3d", fromX: this.p1.x, fromY: this.p1.y, toX: this.p1.x + this.width, toY: this.p1.y + this.height } as CommandResponse;
     }
   }
 
   getPrompt() {
-    if (this.step === 0) return "TEST3D started: pick insertion point:";
-    return "TEST3D: specify height:";
+    if (this.step === 0) return "TEST3D first corner:";
+    if (this.step === 1) return "Width <10>:";
+    return "Height <10>:";
   }
 }

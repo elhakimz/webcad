@@ -1,7 +1,6 @@
 import { Line as LineEntity } from "../model/Line";
 import { Circle as CircleEntity } from "../model/Circle";
 import { Arc as ArcEntity } from "../model/Arc";
-import { Polyline as PolylineEntity } from "../model/Polyline";
 
 export type Point = { x: number; y: number };
 
@@ -23,7 +22,6 @@ export function calculateArcFrom3Points(p1: Point, p2: Point, p3: Point) {
   const r = Math.sqrt((x1 - cx) * (x1 - cx) + (y1 - cy) * (y1 - cy));
 
   const startAngle = Math.atan2(y1 - cy, x1 - cx);
-  const midAngle = Math.atan2(y2 - cy, x2 - cx);
   const endAngle = Math.atan2(y3 - cy, x3 - cx);
 
   // We need to determine if p1 -> p2 -> p3 is CCW or CW
@@ -326,9 +324,6 @@ export function offsetLine(x1: number, y1: number, x2: number, y2: number, dista
   const p1b = { x: x1 - nx * distance, y: y1 - ny * distance };
   const p2b = { x: x2 - nx * distance, y: y2 - ny * distance };
 
-  // Standard 2D cross product: (x2-x1)*(py-y1) - (y2-y1)*(px-x1)
-  // If > 0, sidePt is on the left of the line P1->P2.
-  // Our normal (-dy, dx) also points to the left.
   const cross = (x2 - x1) * (sidePt.y - y1) - (y2 - y1) * (sidePt.x - x1);
   
   if (cross > 0) {
@@ -370,12 +365,12 @@ export function aciToRgb(aci?: number): number {
 }
 
 export const LINETYPES: Record<string, number[]> = {
-  'DASHED': [5, 3],
-  'HIDDEN': [2, 2],
-  'DOTTED': [0.5, 2],
-  'CENTER': [10, 2, 2, 2],
-  'PHANTOM': [10, 2, 2, 2, 2, 2],
-  'DASHDOT': [10, 3, 1, 3],
+  'DASHED': [5, -3],
+  'HIDDEN': [2, -2],
+  'DOTTED': [0, -2],
+  'CENTER': [10, -2, 2, -2],
+  'PHANTOM': [10, -2, 2, -2, 2, -2],
+  'DASHDOT': [10, -3, 0, -3],
 };
 
 export function getLinetypeSettings(linetype: string): number[] | null {
@@ -443,7 +438,7 @@ export function getCircleCircleIntersections(c1: Point, r1: number, c2: Point, r
   ];
 }
 
-export function getEntityEntityIntersections(e1: any, e2: any): Point[] {
+export function getEntityEntityIntersections(e1: unknown, e2: unknown): Point[] {
     const getCircleData = (e: any) => {
         if (e instanceof CircleEntity) return { cx: e.cx, cy: e.cy, r: e.r, isArc: false };
         if (e instanceof ArcEntity) return { cx: e.cx, cy: e.cy, r: e.r, isArc: true, s: e.startAngle, e: e.endAngle, ccw: e.ccw };
@@ -473,7 +468,7 @@ export function getEntityEntityIntersections(e1: any, e2: any): Point[] {
 
     // 1. Line vs (Circle/Arc)
     if (e1 instanceof LineEntity || e2 instanceof LineEntity) {
-        const line = e1 instanceof LineEntity ? e1 : e2;
+        const line = e1 instanceof LineEntity ? e1 : e2 as LineEntity;
         const other = e1 instanceof LineEntity ? e2 : e1;
         const circle = getCircleData(other);
         

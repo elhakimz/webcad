@@ -2,31 +2,30 @@ import { Command, CommandResponse } from "./types"
 
 export class EraseCommand implements Command {
   step = 0
-  ids: string[] = []
+  targetIds: string[] = []
 
   constructor(ids?: string[]) {
     if (ids && ids.length > 0) {
-      this.ids = ids;
+      this.targetIds = ids;
+      this.step = 1;
     }
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
-    // If we receive an ID directly (from hit-test in App)
-    if (text) {
-      return this.finish(text);
+  onInput(text: string, _id: string): CommandResponse | undefined {
+    const val = text.trim().toUpperCase();
+    if (this.step === 0 && val !== "") {
+      this.targetIds = [val];
+      return { action: "delete", ids: [...this.targetIds] } as CommandResponse;
     }
   }
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
-    return "Select entity to erase";
-  }
-
-  private finish(id: string) {
-    this.step = 0;
-    return { action: "delete", id } as const;
+  onPoint(_x: number, _y: number, _id: string): CommandResponse {
+    if (this.step === 0) return "Select objects:";
+    return this.getPrompt();
   }
 
   getPrompt() {
-    return "Select entity to erase:";
+    if (this.step === 0) return "Select objects:";
+    return "";
   }
 }

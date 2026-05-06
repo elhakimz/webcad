@@ -9,7 +9,8 @@ export interface BoundingBox {
 export abstract class Entity {
   id: string
   layer: string = "0"
-  properties: Record<string, any> = {}
+  properties: Record<string, unknown> = {}
+  _echo?: string;
 
   constructor(id: string) {
     this.id = id

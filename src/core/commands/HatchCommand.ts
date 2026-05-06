@@ -1,79 +1,99 @@
 import { Hatch } from "../model/Hatch"
-import { Command, CommandResponse } from "./types"
-import { SelectionEngine } from "../engine/SelectionEngine"
-import { Entity } from "../model/Entity"
-import { Polyline } from "../model/Polyline"
+import { Command, CommandResponse, PreviewObject } from "./types"
+import { getAllPatternNames } from "../io/Patterns"
 
 export class HatchCommand implements Command {
   step = 0
-  pattern = 'ANSI31'
+  pattern = "ANSI31"
   scale = 1.0
-  angle = 0
-  vertices: { x: number; y: number }[] = []
-  boundaryId: string | null = null
+  angle = 0.0
+  vertices: { x: number, y: number }[] = []
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
-    if (this.step === 0) {
-      // Find boundary polyline at this point
-      // (This logic usually lives in App but Hatch needs it)
-      // For now, let's collect vertices if the user clicks points
-      this.vertices.push({ x, y });
-      return `Point ${this.vertices.length} added.`;
-    }
-    return "Unknown state";
-  }
-
-  onInput(text: string, id: string) {
+  onInput(text: string, _id: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
+    console.log(`[HatchCommand] onInput: val="${val}", step=${this.step}`);
 
-    if (val === "" && this.step === 0 && this.vertices.length >= 3) {
-      this.step = 1;
-      return "Pattern name <ANSI31>:";
+    if (this.step === 0) {
+      if (val === "P" || val === "PATTERN") {
+        this.step = 1;
+        return "Pattern name <ANSI31>:";
+      }
+      if (val === "?" || val === "HELP") {
+        const names = getAllPatternNames();
+        return "Available patterns:\n" + names.join(", ") + "\nHatch [Pattern/Select objects]:";
+      }
+
+      // Check if user typed a valid pattern name directly
+      const names = getAllPatternNames();
+      if (names.includes(val)) {
+          this.pattern = val;
+          this.step = 2;
+          return "Scale <1.0>:";
+      }
+
+      if (val === "") {
+         return "Hatch [Pattern/Select objects]:";
+      }
+      this.step = 3;
+      return "Select objects or pick internal point:";
     }
 
     if (this.step === 1) {
-      if (val !== "") this.pattern = val;
+      if (val === "?") {
+        const names = getAllPatternNames();
+        return "Available patterns:\n" + names.join(", ") + "\nPattern name <ANSI31>:";
+      }
+      this.pattern = val === "" ? "ANSI31" : val;
       this.step = 2;
-      return "Scale <1.00>:";
+      return "Scale <1.0>:";
     }
 
     if (this.step === 2) {
-      const n = parseFloat(text);
-      if (!isNaN(n)) this.scale = n;
+      this.scale = val === "" ? 1.0 : parseFloat(val);
       this.step = 3;
-      return "Angle <0>:";
+      return "Select objects or pick internal point:";
     }
-
-    if (this.step === 3) {
-      const n = parseFloat(text);
-      if (!isNaN(n)) this.angle = n;
-      return this.finish(id);
-    }
-
-    if (val === "E" || val === "EXIT" || val === "QUIT") {
-      return { action: "finish" };
+    
+    if (this.step === 3 && val === "") {
+        return this.finish(_id);
     }
   }
 
-  private finish(id: string) {
-    const hatch = new Hatch(
-      id,
-      [...this.vertices],
-      this.pattern,
-      this.scale,
-      this.angle
-    );
+  onPoint(x: number, y: number, _id: string): CommandResponse {
+    if (this.step === 3) {
+      this.vertices.push({ x, y });
+      return "Pick next point (Enter to finish):";
+    }
+    return this.getPrompt();
+  }
+
+  getPreview(x: number, y: number): PreviewObject | null {
+    if (this.step === 3 && this.vertices.length > 0) {
+      return { type: 'plinepoints', points: [...this.vertices] };
+    }
+    return null;
+  }
+
+  getReferencePoints() {
+    if (this.vertices.length > 0) {
+      return [this.vertices[this.vertices.length - 1]];
+    }
+    return [];
+  }
+
+  private finish(id: string): CommandResponse {
+    if (this.vertices.length < 3) return "Hatch requires at least 3 points.";
+    const hatch = new Hatch(id, this.vertices, this.pattern, this.scale, this.angle);
     this.step = 0;
     this.vertices = [];
-    const echo = `Hatch created with pattern ${this.pattern}.`;
-    ;(hatch as unknown as { _echo: string })._echo = echo;
     return hatch;
   }
 
   getPrompt() {
-    if (this.step === 0) return "HATCH: Select boundary points (Enter to finish):";
+    if (this.step === 0) return "Hatch [Pattern/Select]:";
     if (this.step === 1) return "Pattern name <ANSI31>:";
-    if (this.step === 2) return "Scale <1.00>:";
-    return "Angle <0>:";
+    if (this.step === 2) return "Scale <1.0>:";
+    if (this.step === 3) return "Pick next point (Enter to finish):";
+    return "";
   }
 }

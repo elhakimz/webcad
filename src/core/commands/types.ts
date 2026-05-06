@@ -27,8 +27,13 @@ export type CommandAction = {
   dy?: number;
   baseX?: number;
   baseY?: number;
+  basePoint?: { x: number; y: number };
+  point?: { x: number; y: number };
   angle?: number;
+  rotation?: number;
   factor?: number;
+  scaleX?: number;
+  scaleY?: number;
   zoomType?: 'window' | 'all' | 'extents';
   p1?: { x: number; y: number };
   p2?: { x: number; y: number };
@@ -47,15 +52,48 @@ export type CommandAction = {
   color?: number;
   linetype?: string;
   filter?: string;
+  _echo?: string;
 };
 
 export type CommandResponse = string | Entity | CommandAction;
 
+export type ZoomWindowPreview = { type: 'zoomwindow', id: string, x1: number, y1: number, x2: number, y2: number };
+export type XMarkerPreview = { type: 'xmarker', x: number, y: number, size?: number };
+export type PLinePointsPreview = { type: 'plinepoints', points: { x: number, y: number }[] };
+export type SolidPointsPreview = { type: 'solidpoints', points: { x: number, y: number }[] };
+export type RotationPreview = { type: 'rotation_preview', angle: number, baseX: number, baseY: number };
+export type PolylinePreview = { type: 'polyline_preview', vertices: { x: number, y: number, bulge: number }[], closed: boolean };
+export type MovePreview = { type: 'move_preview', dx: number, dy: number };
+export type CopyPreview = { type: 'copy_preview', dx: number, dy: number };
+export type ScalePreview = { type: 'scale_preview', factor: number, baseX: number, baseY: number };
+
+export type PreviewObject = Entity | ZoomWindowPreview | XMarkerPreview | PLinePointsPreview | SolidPointsPreview | RotationPreview | PolylinePreview | MovePreview | CopyPreview | ScalePreview;
+
 export interface Command {
   onPoint(x: number, y: number, id: string): CommandResponse;
   onInput?(text: string, id: string): CommandResponse | undefined;
-  getPreview?(x: number, y: number): Entity | null;
+  getPreview?(x: number, y: number): PreviewObject | null;
   getReferencePoints?(): { x: number, y: number }[];
   getPrompt?(): string;
   step?: number;
+}
+
+export interface HasBasePoint {
+  getBasePoint(): { x: number, y: number } | null;
+}
+
+export interface HasUpdateSketch {
+  updateSketch(x: number, y: number): void;
+}
+
+export interface HasStartSketch {
+  startSketch(x: number, y: number): CommandResponse | void;
+}
+
+export interface HasFinishSketch {
+  finishSketch(id: string): CommandResponse | void;
+}
+
+export interface HasSelectedIds {
+  selectedIds: string[];
 }

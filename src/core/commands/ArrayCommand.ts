@@ -17,6 +17,8 @@ export class ArrayCommand implements Command {
   angleToFill = 360
   rotateObjects = true
 
+  private p1: { x: number, y: number } | null = null
+
   constructor(ids?: string[]) {
     if (ids && ids.length > 0) {
       this.targetIds = ids;
@@ -24,7 +26,7 @@ export class ArrayCommand implements Command {
     }
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
@@ -103,19 +105,18 @@ export class ArrayCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string): CommandResponse {
     if (this.step === 0) return "Select objects:";
     
     // Rectangular distance picking
     if (this.step === 4) {
-        (this as any).p1 = { x, y };
+        this.p1 = { x, y };
         this.step = 41;
         return "Second point of unit cell:";
     }
-    if (this.step === 41) {
-        const p1 = (this as any).p1;
-        this.rowSpacing = y - p1.y;
-        this.colSpacing = x - p1.x;
+    if (this.step === 41 && this.p1) {
+        this.rowSpacing = y - this.p1.y;
+        this.colSpacing = x - this.p1.x;
         return this.finish();
     }
 

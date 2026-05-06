@@ -21,7 +21,7 @@ export class LineCommand implements Command {
     }
   }
 
-  onInput(text: string, id: string) {
+  onInput(text: string, id: string): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {

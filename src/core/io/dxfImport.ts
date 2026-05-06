@@ -7,7 +7,6 @@ import { Point } from "../model/Point";
 import { Polyline, PolylineVertex } from "../model/Polyline";
 import { Text } from "../model/Text";
 import { Solid } from "../model/Solid";
-import { Trace } from "../model/Trace";
 import { Hatch } from "../model/Hatch";
 import { Shape } from "../model/Shape";
 import { Insert } from "../model/Insert";
@@ -99,7 +98,6 @@ export class DXFImporter {
         }
         
         const blockEntities: Entity[] = [];
-        // BLOCKS section contains sub-entities until ENDBLK
         while (i < groups.length && !(groups[i].code === 0 && groups[i].value === "ENDBLK")) {
             const dummyDoc = new Document();
             i = this.parseEntities(groups, i, dummyDoc, true);
@@ -125,7 +123,7 @@ export class DXFImporter {
       const type = g.value;
       if (g.code === 0) {
         i++;
-        const props: any = {};
+        const props: Record<number, string> = {};
         while (i < groups.length && groups[i].code !== 0) {
           props[groups[i].code] = groups[i].value;
           i++;

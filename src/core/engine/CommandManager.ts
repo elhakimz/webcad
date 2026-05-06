@@ -22,6 +22,10 @@ import { SketchCommand } from "../commands/SketchCommand"
 import { ShapeCommand } from "../commands/ShapeCommand"
 import { LayerCommand } from "../commands/LayerCommand"
 import { LinetypeCommand } from "../commands/LinetypeCommand"
+import { SaveCommand, LoadCommand } from "../commands/IOCommands"
+import { OrthoCommand } from "../commands/OrthoCommand"
+import { GridCommand } from "../commands/GridCommand"
+import { SnapCommand } from "../commands/SnapCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 
@@ -131,6 +135,26 @@ export class CommandManager {
     else if(cmdName === "LINETYPE" || cmdName === "LTYPE" || cmdName === "LT"){
       this.active = new LinetypeCommand()
       response = "LINETYPE"
+    }
+    else if(cmdName === "SAVE"){
+      this.active = new SaveCommand()
+      response = "SAVE"
+    }
+    else if(cmdName === "LOAD"){
+      this.active = new LoadCommand()
+      response = "LOAD"
+    }
+    else if(cmdName === "ORTHO"){
+      this.active = new OrthoCommand()
+      response = "ORTHO"
+    }
+    else if(cmdName === "GRID"){
+      this.active = new GridCommand()
+      response = "GRID"
+    }
+    else if(cmdName === "SNAP"){
+      this.active = new SnapCommand()
+      response = "SNAP"
     }
     else if(cmdName === "REGEN"){
       return { action: "regen" }

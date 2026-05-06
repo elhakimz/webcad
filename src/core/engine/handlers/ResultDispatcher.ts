@@ -8,10 +8,10 @@ export class ResultDispatcher {
     this.handlers.push(handler);
   }
 
-  dispatch(action: CommandAction, context: AppContext): CommandResponse | undefined {
+  async dispatch(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
     for (const handler of this.handlers) {
       if (handler.canHandle(action)) {
-        return handler.handle(action, context);
+        return await handler.handle(action, context);
       }
     }
     return undefined;

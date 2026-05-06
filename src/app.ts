@@ -25,12 +25,16 @@ import { LayerHandler } from "./core/engine/handlers/LayerHandler"
 import { TransformHandler } from "./core/engine/handlers/TransformHandler"
 import { ViewHandler } from "./core/engine/handlers/ViewHandler"
 import { SystemHandler } from "./core/engine/handlers/SystemHandler"
+import { IOHandler } from "./core/engine/handlers/IOHandler"
+import { DraftingHandler } from "./core/engine/handlers/DraftingHandler"
 import { AppContext } from "./core/engine/handlers/types"
+import { DraftingState } from "./core/engine/DraftingState"
 
 export class App {
   viewer:Viewer
   cmd:CommandManager
   doc: Document
+  drafting: DraftingState
   selectedEntityIds: Set<string> = new Set()
   private selectionStartPoint: { x: number, y: number } | null = null
   private commandLinePrint: ((msg: string) => void) | null = null
@@ -62,16 +66,46 @@ export class App {
     this.dispatcher.registerHandler(new TransformHandler());
     this.dispatcher.registerHandler(new ViewHandler());
     this.dispatcher.registerHandler(new SystemHandler());
+    this.dispatcher.registerHandler(new IOHandler());
+    this.dispatcher.registerHandler(new DraftingHandler());
+
+    this.drafting = new DraftingState()
+    this.drafting.subscribe(() => {
+      this.viewer.updateGrid(this.drafting.gridSpacing, this.drafting.gridEnabled);
+      if (this.statusBarUpdate) {
+          this.statusBarUpdate(this.doc.layers.getCurrentLayer());
+      }
+    });
   }
 
   private getSnappedPoint(worldX: number, worldY: number): { x: number, y: number, snap: SnapPoint | null } {
     const tolerance = 10 / this.viewer.camera.zoom;
     const snap = SnapEngine.getSnapPoint(worldX, worldY, this.doc.getAllEntities(), tolerance);
-    return {
-      x: snap ? snap.x : worldX,
-      y: snap ? snap.y : worldY,
-      snap
-    };
+    
+    let x = snap ? snap.x : worldX;
+    let y = snap ? snap.y : worldY;
+
+    // 1. Grid Snap (lower priority than geometric snap)
+    if (!snap && this.drafting.snapEnabled) {
+        x = Math.round(x / this.drafting.snapSpacing) * this.drafting.snapSpacing;
+        y = Math.round(y / this.drafting.snapSpacing) * this.drafting.snapSpacing;
+    }
+
+    // 2. Ortho Constraint (lowest priority)
+    if (this.drafting.orthoEnabled && this.cmd.active && (this.cmd.active as any).getBasePoint) {
+        const base = (this.cmd.active as any).getBasePoint();
+        if (base && this.cmd.active && this.cmd.active.step && this.cmd.active.step >= 1) {
+            const dx = Math.abs(x - base.x);
+            const dy = Math.abs(y - base.y);
+            if (dx > dy) {
+                y = base.y;
+            } else {
+                x = base.x;
+            }
+        }
+    }
+
+    return { x, y, snap };
   }
 
   private isEditCommand(name?: string): boolean {
@@ -81,7 +115,7 @@ export class App {
     return editCommands.includes(cmdName);
   }
 
-  execute(cmd:string){
+  async execute(cmd:string){
     if (cmd === 'PAN' || cmd === 'P') {
       this.viewer.setLeftPanEnabled(true);
     }
@@ -99,10 +133,10 @@ export class App {
     }
 
     const res = this.cmd.execute(cmd, selection, this.doc.entities);
-    return this.handleResult(res);
+    return await this.handleResult(res);
   }
 
-  inputText(text:string){
+  async inputText(text:string){
     // Handle Enter key (empty text) when there are selected entities and command is at step 0
     if (text === "" && this.selectedEntityIds.size > 0) {
       const activeName = this.cmd.active?.constructor.name;
@@ -116,12 +150,12 @@ export class App {
         const cmdName = activeName?.replace('Command', '').toUpperCase();
         if (cmdName && ids.length > 0) {
           const res = this.cmd.execute(cmdName, ids, this.doc.entities);
-          return this.handleResult(res);
+          return await this.handleResult(res);
         }
       }
     }
     const result = this.cmd.inputString(text, (p) => this.doc.getNextId(p))
-    return this.handleResult(result)
+    return await this.handleResult(result)
   }
 
   move(screenX: number, screenY: number) {
@@ -191,13 +225,13 @@ export class App {
     this.selectionStartPoint = worldPt;
   }
 
-  pointerUp(screenX: number, screenY: number): CommandResponse | undefined {
+  async pointerUp(screenX: number, screenY: number): Promise<CommandResponse | undefined> {
     if (this.cmd.active?.constructor.name === 'SketchCommand') {
       const sketchCmd = this.cmd.active as any;
       if (sketchCmd.finishSketch) {
         const id = this.doc.getNextId("SK");
         const res = sketchCmd.finishSketch(id);
-        if (res) return this.handleResult(res);
+        if (res) return await this.handleResult(res);
       }
     }
 
@@ -216,7 +250,7 @@ export class App {
 
     if (dx < tolerance && dy < tolerance) {
         // Single click
-        result = this.click(screenX, screenY);
+        result = await this.click(screenX, screenY);
     } else if (isSelectionStep) {
         // Box selection only allowed during selection steps
         const isCrossing = worldPt.x < this.selectionStartPoint.x;
@@ -243,7 +277,7 @@ export class App {
     return result;
   }
 
-  click(screenX:number, screenY:number){
+  async click(screenX:number, screenY:number){
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
     const { x, y } = snapped;
@@ -272,7 +306,7 @@ export class App {
             if (this.commandLinePrint) this.commandLinePrint(`[Selection] Single: 1 object selected`);
 
             if (this.cmd.active) {
-                return this.handleResult(this.cmd.inputString(entity.id));
+                return await this.handleResult(this.cmd.inputString(entity.id, (p) => this.doc.getNextId(p)));
             }
             return;
         } else if (!this.cmd.active) {
@@ -288,7 +322,7 @@ export class App {
             const cmdName = activeName?.replace('Command', '').toUpperCase();
             if (cmdName && ids.length > 0) {
                 const res = this.cmd.execute(cmdName, ids, this.doc.entities);
-                return this.handleResult(res);
+                return await this.handleResult(res);
             }
         }
     }
@@ -304,16 +338,16 @@ export class App {
       }
     }
 
-    return this.handleResult(result);
+    return await this.handleResult(result);
   }
 
-  private handleResult(result: CommandResponse | undefined) {
+  private async handleResult(result: CommandResponse | undefined): Promise<CommandResponse | undefined> {
     console.log('handleResult called', result);
     if (result && typeof result === 'object') {
       // Case: New Entity Created (Standard or via 'close')
       let entity: Entity | undefined;
       
-      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Trace || result instanceof Hatch) {
+      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Trace || result instanceof Hatch || result instanceof Shape) {
         entity = result;
       } else if ('action' in result && result.action === 'close' && result.entity) {
         entity = result.entity;
@@ -330,8 +364,8 @@ export class App {
         const updatesExisting = activeName === 'PolylineCommand' || activeName === 'SolidCommand';
         
         // If it's an intermediate update of an existing entity, don't record history yet
-        const isIntermediate = updatesExisting && !(result && typeof result === 'object' && 'action' in result && result.action === 'close');
-        
+        const isIntermediate = updatesExisting && !(result && typeof result === 'object' && 'action' in result && result.action === 'close');      
+
         this.addEntity(entity, !isIntermediate);
 
         if (!isContinuous || (result && typeof result === 'object' && 'action' in result && result.action === 'close')) {
@@ -368,6 +402,7 @@ export class App {
         doc: this.doc,
         viewer: this.viewer,
         cmd: this.cmd,
+        drafting: this.drafting,
         selectedEntityIds: this.selectedEntityIds,
         addEntity: (e, rh, ucl) => this.addEntity(e, rh, ucl),
         syncFromDocument: () => this.syncFromDocument(),
@@ -376,7 +411,7 @@ export class App {
         onStatusBarUpdate: (l) => { if (this.statusBarUpdate) this.statusBarUpdate(l); }
       };
 
-      const actionResult = this.dispatcher.dispatch(result as CommandAction, appContext);
+      const actionResult = await this.dispatcher.dispatch(result as CommandAction, appContext);
       if (actionResult !== undefined) {
         // If the action resulted in clearing the active command, ensure markers are cleared too
         if (!this.cmd.active) {
@@ -466,4 +501,3 @@ export class App {
     return info.join(", ")
   }
 }
-

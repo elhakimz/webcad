@@ -34,6 +34,7 @@ export class Viewer {
   private snapMarkerGroup: THREE.Group = new THREE.Group()
   private activePointMarkerGroup: THREE.Group = new THREE.Group()
   private persistentMarkerGroup: THREE.Group = new THREE.Group()
+  private gridGroup: THREE.Group = new THREE.Group()
   private textQueue: Text[] = []
   private selectionBox: THREE.Line | null = null
   private objects: Map<string, THREE.Object3D> = new Map()
@@ -47,6 +48,8 @@ export class Viewer {
     this.scene.add(this.cursorGroup);
     this.scene.add(this.snapMarkerGroup);
     this.scene.add(this.activePointMarkerGroup);
+    this.scene.add(this.gridGroup);
+    
     this.cursorGroup.renderOrder = 999; // Render on top
     this.snapMarkerGroup.renderOrder = 1000; // Render snap on top of cursor
     this.activePointMarkerGroup.renderOrder = 1001; // Active point marker on very top
@@ -140,6 +143,44 @@ export class Viewer {
       marker.position.set(x, y, 0.1);
       this.activePointMarkerGroup.add(marker);
     }
+    this.render();
+  }
+
+  updateGrid(spacing: number, enabled: boolean) {
+    this.gridGroup.visible = enabled;
+    
+    // Clear old grid
+    while (this.gridGroup.children.length > 0) {
+      const obj = this.gridGroup.children[0];
+      this.gridGroup.remove(obj);
+      if (obj instanceof THREE.Points) {
+        obj.geometry.dispose();
+        (obj.material as THREE.Material).dispose();
+      }
+    }
+
+    if (!enabled) return;
+
+    // Create a large grid around the current view
+    // In a production app, we would dynamically update this on pan
+    const count = 100; // 100x100 grid of dots
+    const positions = [];
+    
+    // Align grid to the camera center
+    const cx = Math.round(this.camera.position.x / spacing) * spacing;
+    const cy = Math.round(this.camera.position.y / spacing) * spacing;
+
+    for (let i = -count; i <= count; i++) {
+        for (let j = -count; j <= count; j++) {
+            positions.push(cx + i * spacing, cy + j * spacing, -0.5);
+        }
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const mat = new THREE.PointsMaterial({ color: 0x333333, size: 1, sizeAttenuation: false });
+    const grid = new THREE.Points(geo, mat);
+    this.gridGroup.add(grid);
     this.render();
   }
 
@@ -519,6 +560,9 @@ export class Viewer {
     ])
     
     const mat = this.getLineMaterial(rgb, linetype);
+
+
+
     const line = new THREE.Line(geo, mat)
     if (mat instanceof THREE.LineDashedMaterial) line.computeLineDistances();
 
@@ -539,6 +583,9 @@ export class Viewer {
     const rgb = aciToRgb(color);
 
     const mat = this.getLineMaterial(rgb, linetype);
+
+
+
     const circle = new THREE.LineLoop(geo, mat);
     if (mat instanceof THREE.LineDashedMaterial) circle.computeLineDistances();
 
@@ -559,6 +606,9 @@ export class Viewer {
     const rgb = aciToRgb(color);
 
     const mat = this.getLineMaterial(rgb, linetype);
+
+
+
     const arc = new THREE.Line(geo, mat);
     if (mat instanceof THREE.LineDashedMaterial) arc.computeLineDistances();
 
@@ -875,7 +925,7 @@ export class Viewer {
     const toRemove: THREE.Object3D[] = [];
     this.scene.traverse((obj) => {
       if (obj.name && obj.name !== 'helperGroup' && obj.name !== 'boundaryGroup' && 
-          obj.name !== 'baseLineGroup' && obj.name !== 'cursorGroup' && obj.name !== 'persistentMarkerGroup') {
+          obj.name !== 'baseLineGroup' && obj.name !== 'cursorGroup' && obj.name !== 'persistentMarkerGroup' && obj.name !== 'gridGroup') {
         toRemove.push(obj);
       }
     });
@@ -1180,7 +1230,7 @@ export class Viewer {
       const color = 0xffff00; // Yellow for snaps
       const size = 6 / this.camera.zoom;
       let geo: THREE.BufferGeometry | null = null;
-      let mat = new THREE.LineBasicMaterial({ color });
+      const mat = new THREE.LineBasicMaterial({ color });
       let mesh: THREE.Object3D | null = null;
 
       switch (snap.type) {

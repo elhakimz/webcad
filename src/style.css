@@ -36,6 +36,22 @@ body {
   padding: 0 10px;
   border-bottom: 1px solid var(--border-color);
   font-weight: bold;
+  gap: 20px;
+}
+
+#drafting-aids {
+  display: flex;
+  gap: 15px;
+}
+
+.status-tag {
+  color: #555;
+  cursor: pointer;
+  user-select: none;
+}
+
+.status-tag.active {
+  color: var(--accent-color);
 }
 
 #main-area {

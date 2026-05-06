@@ -22,8 +22,6 @@ export class Menu {
 
   private setupInitialMenu() {
     const root: MenuItem[] = [
-      { label: 'WebCAD', command: 'CANCEL' },
-      { label: '****', command: 'CANCEL' },
       { label: 'BLOCKS', submenu: [{ label: 'BLOCK' }, { label: 'INSERT' }] },
       { label: 'DIM:', submenu: [{ label: 'DIM' }] },
       { label: 'DISPLAY', submenu: [

@@ -13,11 +13,25 @@ const app = new App(viewer)
 const cmdLine = new CommandLine()
 app.setCommandLine((msg: string) => cmdLine.print(msg))
 const statusBar = new StatusBar()
-app.setStatusBar((layer) => statusBar.updateLayer(layer))
-const menu = new Menu((cmd) => {
+app.setStatusBar((layer) => {
+  statusBar.updateLayer(layer);
+  statusBar.updateDraftingStatus({
+    snap: app.drafting.snapEnabled,
+    grid: app.drafting.gridEnabled,
+    ortho: app.drafting.orthoEnabled
+  });
+})
+
+statusBar.onTagClick('snap', () => app.drafting.toggleSnap());
+statusBar.onTagClick('grid', () => app.drafting.toggleGrid());
+statusBar.onTagClick('ortho', () => app.drafting.toggleOrtho());
+
+const menu = new Menu(async (cmd) => {
   cmdLine.print(`Command: ${cmd}`)
-  const res = app.execute(cmd)
-  cmdLine.print(typeof res === 'string' ? res : "")
+  const res = await app.execute(cmd)
+  if (typeof res === 'string') {
+    cmdLine.print(res)
+  }
   cmdLine.focus()
   updatePrompt()
 })
@@ -27,15 +41,29 @@ viewer.resize()
 window.addEventListener("resize", () => viewer.resize())
 
 // Main Menu Logic
-const mainMenu = new MainMenuScreen(() => {
-  // Callback when 'Begin a NEW drawing' is selected
+const mainMenu = new MainMenuScreen(async (filename?: string) => {
+  // Callback when starting/loading a drawing
   document.getElementById('drawing-editor')!.style.display = 'block';
+  
+  if (filename) {
+    // Option 2: Load existing
+    cmdLine.print(`Loading drawing: ${filename}`);
+    await app.execute(`LOAD ${filename}`);
+  } else {
+    // Option 1: Begin NEW drawing - Clear everything
+    app.doc.entities.clear();
+    app.doc.history.clear();
+    app.syncFromDocument();
+    cmdLine.print("New drawing started.");
+  }
+
   viewer.resize();
   viewer.render();
 
   // Focus command line after transition
   const cmdInput = document.getElementById('cmd') as HTMLInputElement;
   cmdInput.focus();
+  updatePrompt();
 });
 
 // Initialize CAD Engine
@@ -73,7 +101,10 @@ function updatePrompt() {
       prompt.includes("Pattern name <") ||
       prompt.startsWith("Enter shape name") ||
       prompt.startsWith("Delete old objects?") ||
-      prompt.startsWith("Scale <");
+      prompt.startsWith("Scale <") ||
+      prompt.startsWith("Radius of polygon") ||
+      prompt.startsWith("Load drawing") ||
+      prompt.startsWith("Save drawing");
 
     if (shouldFocus) {
       cmdLine.focus();
@@ -96,11 +127,28 @@ window.addEventListener("mousemove", (e) => {
 })
 
 // Global keyboard shortcuts for commands
-window.addEventListener("keydown", (e) => {
+window.addEventListener("keydown", async (e) => {
+  // Drafting aids
+  if (e.key === 'F7') {
+    e.preventDefault();
+    app.drafting.toggleGrid();
+    return;
+  }
+  if (e.key === 'F8') {
+    e.preventDefault();
+    app.drafting.toggleOrtho();
+    return;
+  }
+  if (e.key === 'F9') {
+    e.preventDefault();
+    app.drafting.toggleSnap();
+    return;
+  }
+
   // Handle Ctrl+Z for undo
   if (e.ctrlKey && e.key === 'z') {
     e.preventDefault()
-    const res = app.execute('UNDO')
+    const res = await app.execute('UNDO')
     if (typeof res === 'string') {
       cmdLine.print(res)
     }
@@ -111,7 +159,7 @@ window.addEventListener("keydown", (e) => {
   // Handle Ctrl+Y for redo
   if (e.ctrlKey && e.key === 'y') {
     e.preventDefault()
-    const res = app.execute('REDO')
+    const res = await app.execute('REDO')
     if (typeof res === 'string') {
       cmdLine.print(res)
     }
@@ -162,7 +210,7 @@ window.addEventListener("keydown", (e) => {
         cmdLine.print(`Command: ${inputVal}`)
       }
       
-      const res = app.inputText(inputVal)
+      const res = await app.inputText(inputVal)
       if (typeof res === 'string') {
         cmdLine.print(res)
       }
@@ -173,7 +221,7 @@ window.addEventListener("keydown", (e) => {
   }
 })
 
-cmdLine.onCommand((val) => {
+cmdLine.onCommand(async (val) => {
   const trimmedUpper = val.trim().toUpperCase()
 
   if (trimmedUpper === "MENU") {
@@ -191,9 +239,9 @@ cmdLine.onCommand((val) => {
   }
 
   // Pass raw value for text preservation, handle matching inside
-  let res = app.inputText(val)
+  let res = await app.inputText(val)
   if (!res || typeof res === 'string' && res.startsWith("Unknown")) {
-    res = app.execute(trimmedUpper)
+    res = await app.execute(trimmedUpper)
   }
   
   if (typeof res === 'string') {
@@ -207,8 +255,8 @@ canvas.addEventListener("pointerdown", (e) => {
   app.pointerDown(e.clientX, e.clientY);
 });
 
-canvas.addEventListener("pointerup", (e) => {
-  const res = app.pointerUp(e.clientX, e.clientY);
+canvas.addEventListener("pointerup", async (e) => {
+  const res = await app.pointerUp(e.clientX, e.clientY);
   if (typeof res === 'string' && res) {
     cmdLine.print(res);
   }

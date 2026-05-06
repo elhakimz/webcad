@@ -140,28 +140,19 @@ export class TransformHandler implements ActionHandler {
             if (source) {
               const newId = doc.getNextId(this.getPrefix(source)) + "_ARRAY";
               const copy = source.clone(newId);
-              
-              // Rotate around array center
               copy.rotate(baseCenter.x, baseCenter.y, currentAngle);
-              
-              // If objects should NOT be rotated individually, we rotate them back relative to their own center
-              // Wait, AutoCAD "Rotate objects?" typically means if the entity orientation changes.
-              // By rotating around baseCenter, we've already rotated the orientation.
               if (!rotateObjects) {
-                  // Find new center of cloned object
                   const bbox = copy.getBoundingBox();
                   const cx = (bbox.minX + bbox.maxX) / 2;
                   const cy = (bbox.minY + bbox.maxY) / 2;
                   copy.rotate(cx, cy, -currentAngle);
               }
-              
               addEntity(copy, true, false);
               totalCreated++;
             }
           });
         }
       }
-      
       this.cleanup(context);
       return `Array created: ${totalCreated} new entities.`;
     }
@@ -347,51 +338,108 @@ export class TransformHandler implements ActionHandler {
 
     if (action.action === 'extend' && action.id && action.boundaryIds && action.pickPt) {
         const target = doc.getEntity(action.id);
-        if (target && target instanceof Line) {
+        if (target && (target instanceof Line || target instanceof ArcEntity)) {
             const boundaries = action.boundaryIds.map(id => doc.getEntity(id)).filter(Boolean);
-            let closestPt: Point | null = null;
-            let minDist = Infinity;
+            
+            if (target instanceof Line) {
+                let closestPt: Point | null = null;
+                let minDist = Infinity;
 
-            const dirX = target.x2 - target.x1;
-            const dirY = target.y2 - target.y1;
-            const len = Math.sqrt(dirX*dirX + dirY*dirY);
-            const ux = dirX / len;
-            const uy = dirY / len;
+                const dirX = target.x2 - target.x1;
+                const dirY = target.y2 - target.y1;
+                const len = Math.sqrt(dirX*dirX + dirY*dirY);
+                const ux = dirX / len;
+                const uy = dirY / len;
 
-            const d1 = Math.sqrt((action.pickPt.x - target.x1)**2 + (action.pickPt.y - target.y1)**2);
-            const d2 = Math.sqrt((action.pickPt.x - target.x2)**2 + (action.pickPt.y - target.y2)**2);
-            const isStart = d1 < d2;
+                const d1 = Math.sqrt((action.pickPt.x - target.x1)**2 + (action.pickPt.y - target.y1)**2);
+                const d2 = Math.sqrt((action.pickPt.x - target.x2)**2 + (action.pickPt.y - target.y2)**2);
+                const isStart = d1 < d2;
 
-            boundaries.forEach(b => {
-                const large = 1000000;
-                const tempLine = isStart 
-                    ? new Line("TEMP", target.x1 - ux * large, target.y1 - uy * large, target.x1, target.y1)
-                    : new Line("TEMP", target.x2, target.y2, target.x2 + ux * large, target.y2 + uy * large);
-                
-                const pts = MathUtils.getEntityEntityIntersections(tempLine, b);
-                
-                pts.forEach(pt => {
-                    const dist = isStart 
-                        ? Math.sqrt((pt.x - target.x1)**2 + (pt.y - target.y1)**2)
-                        : Math.sqrt((pt.x - target.x2)**2 + (pt.y - target.y2)**2);
-                    if (dist < minDist) {
-                        minDist = dist;
-                        closestPt = pt;
-                    }
+                boundaries.forEach(b => {
+                    const large = 1000000;
+                    const tempLine = isStart 
+                        ? new Line("TEMP", target.x1 - ux * large, target.y1 - uy * large, target.x1, target.y1)
+                        : new Line("TEMP", target.x2, target.y2, target.x2 + ux * large, target.y2 + uy * large);
+                    
+                    const pts = MathUtils.getEntityEntityIntersections(tempLine, b);
+                    
+                    pts.forEach(pt => {
+                        const dist = isStart 
+                            ? Math.sqrt((pt.x - target.x1)**2 + (pt.y - target.y1)**2)
+                            : Math.sqrt((pt.x - target.x2)**2 + (pt.y - target.y2)**2);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closestPt = pt;
+                        }
+                    });
                 });
-            });
 
-            if (closestPt) {
-                if (isStart) {
-                    target.x1 = closestPt.x;
-                    target.y1 = closestPt.y;
-                } else {
-                    target.x2 = closestPt.x;
-                    target.y2 = closestPt.y;
+                if (closestPt) {
+                    if (isStart) {
+                        target.x1 = closestPt.x;
+                        target.y1 = closestPt.y;
+                    } else {
+                        target.x2 = closestPt.x;
+                        target.y2 = closestPt.y;
+                    }
+                    addEntity(target, true, false);
+                    doc.updateSpatialIndex();
+                    return "Line extended.";
                 }
-                addEntity(target, true, false);
-                doc.updateSpatialIndex();
-                return "Line extended.";
+            } else if (target instanceof ArcEntity) {
+                const normalize = (a: number) => {
+                    while (a < 0) a += Math.PI * 2;
+                    while (a >= Math.PI * 2) a -= Math.PI * 2;
+                    return a;
+                };
+
+                const s = normalize(target.startAngle);
+                const e = normalize(target.endAngle);
+                
+                const d1 = Math.sqrt((action.pickPt.x - (target.cx + target.r * Math.cos(s)))**2 + (action.pickPt.y - (target.cy + target.r * Math.sin(s)))**2);
+                const d2 = Math.sqrt((action.pickPt.x - (target.cx + target.r * Math.cos(e)))**2 + (action.pickPt.y - (target.cy + target.r * Math.sin(e)))**2);
+                const isStart = d1 < d2;
+
+                let closestAngle: number | null = null;
+                let minAngularDist = Infinity;
+
+                boundaries.forEach(b => {
+                    const circle = new CircleEntity("TEMP", target.cx, target.cy, target.r);
+                    const pts = MathUtils.getEntityEntityIntersections(circle, b);
+                    
+                    pts.forEach(p => {
+                        const angle = normalize(Math.atan2(p.y - target.cy, p.x - target.cx));
+                        
+                        // Is it outside current arc sweep?
+                        const alreadyIn = target.ccw 
+                            ? (s <= e ? (angle >= s - 1e-4 && angle <= e + 1e-4) : (angle >= s - 1e-4 || angle <= e + 1e-4))
+                            : (e <= s ? (angle >= e - 1e-4 && angle <= s + 1e-4) : (angle >= e - 1e-4 || angle <= s + 1e-4));
+                        
+                        if (!alreadyIn) {
+                            let dist: number;
+                            if (isStart) {
+                                dist = target.ccw ? (s - angle) : (angle - s);
+                            } else {
+                                dist = target.ccw ? (angle - e) : (e - angle);
+                            }
+                            while (dist < 0) dist += Math.PI * 2;
+                            
+                            if (dist < minAngularDist) {
+                                minAngularDist = dist;
+                                closestAngle = angle;
+                            }
+                        }
+                    });
+                });
+
+                if (closestAngle !== null) {
+                    if (isStart) target.startAngle = closestAngle;
+                    else target.endAngle = closestAngle;
+                    
+                    addEntity(target, true, false);
+                    doc.updateSpatialIndex();
+                    return "Arc extended.";
+                }
             }
         }
     }

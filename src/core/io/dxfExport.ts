@@ -65,8 +65,24 @@ export class DXFExporter {
       s += "  0\nARC\n  8\n" + layer + "\n";
       s += " 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n0.0\n";
       s += " 40\n" + e.r + "\n";
-      s += " 50\n" + (e.startAngle * 180 / Math.PI) + "\n";
-      s += " 51\n" + (e.endAngle * 180 / Math.PI) + "\n";
+      
+      let start = e.startAngle * 180 / Math.PI;
+      let end = e.endAngle * 180 / Math.PI;
+      
+      if (!e.ccw) {
+          // DXF is always CCW. For CW arcs, we swap and the result is the same geometry sweep.
+          [start, end] = [end, start];
+      }
+
+      // Normalize to 0-360
+      const norm = (a: number) => {
+          while (a < 0) a += 360;
+          while (a >= 360) a -= 360;
+          return a;
+      };
+
+      s += " 50\n" + norm(start) + "\n";
+      s += " 51\n" + norm(end) + "\n";
     } else if (e instanceof Point) {
       s += "  0\nPOINT\n  8\n" + layer + "\n";
       s += " 10\n" + e.x + "\n 20\n" + e.y + "\n 30\n0.0\n";

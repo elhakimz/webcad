@@ -41,15 +41,19 @@ export class Menu {
         { label: 'HATCH', command: 'HATCH' },
         { label: 'SKETCH', command: 'SKETCH' },
         { label: 'SHAPE', command: 'SHAPE' },
-        { label: 'TEXT' }
+        { label: 'TEXT', command: 'TEXT' }
       ]},
       { label: 'EDIT', submenu: [
+        { label: 'ARRAY', command: 'ARRAY' },
         { label: 'ERASE', command: 'ERASE' },
         { label: 'MOVE', command: 'MOVE' },
         { label: 'COPY', command: 'COPY' },
         { label: 'ROTATE', command: 'ROTATE' },
         { label: 'SCALE', command: 'SCALE' },
-        { label: 'MIRROR', command: 'MIRROR' }
+        { label: 'MIRROR', command: 'MIRROR' },
+        { label: 'OFFSET', command: 'OFFSET' },
+        { label: 'TRIM', command: 'TRIM' },
+        { label: 'EXTEND', command: 'EXTEND' }
       ]},
       { label: 'INQUIRY' },
       { label: 'LAYERS', submenu: [
@@ -73,8 +77,8 @@ export class Menu {
         { label: 'SCRIPT' },
         { label: 'MENU' }
       ]},
-      { label: '3D' },
-      { label: 'SAVE:' }
+      { label: '3D', command: 'TEST3D' },
+      { label: 'SAVE:', command: 'SAVE' }
     ];
 
     this.render(root, 'ROOT\nMENU');

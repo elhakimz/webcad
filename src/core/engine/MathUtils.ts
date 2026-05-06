@@ -326,7 +326,10 @@ export function offsetLine(x1: number, y1: number, x2: number, y2: number, dista
   const p1b = { x: x1 - nx * distance, y: y1 - ny * distance };
   const p2b = { x: x2 - nx * distance, y: y2 - ny * distance };
 
-  const cross = (x2 - x1) * (y1 - sidePt.y) - (x1 - sidePt.x) * (y2 - y1);
+  // Standard 2D cross product: (x2-x1)*(py-y1) - (y2-y1)*(px-x1)
+  // If > 0, sidePt is on the left of the line P1->P2.
+  // Our normal (-dy, dx) also points to the left.
+  const cross = (x2 - x1) * (sidePt.y - y1) - (y2 - y1) * (sidePt.x - x1);
   
   if (cross > 0) {
       return { x1: p1a.x, y1: p1a.y, x2: p2a.x, y2: p2a.y };

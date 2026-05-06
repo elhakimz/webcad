@@ -35,7 +35,7 @@ export class TransformHandler implements ActionHandler {
         const entity = doc.getEntity(id);
         if (entity) {
           entity.rotate(action.baseX!, action.baseY!, action.angle!);
-          addEntity(entity, true, false); // Keep existing layer
+          addEntity(entity, true, false); 
         }
       });
       this.cleanup(context);
@@ -48,7 +48,7 @@ export class TransformHandler implements ActionHandler {
         const entity = doc.getEntity(id);
         if (entity) {
           entity.scale(action.baseX!, action.baseY!, action.factor!);
-          addEntity(entity, true, false); // Keep existing layer
+          addEntity(entity, true, false); 
         }
       });
       this.cleanup(context);
@@ -64,7 +64,7 @@ export class TransformHandler implements ActionHandler {
           const newId = source.id + "_COPY_" + Math.random().toString(36).substr(2, 5);
           const copy = source.clone(newId);
           copy.move(action.dx!, action.dy!);
-          addEntity(copy, true, false); // Keep source layer
+          addEntity(copy, true, false); 
           newIds.push(newId);
         }
       });
@@ -101,29 +101,67 @@ export class TransformHandler implements ActionHandler {
         : `Entities mirrored to [${newIds.join(', ')}].`;
     }
 
-    if (action.action === 'array' && action.ids && action.rows && action.cols) {
-      const { ids, rows, cols, rowSpacing, colSpacing } = action;
+    if (action.action === 'array' && action.ids && action.arrayType) {
+      const { ids, arrayType } = action;
       let totalCreated = 0;
 
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (r === 0 && c === 0) continue; // Skip original
+      if (arrayType === 'R') {
+        const { rows, cols, rowSpacing, colSpacing } = action;
+        for (let r = 0; r < (rows || 1); r++) {
+          for (let c = 0; c < (cols || 1); c++) {
+            if (r === 0 && c === 0) continue; 
 
-          const dx = c * (colSpacing || 0);
-          const dy = r * (rowSpacing || 0);
+            const dx = c * (colSpacing || 0);
+            const dy = r * (rowSpacing || 0);
 
+            ids.forEach(id => {
+              const source = doc.getEntity(id);
+              if (source) {
+                const newId = doc.getNextId(this.getPrefix(source)) + "_ARRAY";
+                const copy = source.clone(newId);
+                copy.move(dx, dy);
+                addEntity(copy, true, false);
+                totalCreated++;
+              }
+            });
+          }
+        }
+      } else if (arrayType === 'P') {
+        const { center, count, angleToFill, rotateObjects } = action;
+        const baseCenter = center || { x: 0, y: 0 };
+        const totalCount = count || 2;
+        const totalAngle = (angleToFill || 360) * (Math.PI / 180);
+        const stepAngle = totalAngle / totalCount;
+
+        for (let i = 1; i < totalCount; i++) {
+          const currentAngle = i * stepAngle;
           ids.forEach(id => {
             const source = doc.getEntity(id);
             if (source) {
               const newId = doc.getNextId(this.getPrefix(source)) + "_ARRAY";
               const copy = source.clone(newId);
-              copy.move(dx, dy);
+              
+              // Rotate around array center
+              copy.rotate(baseCenter.x, baseCenter.y, currentAngle);
+              
+              // If objects should NOT be rotated individually, we rotate them back relative to their own center
+              // Wait, AutoCAD "Rotate objects?" typically means if the entity orientation changes.
+              // By rotating around baseCenter, we've already rotated the orientation.
+              if (!rotateObjects) {
+                  // Find new center of cloned object
+                  const bbox = copy.getBoundingBox();
+                  const cx = (bbox.minX + bbox.maxX) / 2;
+                  const cy = (bbox.minY + bbox.maxY) / 2;
+                  copy.rotate(cx, cy, -currentAngle);
+              }
+              
               addEntity(copy, true, false);
               totalCreated++;
             }
           });
         }
       }
+      
       this.cleanup(context);
       return `Array created: ${totalCreated} new entities.`;
     }
@@ -211,6 +249,7 @@ export class TransformHandler implements ActionHandler {
                     if (removeIdx !== -1) {
                         doc.removeEntity(target.id);
                         viewer.removeObject(target.id);
+
                         for (let i = 0; i < pts.length - 1; i++) {
                             if (i === removeIdx) continue;
                             const newId = doc.getNextId("L");
@@ -223,7 +262,6 @@ export class TransformHandler implements ActionHandler {
                         return "Line trimmed.";
                     }
                 } else {
-                    // Arc or Circle
                     const cx = (target as any).cx;
                     const cy = (target as any).cy;
                     const r = (target as any).r;
@@ -250,12 +288,10 @@ export class TransformHandler implements ActionHandler {
                     const allAngles = [s, ...validIntersections];
                     if (target instanceof ArcEntity) allAngles.push(e);
                     else if (target instanceof CircleEntity) {
-                        // For circle, we need to sort and close the loop
                         allAngles.sort((a, b) => a - b);
-                        allAngles.push(allAngles[0]); // Connect last back to first
+                        allAngles.push(allAngles[0]); 
                     }
                     
-                    // Sort angles according to direction
                     allAngles.sort((a, b) => {
                         let da, db;
                         if (ccw) {

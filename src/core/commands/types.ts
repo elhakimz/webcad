@@ -15,6 +15,11 @@ export type CommandAction = {
   sidePt?: { x: number, y: number };
   boundaryIds?: string[];
   pickPt?: { x: number, y: number };
+  arrayType?: 'R' | 'P';
+  center?: { x: number, y: number };
+  count?: number;
+  angleToFill?: number;
+  rotateObjects?: boolean;
 
   entity?: Entity;
   dx?: number;

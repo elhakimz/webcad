@@ -108,9 +108,34 @@ export class App {
     return { x, y, snap };
   }
 
+  private reportSelectionDimensions() {
+    if (this.selectedEntityIds.size === 0) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let count = 0;
+
+    this.selectedEntityIds.forEach(id => {
+      const entity = this.doc.getEntity(id);
+      if (entity) {
+        const box = entity.getBoundingBox();
+        minX = Math.min(minX, box.minX);
+        minY = Math.min(minY, box.minY);
+        maxX = Math.max(maxX, box.maxX);
+        maxY = Math.max(maxY, box.maxY);
+        count++;
+      }
+    });
+
+    if (count > 0 && this.commandLinePrint) {
+      const width = maxX - minX;
+      const height = maxY - minY;
+      this.commandLinePrint(`[Selection] ${count} objects. Width: ${width.toFixed(2)}, Height: ${height.toFixed(2)}`);
+    }
+  }
+
   private isEditCommand(name?: string): boolean {
     if (!name) return false;
-    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand'];
+    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand', 'ArrayCommand', 'OffsetCommand'];
     const cmdName = name.endsWith('Command') ? name : name.charAt(0).toUpperCase() + name.slice(1).toLowerCase() + 'Command';
     return editCommands.includes(cmdName);
   }
@@ -246,7 +271,7 @@ export class App {
     const isEditCommand = this.isEditCommand(activeName);
     const isSelectionStep = !this.cmd.active || 
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
-        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand'));
+        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand'));
 
     let result: CommandResponse | undefined;
 
@@ -269,7 +294,7 @@ export class App {
         }
         
         found.forEach(e => this.selectedEntityIds.add(e.id));
-      if (this.commandLinePrint) this.commandLinePrint(`[Selection] Multiple (box): ${found.length} objects selected`);
+        this.reportSelectionDimensions();
     }
 
     this.selectionStartPoint = null;
@@ -289,7 +314,7 @@ export class App {
     const isEditCommand = this.isEditCommand(activeName);
     const isSelectionStep = !this.cmd.active || 
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
-        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand'));
+        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand'));
     const tolerance = 5 / this.viewer.camera.zoom;
 
     if (isSelectionStep) {
@@ -307,17 +332,19 @@ export class App {
                 this.selectedEntityIds.add(entity.id);
             }
 
-            if (this.commandLinePrint) this.commandLinePrint(`[Selection] Single: 1 object selected`);
+            this.reportSelectionDimensions();
 
-        if (this.cmd.active) {
-            const res = await this.cmd.inputString(entity.id, (p) => this.doc.getNextId(p));
-            if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend')) {
-                (res as any).pickPt = { x: worldPt.x, y: worldPt.y };
+            // For commands that pick a target for immediate action (Trim, Extend, Offset at Step 1)
+            if (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) {
+                const res = await this.cmd.inputString(entity.id, (p) => this.doc.getNextId(p));
+                if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend')) {
+                    (res as any).pickPt = { x: worldPt.x, y: worldPt.y };
+                }
+                return await this.handleResult(res);
             }
-            return await this.handleResult(res);
-        }
             return;
-        } else if (!this.cmd.active) {
+        }
+ else if (!this.cmd.active) {
             this.selectedEntityIds.clear();
         }
 

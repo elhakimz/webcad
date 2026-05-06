@@ -1,4 +1,5 @@
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { Point } from "../engine/MathUtils"
 
 export class ScaleCommand implements Command {
@@ -14,7 +15,7 @@ export class ScaleCommand implements Command {
     }
   }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     if (this.step === 0 && val !== "") {
       this.targetIds = [val];
@@ -36,7 +37,7 @@ export class ScaleCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, _id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 1) {
       this.basePoint = { x, y }
       this.step = 2
@@ -55,7 +56,7 @@ export class ScaleCommand implements Command {
     return this.getPrompt();
   }
 
-  getPreview(x: number, y: number): any {
+  getPreview(x: number, y: number, _units: UnitsConfig): import('./types').PreviewObject | null {
     if (this.step === 2) {
       const dist = Math.sqrt((x - this.basePoint.x) ** 2 + (y - this.basePoint.y) ** 2);
       return { type: 'scale_preview', factor: dist / 10.0, baseX: this.basePoint.x, baseY: this.basePoint.y };

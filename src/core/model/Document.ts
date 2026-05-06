@@ -1,14 +1,21 @@
 import { Entity, BoundingBox } from "./Entity"
-import { HistoryManager, HistoryAction } from "./HistoryManager"
+import { HistoryManager, _HistoryAction } from "./HistoryManager"
 import { LayerManager } from "./Layer"
 import { BlockManager } from "./Block"
 import { Quadtree } from "../engine/Quadtree"
+
+export interface UnitsConfig {
+  type: 'decimal' | 'architectural' | 'metric';
+  precision: number;
+  scale: number;
+}
 
 export class Document {
   entities: Map<string, Entity> = new Map()
   history = new HistoryManager()
   layers = new LayerManager()
   blocks = new BlockManager()
+  units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 }
   private spatialIndex: Quadtree
   private idCounters: Map<string, number> = new Map()
 
@@ -71,12 +78,12 @@ export class Document {
     this.history.recordTransform(before, after);
   }
 
-  recordModify(entity: Entity, oldData: Record<string, unknown>) {
+  recordModify(_entity: Entity, _oldData: Record<string, unknown>) {
     // This is still a bit of a hybrid, but let's at least make it do something if needed
     // For now, recordTransform is the preferred way.
   }
 
-  recordBatch(actions: any[]) {
+  recordBatch(_actions: any[]) {
   }
 
   undo() {

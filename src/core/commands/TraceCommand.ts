@@ -1,5 +1,6 @@
 import { Trace } from "../model/Trace"
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 
 export class TraceCommand implements Command {
@@ -8,7 +9,7 @@ export class TraceCommand implements Command {
   p1 = { x: 0, y: 0 }
   p2 = { x: 0, y: 0 }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim();
     if (this.step === 0) {
       this.width = val === "" ? 5 : parseFloat(val);
@@ -17,15 +18,15 @@ export class TraceCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
     if (this.step === 1) {
       this.p1 = { x, y }
       this.step = 2
-      return FormatUtils.formatPoint(x, y, "P1")
+      return FormatUtils.formatPoint(x, y, units, "P1")
     } else if (this.step === 2) {
       this.p2 = { x, y }
       const trace = new Trace(id, this.p1.x, this.p1.y, this.p2.x, this.p2.y, this.width)
-      const echo = `Trace created. Width: ${FormatUtils.formatDistance(this.width)}`
+      const echo = `Trace created. Width: ${FormatUtils.formatDistance(this.width, units)}`
       ;(trace as unknown as { _echo: string })._echo = echo
       
       // AutoCAD TRACE continues from last point
@@ -35,7 +36,7 @@ export class TraceCommand implements Command {
     return this.getPrompt();
   }
 
-  getPreview(x: number, y: number) {
+  getPreview(x: number, y: number, _units: UnitsConfig) {
     if (this.step === 2) {
       return new Trace("PREVIEW", this.p1.x, this.p1.y, x, y, this.width)
     }

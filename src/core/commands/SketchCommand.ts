@@ -1,4 +1,5 @@
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { Polyline } from "../model/Polyline"
 
 export class SketchCommand implements Command {
@@ -7,7 +8,7 @@ export class SketchCommand implements Command {
   isDrawing = false;
   step = 0;
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     if (this.step === 0) {
       const val = parseFloat(text);
       if (!isNaN(val) && val > 0) {
@@ -63,7 +64,7 @@ export class SketchCommand implements Command {
     return { action: "close", entity: polyline };
   }
 
-  onPoint(): CommandResponse {
+  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse {
     return "";
   }
 
@@ -73,7 +74,7 @@ getPrompt() {
     return "Press and drag to sketch. Release to finish.";
   }
 
-  getPreview(x: number, y: number): Polyline | null {
+  getPreview(x: number, y: number, _units: UnitsConfig): Polyline | null {
     if (this.step !== 1) return null;
 
     let previewPoints = [...this.points];

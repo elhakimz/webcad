@@ -5,7 +5,7 @@ describe('MirrorCommand', () => {
   it('should start with select objects prompt', () => {
     const cmd = new MirrorCommand()
     expect(cmd.getPrompt()).toBe('Select objects:')
-    expect(cmd.onPoint(0, 0, 'DUMMY')).toBe('Select objects:')
+    expect(cmd.onPoint(0, 0, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })).toBe('Select objects:')
   })
 
   it('should accept pre-selected ids and skip to step 1', () => {
@@ -16,17 +16,17 @@ describe('MirrorCommand', () => {
   it('should progress through steps after selection', () => {
     const cmd = new MirrorCommand(['L1'])
     
-    expect(cmd.onPoint(10, 10, 'DUMMY')).toBe('Second point:')
+    expect(cmd.onPoint(10, 10, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })).toBe('Second point:')
     
     expect(cmd.getPrompt()).toBe('Second point:')
   })
 
   it('should handle Y input to delete originals', () => {
     const cmd = new MirrorCommand(['L1'])
-    cmd.onPoint(10, 10, 'DUMMY')
-    cmd.onPoint(20, 20, 'DUMMY')
+    cmd.onPoint(10, 10, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
+    cmd.onPoint(20, 20, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     
-    const result = cmd.onInput('Y', 'DUMMY')
+    const result = cmd.onInput('Y', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     expect(result).toEqual({
       action: 'mirror',
       ids: ['L1'],
@@ -38,10 +38,10 @@ describe('MirrorCommand', () => {
 
   it('should handle N input to keep originals', () => {
     const cmd = new MirrorCommand(['L1'])
-    cmd.onPoint(10, 10, 'DUMMY')
-    cmd.onPoint(20, 20, 'DUMMY')
+    cmd.onPoint(10, 10, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
+    cmd.onPoint(20, 20, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     
-    const result = cmd.onInput('n', 'DUMMY')
+    const result = cmd.onInput('n', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     expect(result).toEqual({
       action: 'mirror',
       ids: ['L1'],
@@ -53,16 +53,16 @@ describe('MirrorCommand', () => {
 
   it('should reject invalid Y/N input', () => {
     const cmd = new MirrorCommand(['L1'])
-    cmd.onPoint(10, 10, 'DUMMY')
-    cmd.onPoint(20, 20, 'DUMMY')
+    cmd.onPoint(10, 10, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
+    cmd.onPoint(20, 20, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     
-    const result = cmd.onInput('X', 'DUMMY')
+    const result = cmd.onInput('X', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     expect(result).toBe('Delete source objects? <N>:')
   })
 
   it('should accept entity ID via onInput to select', () => {
     const cmd = new MirrorCommand()
-    const result = cmd.onInput('L1', 'DUMMY')
+    const result = cmd.onInput('L1', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     expect(result).toBe('First point of mirror line:')
     expect(cmd.getPrompt()).toBe('First point of mirror line:')
   })
@@ -71,10 +71,10 @@ describe('MirrorCommand', () => {
     const cmd = new MirrorCommand(['L1'])
     expect(cmd.getReferencePoints()).toEqual([])
     
-    cmd.onPoint(10, 10, 'DUMMY')
+    cmd.onPoint(10, 10, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     expect(cmd.getReferencePoints()).toEqual([{ x: 10, y: 10 }])
 
-    cmd.onPoint(20, 20, 'DUMMY')
+    cmd.onPoint(20, 20, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     expect(cmd.getReferencePoints()).toEqual([{ x: 10, y: 10 }, { x: 20, y: 20 }])
   })
 })

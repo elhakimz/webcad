@@ -1,5 +1,6 @@
 import { Hatch } from "../model/Hatch"
 import { Command, CommandResponse, PreviewObject } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { getAllPatternNames } from "../io/Patterns"
 
 export class HatchCommand implements Command {
@@ -9,7 +10,7 @@ export class HatchCommand implements Command {
   angle = 0.0
   vertices: { x: number, y: number }[] = []
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     console.log(`[HatchCommand] onInput: val="${val}", step=${this.step}`);
 
@@ -59,7 +60,7 @@ export class HatchCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, _id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 3) {
       this.vertices.push({ x, y });
       return "Pick next point (Enter to finish):";
@@ -67,7 +68,7 @@ export class HatchCommand implements Command {
     return this.getPrompt();
   }
 
-  getPreview(x: number, y: number): PreviewObject | null {
+  getPreview(_x: number, _y: number, _units: UnitsConfig): PreviewObject | null {
     if (this.step === 3 && this.vertices.length > 0) {
       return { type: 'plinepoints', points: [...this.vertices] };
     }

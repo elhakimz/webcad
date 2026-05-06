@@ -1,15 +1,16 @@
 import { Point } from "../model/Point"
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 
 export class PointCommand implements Command {
-  onInput(text: string, _id: string): import('./types').CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     if (text.toUpperCase() === 'EXIT') return { action: 'finish' };
     return undefined;
   }
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
     const pt = new Point(id, x, y)
-    const echo = `Point created. ${FormatUtils.formatPoint(x, y)}`
+    const echo = `Point created. ${FormatUtils.formatPoint(x, y, units)}`
     ;(pt as unknown as { _echo: string })._echo = echo
     return pt
   }

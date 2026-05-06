@@ -1,22 +1,34 @@
+import { UnitsConfig } from "../model/Document";
+
 export class FormatUtils {
-  static formatPoint(x: number, y: number, label: string = "P"): string {
-    return `${label}[X:${x.toFixed(2)}, Y:${y.toFixed(2)}, Z:0.00]`;
+  static formatValue(val: number, units: UnitsConfig): string {
+    if (units.type === 'architectural') {
+      const feet = Math.floor(val / 12);
+      const inches = Math.abs(val % 12);
+      const sign = val < 0 ? "-" : "";
+      return `${sign}${feet}' ${inches.toFixed(units.precision)}"`;
+    }
+    return val.toFixed(units.precision);
   }
 
-  static formatRadius(r: number): string {
-    return `[R:${r.toFixed(2)}]`;
+  static formatPoint(x: number, y: number, units: UnitsConfig, label: string = "P"): string {
+    return `${label}[X:${this.formatValue(x, units)}, Y:${this.formatValue(y, units)}, Z:0.00]`;
   }
 
-  static formatDiameter(d: number): string {
-    return `[D:${d.toFixed(2)}]`;
+  static formatRadius(r: number, units: UnitsConfig): string {
+    return `[R:${this.formatValue(r, units)}]`;
   }
 
-  static formatDistance(d: number): string {
-    return `Distance: ${d.toFixed(2)}`;
+  static formatDiameter(d: number, units: UnitsConfig): string {
+    return `[D:${this.formatValue(d, units)}]`;
   }
 
-  static formatAngle(angleRad: number): string {
+  static formatDistance(d: number, units: UnitsConfig): string {
+    return `Distance: ${this.formatValue(d, units)}`;
+  }
+
+  static formatAngle(angleRad: number, precision: number = 1): string {
     const deg = (angleRad * 180 / Math.PI);
-    return `[Angle:${deg.toFixed(1)}°]`;
+    return `[Angle:${deg.toFixed(precision)}°]`;
   }
 }

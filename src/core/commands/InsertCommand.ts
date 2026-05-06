@@ -1,4 +1,5 @@
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { Point } from "../engine/MathUtils";
 
 export class InsertCommand implements Command {
@@ -9,7 +10,7 @@ export class InsertCommand implements Command {
   scaleY = 1.0
   rotation = 0.0
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
@@ -42,7 +43,7 @@ export class InsertCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, _id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 1) {
       this.insertPoint = { x, y };
       this.step = 2;

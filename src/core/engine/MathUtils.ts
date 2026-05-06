@@ -397,6 +397,64 @@ export function getLineLineIntersection(p1: Point, p2: Point, p3: Point, p4: Poi
   return null;
 }
 
+export function getLineLineIntersectionInfinite(p1: Point, p2: Point, p3: Point, p4: Point): Point | null {
+  const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+  const x3 = p3.x, y3 = p3.y, x4 = p4.x, y4 = p4.y;
+  
+  const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (Math.abs(denom) < 1e-6) return null;
+
+  const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+  return { x: x1 + t * (x2 - x1), y: y1 + t * (y2 - y1) };
+}
+
+export function filletLines(p1: Point, p2: Point, p3: Point, p4: Point, radius: number, pick1: Point, pick2: Point) {
+  const intersect = getLineLineIntersectionInfinite(p1, p2, p3, p4);
+  if (!intersect) return null;
+
+  const getUnitDir = (pa: Point, pb: Point, pick: Point, inter: Point) => {
+    const dx = pb.x - pa.x;
+    const dy = pb.y - pa.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const ux = dx / len;
+    const uy = dy / len;
+    const tPick = (pick.x - inter.x) * ux + (pick.y - inter.y) * uy;
+    const sign = tPick > 0 ? 1 : -1;
+    return { x: ux * sign, y: uy * sign };
+  };
+
+  const dir1 = getUnitDir(p1, p2, pick1, intersect);
+  const dir2 = getUnitDir(p3, p4, pick2, intersect);
+
+  const a1 = Math.atan2(dir1.y, dir1.x);
+  const a2 = Math.atan2(dir2.y, dir2.x);
+
+  let angleDiff = a2 - a1;
+  while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+  while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+
+  const halfAngle = angleDiff / 2;
+  const distToTangent = Math.abs(radius / Math.tan(halfAngle));
+  const distToCenter = Math.sqrt(radius * radius + distToTangent * distToTangent);
+
+  const bisectorAngle = a1 + halfAngle;
+  const cx = intersect.x + distToCenter * Math.cos(bisectorAngle);
+  const cy = intersect.y + distToCenter * Math.sin(bisectorAngle);
+
+  const tp1 = { x: intersect.x + distToTangent * dir1.x, y: intersect.y + distToTangent * dir1.y };
+  const tp2 = { x: intersect.x + distToTangent * dir2.x, y: intersect.y + distToTangent * dir2.y };
+
+  const sAngle = Math.atan2(tp1.y - cy, tp1.x - cx);
+  const eAngle = Math.atan2(tp2.y - cy, tp2.x - cx);
+
+  // Sweep should be the smaller angle (always <= PI)
+  let sweep = eAngle - sAngle;
+  while (sweep < -Math.PI) sweep += Math.PI * 2;
+  while (sweep > Math.PI) sweep -= Math.PI * 2;
+
+  return { cx, cy, radius, startAngle: sAngle, endAngle: eAngle, ccw: sweep > 0, tp1, tp2 };
+}
+
 export function getLineCircleIntersections(p1: Point, p2: Point, cx: number, cy: number, r: number): Point[] {
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;

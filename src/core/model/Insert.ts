@@ -46,7 +46,7 @@ export class Insert extends Entity {
     this.scaleY *= factor;
   }
 
-  mirror(p1: Point, p2: Point) {
+  mirror(_p1: Point, _p2: Point) {
       // Insertion point mirror is standard
       // But full block mirroring requires scale inversion or rotation flip
       // For now, mirror the insertion point.

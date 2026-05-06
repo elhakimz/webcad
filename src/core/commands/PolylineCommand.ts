@@ -1,5 +1,6 @@
 import { Polyline, PolylineVertex } from "../model/Polyline"
 import { Command, CommandResponse, PreviewObject } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 import { Point } from "../engine/MathUtils"
 
@@ -10,12 +11,12 @@ export class PolylineCommand implements Command {
   isArcMode = false
   private entityId: string | null = null;
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
     if (this.step === 0) {
       this.entityId = id;
       this.vertices = [{ x, y, bulge: 0 }]
       this.step = 1
-      return FormatUtils.formatPoint(x, y, "P1")
+      return FormatUtils.formatPoint(x, y, units, "P1")
     } else {
       const v: PolylineVertex = { x, y, bulge: 0 }
       
@@ -32,7 +33,7 @@ export class PolylineCommand implements Command {
     }
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
+  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     const currentId = this.entityId || id;
     if (val === "C" || val === "CLOSE") {
@@ -61,7 +62,7 @@ export class PolylineCommand implements Command {
     }
   }
 
-  getPreview(x: number, y: number): PreviewObject | null {
+  getPreview(x: number, y: number, _units: UnitsConfig): PreviewObject | null {
     if (this.step === 1 && this.vertices.length > 0) {
       const tempVertices = [...this.vertices, { x, y, bulge: this.isArcMode ? 0.5 : 0 }]
       return { type: 'polyline_preview', vertices: tempVertices, closed: this.closed };

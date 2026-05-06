@@ -1,4 +1,5 @@
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 
 export class OffsetCommand implements Command {
   step = 0
@@ -6,7 +7,7 @@ export class OffsetCommand implements Command {
   targetId: string | null = null
   private p1: { x: number, y: number } | null = null
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim();
 
     if (this.step === 0) {
@@ -29,7 +30,7 @@ export class OffsetCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, _id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 0) {
         // Offset distance can also be specified by two points
         if (!this.p1) {

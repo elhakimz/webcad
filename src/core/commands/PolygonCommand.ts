@@ -1,5 +1,6 @@
 import { Polyline } from "../model/Polyline"
 import { Command, CommandResponse, PreviewObject } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 import { calculatePolygonVerticesByCenter, calculatePolygonVerticesByEdge, Point } from "../engine/MathUtils"
 
@@ -10,7 +11,7 @@ export class PolygonCommand implements Command {
   inscribed = true
   edgeP1: Point | null = null
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
@@ -37,7 +38,7 @@ export class PolygonCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
     if (this.step === 1) {
       this.center = { x, y }
       this.step = 2
@@ -50,7 +51,7 @@ export class PolygonCommand implements Command {
       
       const dist = Math.sqrt((x - this.center!.x) ** 2 + (y - this.center!.y) ** 2)
       const angle = Math.atan2(y - this.center!.y, x - this.center!.x) * (180 / Math.PI)
-      const echo = `Polygon created. Radius: ${FormatUtils.formatDistance(dist)} Angle: ${angle.toFixed(2)}°`
+      const echo = `Polygon created. Radius: ${FormatUtils.formatDistance(dist, units)} Angle: ${angle.toFixed(2)}°`
       ;(poly as unknown as { _echo: string })._echo = echo
       
       this.step = 0
@@ -74,7 +75,7 @@ export class PolygonCommand implements Command {
     return this.getPrompt()
   }
 
-  getPreview(x: number, y: number): PreviewObject | null {
+  getPreview(x: number, y: number, _units: UnitsConfig): PreviewObject | null {
     if (this.step === 3) {
       const vertices = calculatePolygonVerticesByCenter(this.center!, this.numSides, { x, y }, this.inscribed)
       return { type: 'polyline_preview', vertices: vertices.map(v => ({ ...v, bulge: 0 })), closed: true };

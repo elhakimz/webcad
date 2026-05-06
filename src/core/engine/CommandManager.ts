@@ -23,6 +23,8 @@ import { ShapeCommand } from "../commands/ShapeCommand"
 import { LayerCommand } from "../commands/LayerCommand"
 import { LinetypeCommand } from "../commands/LinetypeCommand"
 import { SaveCommand, LoadCommand, NewCommand } from "../commands/IOCommands"
+import { UnitsCommand } from "../commands/UnitsCommand"
+import { FilletCommand } from "../commands/FilletCommand"
 import { OrthoCommand } from "../commands/OrthoCommand"
 import { GridCommand } from "../commands/GridCommand"
 import { SnapCommand } from "../commands/SnapCommand"
@@ -34,12 +36,13 @@ import { BlockCommand } from "../commands/BlockCommand"
 import { InsertCommand } from "../commands/InsertCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
+import { UnitsConfig } from "../model/Document"
 
 export class CommandManager {
   active: Command | null = null
   lastPoint: { x: number; y: number } | null = null
 
-  execute(cmd:string, selection?: string[], entities?: Map<string, any>): CommandResponse {
+  execute(cmd:string, units: UnitsConfig, selection?: string[], entities?: Map<string, any>): CommandResponse {
     const parts = cmd.trim().split(/\s+/);
     const cmdName = parts[0].toUpperCase();
     const args = parts.slice(1);
@@ -70,7 +73,7 @@ export class CommandManager {
       response = "COPY"
     }
     else if(cmdName === "ROTATE"){
-      const targetEntities = selection ? selection.map(id => entities?.get(id)).filter(Boolean) : [];
+      const _targetEntities = selection ? selection.map(id => entities?.get(id)).filter(Boolean) : [];
       this.active = new RotateCommand(selection)
       response = "ROTATE"
     }
@@ -154,6 +157,10 @@ export class CommandManager {
       this.active = new NewCommand()
       response = "NEW"
     }
+    else if(cmdName === "UNITS"){
+      this.active = new UnitsCommand()
+      response = "UNITS"
+    }
     else if(cmdName === "ORTHO"){
       this.active = new OrthoCommand()
       response = "ORTHO"
@@ -173,6 +180,10 @@ export class CommandManager {
     else if(cmdName === "OFFSET"){
       this.active = new OffsetCommand()
       response = "OFFSET"
+    }
+    else if(cmdName === "FILLET"){
+      this.active = new FilletCommand()
+      response = "FILLET"
     }
     else if(cmdName === "TRIM"){
       this.active = new TrimCommand(selection)
@@ -206,7 +217,7 @@ export class CommandManager {
     // Feed additional arguments if provided
     for (const arg of args) {
       if (this.active) {
-        const nextRes = this.inputString(arg);
+        const nextRes = this.inputString(arg, units);
         if (nextRes) response = nextRes;
       }
     }
@@ -214,23 +225,23 @@ export class CommandManager {
     return response;
   }
 
-  inputPoint(x:number,y:number, idGenerator?: (prefix: string) => string): CommandResponse | undefined {
+  inputPoint(x:number,y:number, units: UnitsConfig, idGenerator?: (prefix: string) => string): CommandResponse | undefined {
     this.lastPoint = { x, y }
     if(this.active){
       const id = idGenerator ? idGenerator(this.getPrefix(this.active)) : `TMP_${Date.now()}`;
-      return this.active.onPoint(x,y, id)
+      return this.active.onPoint(x,y, id, units)
     }
   }
 
-  inputString(text:string, idGenerator?: (prefix: string) => string): CommandResponse | undefined {
+  inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const pt = CoordinateParser.parseCoordinate(text, this.lastPoint || undefined)
     if (pt) {
-      return this.inputPoint(pt.x, pt.y, idGenerator)
+      return this.inputPoint(pt.x, pt.y, units, idGenerator)
     }
 
     if(this.active && this.active.onInput){
       const id = idGenerator ? idGenerator(this.getPrefix(this.active)) : `TMP_${Date.now()}`;
-      return this.active.onInput(text, id)
+      return this.active.onInput(text, id, units, pickPt)
     }
   }
 

@@ -1,4 +1,5 @@
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 
 export class Test3DCommand implements Command {
   step = 0
@@ -6,7 +7,7 @@ export class Test3DCommand implements Command {
   width = 10
   height = 10
 
-  onPoint(x: number, y: number, _id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 0) {
       this.p1 = { x, y }
       this.step = 1
@@ -15,7 +16,7 @@ export class Test3DCommand implements Command {
     return this.getPrompt();
   }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim();
     if (this.step === 1) {
       this.width = val === "" ? 10 : parseFloat(val)

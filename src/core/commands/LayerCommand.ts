@@ -1,14 +1,15 @@
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 
 export class LayerCommand implements Command {
   step = 0
   option = ""
 
-  onPoint(_x: number, _y: number, _id: string): CommandResponse {
+  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse {
     return this.getPrompt();
   }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     if (val === 'EXIT' || val === '') return { action: 'finish' };
 

@@ -1,10 +1,11 @@
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 
 export class ZoomCommand implements Command {
   step = 0
   p1 = { x: 0, y: 0 }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     if (val === "A" || val === "ALL") {
       return { action: "zoom", zoomType: "all" } as CommandResponse;
@@ -14,7 +15,7 @@ export class ZoomCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, _id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 0) {
       this.p1 = { x, y }
       this.step = 1
@@ -27,7 +28,7 @@ export class ZoomCommand implements Command {
     }
   }
 
-  getPreview(x: number, y: number): import('./types').PreviewObject | null {
+  getPreview(x: number, y: number, _units: UnitsConfig): import('./types').PreviewObject | null {
     if (this.step === 1) {
       return { type: 'zoomwindow', id: "ZOOM_PREVIEW", x1: this.p1.x, y1: this.p1.y, x2: x, y2: y };
     }

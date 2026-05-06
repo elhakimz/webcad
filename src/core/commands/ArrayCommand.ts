@@ -1,4 +1,5 @@
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 
 export class ArrayCommand implements Command {
   step = 0
@@ -26,7 +27,7 @@ export class ArrayCommand implements Command {
     }
   }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
@@ -105,7 +106,7 @@ export class ArrayCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, _id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 0) return "Select objects:";
     
     // Rectangular distance picking
@@ -130,10 +131,10 @@ export class ArrayCommand implements Command {
     return this.getPrompt();
   }
 
-  private finish() {
+  private finish(): CommandResponse {
     const ids = [...this.targetIds];
     const arrayType = this.arrayType;
-    const res: any = { action: "array", ids, arrayType };
+    const res: CommandAction = { action: "array", ids, arrayType };
 
     if (arrayType === 'R') {
       res.rows = this.rows;
@@ -141,7 +142,7 @@ export class ArrayCommand implements Command {
       res.rowSpacing = this.rowSpacing;
       res.colSpacing = this.colSpacing;
     } else {
-      res.center = this.center;
+      res.center = this.center!;
       res.count = this.count;
       res.angleToFill = this.angleToFill;
       res.rotateObjects = this.rotateObjects;

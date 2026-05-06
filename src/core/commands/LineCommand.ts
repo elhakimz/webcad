@@ -1,15 +1,16 @@
 import { Line } from "../model/Line"
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 
 export class LineCommand implements Command {
   points: { x: number; y: number }[] = []
   drawnEntityIds: string[] = []
 
-  onPoint(x: number, y: number, id: string): CommandResponse {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
     this.points.push({ x, y });
     const pLabel = "P" + this.points.length;
-    const echo = FormatUtils.formatPoint(x, y, pLabel);
+    const echo = FormatUtils.formatPoint(x, y, units, pLabel);
 
     if (this.points.length === 1) {
       return echo;
@@ -21,7 +22,7 @@ export class LineCommand implements Command {
     }
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
+  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
@@ -48,7 +49,7 @@ export class LineCommand implements Command {
     }
   }
 
-  getPreview(x: number, y: number) {
+  getPreview(x: number, y: number, _units: UnitsConfig) {
     if (this.points.length > 0) {
       const last = this.points[this.points.length - 1];
       return new Line("PREVIEW", last.x, last.y, x, y);

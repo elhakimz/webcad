@@ -1,4 +1,5 @@
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 
 export class CopyCommand implements Command {
   step = 0
@@ -12,7 +13,7 @@ export class CopyCommand implements Command {
     }
   }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     if (this.step === 0 && val !== "") {
       this.targetIds = [val];
@@ -21,7 +22,7 @@ export class CopyCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, _id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 1) {
       this.basePoint = { x, y }
       this.step = 2
@@ -31,14 +32,14 @@ export class CopyCommand implements Command {
       const dy = y - this.basePoint.y
       const ids = [...this.targetIds];
       this.step = 1; // AutoCAD allows multiple copies
-      return { action: "copy", ids, dx, dy } as any
+      return { action: "copy", ids, dx, dy } as CommandResponse
     }
     return this.getPrompt();
   }
 
-  getPreview(x: number, y: number): import('./types').PreviewObject | null {
+  getPreview(x: number, y: number, _units: UnitsConfig): import('./types').PreviewObject | null {
     if (this.step === 2) {
-      return { action: 'copy', dx: x - this.basePoint.x, dy: y - this.basePoint.y } as any;
+      return { type: 'copy_preview', dx: x - this.basePoint.x, dy: y - this.basePoint.y };
     }
     return null
   }

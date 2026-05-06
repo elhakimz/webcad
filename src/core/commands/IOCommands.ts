@@ -1,9 +1,10 @@
-import { Command, CommandResponse } from "./types";
+import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document";
 
 export class SaveCommand implements Command {
-  onPoint(): CommandResponse { return "Enter filename to save:"; }
+  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse { return "Enter filename to save:"; }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const filename = text.trim() || "drawing";
     const name = filename.endsWith(".dxf") ? filename : filename + ".dxf";
     return { action: "save", filename: name };
@@ -13,9 +14,9 @@ export class SaveCommand implements Command {
 }
 
 export class LoadCommand implements Command {
-  onPoint(): CommandResponse { return "Enter filename to load (or ? for list):"; }
+  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse { return "Enter filename to load (or ? for list):"; }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const filename = text.trim();
     if (filename === "?") return { action: "listFiles" };
     if (!filename) return "Filename required. Load drawing:";
@@ -28,9 +29,9 @@ export class LoadCommand implements Command {
 
 export class NewCommand implements Command {
   step = 0;
-  onPoint(): CommandResponse { return "Start a new drawing? (Y/N):"; }
+  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse { return "Start a new drawing? (Y/N):"; }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     if (this.step === 0) {
       if (val === "Y" || val === "YES") {

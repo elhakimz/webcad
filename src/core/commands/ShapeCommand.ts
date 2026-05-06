@@ -1,5 +1,6 @@
 import { Shape } from "../model/Shape"
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { getAllShapeNames, getShapeSegments } from "../io/Shapes"
 
 export class ShapeCommand implements Command {
@@ -9,7 +10,7 @@ export class ShapeCommand implements Command {
   scale = 1.0
   rotation = 0.0
 
-  onInput(text: string, id: string): CommandResponse | undefined {
+  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
@@ -39,7 +40,7 @@ export class ShapeCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, _id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 1) {
       this.insertionPt = { x, y };
       this.step = 2;
@@ -48,7 +49,7 @@ export class ShapeCommand implements Command {
     return this.getPrompt();
   }
 
-  getPreview(x: number, y: number): any {
+  getPreview(x: number, y: number, _units: UnitsConfig): import('./types').PreviewObject | null {
     if (this.step === 1) {
       const segments = getShapeSegments(this.shapeName);
       return new Shape("PREVIEW", this.shapeName, x, y, this.scale, this.rotation, segments);

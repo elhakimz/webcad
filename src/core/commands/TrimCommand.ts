@@ -1,4 +1,5 @@
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 
 export class TrimCommand implements Command {
   step = 0
@@ -11,7 +12,7 @@ export class TrimCommand implements Command {
     }
   }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
@@ -34,7 +35,7 @@ export class TrimCommand implements Command {
     }
   }
 
-  onPoint(_x: number, _y: number, _id: string): CommandResponse {
+  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 0) return "Select cutting edges:";
     if (this.step === 1) {
       // Need to find which entity is at (x,y)

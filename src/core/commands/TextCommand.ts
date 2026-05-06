@@ -1,5 +1,6 @@
 import { Text } from "../model/Text"
 import { Command, CommandResponse } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 
 export class TextCommand implements Command {
@@ -8,7 +9,7 @@ export class TextCommand implements Command {
   height = 5
   rotation = 0
 
-  onPoint(x: number, y: number, _id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 0) {
       this.startPt = { x, y }
       this.step = 1
@@ -25,7 +26,7 @@ export class TextCommand implements Command {
     return this.getPrompt();
   }
 
-  onInput(text: string, id: string): CommandResponse | undefined {
+  onInput(text: string, id: string, units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim();
 
     if (this.step === 1) {
@@ -38,7 +39,7 @@ export class TextCommand implements Command {
       return "Text:"
     } else if (this.step === 3) {
       const entity = new Text(id, this.startPt.x, this.startPt.y, this.height, this.rotation, val)
-      const echo = `Text created. ${FormatUtils.formatPoint(this.startPt.x, this.startPt.y)}`
+      const echo = `Text created. ${FormatUtils.formatPoint(this.startPt.x, this.startPt.y, units)}`
       ;(entity as unknown as { _echo: string })._echo = echo
       this.step = 0
       return entity

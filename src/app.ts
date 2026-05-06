@@ -164,7 +164,7 @@ export class App {
       });
     }
 
-    const res = this.cmd.execute(cmd, selection, this.doc.entities);
+    const res = this.cmd.execute(cmd, this.doc.units, selection, this.doc.entities);
     return await this.handleResult(res);
   }
 
@@ -183,7 +183,7 @@ export class App {
         });
         const cmdName = activeName?.replace('Command', '').toUpperCase();
         if (cmdName && ids.length > 0) {
-          const res = this.cmd.execute(cmdName, ids, this.doc.entities);
+          const res = this.cmd.execute(cmdName, this.doc.units, ids, this.doc.entities);
           return await this.handleResult(res);
         }
       }
@@ -195,11 +195,11 @@ export class App {
           const blockCmd = this.cmd.active as unknown as HasSelectedIds;
           blockCmd.selectedIds = ids;
           // Trigger finish by passing empty string
-          const result = this.cmd.inputString("", (p) => this.doc.getNextId(p));
+          const result = this.cmd.inputString("", this.doc.units, (p) => this.doc.getNextId(p));
           return await this.handleResult(result);
       }
     }
-    const result = this.cmd.inputString(text, (p) => this.doc.getNextId(p))
+    const result = this.cmd.inputString(text, this.doc.units, (p) => this.doc.getNextId(p))
     return await this.handleResult(result)
   }
 
@@ -287,6 +287,7 @@ export class App {
     const isSelectionStep = !this.cmd.active || 
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
         (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand');
 
     let result: CommandResponse | undefined;
@@ -331,6 +332,7 @@ export class App {
     const isSelectionStep = !this.cmd.active || 
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
         (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand');
     const tolerance = 5 / this.viewer.camera.zoom;
 
@@ -351,10 +353,13 @@ export class App {
 
             this.reportSelectionDimensions();
 
-            // For commands that pick a target for immediate action (Trim, Extend, Offset at Step 1)
-            if (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) {
-                const res = await this.cmd.inputString(entity.id, (p) => this.doc.getNextId(p));
-                if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend')) {
+            // For commands that pick a target for immediate action (Trim, Extend, Offset at Step 1, Fillet at Step 0/1)
+            const isImmediatePick = (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && this.cmd.active.step === 1;
+            const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active.step === 0 || this.cmd.active.step === 1);
+
+            if (this.cmd.active && (isImmediatePick || isFilletPick)) {
+                const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y });
+                if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet')) {
                     (res as CommandAction).pickPt = { x: worldPt.x, y: worldPt.y };
                 }
                 return await this.handleResult(res);
@@ -373,15 +378,14 @@ export class App {
             });
             const cmdName = activeName?.replace('Command', '').toUpperCase();
             if (cmdName && ids.length > 0) {
-                const res = this.cmd.execute(cmdName, ids, this.doc.entities);
+                const res = this.cmd.execute(cmdName, this.doc.units, ids, this.doc.entities);
                 return await this.handleResult(res);
             }
         }
     }
 
-    const result = this.cmd.inputPoint(x, y, (p) => this.doc.getNextId(p))
-
-    return await this.handleResult(result);
+    const result = this.cmd.inputPoint(x, y, this.doc.units, (p) => this.doc.getNextId(p))
+    return await this.handleResult(result)
   }
 
   private async handleResult(result: CommandResponse | undefined): Promise<CommandResponse | undefined> {
@@ -440,12 +444,12 @@ export class App {
           const dy = entity.y2 - entity.y1;
           const len = Math.sqrt(dx * dx + dy * dy);
           const pIdx = this.cmd.active && 'points' in this.cmd.active ? (this.cmd.active as { points: unknown[] }).points.length : "";
-          return `${FormatUtils.formatPoint(entity.x2, entity.y2, "P" + pIdx)}\nLine created. ${FormatUtils.formatDistance(len)}`;
+          return `${FormatUtils.formatPoint(entity.x2, entity.y2, this.doc.units, "P" + pIdx)}\nLine created. ${FormatUtils.formatDistance(len, this.doc.units)}`;
         }
 
         if (entity instanceof Polyline) {
           const last = entity.vertices[entity.vertices.length - 1];
-          return `${FormatUtils.formatPoint(last.x, last.y, "P" + entity.vertices.length)}\nPolyline segment added.`;
+          return `${FormatUtils.formatPoint(last.x, last.y, this.doc.units, "P" + entity.vertices.length)}\nPolyline segment added.`;
         }
 
         return entity;

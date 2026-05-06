@@ -3,11 +3,18 @@ import { CommandAction, CommandResponse } from "../../commands/types";
 
 export class SystemHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['finish', 'undo', 'redo', 'regen', 'delete', 'close'].includes(action.action);
+    return ['finish', 'undo', 'redo', 'regen', 'delete', 'close', 'unitsSet'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
     const { doc, viewer, terminateActiveCommand } = context;
+
+    if (action.action === 'unitsSet') {
+      doc.units.type = action.type as 'decimal' | 'architectural' | 'metric';
+      doc.units.precision = action.precision || 4;
+      terminateActiveCommand();
+      return `Units set to ${doc.units.type} with precision ${doc.units.precision}.`;
+    }
 
     if (action.action === 'finish' || action.action === 'close') {
       terminateActiveCommand();

@@ -23,9 +23,10 @@ export class Polyline extends Entity {
       v.x += dx;
       v.y += dy;
     });
-    if (this.properties.center) {
-      if (this.properties.center) (this.properties.center as any).x += dx;
-      if (this.properties.center) (this.properties.center as any).y += dy;
+    const center = this.properties.center as { x: number, y: number } | undefined;
+    if (center) {
+      center.x += dx;
+      center.y += dy;
     }
   }
 
@@ -35,10 +36,11 @@ export class Polyline extends Entity {
       v.x = p.x;
       v.y = p.y;
     });
-    if (this.properties.center) {
-      const p = rotatePoint((this.properties.center as any).x, (this.properties.center as any).y, baseX, baseY, angleRad);
-      (this.properties.center as any).x = p.x;
-      (this.properties.center as any).y = p.y;
+    const center = this.properties.center as { x: number, y: number } | undefined;
+    if (center) {
+      const p = rotatePoint(center.x, center.y, baseX, baseY, angleRad);
+      center.x = p.x;
+      center.y = p.y;
     }
   }
 
@@ -47,9 +49,10 @@ export class Polyline extends Entity {
       v.x = baseX + (v.x - baseX) * factor;
       v.y = baseY + (v.y - baseY) * factor;
     });
-    if (this.properties.center) {
-      (this.properties.center as any).x = baseX + ((this.properties.center as any).x - baseX) * factor;
-      (this.properties.center as any).y = baseY + ((this.properties.center as any).y - baseY) * factor;
+    const center = this.properties.center as { x: number, y: number } | undefined;
+    if (center) {
+      center.x = baseX + (center.x - baseX) * factor;
+      center.y = baseY + (center.y - baseY) * factor;
     }
   }
 
@@ -60,10 +63,11 @@ export class Polyline extends Entity {
       v.y = reflected.y;
       v.bulge = -v.bulge;
     });
-    if (this.properties.center) {
-      const reflected = reflectPointAcrossLine(this.properties.center as any, p1, p2);
-      (this.properties.center as any).x = reflected.x;
-      (this.properties.center as any).y = reflected.y;
+    const center = this.properties.center as { x: number, y: number } | undefined;
+    if (center) {
+      const reflected = reflectPointAcrossLine(center, p1, p2);
+      center.x = reflected.x;
+      center.y = reflected.y;
     }
   }
 

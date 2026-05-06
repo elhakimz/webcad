@@ -7,20 +7,20 @@ describe('TextCommand', () => {
     const cmd = new TextCommand()
     
     // Step 0 -> 1: Insertion Point
-    const res1 = cmd.onPoint(10, 20, 'DUMMY')
+    const _res1 = cmd.onPoint(10, 20, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     expect(cmd.step).toBe(1)
     expect(cmd.startPt.x).toBe(10)
     expect(cmd.startPt.y).toBe(20)
     // removed
 
     // Step 1 -> 2: Height via point (dist from 10,20 to 10,30 is 10)
-    const res2 = cmd.onPoint(10, 30, 'DUMMY')
+    const _res2 = cmd.onPoint(10, 30, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     // removed
     // removed
     // removed
 
     // Step 2 -> 3: Rotation via point (dist from 10,20 to 20,20 is 0 deg)
-    const res3 = cmd.onPoint(20, 20, 'DUMMY')
+    const res3 = cmd.onPoint(20, 20, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     expect(cmd.step).toBe(3)
     expect(cmd.rotation).toBeCloseTo(0)
     expect(res3).toContain('Rotation set to 0.00')
@@ -28,11 +28,11 @@ describe('TextCommand', () => {
 
   it('should handle text input and finalize', () => {
     const cmd = new TextCommand()
-    cmd.onPoint(0, 0, 'DUMMY') // Insertion
-    cmd.onInput('15', 'DUMMY')  // Height
-    cmd.onInput('45', 'DUMMY')  // Rotation
+    cmd.onPoint(0, 0, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) // Insertion
+    cmd.onInput('15', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })  // Height
+    cmd.onInput('45', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })  // Rotation
     
-    const result = cmd.onInput('Hello World', 'DUMMY')
+    const result = cmd.onInput('Hello World', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     expect(result).toBeInstanceOf(Text)
     const text = result as Text
     expect(text.text).toBe('Hello World')
@@ -43,30 +43,30 @@ describe('TextCommand', () => {
 
   it('should accept default height and rotation on empty input', () => {
     const cmd = new TextCommand()
-    cmd.onPoint(0, 0, 'DUMMY')
+    cmd.onPoint(0, 0, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     
-    cmd.onInput('', 'DUMMY') // Accept default height (10)
+    cmd.onInput('', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) // Accept default height (10)
     // removed
     // removed
     
-    cmd.onInput('', 'DUMMY') // Accept default rotation (0)
+    cmd.onInput('', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) // Accept default rotation (0)
     expect(cmd.step).toBe(3)
     expect(cmd.rotation).toBe(0)
   })
 
   it('should show preview during interaction', () => {
     const cmd = new TextCommand()
-    cmd.onPoint(0, 0, 'DUMMY')
+    cmd.onPoint(0, 0, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     
     // During height selection
-    const preview1 = null as any
+    const _preview1 = null as any
     // removed
     // removed
     
-    cmd.onInput('10', 'DUMMY')
+    cmd.onInput('10', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     
     // During rotation selection
-    const preview2 = null as any
+    const _preview2 = null as any
     // removed
   })
 })

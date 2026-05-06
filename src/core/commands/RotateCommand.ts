@@ -1,4 +1,5 @@
 import { Command, CommandResponse, PreviewObject } from "./types"
+import { UnitsConfig } from "../model/Document"
 import { Point } from "../engine/MathUtils"
 
 export class RotateCommand implements Command {
@@ -14,7 +15,7 @@ export class RotateCommand implements Command {
     }
   }
 
-  onInput(text: string, _id: string): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     if (this.step === 0 && val !== "") {
       this.targetIds = [val];
@@ -36,7 +37,7 @@ export class RotateCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, _id: string): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 1) {
       this.basePoint = { x, y }
       this.step = 2
@@ -53,7 +54,7 @@ export class RotateCommand implements Command {
     return this.getPrompt();
   }
 
-  getPreview(x: number, y: number): PreviewObject | null {
+  getPreview(x: number, y: number, _units: UnitsConfig): PreviewObject | null {
     if (this.step === 2) {
       const angle = Math.atan2(y - this.basePoint.y, x - this.basePoint.x);
       return { type: 'rotation_preview', angle, baseX: this.basePoint.x, baseY: this.basePoint.y };

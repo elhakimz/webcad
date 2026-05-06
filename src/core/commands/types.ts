@@ -1,13 +1,21 @@
 import { Entity } from "../model/Entity";
+import { UnitsConfig } from "../model/Document";
 
 export type CommandAction = {
-  action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen' | 'create3d' | 'save' | 'load' | 'ortho' | 'orthoToggle' | 'grid' | 'gridToggle' | 'gridSet' | 'snap' | 'snapToggle' | 'snapSet' | 'array' | 'offset' | 'trim' | 'extend' | 'block' | 'insert' | 'blockList';
+  action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen' | 'create3d' | 'save' | 'load' | 'ortho' | 'orthoToggle' | 'grid' | 'gridToggle' | 'gridSet' | 'snap' | 'snapToggle' | 'snapSet' | 'array' | 'offset' | 'trim' | 'extend' | 'block' | 'insert' | 'blockList' | 'unitsSet' | 'fillet' | 'new' | 'listFiles';
 
   id?: string;
   ids?: string[];
+  id1?: string;
+  id2?: string;
+  pick1?: { x: number, y: number };
+  pick2?: { x: number, y: number };
+  radius?: number;
   filename?: string;
   value?: boolean;
   spacing?: number;
+  precision?: number;
+  type?: string;
   rows?: number;
   cols?: number;
   rowSpacing?: number;
@@ -70,8 +78,8 @@ export type ScalePreview = { type: 'scale_preview', factor: number, baseX: numbe
 export type PreviewObject = Entity | ZoomWindowPreview | XMarkerPreview | PLinePointsPreview | SolidPointsPreview | RotationPreview | PolylinePreview | MovePreview | CopyPreview | ScalePreview;
 
 export interface Command {
-  onPoint(x: number, y: number, id: string): CommandResponse;
-  onInput?(text: string, id: string): CommandResponse | undefined;
+  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse;
+  onInput?(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }): CommandResponse | undefined;
   getPreview?(x: number, y: number): PreviewObject | null;
   getReferencePoints?(): { x: number, y: number }[];
   getPrompt?(): string;

@@ -5,7 +5,7 @@ import { Circle } from '../model/Circle'
 describe('CircleCommand', () => {
   it('should transition from step 0 to step 1 on first point', () => {
     const cmd = new CircleCommand()
-    const result = cmd.onPoint(100, 100, 'C1')
+    const result = cmd.onPoint(100, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
     
     expect(cmd.step).toBe(1)
     expect(cmd.cx).toBe(100)
@@ -15,8 +15,8 @@ describe('CircleCommand', () => {
 
   it('should create a Circle using a second point (Radius mode)', () => {
     const cmd = new CircleCommand()
-    cmd.onPoint(100, 100, 'C1')
-    const result = cmd.onPoint(200, 100, 'C1')
+    cmd.onPoint(100, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
+    const result = cmd.onPoint(200, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
     
     expect(cmd.step).toBe(0)
     expect(result).toBeInstanceOf(Circle)
@@ -29,8 +29,8 @@ describe('CircleCommand', () => {
 
   it('should create a Circle using a typed radius', () => {
     const cmd = new CircleCommand()
-    cmd.onPoint(100, 100, 'C1')
-    const result = cmd.onInput('50', 'C1')
+    cmd.onPoint(100, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
+    const result = cmd.onInput('50', 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
     
     expect(cmd.step).toBe(0)
     expect(result).toBeInstanceOf(Circle)
@@ -41,8 +41,8 @@ describe('CircleCommand', () => {
 
   it('should switch to Diameter mode when "D" is entered', () => {
     const cmd = new CircleCommand()
-    cmd.onPoint(100, 100, 'C1')
-    const result = cmd.onInput('D', 'DUMMY')
+    cmd.onPoint(100, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
+    const result = cmd.onInput('D', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     
     expect(cmd.step).toBe(2)
     expect(cmd.isDiameterMode).toBe(true)
@@ -51,9 +51,9 @@ describe('CircleCommand', () => {
 
   it('should create a Circle using a typed diameter', () => {
     const cmd = new CircleCommand()
-    cmd.onPoint(100, 100, 'C1')
-    cmd.onInput('D', 'DUMMY')
-    const result = cmd.onInput('100', 'C1')
+    cmd.onPoint(100, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
+    cmd.onInput('D', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
+    const result = cmd.onInput('100', 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
     
     expect(cmd.step).toBe(0)
     expect(result).toBeInstanceOf(Circle)
@@ -64,9 +64,9 @@ describe('CircleCommand', () => {
 
   it('should create a Circle using a point as diameter', () => {
     const cmd = new CircleCommand()
-    cmd.onPoint(100, 100, 'C1')
-    cmd.onInput('D', 'DUMMY')
-    const result = cmd.onPoint(200, 100, 'C1')
+    cmd.onPoint(100, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
+    cmd.onInput('D', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
+    const result = cmd.onPoint(200, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
     
     expect(cmd.step).toBe(0)
     expect(result).toBeInstanceOf(Circle)
@@ -77,16 +77,16 @@ describe('CircleCommand', () => {
 
   it('should provide a diameter-based preview', () => {
     const cmd = new CircleCommand()
-    cmd.onPoint(100, 100, 'C1')
-    cmd.onInput('D', 'DUMMY')
+    cmd.onPoint(100, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
+    cmd.onInput('D', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     const preview = cmd.getPreview(200, 100) as Circle
     expect(preview.r).toBe(50)
   })
 
   it('should handle invalid input', () => {
     const cmd = new CircleCommand()
-    cmd.onPoint(100, 100, 'C1')
-    const result = cmd.onInput('abc', 'DUMMY')
+    cmd.onPoint(100, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
+    const result = cmd.onInput('abc', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     
     expect(cmd.step).toBe(1)
     expect(result).toContain('Invalid radius or option')

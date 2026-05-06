@@ -1,12 +1,18 @@
 # WebCAD Tasks
 
+## Todo (Phase 7 â€” Engineering & Annotation)
+- [ ] Implement UNITS command (Decimal/Metric) <!-- id: 18 -->
+- [ ] Implement FILLET command (Radius support) <!-- id: 19 -->
+- [ ] Implement CHAMFER command <!-- id: 20 -->
+- [ ] Implement DIMLINEAR command <!-- id: 21 -->
+- [ ] Implement DIMALIGNED command <!-- id: 22 -->
+- [ ] Implement DONUT command <!-- id: 23 -->
+- [ ] Implement ELLIPSE command <!-- id: 24 -->
+- [ ] Implement Intersection and Perpendicular snaps <!-- id: 25 -->
+
 ## Ongoing
+- [ ] Phase 7: Engineering drafting features (Fillet, Units, Dimensions)
 
-## Todo (Phase 2 & 3 Refinement)
-
-## Todo (Phase 4 — File System)
-
-## Todo (General Commands)
 
 ## Done
 - [x] Implement GRID snap and toggle (F7) <!-- id: 11 -->

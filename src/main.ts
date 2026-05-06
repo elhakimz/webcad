@@ -128,11 +128,8 @@ window.addEventListener("keydown", (e) => {
       viewer.camera.position.y = startPos.y
     }
     cmdLine.print("*Cancel*")
-    app.cmd.clearActive()
+    app.terminateActiveCommand()
     viewer.setLeftPanEnabled(false)
-    viewer.setPreview(null)
-    viewer.setHelpers(null)
-    viewer.render()
     updatePrompt()
     return
   }
@@ -141,7 +138,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === 'Enter' && app.cmd.active) {
     if (app.cmd.active.constructor.name === 'PanCommand') {
       cmdLine.print("PAN command ended.")
-      app.cmd.clearActive()
+      app.terminateActiveCommand()
       viewer.setLeftPanEnabled(false)
       updatePrompt()
       return

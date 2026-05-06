@@ -43,8 +43,8 @@ describe('PolylineCommand', () => {
     expect(cmd.vertices).toHaveLength(3)
     expect(cmd.drawnEntityId).toBe(pline2.id)
 
-    const res = cmd.onInput('U', 'PL1') as CommandAction
-    expect(res.action).toBe('undo')
+    const res = cmd.onInput('U', 'PL1') as Polyline
+    expect(res).toBeInstanceOf(Polyline)
     expect(res.id).toBe(pline2.id)
     expect(cmd.vertices).toHaveLength(2)
   })

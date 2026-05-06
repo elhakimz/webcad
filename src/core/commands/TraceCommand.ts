@@ -20,7 +20,7 @@ export class TraceCommand implements Command {
 
     if (this.points.length === 1) {
       this.drawnEntityId = id;
-      return `${echo}\nTo point:`;
+      return echo;
     } else {
       const last = this.points[this.points.length - 2];
       const trace = new Trace(id, last.x, last.y, x, y, this.width);

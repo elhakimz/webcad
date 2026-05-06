@@ -32,6 +32,7 @@ export class Viewer {
   private baseLineGroup: THREE.Group = new THREE.Group()
   private cursorGroup: THREE.Group = new THREE.Group()
   private snapMarkerGroup: THREE.Group = new THREE.Group()
+  private activePointMarkerGroup: THREE.Group = new THREE.Group()
   private persistentMarkerGroup: THREE.Group = new THREE.Group()
   private textQueue: Text[] = []
   private selectionBox: THREE.Line | null = null
@@ -45,8 +46,10 @@ export class Viewer {
     this.scene.add(this.baseLineGroup);
     this.scene.add(this.cursorGroup);
     this.scene.add(this.snapMarkerGroup);
+    this.scene.add(this.activePointMarkerGroup);
     this.cursorGroup.renderOrder = 999; // Render on top
     this.snapMarkerGroup.renderOrder = 1000; // Render snap on top of cursor
+    this.activePointMarkerGroup.renderOrder = 1001; // Active point marker on very top
 
     // Setup Orthographic Camera with dummy bounds, resize() will set them correctly
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1000)
@@ -105,6 +108,38 @@ export class Viewer {
 
   setCursor(x: number, y: number) {
     this.cursorGroup.position.set(x, y, 0);
+    this.render();
+  }
+
+  setActivePointMarker(x: number | null, y: number | null) {
+    while (this.activePointMarkerGroup.children.length > 0) {
+      const obj = this.activePointMarkerGroup.children[0];
+      this.activePointMarkerGroup.remove(obj);
+      if (obj instanceof THREE.LineSegments) {
+        obj.geometry.dispose();
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach(m => m.dispose());
+        } else {
+          obj.material.dispose();
+        }
+      }
+    }
+
+    if (x !== null && y !== null) {
+      const size = 10 / this.camera.zoom;
+      const positions = new Float32Array([
+        -size, -size, 0,
+         size,  size, 0,
+        -size,  size, 0,
+         size, -size, 0
+      ]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
+      const marker = new THREE.LineSegments(geo, mat);
+      marker.position.set(x, y, 0.1);
+      this.activePointMarkerGroup.add(marker);
+    }
     this.render();
   }
 
@@ -359,6 +394,20 @@ export class Viewer {
         const mat = new THREE.LineBasicMaterial({ color: helperColor });
         this.helperGroup.add(new THREE.Line(hGeo, mat));
         this.helperGroup.add(new THREE.Line(vGeo, mat));
+
+        // Add X marker at the point
+        const xSize = 5 / this.camera.zoom;
+        const xPositions = new Float32Array([
+          pt.x - xSize, pt.y - xSize, 0,
+          pt.x + xSize, pt.y + xSize, 0,
+          pt.x - xSize, pt.y + xSize, 0,
+          pt.x + xSize, pt.y - xSize, 0
+        ]);
+        const xGeo = new THREE.BufferGeometry();
+        xGeo.setAttribute('position', new THREE.BufferAttribute(xPositions, 3));
+        const xMat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
+        const xMarker = new THREE.LineSegments(xGeo, xMat);
+        this.helperGroup.add(xMarker);
       });
     }
 

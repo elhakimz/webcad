@@ -11,7 +11,6 @@ describe('CircleCommand', () => {
     expect(cmd.cx).toBe(100)
     expect(cmd.cy).toBe(100)
     expect(result).toContain('Center[X:100.00, Y:100.00, Z:0.00]')
-    expect(result).toContain('Diameter/<Radius>:')
   })
 
   it('should create a Circle using a second point (Radius mode)', () => {

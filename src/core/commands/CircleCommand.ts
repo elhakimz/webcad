@@ -15,7 +15,7 @@ export class CircleCommand implements Command {
       this.step = 1;
       this.isDiameterMode = false;
       const echo = FormatUtils.formatPoint(x, y, "Center");
-      return `${echo}\nDiameter/<Radius>:`;
+      return echo;
     } else {
       const dist = Math.sqrt(Math.pow(x - this.cx, 2) + Math.pow(y - this.cy, 2));
       const r = this.isDiameterMode ? dist / 2 : dist;

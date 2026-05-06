@@ -132,6 +132,12 @@ export class App {
     this.viewer.setCursor(x, y);
     this.viewer.setSnapMarker(snap);
 
+    if (this.cmd.active) {
+        this.viewer.setActivePointMarker(x, y);
+    } else {
+        this.viewer.setActivePointMarker(null, null);
+    }
+
     if (this.cmd.active?.constructor.name === 'SketchCommand') {
       const sketchCmd = this.cmd.active as any;
       if (sketchCmd.updateSketch) {
@@ -298,7 +304,7 @@ export class App {
       }
     }
 
-    return this.handleResult(result) || (this.cmd.active?.getPrompt ? this.cmd.active.getPrompt() : undefined);
+    return this.handleResult(result);
   }
 
   private handleResult(result: CommandResponse | undefined) {
@@ -315,24 +321,21 @@ export class App {
       }
 
       if (entity) {
-        // For multi-step commands, we might want to update the entity in the document 
-        // without recording history yet, or use a separate "interactive" state.
-        // Current implementation uses the same ID to replace.
-        
         const activeName = this.cmd.active?.constructor.name;
-        const isMultiStep = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand';
+        // Continuous commands remain active after creating an entity
+        const isContinuous = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand';
         
-        // If it's an intermediate step of a multi-step command, don't record history
-        const isIntermediate = isMultiStep && !(result && typeof result === 'object' && 'action' in result && result.action === 'close');
+        // Some continuous commands update the SAME entity ID during interaction (Polyline, Solid)
+        // Others create a NEW entity ID for every segment (Line, Trace)
+        const updatesExisting = activeName === 'PolylineCommand' || activeName === 'SolidCommand';
+        
+        // If it's an intermediate update of an existing entity, don't record history yet
+        const isIntermediate = updatesExisting && !(result && typeof result === 'object' && 'action' in result && result.action === 'close');
         
         this.addEntity(entity, !isIntermediate);
 
-        if (!isMultiStep || (result && typeof result === 'object' && 'action' in result && result.action === 'close')) {
-          this.cmd.clearActive();
-          this.viewer.setHelpers(null);
-          this.viewer.setPreview(null);
-          this.viewer.setBaseLine(null, null);
-          this.viewer.clearBoundaryMarkers();
+        if (!isContinuous || (result && typeof result === 'object' && 'action' in result && result.action === 'close')) {
+          this.terminateActiveCommand();
         }
 
         if (result && typeof result === 'object' && 'action' in result && result.action === 'close') {
@@ -369,11 +372,18 @@ export class App {
         addEntity: (e, rh, ucl) => this.addEntity(e, rh, ucl),
         syncFromDocument: () => this.syncFromDocument(),
         updateLayerVisibility: () => this.updateLayerVisibility(),
+        terminateActiveCommand: () => this.terminateActiveCommand(),
         onStatusBarUpdate: (l) => { if (this.statusBarUpdate) this.statusBarUpdate(l); }
       };
 
       const actionResult = this.dispatcher.dispatch(result as CommandAction, appContext);
-      if (actionResult !== undefined) return actionResult;
+      if (actionResult !== undefined) {
+        // If the action resulted in clearing the active command, ensure markers are cleared too
+        if (!this.cmd.active) {
+            this.terminateActiveCommand();
+        }
+        return actionResult;
+      }
     }
     return result
   }
@@ -436,6 +446,16 @@ export class App {
       layerMap.set(layer.name, { isVisible: layer.isVisible, isFrozen: layer.isFrozen })
     }
     this.viewer.updateLayerVisibility(layerMap)
+  }
+
+  public terminateActiveCommand() {
+    this.cmd.clearActive();
+    this.viewer.setHelpers(null);
+    this.viewer.setPreview(null);
+    this.viewer.setActivePointMarker(null, null);
+    this.viewer.setBaseLine(null, null);
+    this.viewer.clearBoundaryMarkers();
+    this.viewer.render();
   }
 
   private getLayerDebugInfo() {

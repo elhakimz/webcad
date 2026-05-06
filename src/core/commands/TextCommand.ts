@@ -14,20 +14,19 @@ export class TextCommand implements Command {
       this.x = x;
       this.y = y;
       this.step = 1;
-      const echo = FormatUtils.formatPoint(x, y, "Start point")
-      return `${echo}\nHeight <${this.height.toFixed(2)}>:`;
+      return FormatUtils.formatPoint(x, y, "Start point")
     } else if (this.step === 1) {
       // If user clicks a point for height
       const h = Math.sqrt(Math.pow(x - this.x, 2) + Math.pow(y - this.y, 2));
       this.height = h;
       this.step = 2;
-      return `Height set to ${this.height.toFixed(4)}\nRotation angle <${this.rotation}>:`;
+      return `Height set to ${this.height.toFixed(4)}`;
     } else {
       // If user clicks a point for rotation
       const rad = Math.atan2(y - this.y, x - this.x);
       this.rotation = rad * (180 / Math.PI);
       this.step = 3;
-      return `Rotation set to ${this.rotation.toFixed(2)}\nText:`;
+      return `Rotation set to ${this.rotation.toFixed(2)}`;
     }
   }
 

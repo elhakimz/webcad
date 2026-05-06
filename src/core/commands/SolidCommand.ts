@@ -13,14 +13,15 @@ export class SolidCommand implements Command {
 
     if (this.vertices.length === 1) {
       this.drawnEntityId = id;
-      return `${echo}\nSecond point:`;
+      return echo;
     } else if (this.vertices.length === 2) {
-      return `${echo}\nThird point:`;
+      return echo;
     } else {
       const solid = new Solid(this.drawnEntityId!, [...this.vertices]);
       if (this.vertices.length === 4) {
           this.vertices = [];
           this.drawnEntityId = null;
+          return { action: "close", entity: solid };
       }
       return solid;
     }

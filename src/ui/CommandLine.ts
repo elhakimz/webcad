@@ -17,6 +17,7 @@ export class CommandLine {
   onCommand(callback: (text: string) => void) {
     this.inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
+        e.stopPropagation();
         const value = this.inputEl.value;
         this.inputEl.value = '';
         

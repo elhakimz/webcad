@@ -12,11 +12,11 @@ export class ArcCommand implements Command {
     if (this.step === 0) {
       this.p1 = { x, y }
       this.step = 1
-      return FormatUtils.formatPoint(x, y, "P1") + "\nSecond point:"
+      return FormatUtils.formatPoint(x, y, "P1")
     } else if (this.step === 1) {
       this.p2 = { x, y }
       this.step = 2
-      return FormatUtils.formatPoint(x, y, "P2") + "\nEnd point:"
+      return FormatUtils.formatPoint(x, y, "P2")
     } else {
       this.p3 = { x, y }
       const arc = this.calculateArc(this.p1, this.p2, this.p3, id)

@@ -24,7 +24,7 @@ describe('TraceCommand', () => {
     cmd.onInput('0.2', 'DUMMY') // Set width and advance to step 1
     
     const result = cmd.onPoint(10, 10, 'TR1')
-    expect(result).toContain('To point:')
+    expect(result).toContain('P1[X:10.00, Y:10.00, Z:0.00]')
   })
 
   it('should create trace entity on to point', () => {

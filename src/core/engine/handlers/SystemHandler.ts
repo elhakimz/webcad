@@ -15,6 +15,7 @@ export class SystemHandler implements ActionHandler {
       syncFromDocument();
       viewer.setPreview(null);
       viewer.setHelpers(null);
+      viewer.setActivePointMarker(null, null);
       return actions.length > 0 ? "Undo successful." : "Nothing to undo.";
     }
 
@@ -23,6 +24,7 @@ export class SystemHandler implements ActionHandler {
       syncFromDocument();
       viewer.setPreview(null);
       viewer.setHelpers(null);
+      viewer.setActivePointMarker(null, null);
       return actions.length > 0 ? "Redo successful." : "Nothing to redo.";
     }
 
@@ -50,22 +52,32 @@ export class SystemHandler implements ActionHandler {
     }
 
     if (action.action === 'finish') {
-      viewer.setPreview(null);
-      viewer.setHelpers(null);
-      viewer.setBaseLine(null, null);
-      viewer.clearBoundaryMarkers();
-      cmd.clearActive();
+      context.terminateActiveCommand();
       return "Command finished.";
     }
 
     if (action.action === 'create3d' && action.entity) {
       const ocService = OpenCascadeService.getInstance();
-      const geometry = ocService.shapeToBufferGeometry((action.entity as { id: string, shape: unknown }).shape);
-      viewer.addMesh(geometry, action.entity.id);
-      viewer.setHelpers(null);
-      viewer.render();
+      const entityData = action.entity as { id: string, shape: any };
+      let shape: any;
+
+      if (entityData.shape && entityData.shape.type === 'box') {
+        const { x, y, h } = entityData.shape;
+        // Create a box at insertion point with given height (symmetric for now)
+        shape = ocService.createBox(x - h/2, y - h/2, 0, h, h, h);
+      } else {
+        shape = entityData.shape;
+      }
+
+      if (shape) {
+        const geometry = ocService.shapeToBufferGeometry(shape);
+        viewer.addMesh(geometry, entityData.id);
+        viewer.setHelpers(null);
+        viewer.render();
+      }
+      
       cmd.clearActive();
-      return `3D Entity ${action.entity.id} created using OpenCascade.js.`;
+      return `3D Entity ${entityData.id} created using OpenCascade.js.`;
     }
 
     return undefined;

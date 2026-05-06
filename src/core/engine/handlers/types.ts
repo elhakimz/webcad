@@ -13,6 +13,7 @@ export interface AppContext {
   addEntity(entity: Entity, recordHistory?: boolean, useCurrentLayer?: boolean): void;
   syncFromDocument(): void;
   updateLayerVisibility(): void;
+  terminateActiveCommand(): void;
   onStatusBarUpdate(layer: Layer): void;
 }
 

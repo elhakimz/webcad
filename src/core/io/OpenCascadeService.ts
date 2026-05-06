@@ -41,6 +41,20 @@ export class OpenCascadeService {
   }
 
   /**
+   * Creates a basic 3D box shape.
+   */
+  createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number): any {
+    const oc = this.OC;
+    const pt = new oc.gp_Pnt_3(x, y, z);
+    const box = new oc.BRepPrimAPI_MakeBox_2(pt, dx, dy, dz);
+    const shape = box.Shape();
+    // Cleanup temporary objects
+    pt.delete();
+    box.delete();
+    return shape;
+  }
+
+  /**
    * Converts an OCCT Shape to Three.js BufferGeometry via triangulation.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

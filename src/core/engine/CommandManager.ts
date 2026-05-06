@@ -38,99 +38,99 @@ export class CommandManager {
 
     if(cmdName === "LINE"){
       this.active = new LineCommand()
-      response = "LINE command started: pick first point"
+      response = "LINE"
     }
     else if(cmdName === "CIRCLE"){
       this.active = new CircleCommand()
-      response = "CIRCLE command started: specify center point"
+      response = "CIRCLE"
     }
     else if(cmdName === "ERASE"){
       if (selection && selection.length > 0) {
         return { action: "delete", ids: [...selection] };
       }
       this.active = new EraseCommand()
-      response = "ERASE command started: select object"
+      response = "ERASE"
     }
     else if(cmdName === "MOVE"){
       this.active = new MoveCommand(selection)
-      response = selection && selection.length > 0 ? "Base point:" : "MOVE command started: select object"
+      response = "MOVE"
     }
     else if(cmdName === "COPY"){
       this.active = new CopyCommand(selection)
-      response = selection && selection.length > 0 ? "Base point:" : "COPY command started: select object"
+      response = "COPY"
     }
     else if(cmdName === "ROTATE"){
       const targetEntities = selection ? selection.map(id => entities?.get(id)).filter(Boolean) : [];
       this.active = new RotateCommand(selection, targetEntities)
-      response = selection && selection.length > 0 ? "Base point:" : "ROTATE command started: select object"
+      response = "ROTATE"
     }
     else if(cmdName === "SCALE"){
       this.active = new ScaleCommand(selection)
-      response = selection && selection.length > 0 ? "Base point:" : "SCALE command started: select object"
+      response = "SCALE"
     }
     else if(cmdName === "MIRROR"){
       this.active = new MirrorCommand(selection)
-      response = selection && selection.length > 0 ? "First point of mirror line:" : "MIRROR command started: select objects to mirror"
+      response = "MIRROR"
     }
     else if(cmdName === "ZOOM" || cmdName === "Z"){
       this.active = new ZoomCommand()
-      response = "ZOOM [All/Window] <Window corner>:"
+      response = "ZOOM"
     }
     else if(cmdName === "PAN" || cmdName === "P"){
       this.active = new PanCommand()
-      response = "PAN command: Click and drag to pan. Press ESC to exit."
+      response = "PAN"
     }
     else if(cmdName === "TEST3D"){
       this.active = new Test3DCommand()
-      response = "TEST3D started: pick insertion point"
+      response = "TEST3D"
     }
     else if(cmdName === "ARC"){
       this.active = new ArcCommand()
-      response = "ARC command started: start point"
+      response = "ARC"
     }
     else if(cmdName === "POINT"){
       this.active = new PointCommand()
-      response = "POINT command started: pick point"
+      response = "POINT"
     }
     else if(cmdName === "PLINE"){
       this.active = new PolylineCommand()
-      response = "PLINE command started: specify start point"
+      response = "PLINE"
     }
     else if(cmdName === "POLYGON"){
       this.active = new PolygonCommand()
-      response = "POLYGON Number of sides <4>:"
+      response = "POLYGON"
     }
     else if(cmdName === "TEXT"){
       this.active = new TextCommand()
-      response = "TEXT start point:"
+      response = "TEXT"
     }
     else if(cmdName === "SOLID"){
       this.active = new SolidCommand()
-      response = "SOLID First point:"
+      response = "SOLID"
     }
     else if(cmdName === "TRACE"){
       this.active = new TraceCommand()
-      response = "TRACE line width <0.10>:"
+      response = "TRACE"
     }
     else if(cmdName === "HATCH"){
       this.active = new HatchCommand()
-      response = "HATCH: Select boundary point:"
+      response = "HATCH"
     }
     else if(cmdName === "SKETCH"){
       this.active = new SketchCommand()
-      response = "Sketch tolerance <2.0>:"
+      response = "SKETCH"
     }
     else if(cmdName === "SHAPE"){
       this.active = new ShapeCommand()
-      response = "Enter shape name:"
+      response = "SHAPE"
     }
     else if(cmdName === "LAYER" || cmdName === "LA"){
       this.active = new LayerCommand()
-      response = "Enter layer option [?/N/S/ON/OFF/F/T/L/U/C/LT/D]:"
+      response = "LAYER"
     }
     else if(cmdName === "LINETYPE" || cmdName === "LTYPE" || cmdName === "LT"){
       this.active = new LinetypeCommand()
-      response = "Enter linetype option [?/Set] <?>:"
+      response = "LINETYPE"
     }
     else if(cmdName === "REGEN"){
       return { action: "regen" }

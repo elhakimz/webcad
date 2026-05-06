@@ -91,7 +91,7 @@ export class PolylineCommand implements Command {
             this.lastTangentAngle = null;
         }
 
-        return { action: "undo", id: this.drawnEntityId || undefined };
+        return new Polyline(this.drawnEntityId!, [...this.vertices], false);
       }
       return "Nothing to undo.";
     }

@@ -12,7 +12,7 @@ export class LineCommand implements Command {
     const echo = FormatUtils.formatPoint(x, y, pLabel);
 
     if (this.points.length === 1) {
-      return `${echo}\nTo point:`;
+      return echo;
     } else {
       const last = this.points[this.points.length - 2];
       const line = new Line(id, last.x, last.y, x, y);

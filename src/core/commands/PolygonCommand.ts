@@ -11,6 +11,8 @@ export class PolygonCommand implements Command {
   inscribed = true
   p1: Point | null = null
   private drawnEntityId: string | null = null
+  private lastRadius: number | null = null
+  private lastAngle: number | null = null
 
   onPoint(x: number, y: number, id: string): CommandResponse {
     if (this.step === 0) {
@@ -28,8 +30,7 @@ export class PolygonCommand implements Command {
       this.method = 'center'
       this.step = 2
       this.drawnEntityId = id;
-      const echo = FormatUtils.formatPoint(x, y, "Center")
-      return `${echo}\nInscribed in circle/Circumscribed about circle (I/C) <I>:`
+      return FormatUtils.formatPoint(x, y, "Center")
     }
 
     if (this.step === 2) {
@@ -37,8 +38,7 @@ export class PolygonCommand implements Command {
         this.p1 = { x, y }
         this.step = 3
         this.drawnEntityId = id;
-        const echo = FormatUtils.formatPoint(x, y, "P1")
-        return `${echo}\nSecond endpoint of edge:`
+        return FormatUtils.formatPoint(x, y, "P1")
       } else {
         // If in center mode and we click a point instead of I/C, 
         // we might just treat it as I and use this point as radius?
@@ -55,9 +55,16 @@ export class PolygonCommand implements Command {
         this.step = 0
         return polyline
       } else {
+        const dx = x - this.center!.x;
+        const dy = y - this.center!.y;
+        const dist = Math.sqrt(dx * dx + dy * dy)
         const vertices = calculatePolygonVerticesByCenter(this.center!, this.sides, { x, y }, this.inscribed)
         const polyline = this.createPolyline(vertices, id)
+        const echo = `Polygon created. Radius: ${dist.toFixed(2)}`
+        ;(polyline as any)._echo = echo
         this.step = 0
+        this.lastRadius = null
+        this.lastAngle = null
         return polyline
       }
     }
@@ -74,6 +81,8 @@ export class PolygonCommand implements Command {
         this.step = 2
         return "First endpoint of edge:"
       }
+      this.lastRadius = null;
+      this.lastAngle = null;
       return { action: "finish" }
     }
 
@@ -97,12 +106,12 @@ export class PolygonCommand implements Command {
       if (val === "I" || val === "") {
         this.inscribed = true
         this.step = 3
-        return "Radius of circle:"
+        return "Radius of polygon:"
       }
       if (val === "C") {
         this.inscribed = false
         this.step = 3
-        return "Radius of circle:"
+        return "Radius of polygon:"
       }
       return "Inscribed in circle/Circumscribed about circle (I/C) <I>:"
     }
@@ -114,6 +123,10 @@ export class PolygonCommand implements Command {
       if (this.method === 'edge') {
         vertices = calculatePolygonVerticesByEdge(this.p1!, { x, y }, this.sides)
       } else {
+        const dx = x - this.center!.x;
+        const dy = y - this.center!.y;
+        this.lastRadius = Math.sqrt(dx * dx + dy * dy);
+        this.lastAngle = Math.atan2(dy, dx) * (180 / Math.PI);
         vertices = calculatePolygonVerticesByCenter(this.center!, this.sides, { x, y }, this.inscribed)
       }
       const preview = new Polyline("PREVIEW", vertices.map(v => ({ ...v, bulge: 0 })), true);
@@ -162,7 +175,8 @@ export class PolygonCommand implements Command {
     }
     if (this.step === 3) {
       if (this.method === 'edge') return "Second endpoint of edge:";
-      return "Radius of circle:";
+      const radiusText = this.lastRadius !== null ? ` (R:${this.lastRadius.toFixed(2)} <${this.lastAngle?.toFixed(2)}°>)` : "";
+      return `Radius of polygon${radiusText}:`;
     }
     return "";
   }

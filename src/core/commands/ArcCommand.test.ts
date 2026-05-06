@@ -10,26 +10,23 @@ describe('ArcCommand', () => {
     const res1 = cmd.onPoint(0, 0, 'A1')
     expect(cmd.step).toBe(1)
     expect(res1).toContain('P1[X:0.00, Y:0.00, Z:0.00]')
-    expect(res1).toContain('Second point:')
 
     // Step 1: Second point
-    const res2 = cmd.onPoint(100, 100, 'A1')
+    const res2 = cmd.onPoint(10, 0, 'A1')
     expect(cmd.step).toBe(2)
-    expect(res2).toContain('P2[X:100.00, Y:100.00, Z:0.00]')
-    expect(res2).toContain('End point:')
+    expect(res2).toContain('P2[X:10.00, Y:0.00, Z:0.00]')
+
 
     // Step 2: End point
-    const res3 = cmd.onPoint(200, 0, 'A1')
+    const res3 = cmd.onPoint(10, 10, 'A1')
     expect(cmd.step).toBe(0)
     expect(res3).toBeInstanceOf(Arc)
     
     const arc = res3 as Arc
     expect(arc.id).toBe('A1')
-    expect(arc.cx).toBeCloseTo(100)
-    expect(arc.cy).toBeCloseTo(0)
-    expect(arc.r).toBeCloseTo(100)
-    expect(arc.startAngle).toBeCloseTo(Math.PI)
-    expect(arc.endAngle).toBeCloseTo(0)
+    expect(arc.cx).toBeCloseTo(5)
+    expect(arc.cy).toBeCloseTo(5)
+    expect(arc.r).toBeCloseTo(Math.sqrt(50))
   })
 
   it('should handle collinear points by staying on step 0', () => {

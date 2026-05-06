@@ -38,14 +38,20 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **LAYER:** Professional layer management (New, Set, On/Off, Freeze/Thaw, Lock/Unlock, Color, Linetype).
 -   **LINETYPE (LTYPE):** Global and per-layer linetype definitions.
 -   **REGEN:** Global viewport regeneration to synchronize display properties.
+-   **UNITS:** Set drawing units (Decimal, Metric, Architectural) and coordinate precision (0-8 decimals).
+-   **FILLET:** Professional corner rounding with automated trimming/extending and tangent arc insertion.
+-   **TRIM / EXTEND:** Precise geometric modification using entity-to-entity intersections.
+-   **OFFSET / ARRAY:** Distance-based offset and Rectangular/Polar array generation.
+-   **BLOCK / INSERT:** Symbol management with block definitions and efficient viewport instantiation.
 -   **ERASE / MOVE / COPY / ROTATE / SCALE / MIRROR:** Full suite of precise modification tools.
 -   **ZOOM:** `Zoom Window`, `Zoom All`, and factor-based zooming.
+-   **NEW:** Workspace reset with safety confirmation prompt.
 
 ### 🖥️ Authentic DOS UI
 -   **Main Menu:** Classic text-based startup screen with project management options.
 -   **Hierarchical Side Menu:** Fully interactive menu navigation (e.g., `DRAW` -> `LINE:`).
--   **Command Area:** Multi-line status log with persistent command prompt and cleaned interaction echoes.
--   **Status Bar:** Real-time world coordinate tracking, layer info, and clickable mode tags (**[SNAP]**, **[GRID]**, **[ORTHO]**).
+-   **Command Area:** Multi-line status log with persistent command prompt, cleaned interaction echoes, and discovery (`?` to list files/shapes).
+-   **Status Bar:** Real-time world coordinate tracking (respecting `UNITS`), layer info, and clickable mode tags (**[SNAP]**, **[GRID]**, **[ORTHO]**).
 
 ### 🖱️ Selection & Interaction
 -   **Selection Engine:** Advanced AABB-based hit-testing and precise geometry selection.
@@ -89,10 +95,10 @@ npm run lint
 -   **`src/ui/`**: DOS-style screens and components (`MainMenuScreen`, `CommandLine`, `StatusBar`).
 
 ## 📍 Roadmap Priorities
--   [ ] **Trimming:** TRIM and EXTEND commands using OpenCascade intersection.
--   [ ] **Modification:** OFFSET and ARRAY commands.
--   [ ] **Blocks:** Block definition and insertion system.
--   [ ] **3D Modeling:** EXTRUDE and REVOLVE using OCCT.
+-   [ ] **Engineering Annotation:** Implement `DIMLINEAR` and `DIMALIGNED` dimensioning.
+-   [ ] **Refinement:** `CHAMFER` (beveled corners) and `DONUT` entities.
+-   [ ] **Snaps:** Intersection and Perpendicular snapping modes.
+-   [ ] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT.
 
 ## 📄 License
 MIT

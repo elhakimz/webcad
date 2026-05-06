@@ -32,10 +32,13 @@ export class Menu {
       { label: 'DRAW', submenu: [
         { label: 'ARC', command: 'ARC' },
         { label: 'CIRCLE', command: 'CIRCLE' },
+        { label: 'DONUT', command: 'DONUT' },
+        { label: 'ELLIPSE', command: 'ELLIPSE' },
         { label: 'LINE:', command: 'LINE' },
         { label: 'PLINE', command: 'PLINE' },
         { label: 'POINT', command: 'POINT' },
         { label: 'POLYGON', command: 'POLYGON' },
+        { label: 'RECTANG', command: 'RECTANG' },
         { label: 'SOLID', command: 'SOLID' },
         { label: 'TRACE', command: 'TRACE' },
         { label: 'HATCH', command: 'HATCH' },
@@ -52,6 +55,7 @@ export class Menu {
         { label: 'SCALE', command: 'SCALE' },
         { label: 'MIRROR', command: 'MIRROR' },
         { label: 'OFFSET', command: 'OFFSET' },
+        { label: 'FILLET', command: 'FILLET' },
         { label: 'TRIM', command: 'TRIM' },
         { label: 'EXTEND', command: 'EXTEND' }
       ]},
@@ -70,14 +74,21 @@ export class Menu {
         { label: 'LTYPE', command: 'LAYER LT' },
         { label: 'DELETE', command: 'LAYER D' }
       ]},
-      { label: 'MODES' },
+      { label: 'MODES', submenu: [
+        { label: 'ORTHO', command: 'ORTHO' },
+        { label: 'GRID', command: 'GRID' },
+        { label: 'SNAP', command: 'SNAP' }
+      ]},
       { label: 'PLOT' },
       { label: 'UTILITY', submenu: [
         { label: 'LTYPE', command: 'LINETYPE' },
+        { label: 'UNITS', command: 'UNITS' },
         { label: 'SCRIPT' },
         { label: 'MENU' }
       ]},
       { label: '3D', command: 'TEST3D' },
+      { label: 'NEW:', command: 'NEW' },
+      { label: 'LOAD:', command: 'LOAD' },
       { label: 'SAVE:', command: 'SAVE' }
     ];
 

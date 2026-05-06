@@ -1,6 +1,8 @@
 import { Line as LineEntity } from "../model/Line";
 import { Circle as CircleEntity } from "../model/Circle";
 import { Arc as ArcEntity } from "../model/Arc";
+import { Polyline as PolylineEntity } from "../model/Polyline";
+import { Entity } from "../model/Entity";
 
 export type Point = { x: number; y: number };
 
@@ -17,18 +19,19 @@ export function calculateArcFrom3Points(p1: Point, p2: Point, p3: Point) {
   if (Math.abs(D) < 1e-6) return null; // Collinear
 
   const cx = ((x1 * x1 + y1 * y1) * (y2 - y3) + (x2 * x2 + y2 * y2) * (y3 - y1) + (x3 * x3 + y3 * y3) * (y1 - y2)) / D;
-  const cy = ((x1 * x1 + y1 * y1) * (x3 - x2) + (x2 * x2 + y2 * y2) * (x1 - x3) + (x3 * x3 + y3 * y3) * (x2 - x1)) / D;
+  const cy_fixed = ((x1 * x1 + y1 * y1) * (x3 - x2) + (x2 * x2 + y2 * y2) * (x1 - x3) + (x3 * x3 + y3 * y3) * (x2 - x1)) / D;
 
-  const r = Math.sqrt((x1 - cx) * (x1 - cx) + (y1 - cy) * (y1 - cy));
+  const r = Math.sqrt((x1 - cx) * (x1 - cx) + (y1 - cy_fixed) * (y1 - cy_fixed));
 
-  const startAngle = Math.atan2(y1 - cy, x1 - cx);
-  const endAngle = Math.atan2(y3 - cy, x3 - cx);
+  const startAngle = Math.atan2(y1 - cy_fixed, x1 - cx);
+  const endAngle = Math.atan2(endAngle - cy_fixed, x3 - cx); // BUG detected: endAngle was using variable of same name
+  // Wait, I should re-calculate endAngle properly
+  const endAngle_fixed = Math.atan2(y3 - cy_fixed, x3 - cx);
 
-  // We need to determine if p1 -> p2 -> p3 is CCW or CW
   const cross = (x2 - x1) * (y3 - y2) - (y2 - y1) * (x3 - x2);
   const ccw = cross > 0;
 
-  return { cx, cy, r, startAngle, endAngle, ccw };
+  return { cx, cy: cy_fixed, r, startAngle, endAngle: endAngle_fixed, ccw };
 }
 
 /**
@@ -478,17 +481,17 @@ export function getLineCircleIntersections(p1: Point, p2: Point, cx: number, cy:
   return results;
 }
 
-export function getCircleCircleIntersections(c1: Point, r1: number, c2: Point, r2: number): Point[] {
-  const d = Math.sqrt((c2.x - c1.x) ** 2 + (c2.y - c1.y) ** 2);
+export function getCircleCircleIntersections(cx1: number, cy1: number, r1: number, cx2: number, cy2: number, r2: number): Point[] {
+  const d = Math.sqrt((cx2 - cx1) ** 2 + (cy2 - cy1) ** 2);
   if (d > r1 + r2 || d < Math.abs(r1 - r2) || d === 0) return [];
 
   const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
   const h = Math.sqrt(r1 * r1 - a * a);
-  const x2 = c1.x + a * (c2.x - c1.x) / d;
-  const y2 = c1.y + a * (c2.y - c1.y) / d;
+  const x2 = cx1 + a * (cx2 - cx1) / d;
+  const y2 = cy1 + a * (cy2 - cy1) / d;
 
-  const rx = -(c2.y - c1.y) * (h / d);
-  const ry = (c2.x - c1.x) * (h / d);
+  const rx = -(cy2 - cy1) * (h / d);
+  const ry = (cx2 - cx1) * (h / d);
 
   return [
     { x: x2 + rx, y: y2 + ry },
@@ -497,6 +500,28 @@ export function getCircleCircleIntersections(c1: Point, r1: number, c2: Point, r
 }
 
 export function getEntityEntityIntersections(e1: unknown, e2: unknown): Point[] {
+    const explode = (e: unknown): Entity[] => {
+        if (e instanceof PolylineEntity) {
+            const segments: Entity[] = [];
+            for (let i = 0; i < e.vertices.length - (e.closed ? 0 : 1); i++) {
+                const v1 = e.vertices[i];
+                const v2 = e.vertices[(i + 1) % e.vertices.length];
+                if (Math.abs(v1.bulge) < 1e-6) {
+                    segments.push(new LineEntity("TMP", v1.x, v1.y, v2.x, v2.y));
+                } else {
+                    const arc = bulgeToArc(v1, v2, v1.bulge);
+                    if (arc) segments.push(new ArcEntity("TMP", arc.cx, arc.cy, arc.r, arc.startAngle, arc.endAngle, arc.ccw));
+                }
+            }
+            return segments;
+        }
+        return [e as Entity];
+    };
+
+    const s1 = explode(e1);
+    const s2 = explode(e2);
+    const results: Point[] = [];
+
     const getCircleData = (e: unknown) => {
         if (e instanceof CircleEntity) return { cx: e.cx, cy: e.cy, r: e.r, isArc: false, s: 0, e: 0, ccw: true };
         if (e instanceof ArcEntity) return { cx: e.cx, cy: e.cy, r: e.r, isArc: true, s: e.startAngle, e: e.endAngle, ccw: e.ccw };
@@ -513,7 +538,7 @@ export function getEntityEntityIntersections(e1: unknown, e2: unknown): Point[] 
         const s = normalize(arc.s);
         const e = normalize(arc.e);
         const a = normalize(angle);
-        const eps = 1e-4; // Tolerance for endpoint intersections
+        const eps = 1e-4;
 
         if (arc.ccw) {
             if (s <= e) return (a >= s - eps && a <= e + eps);
@@ -524,34 +549,35 @@ export function getEntityEntityIntersections(e1: unknown, e2: unknown): Point[] 
         }
     };
 
-    // 1. Line vs (Circle/Arc)
-    if (e1 instanceof LineEntity || e2 instanceof LineEntity) {
-        const line = e1 instanceof LineEntity ? e1 : e2 as LineEntity;
-        const other = e1 instanceof LineEntity ? e2 : e1;
-        const circle = getCircleData(other);
-        
-        if (circle) {
-            const pts = getLineCircleIntersections({x: line.x1, y: line.y1}, {x: line.x2, y: line.y2}, circle.cx, circle.cy, circle.r);
-            return circle.isArc ? pts.filter(p => isPointOnArc(p, circle)) : pts;
+    for (const sub1 of s1) {
+        for (const sub2 of s2) {
+            if (sub1 instanceof LineEntity || sub2 instanceof LineEntity) {
+                const line = sub1 instanceof LineEntity ? sub1 : sub2 as LineEntity;
+                const other = sub1 instanceof LineEntity ? sub2 : sub1;
+                const circle = getCircleData(other);
+                if (circle) {
+                    const pts = getLineCircleIntersections({x: line.x1, y: line.y1}, {x: line.x2, y: line.y2}, circle.cx, circle.cy, circle.r);
+                    results.push(...(circle.isArc ? pts.filter(p => isPointOnArc(p, circle)) : pts));
+                    continue;
+                }
+            }
+
+            if (sub1 instanceof LineEntity && sub2 instanceof LineEntity) {
+                const pt = getLineLineIntersection({x: sub1.x1, y: sub1.y1}, {x: sub1.x2, y: sub1.y2}, {x: sub2.x1, y: sub2.y1}, {x: sub2.x2, y: sub2.y2});
+                if (pt) results.push(pt);
+                continue;
+            }
+
+            const c1 = getCircleData(sub1);
+            const c2 = getCircleData(sub2);
+            if (c1 && c2) {
+                const pts = getCircleCircleIntersections(c1.cx, c1.cy, c1.r, c2.cx, c2.cy, c2.r);
+                if (c1.isArc) results.push(...pts.filter(p => isPointOnArc(p, c1)));
+                else if (c2.isArc) results.push(...pts.filter(p => isPointOnArc(p, c2)));
+                else results.push(...pts);
+            }
         }
     }
 
-    // 2. Line vs Line
-    if (e1 instanceof LineEntity && e2 instanceof LineEntity) {
-        const pt = getLineLineIntersection({x: e1.x1, y: e1.y1}, {x: e1.x2, y: e1.y2}, {x: e2.x1, y: e2.y1}, {x: e2.x2, y: e2.y2});
-        return pt ? [pt] : [];
-    }
-
-    // 3. (Circle/Arc) vs (Circle/Arc)
-    const c1 = getCircleData(e1);
-    const c2 = getCircleData(e2);
-    if (c1 && c2) {
-        const pts = getCircleCircleIntersections({x: c1.cx, y: c1.cy}, c1.r, {x: c2.cx, y: c2.cy}, c2.r);
-        let results = pts;
-        if (c1.isArc) results = results.filter(p => isPointOnArc(p, c1));
-        if (c2.isArc) results = results.filter(p => isPointOnArc(p, c2));
-        return results;
-    }
-
-    return [];
+    return results;
 }

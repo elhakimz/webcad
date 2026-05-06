@@ -33,7 +33,6 @@ export class TransformHandler implements ActionHandler {
             const before1 = e1.clone(e1.id);
             const before2 = e2.clone(e2.id);
 
-            // move the end that is closer to the virtual intersection to tangent point
             const inter = MathUtils.getLineLineIntersectionInfinite({x: e1.x1, y: e1.y1}, {x: e1.x2, y: e1.y2}, {x: e2.x1, y: e2.y1}, {x: e2.x2, y: e2.y2});
             if (inter) {
                 const d1a = MathUtils.distancePointToPoint(e1.x1, e1.y1, inter.x, inter.y);
@@ -255,150 +254,129 @@ export class TransformHandler implements ActionHandler {
     }
 
     if (action.action === 'trim' && action.id && action.boundaryIds && action.pickPt) {
-        const target = doc.getEntity(action.id);
-        if (target && (target instanceof Line || target instanceof ArcEntity || target instanceof CircleEntity)) {
-            const boundaries = action.boundaryIds.map(id => doc.getEntity(id)).filter(Boolean);
-            const intersections: Point[] = [];
+        const originalTarget = doc.getEntity(action.id);
+        if (!originalTarget) return undefined;
+        
+        const targets: Entity[] = [];
+        if (originalTarget instanceof Polyline) {
+            for (let i = 0; i < originalTarget.vertices.length - (originalTarget.closed ? 0 : 1); i++) {
+                const v1 = originalTarget.vertices[i];
+                const v2 = originalTarget.vertices[(i + 1) % originalTarget.vertices.length];
+                const segId = doc.getNextId(Math.abs(v1.bulge) < 1e-6 ? "L" : "A");
+                let seg: Entity;
+                if (Math.abs(v1.bulge) < 1e-6) {
+                    seg = new Line(segId, v1.x, v1.y, v2.x, v2.y);
+                } else {
+                    const arc = MathUtils.bulgeToArc(v1, v2, v1.bulge)!;
+                    seg = new ArcEntity(segId, arc.cx, arc.cy, arc.r, arc.startAngle, arc.endAngle, arc.ccw);
+                }
+                seg.layer = originalTarget.layer;
+                seg.properties = JSON.parse(JSON.stringify(originalTarget.properties));
+                targets.push(seg);
+            }
+        } else {
+            targets.push(originalTarget);
+        }
 
-            boundaries.forEach(b => {
-                const pts = MathUtils.getEntityEntityIntersections(target, b);
-                intersections.push(...pts);
-            });
+        let trimmedAnything = false;
+        const boundaries = action.boundaryIds.map(bid => doc.getEntity(bid)).filter(Boolean) as Entity[];
+
+        for (const t of targets) {
+            if (originalTarget instanceof Polyline) {
+                let dist = Infinity;
+                if (t instanceof Line) dist = MathUtils.distancePointToLineSegment(action.pickPt.x, action.pickPt.y, t.x1, t.y1, t.x2, t.y2);
+                else if (t instanceof ArcEntity) dist = MathUtils.distancePointToArc(action.pickPt.x, action.pickPt.y, t.cx, t.cy, t.r, t.startAngle, t.endAngle, t.ccw);
+                if (dist > 10 / viewer.camera.zoom) continue; 
+            }
+
+            const intersections = [];
+            for (const b of boundaries) {
+                intersections.push(...MathUtils.getEntityEntityIntersections(t, b));
+            }
 
             const uniqueIntersections: Point[] = [];
             intersections.forEach(p => {
-                if (!uniqueIntersections.some(up => MathUtils.distancePointToPoint(p.x, p.y, up.x, up.y) < 1e-4)) {
-                    uniqueIntersections.push(p);
-                }
+                if (!uniqueIntersections.some(up => MathUtils.distancePointToPoint(p.x, p.y, up.x, up.y) < 1e-4)) uniqueIntersections.push(p);
             });
 
             if (uniqueIntersections.length > 0) {
-                if (target instanceof Line) {
-                    const pts: Point[] = [
-                        { x: target.x1, y: target.y1 },
-                        ...uniqueIntersections,
-                        { x: target.x2, y: target.y2 }
-                    ];
-                    const dirX = target.x2 - target.x1;
-                    const dirY = target.y2 - target.y1;
-                    pts.sort((a, b) => {
-                        return (a.x - target.x1) * dirX + (a.y - target.y1) * dirY - 
-                               ((b.x - target.x1) * dirX + (b.y - target.y1) * dirY);
-                    });
+                if (t instanceof Line) {
+                    const pts = [{ x: t.x1, y: t.y1 }, ...uniqueIntersections, { x: t.x2, y: t.y2 }];
+                    const dirX = t.x2 - t.x1, dirY = t.y2 - t.y1;
+                    pts.sort((a, b) => (a.x - t.x1) * dirX + (a.y - t.y1) * dirY - ((b.x - t.x1) * dirX + (b.y - t.y1) * dirY));
 
-                    let removeIdx = -1;
-                    let minDist = Infinity;
+                    let removeIdx = -1, minDist = Infinity;
                     for (let i = 0; i < pts.length - 1; i++) {
-                        const d = MathUtils.distancePointToLineSegment(action.pickPt!.x, action.pickPt!.y, pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y);
-                        if (d < minDist) {
-                            minDist = d;
-                            removeIdx = i;
-                        }
+                        const d = MathUtils.distancePointToLineSegment(action.pickPt.x, action.pickPt.y, pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y);
+                        if (d < minDist) { minDist = d; removeIdx = i; }
                     }
 
                     if (removeIdx !== -1) {
-                        doc.removeEntity(target.id);
-                        viewer.removeObject(target.id);
-
+                        doc.removeEntity(originalTarget.id);
+                        viewer.removeObject(originalTarget.id);
+                        if (originalTarget instanceof Polyline) {
+                            targets.forEach(seg => { if (seg !== t) addEntity(seg, true, false); });
+                        }
                         for (let i = 0; i < pts.length - 1; i++) {
                             if (i === removeIdx) continue;
-                            const newId = doc.getNextId("L");
-                            const newLine = new Line(newId, pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y);
-                            newLine.layer = target.layer;
-                            newLine.properties = JSON.parse(JSON.stringify(target.properties));
+                            const newLine = new Line(doc.getNextId("L"), pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y);
+                            newLine.layer = t.layer;
+                            newLine.properties = JSON.parse(JSON.stringify(t.properties));
                             addEntity(newLine, true, false);
                         }
-                        doc.updateSpatialIndex();
-                        return "Line trimmed.";
+                        trimmedAnything = true;
                     }
-                } else {
-                    const cx = (target as ArcEntity).cx || (target as CircleEntity).cx;
-                    const cy = (target as ArcEntity).cy || (target as CircleEntity).cy;
-                    const r = (target as ArcEntity).r || (target as CircleEntity).r;
-                    const ccw = (target instanceof ArcEntity) ? target.ccw : true;
-                    
-                    const normalize = (a: number) => {
-                        while (a < 0) a += Math.PI * 2;
-                        while (a >= Math.PI * 2) a -= Math.PI * 2;
-                        return a;
-                    };
-
-                    const s = (target instanceof ArcEntity) ? normalize(target.startAngle) : normalize(Math.atan2(uniqueIntersections[0].y - cy, uniqueIntersections[0].x - cx));
-                    const e = (target instanceof ArcEntity) ? normalize(target.endAngle) : s;
-                    
+                } else if (t instanceof ArcEntity || t instanceof CircleEntity) {
+                    const cx = (t as ArcEntity).cx || (t as CircleEntity).cx;
+                    const cy = (t as ArcEntity).cy || (t as CircleEntity).cy;
+                    const r = (t as ArcEntity).r || (t as CircleEntity).r;
+                    const ccw = (t instanceof ArcEntity) ? t.ccw : true;
+                    const normalize = (a: number) => { while (a < 0) a += Math.PI * 2; while (a >= Math.PI * 2) a -= Math.PI * 2; return a; };
+                    const s = (t instanceof ArcEntity) ? normalize(t.startAngle) : normalize(Math.atan2(uniqueIntersections[0].y - cy, uniqueIntersections[0].x - cx));
+                    const e = (t instanceof ArcEntity) ? normalize(t.endAngle) : s;
                     const intersectionAngles = uniqueIntersections.map(p => normalize(Math.atan2(p.y - cy, p.x - cx)));
-                    
-                    const validIntersections = (target instanceof CircleEntity) 
-                        ? intersectionAngles 
-                        : intersectionAngles.filter(a => {
-                            if (ccw) return s <= e ? (a > s + 1e-4 && a < e - 1e-4) : (a > s + 1e-4 || a < e - 1e-4);
-                            else return e <= s ? (a > e + 1e-4 && a < s - 1e-4) : (a > e + 1e-4 || a < s - 1e-4);
-                        });
-
+                    const validIntersections = (t instanceof CircleEntity) ? intersectionAngles : intersectionAngles.filter(a => ccw ? (s <= e ? (a > s + 1e-4 && a < e - 1e-4) : (a > s + 1e-4 || a < e - 1e-4)) : (e <= s ? (a > e + 1e-4 && a < s - 1e-4) : (a > e + 1e-4 || a < s - 1e-4)));
                     const allAngles = [s, ...validIntersections];
-                    if (target instanceof ArcEntity) allAngles.push(e);
-                    else if (target instanceof CircleEntity) {
-                        allAngles.sort((a, b) => a - b);
-                        allAngles.push(allAngles[0]); 
-                    }
-                    
-                    allAngles.sort((a, b) => {
-                        let da, db;
-                        if (ccw) {
-                            da = a - s; if (da < 0) da += Math.PI * 2;
-                            db = b - s; if (db < 0) db += Math.PI * 2;
-                        } else {
-                            da = s - a; if (da < 0) da += Math.PI * 2;
-                            db = s - b; if (db < 0) db += Math.PI * 2;
-                        }
-                        return da - db;
-                    });
-
-                    const segments: { s: number, e: number }[] = [];
-                    for (let i = 0; i < allAngles.length - 1; i++) {
-                        segments.push({ s: allAngles[i], e: allAngles[i+1] });
-                    }
-
-                    let removeIdx = -1;
-                    let minDist = Infinity;
+                    if (t instanceof ArcEntity) allAngles.push(e);
+                    else { allAngles.sort((a, b) => a - b); allAngles.push(allAngles[0]); }
+                    allAngles.sort((a, b) => { let da, db; if (ccw) { da = a - s; if (da < 0) da += Math.PI * 2; db = b - s; if (db < 0) db += Math.PI * 2; } else { da = s - a; if (da < 0) da += Math.PI * 2; db = s - b; if (db < 0) db += Math.PI * 2; } return da - db; });
+                    const segments = [];
+                    for (let i = 0; i < allAngles.length - 1; i++) segments.push({ s: allAngles[i], e: allAngles[i+1] });
+                    let removeIdx = -1, minDist = Infinity;
                     for (let i = 0; i < segments.length; i++) {
-                        const seg = segments[i];
-                        let diff = seg.e - seg.s;
-                        if (ccw && diff < 0) diff += Math.PI * 2;
-                        if (!ccw && diff > 0) diff -= Math.PI * 2;
+                        const seg = segments[i]; let diff = seg.e - seg.s;
+                        if (ccw && diff < 0) diff += Math.PI * 2; if (!ccw && diff > 0) diff -= Math.PI * 2;
                         const midAngle = normalize(seg.s + diff / 2);
-                        const mx = cx + r * Math.cos(midAngle);
-                        const my = cy + r * Math.sin(midAngle);
-                        const d = Math.sqrt((action.pickPt!.x - mx)**2 + (action.pickPt!.y - my)**2);
-                        if (d < minDist) {
-                            minDist = d;
-                            removeIdx = i;
-                        }
+                        const d = Math.sqrt((action.pickPt.x - (cx + r * Math.cos(midAngle)))**2 + (action.pickPt.y - (cy + r * Math.sin(midAngle)))**2);
+                        if (d < minDist) { minDist = d; removeIdx = i; }
                     }
-
                     if (removeIdx !== -1) {
-                        doc.removeEntity(target.id);
-                        viewer.removeObject(target.id);
+                        doc.removeEntity(originalTarget.id);
+                        viewer.removeObject(originalTarget.id);
+                        if (originalTarget instanceof Polyline) {
+                            targets.forEach(seg => { if (seg !== t) addEntity(seg, true, false); });
+                        }
                         for (let i = 0; i < segments.length; i++) {
                             if (i === removeIdx) continue;
-                            const newId = doc.getNextId("A");
-                            const newArc = new ArcEntity(newId, cx, cy, r, segments[i].s, segments[i].e, ccw);
-                            newArc.layer = target.layer;
-                            newArc.properties = JSON.parse(JSON.stringify(target.properties));
+                            const newArc = new ArcEntity(doc.getNextId("A"), cx, cy, r, segments[i].s, segments[i].e, ccw);
+                            newArc.layer = t.layer;
+                            newArc.properties = JSON.parse(JSON.stringify(t.properties));
                             addEntity(newArc, true, false);
                         }
-                        doc.updateSpatialIndex();
-                        return target instanceof CircleEntity ? "Circle trimmed to arc." : "Arc trimmed.";
+                        trimmedAnything = true;
                     }
                 }
             }
+            if (trimmedAnything) break;
         }
+
+        if (trimmedAnything) { this.cleanup(context); return "Entity trimmed."; }
     }
 
     if (action.action === 'extend' && action.id && action.boundaryIds && action.pickPt) {
         const target = doc.getEntity(action.id);
         if (target && (target instanceof Line || target instanceof ArcEntity)) {
-            const boundaries = action.boundaryIds.map(id => doc.getEntity(id)).filter(Boolean);
+            const boundaries = action.boundaryIds.map(id => doc.getEntity(id)).filter(Boolean) as Entity[];
             
             if (target instanceof Line) {
                 let closestPt: {x:number, y:number} | null = null;
@@ -410,8 +388,8 @@ export class TransformHandler implements ActionHandler {
                 const ux = dirX / len;
                 const uy = dirY / len;
 
-                const d1 = Math.sqrt((action.pickPt!.x - target.x1)**2 + (action.pickPt!.y - target.y1)**2);
-                const d2 = Math.sqrt((action.pickPt!.x - target.x2)**2 + (action.pickPt!.y - target.y2)**2);
+                const d1 = Math.sqrt((action.pickPt.x - target.x1)**2 + (action.pickPt.y - target.y1)**2);
+                const d2 = Math.sqrt((action.pickPt.x - target.x2)**2 + (action.pickPt.y - target.y2)**2);
                 const isStart = d1 < d2;
 
                 boundaries.forEach(b => {
@@ -459,8 +437,8 @@ export class TransformHandler implements ActionHandler {
                 const s = normalize(target.startAngle);
                 const e = normalize(target.endAngle);
                 
-                const d1 = Math.sqrt((action.pickPt!.x - (target.cx + target.r * Math.cos(s)))**2 + (action.pickPt!.y - (target.cy + target.r * Math.sin(s)))**2);
-                const d2 = Math.sqrt((action.pickPt!.x - (target.cx + target.r * Math.cos(e)))**2 + (action.pickPt!.y - (target.cy + target.r * Math.sin(e)))**2);
+                const d1 = Math.sqrt((action.pickPt.x - (target.cx + target.r * Math.cos(s)))**2 + (action.pickPt.y - (target.cy + target.r * Math.sin(s)))**2);
+                const d2 = Math.sqrt((action.pickPt.x - (target.cx + target.r * Math.cos(e)))**2 + (action.pickPt.y - (target.cy + target.r * Math.sin(e)))**2);
                 const isStart = d1 < d2;
 
                 let closestAngle: number | null = null;
@@ -473,7 +451,6 @@ export class TransformHandler implements ActionHandler {
                     pts.forEach(p => {
                         const angle = normalize(Math.atan2(p.y - target.cy, p.x - target.cx));
                         
-                        // Is it outside current arc sweep?
                         const alreadyIn = target.ccw 
                             ? (s <= e ? (angle >= s - 1e-4 && angle <= e + 1e-4) : (angle >= s - 1e-4 || angle <= e + 1e-4))
                             : (e <= s ? (angle >= e - 1e-4 && angle <= s + 1e-4) : (angle >= e - 1e-4 || angle <= s + 1e-4));

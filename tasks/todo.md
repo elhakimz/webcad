@@ -1,17 +1,28 @@
 # WebCAD Tasks
 
-## Todo (Phase 7 â€” Engineering & Annotation)
-- [ ] Implement UNITS command (Decimal/Metric) <!-- id: 18 -->
-- [ ] Implement FILLET command (Radius support) <!-- id: 19 -->
-- [ ] Implement CHAMFER command <!-- id: 20 -->
-- [ ] Implement DIMLINEAR command <!-- id: 21 -->
-- [ ] Implement DIMALIGNED command <!-- id: 22 -->
-- [ ] Implement DONUT command <!-- id: 23 -->
-- [ ] Implement ELLIPSE command <!-- id: 24 -->
+## Todo (Phase 7 — Engineering Drafting & Annotation)
+
+### Phase A (Critical Engineering Foundation)
+- [ ] Implement DIMLINEAR command (Linear dimensions) <!-- id: 21 -->
+- [ ] Implement DIMALIGNED command (Aligned dimensions) <!-- id: 22 -->
 - [ ] Implement Intersection and Perpendicular snaps <!-- id: 25 -->
+- [ ] Support unit suffixes in coordinate parser (e.g., "10mm", "5'") <!-- id: 26 -->
+
+### Phase B (Advanced Drafting & Refinement)
+- [ ] Implement CHAMFER command <!-- id: 20 -->
+- [ ] Implement DIMRADIUS and DIMANGULAR commands <!-- id: 27 -->
+- [ ] Implement RECTANG command (wrapper for Polyline) <!-- id: 28 -->
+- [ ] Implement DONUT command <!-- id: 23 -->
+- [ ] Implement BREAK and JOIN commands <!-- id: 29 -->
+
+### Phase C (Polish & Specialized Tools)
+- [ ] Implement Annotation Styles (DimStyle) <!-- id: 30 -->
+- [ ] Implement ELLIPSE command <!-- id: 24 -->
+- [ ] Implement LENGTHEN command <!-- id: 31 -->
+- [ ] Implement Tangent and Nearest snaps <!-- id: 32 -->
 
 ## Ongoing
-- [ ] Phase 7: Engineering drafting features (Fillet, Units, Dimensions)
+- [ ] Phase 7: Functional parity with AutoCAD 2.6 drafting capabilities.
 
 
 ## Done

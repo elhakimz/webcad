@@ -75,7 +75,7 @@ describe('PolygonCommand', () => {
     cmd.onInput('3', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     cmd.onPoint(0, 0, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     cmd.onInput('I', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
-    const _preview = cmd.getPreview(10, 0) as Polyline
+    const _preview = cmd.getPreview(10, 0, { type: 'decimal', precision: 2, scale: 1.0 }) as Polyline
     // removed
     // removed
   })

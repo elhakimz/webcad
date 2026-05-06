@@ -9,6 +9,8 @@ import { Point } from "../core/model/Point"
 import { Polyline } from "../core/model/Polyline"
 import { Text } from "../core/model/Text"
 import { Solid } from "../core/model/Solid"
+import { Donut } from "../core/model/Donut"
+import { Ellipse } from "../core/model/Ellipse"
 import { Trace } from "../core/model/Trace"
 import { Shape } from "../core/model/Shape"
 import { Hatch } from "../core/model/Hatch"
@@ -324,6 +326,10 @@ export class Viewer {
         this.previewObject = this.createTextObject(entity, previewColor);
       } else if (entity instanceof Solid) {
         this.previewObject = this.createSolidObject(entity, previewColor);
+      } else if (entity instanceof Donut) {
+        this.previewObject = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, previewColor);
+      } else if (entity instanceof Ellipse) {
+        this.previewObject = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, previewColor);
       }
 
       if (this.previewObject) {
@@ -660,6 +666,26 @@ export class Viewer {
     this.scene.add(obj);
   }
 
+  addDonut(entity: Donut, layer?: string, color?: number, isVisible = true) {
+    const obj = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, aciToRgb(color));
+    obj.name = entity.id;
+    if (layer) {
+      obj.userData = { layer };
+    }
+    obj.visible = isVisible;
+    this.scene.add(obj);
+  }
+
+  addEllipse(entity: Ellipse, layer?: string, color?: number, isVisible = true) {
+    const obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, aciToRgb(color));
+    obj.name = entity.id;
+    if (layer) {
+      obj.userData = { layer };
+    }
+    obj.visible = isVisible;
+    this.scene.add(obj);
+  }
+
   addTrace(entity: Trace, layer?: string, color?: number, isVisible = true) {
     const dx = entity.x2 - entity.x1;
     const dy = entity.y2 - entity.y1;
@@ -913,6 +939,27 @@ export class Viewer {
     } else {
         return new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material);
     }
+  }
+
+  private createDonutObject(cx: number, cy: number, innerR: number, outerR: number, color: number): THREE.Object3D {
+    const geometry = innerR > 0 
+        ? new THREE.RingGeometry(innerR, outerR, 32)
+        : new THREE.CircleGeometry(outerR, 32);
+    const material = new THREE.MeshBasicMaterial({ color: aciToRgb(color), side: THREE.DoubleSide });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(cx, cy, 0);
+    return mesh;
+  }
+
+  private createEllipseObject(cx: number, cy: number, majorX: number, majorY: number, ratio: number, color: number): THREE.Object3D {
+    const majorR = Math.sqrt(majorX**2 + majorY**2);
+    const minorR = majorR * ratio;
+    const rotation = Math.atan2(majorY, majorX);
+    const curve = new THREE.EllipseCurve(cx, cy, majorR, minorR, 0, 2 * Math.PI, false, rotation);
+    const points = curve.getPoints(100);
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
+    return new THREE.LineLoop(geo, mat);
   }
   private generateDashedPath(
     points: { x: number; y: number }[],

@@ -52,7 +52,7 @@ describe('PolylineCommand', () => {
   it('should provide preview', () => {
     const cmd = new PolylineCommand()
     cmd.onPoint(0, 0, 'PL1', { type: 'decimal', precision: 2, scale: 1.0 })
-    const _preview = cmd.getPreview(10, 10) as Polyline
+    const _preview = cmd.getPreview(10, 10, { type: 'decimal', precision: 2, scale: 1.0 }) as Polyline
     // removed
     // removed
     // removed

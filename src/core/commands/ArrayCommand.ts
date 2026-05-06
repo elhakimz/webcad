@@ -1,4 +1,5 @@
-import { Command, CommandResponse } from "./types"
+import { Polyline } from "../model/Polyline"
+import { Command, CommandResponse, CommandAction } from "./types"
 import { UnitsConfig } from "../model/Document"
 
 export class ArrayCommand implements Command {

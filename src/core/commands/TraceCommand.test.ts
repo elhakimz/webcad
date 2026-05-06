@@ -67,7 +67,7 @@ describe('TraceCommand', () => {
     cmd.onInput('0.2', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     cmd.onPoint(10, 10, 'TR1', { type: 'decimal', precision: 2, scale: 1.0 })
     
-    const preview = cmd.getPreview(20, 20)
+    const preview = cmd.getPreview(20, 20, { type: 'decimal', precision: 2, scale: 1.0 })
     expect(preview).toBeDefined()
     expect(preview?.x1).toBe(10)
     expect(preview?.x2).toBe(20)

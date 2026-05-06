@@ -47,7 +47,7 @@ describe('LayerCommand', () => {
     const cmd = new LayerCommand()
     
     cmd.onInput('ON', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
-    const res = cmd.onInput('0,test', 'DUMMY')
+    const res = cmd.onInput('0,test', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     expect(res).toEqual({ action: 'layerOn', names: '0,TEST' })
   })
 

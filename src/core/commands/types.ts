@@ -80,7 +80,7 @@ export type PreviewObject = Entity | ZoomWindowPreview | XMarkerPreview | PLineP
 export interface Command {
   onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse;
   onInput?(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }): CommandResponse | undefined;
-  getPreview?(x: number, y: number): PreviewObject | null;
+  getPreview?(x: number, y: number, units: UnitsConfig): PreviewObject | null;
   getReferencePoints?(): { x: number, y: number }[];
   getPrompt?(): string;
   step?: number;

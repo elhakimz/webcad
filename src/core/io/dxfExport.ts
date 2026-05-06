@@ -7,6 +7,8 @@ import { Point } from "../model/Point";
 import { Polyline } from "../model/Polyline";
 import { Text } from "../model/Text";
 import { Solid } from "../model/Solid";
+import { Donut } from "../model/Donut";
+import { Ellipse } from "../model/Ellipse";
 import { Trace } from "../model/Trace";
 import { Hatch } from "../model/Hatch";
 import { Shape } from "../model/Shape";
@@ -98,6 +100,15 @@ export class DXFExporter {
 
       s += " 50\n" + norm(start) + "\n";
       s += " 51\n" + norm(end) + "\n";
+    } else if (e instanceof Donut) {
+      // Export as two circles
+      s += "  0\nCIRCLE\n  8\n" + layer + "\n 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n0.0\n 40\n" + e.innerRadius + "\n";
+      s += "  0\nCIRCLE\n  8\n" + layer + "\n 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n0.0\n 40\n" + e.outerRadius + "\n";
+    } else if (e instanceof Ellipse) {
+      s += "  0\nELLIPSE\n  8\n" + layer + "\n";
+      s += " 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n0.0\n";
+      s += " 11\n" + e.majorX + "\n 21\n" + e.majorY + "\n 31\n0.0\n";
+      s += " 40\n" + e.ratio + "\n 41\n0.0\n 42\n6.283185307179586\n";
     } else if (e instanceof Point) {
       s += "  0\nPOINT\n  8\n" + layer + "\n";
       s += " 10\n" + e.x + "\n 20\n" + e.y + "\n 30\n0.0\n";

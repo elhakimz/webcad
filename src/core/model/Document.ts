@@ -1,5 +1,5 @@
 import { Entity, BoundingBox } from "./Entity"
-import { HistoryManager, _HistoryAction } from "./HistoryManager"
+import { HistoryManager, HistoryAction } from "./HistoryManager"
 import { LayerManager } from "./Layer"
 import { BlockManager } from "./Block"
 import { Quadtree } from "../engine/Quadtree"

@@ -79,7 +79,7 @@ describe('CircleCommand', () => {
     const cmd = new CircleCommand()
     cmd.onPoint(100, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
     cmd.onInput('D', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
-    const preview = cmd.getPreview(200, 100) as Circle
+    const preview = cmd.getPreview(200, 100, { type: 'decimal', precision: 2, scale: 1.0 }) as Circle
     expect(preview.r).toBe(50)
   })
 

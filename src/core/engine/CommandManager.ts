@@ -1,6 +1,8 @@
 
 import { LineCommand } from "../commands/LineCommand"
 import { CircleCommand } from "../commands/CircleCommand"
+import { DonutCommand } from "../commands/DonutCommand"
+import { EllipseCommand } from "../commands/EllipseCommand"
 import { EraseCommand } from "../commands/EraseCommand"
 import { MoveCommand } from "../commands/MoveCommand"
 import { CopyCommand } from "../commands/CopyCommand"
@@ -14,6 +16,7 @@ import { ArcCommand } from "../commands/ArcCommand"
 import { PointCommand } from "../commands/PointCommand"
 import { PolylineCommand } from "../commands/PolylineCommand"
 import { PolygonCommand } from "../commands/PolygonCommand"
+import { RectangCommand } from "../commands/RectangCommand"
 import { TextCommand } from "../commands/TextCommand"
 import { TraceCommand } from "../commands/TraceCommand"
 import { SolidCommand } from "../commands/SolidCommand"
@@ -57,7 +60,16 @@ export class CommandManager {
       this.active = new CircleCommand()
       response = "CIRCLE"
     }
-    else if(cmdName === "ERASE"){
+    else if(cmdName === "DONUT"){
+      this.active = new DonutCommand()
+      response = "DONUT"
+    }
+    else if(cmdName === "ELLIPSE"){
+      this.active = new EllipseCommand()
+      response = "ELLIPSE"
+    }
+    else if(cmdName === "ERASE" || cmdName === "E"){
+
       if (selection && selection.length > 0) {
         return { action: "delete", ids: [...selection] };
       }
@@ -112,6 +124,10 @@ export class CommandManager {
     else if(cmdName === "POLYGON"){
       this.active = new PolygonCommand()
       response = "POLYGON"
+    }
+    else if(cmdName === "RECTANG" || cmdName === "REC" || cmdName === "RECTANGLE"){
+      this.active = new RectangCommand()
+      response = "RECTANG"
     }
     else if(cmdName === "TEXT"){
       this.active = new TextCommand()

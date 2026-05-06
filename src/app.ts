@@ -11,6 +11,8 @@ import { Point } from "./core/model/Point"
 import { Polyline } from "./core/model/Polyline"
 import { Text } from "./core/model/Text"
 import { Solid } from "./core/model/Solid"
+import { Donut } from "./core/model/Donut"
+import { Ellipse } from "./core/model/Ellipse"
 import { Trace } from "./core/model/Trace"
 import { Shape } from "./core/model/Shape"
 import { Hatch } from "./core/model/Hatch"
@@ -227,7 +229,7 @@ export class App {
     }
 
     if (this.cmd.active && this.cmd.active.getPreview) {
-      const preview = this.cmd.active.getPreview(x, y);
+      const preview = this.cmd.active.getPreview(worldPt.x, worldPt.y, this.doc.units);
       this.viewer.setPreview(preview);
     } else {
       this.viewer.setPreview(null);
@@ -354,8 +356,8 @@ export class App {
             this.reportSelectionDimensions();
 
             // For commands that pick a target for immediate action (Trim, Extend, Offset at Step 1, Fillet at Step 0/1)
-            const isImmediatePick = (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && this.cmd.active.step === 1;
-            const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active.step === 0 || this.cmd.active.step === 1);
+            const isImmediatePick = (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && this.cmd.active?.step === 1;
+            const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
 
             if (this.cmd.active && (isImmediatePick || isFilletPick)) {
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y });
@@ -395,9 +397,9 @@ export class App {
       let entity: Entity | undefined;
       let isCloseAction = false;
       
-      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Trace || result instanceof Hatch || result instanceof Shape) {
-        entity = result;
-      } else if ('action' in result && result.action === 'close' && result.entity) {
+      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Trace || result instanceof Hatch || result instanceof Shape) {
+        entity = result as Entity;
+      } else if (result && typeof result === 'object' && 'action' in result && result.action === 'close' && result.entity) {
         entity = result.entity;
         isCloseAction = true;
       }
@@ -531,6 +533,10 @@ export class App {
       this.viewer.addText(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Solid) {
       this.viewer.addSolid(entity, layer, layerColor, isVisible);
+    } else if (entity instanceof Donut) {
+      this.viewer.addDonut(entity, layer, layerColor, isVisible);
+    } else if (entity instanceof Ellipse) {
+      this.viewer.addEllipse(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Trace) {
       this.viewer.addTrace(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Shape) {

@@ -26,6 +26,10 @@ import { SaveCommand, LoadCommand } from "../commands/IOCommands"
 import { OrthoCommand } from "../commands/OrthoCommand"
 import { GridCommand } from "../commands/GridCommand"
 import { SnapCommand } from "../commands/SnapCommand"
+import { ArrayCommand } from "../commands/ArrayCommand"
+import { OffsetCommand } from "../commands/OffsetCommand"
+import { TrimCommand } from "../commands/TrimCommand"
+import { ExtendCommand } from "../commands/ExtendCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 
@@ -155,6 +159,22 @@ export class CommandManager {
     else if(cmdName === "SNAP"){
       this.active = new SnapCommand()
       response = "SNAP"
+    }
+    else if(cmdName === "ARRAY"){
+      this.active = new ArrayCommand(selection)
+      response = "ARRAY"
+    }
+    else if(cmdName === "OFFSET"){
+      this.active = new OffsetCommand()
+      response = "OFFSET"
+    }
+    else if(cmdName === "TRIM"){
+      this.active = new TrimCommand(selection)
+      response = "TRIM"
+    }
+    else if(cmdName === "EXTEND"){
+      this.active = new ExtendCommand(selection)
+      response = "EXTEND"
     }
     else if(cmdName === "REGEN"){
       return { action: "regen" }

@@ -1,3 +1,8 @@
+import { Line as LineEntity } from "../model/Line";
+import { Circle as CircleEntity } from "../model/Circle";
+import { Arc as ArcEntity } from "../model/Arc";
+import { Polyline as PolylineEntity } from "../model/Polyline";
+
 export type Point = { x: number; y: number };
 
 /**
@@ -18,10 +23,10 @@ export function calculateArcFrom3Points(p1: Point, p2: Point, p3: Point) {
   const r = Math.sqrt((x1 - cx) * (x1 - cx) + (y1 - cy) * (y1 - cy));
 
   const startAngle = Math.atan2(y1 - cy, x1 - cx);
+  const midAngle = Math.atan2(y2 - cy, x2 - cx);
   const endAngle = Math.atan2(y3 - cy, x3 - cx);
 
   // We need to determine if p1 -> p2 -> p3 is CCW or CW
-  // Cross product of (p2-p1) and (p3-p2)
   const cross = (x2 - x1) * (y3 - y2) - (y2 - y1) * (x3 - x2);
   const ccw = cross > 0;
 
@@ -30,7 +35,6 @@ export function calculateArcFrom3Points(p1: Point, p2: Point, p3: Point) {
 
 /**
  * Converts a bulge value to arc parameters.
- * Bulge is tan(included_angle / 4).
  */
 export function bulgeToArc(p1: Point, p2: Point, bulge: number) {
   const L = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
@@ -42,13 +46,11 @@ export function bulgeToArc(p1: Point, p2: Point, bulge: number) {
   const midX = (p1.x + p2.x) / 2;
   const midY = (p1.y + p2.y) / 2;
 
-  // Normal vector (p1 to p2 rotated 90 deg)
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;
   const nx = -dy / L;
   const ny = dx / L;
 
-  // Center is at distance (r - h) from midpoint along normal
   const dist = r - h;
   const cx = midX + nx * dist;
   const cy = midY + ny * dist;
@@ -66,10 +68,6 @@ export function bulgeToArc(p1: Point, p2: Point, bulge: number) {
   };
 }
 
-/**
- * Calculates vertices for a regular polygon given its center, number of sides,
- * inscribed/circumscribed method, and a point defining radius/rotation.
- */
 export function calculatePolygonVerticesByCenter(
   center: Point,
   sides: number,
@@ -82,9 +80,6 @@ export function calculatePolygonVerticesByCenter(
   let startAngle = Math.atan2(dy, dx);
 
   if (!inscribed) {
-    // If circumscribed, radiusPoint is midpoint of an edge.
-    // The vertex radius R = r / cos(PI/n)
-    // The start angle for vertices is startAngle + PI/n
     const angleOffset = Math.PI / sides;
     r = r / Math.cos(angleOffset);
     startAngle += angleOffset;
@@ -101,9 +96,6 @@ export function calculatePolygonVerticesByCenter(
   return vertices;
 }
 
-/**
- * Calculates vertices for a regular polygon given the first edge endpoints.
- */
 export function calculatePolygonVerticesByEdge(
   p1: Point,
   p2: Point,
@@ -148,7 +140,6 @@ export function distancePointToCircle(px: number, py: number, cx: number, cy: nu
 export function distancePointToArc(px: number, py: number, cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean): number {
   const angle = Math.atan2(py - cy, px - cx);
   
-  // Normalize angles to [0, 2PI)
   const normalize = (a: number) => {
     while (a < 0) a += Math.PI * 2;
     while (a >= Math.PI * 2) a -= Math.PI * 2;
@@ -164,7 +155,6 @@ export function distancePointToArc(px: number, py: number, cx: number, cy: numbe
     if (s <= e) withinArc = (a >= s && a <= e);
     else withinArc = (a >= s || a <= e);
   } else {
-    // CW is equivalent to CCW from e to s
     if (e <= s) withinArc = (a >= e && a <= s);
     else withinArc = (a >= e || a <= s);
   }
@@ -172,7 +162,6 @@ export function distancePointToArc(px: number, py: number, cx: number, cy: numbe
   if (withinArc) {
     return distancePointToCircle(px, py, cx, cy, r);
   } else {
-    // Distance to nearest endpoint
     const d1 = distancePointToPoint(px, py, cx + r * Math.cos(startAngle), cy + r * Math.sin(startAngle));
     const d2 = distancePointToPoint(px, py, cx + r * Math.cos(endAngle), cy + r * Math.sin(endAngle));
     return Math.min(d1, d2);
@@ -323,6 +312,40 @@ export function clipLineWithPolygon(line: Line, vertices: Point[]): Line[] {
   return segments;
 }
 
+export function offsetLine(x1: number, y1: number, x2: number, y2: number, distance: number, sidePt: Point) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-6) return { x1, y1, x2, y2 };
+
+  const nx = -dy / len;
+  const ny = dx / len;
+
+  const p1a = { x: x1 + nx * distance, y: y1 + ny * distance };
+  const p2a = { x: x2 + nx * distance, y: y2 + ny * distance };
+  const p1b = { x: x1 - nx * distance, y: y1 - ny * distance };
+  const p2b = { x: x2 - nx * distance, y: y2 - ny * distance };
+
+  const cross = (x2 - x1) * (y1 - sidePt.y) - (x1 - sidePt.x) * (y2 - y1);
+  
+  if (cross > 0) {
+      return { x1: p1a.x, y1: p1a.y, x2: p2a.x, y2: p2a.y };
+  } else {
+      return { x1: p1b.x, y1: p1b.y, x2: p2b.x, y2: p2b.y };
+  }
+}
+
+export function offsetCircle(cx: number, cy: number, r: number, distance: number, sidePt: Point) {
+  const d = Math.sqrt((sidePt.x - cx) ** 2 + (sidePt.y - cy) ** 2);
+  let newR: number;
+  if (d > r) {
+      newR = r + distance;
+  } else {
+      newR = Math.max(0, r - distance);
+  }
+  return { cx, cy, r: newR };
+}
+
 export function aciToRgb(aci?: number): number {
   const colors: Record<number, number> = {
     1: 0xff0000,
@@ -340,7 +363,7 @@ export function aciToRgb(aci?: number): number {
     return colors[aci];
   }
 
-  return 0xffffff; // Default to white
+  return 0xffffff; 
 }
 
 export const LINETYPES: Record<string, number[]> = {
@@ -360,3 +383,119 @@ export function getLinetypeSettings(linetype: string): number[] | null {
   return null;
 }
 
+export function getLineLineIntersection(p1: Point, p2: Point, p3: Point, p4: Point): Point | null {
+  const x1 = p1.x, y1 = p1.y, x2 = p2.x, y2 = p2.y;
+  const x3 = p3.x, y3 = p3.y, x4 = p4.x, y4 = p4.y;
+  
+  const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (Math.abs(denom) < 1e-6) return null;
+
+  const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+  const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+
+  if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+    return { x: x1 + t * (x2 - x1), y: y1 + t * (y2 - y1) };
+  }
+  return null;
+}
+
+export function getLineCircleIntersections(p1: Point, p2: Point, cx: number, cy: number, r: number): Point[] {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const fx = p1.x - cx;
+  const fy = p1.y - cy;
+
+  const a = dx * dx + dy * dy;
+  const b = 2 * (fx * dx + fy * dy);
+  const c = (fx * fx + fy * fy) - r * r;
+
+  let discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) return [];
+
+  discriminant = Math.sqrt(discriminant);
+  const t1 = (-b - discriminant) / (2 * a);
+  const t2 = (-b + discriminant) / (2 * a);
+
+  const results: Point[] = [];
+  if (t1 >= 0 && t1 <= 1) results.push({ x: p1.x + t1 * dx, y: p1.y + t1 * dy });
+  if (t2 >= 0 && t2 <= 1) results.push({ x: p1.x + t2 * dx, y: p1.y + t2 * dy });
+  return results;
+}
+
+export function getCircleCircleIntersections(c1: Point, r1: number, c2: Point, r2: number): Point[] {
+  const d = Math.sqrt((c2.x - c1.x) ** 2 + (c2.y - c1.y) ** 2);
+  if (d > r1 + r2 || d < Math.abs(r1 - r2) || d === 0) return [];
+
+  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+  const h = Math.sqrt(r1 * r1 - a * a);
+  const x2 = c1.x + a * (c2.x - c1.x) / d;
+  const y2 = c1.y + a * (c2.y - c1.y) / d;
+
+  const rx = -(c2.y - c1.y) * (h / d);
+  const ry = (c2.x - c1.x) * (h / d);
+
+  return [
+    { x: x2 + rx, y: y2 + ry },
+    { x: x2 - rx, y: y2 - ry }
+  ];
+}
+
+export function getEntityEntityIntersections(e1: any, e2: any): Point[] {
+    const getCircleData = (e: any) => {
+        if (e instanceof CircleEntity) return { cx: e.cx, cy: e.cy, r: e.r, isArc: false };
+        if (e instanceof ArcEntity) return { cx: e.cx, cy: e.cy, r: e.r, isArc: true, s: e.startAngle, e: e.endAngle, ccw: e.ccw };
+        return null;
+    };
+
+    const isPointOnArc = (p: Point, arc: any) => {
+        const angle = Math.atan2(p.y - arc.cy, p.x - arc.cx);
+        const normalize = (a: number) => {
+            while (a < 0) a += Math.PI * 2;
+            while (a >= Math.PI * 2) a -= Math.PI * 2;
+            return a;
+        };
+        const s = normalize(arc.s);
+        const e = normalize(arc.e);
+        const a = normalize(angle);
+        const eps = 1e-4; // Tolerance for endpoint intersections
+
+        if (arc.ccw) {
+            if (s <= e) return (a >= s - eps && a <= e + eps);
+            return (a >= s - eps || a <= e + eps);
+        } else {
+            if (e <= s) return (a >= e - eps && a <= s + eps);
+            return (a >= e - eps || a <= s + eps);
+        }
+    };
+
+    // 1. Line vs (Circle/Arc)
+    if (e1 instanceof LineEntity || e2 instanceof LineEntity) {
+        const line = e1 instanceof LineEntity ? e1 : e2;
+        const other = e1 instanceof LineEntity ? e2 : e1;
+        const circle = getCircleData(other);
+        
+        if (circle) {
+            const pts = getLineCircleIntersections({x: line.x1, y: line.y1}, {x: line.x2, y: line.y2}, circle.cx, circle.cy, circle.r);
+            return circle.isArc ? pts.filter(p => isPointOnArc(p, circle)) : pts;
+        }
+    }
+
+    // 2. Line vs Line
+    if (e1 instanceof LineEntity && e2 instanceof LineEntity) {
+        const pt = getLineLineIntersection({x: e1.x1, y: e1.y1}, {x: e1.x2, y: e1.y2}, {x: e2.x1, y: e2.y1}, {x: e2.x2, y: e2.y2});
+        return pt ? [pt] : [];
+    }
+
+    // 3. (Circle/Arc) vs (Circle/Arc)
+    const c1 = getCircleData(e1);
+    const c2 = getCircleData(e2);
+    if (c1 && c2) {
+        const pts = getCircleCircleIntersections({x: c1.cx, y: c1.cy}, c1.r, {x: c2.cx, y: c2.cy}, c2.r);
+        let results = pts;
+        if (c1.isArc) results = results.filter(p => isPointOnArc(p, c1));
+        if (c2.isArc) results = results.filter(p => isPointOnArc(p, c2));
+        return results;
+    }
+
+    return [];
+}

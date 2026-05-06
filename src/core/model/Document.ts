@@ -1,12 +1,19 @@
-import { Entity } from "./Entity"
+import { Entity, BoundingBox } from "./Entity"
 import { HistoryManager, HistoryAction } from "./HistoryManager"
 import { LayerManager } from "./Layer"
+import { Quadtree } from "../engine/Quadtree"
 
 export class Document {
   entities: Map<string, Entity> = new Map()
   history = new HistoryManager()
   layers = new LayerManager()
+  private spatialIndex: Quadtree
   private idCounters: Map<string, number> = new Map()
+
+  constructor() {
+    // Large bound for drafting space
+    this.spatialIndex = new Quadtree({ minX: -1000000, minY: -1000000, maxX: 1000000, maxY: 1000000 })
+  }
 
   getNextId(prefix: string): string {
     const count = (this.idCounters.get(prefix) || 0) + 1;
@@ -16,10 +23,30 @@ export class Document {
 
   addEntity(entity: Entity) {
     this.entities.set(entity.id, entity)
+    this.spatialIndex.insert({ id: entity.id, box: entity.getBoundingBox() })
   }
 
   removeEntity(id: string) {
     this.entities.delete(id)
+    // For simplicity, we rebuild if many removals happen, 
+    // or just leave it for now. Quadtree implementation doesn't have individual remove yet.
+    // Actually, I should probably implement remove in Quadtree or rebuild it.
+    this.rebuildSpatialIndex()
+  }
+
+  private rebuildSpatialIndex() {
+    this.spatialIndex.clear()
+    for (const entity of this.entities.values()) {
+      this.spatialIndex.insert({ id: entity.id, box: entity.getBoundingBox() })
+    }
+  }
+
+  updateSpatialIndex() {
+    this.rebuildSpatialIndex()
+  }
+
+  querySpatialIndex(range: BoundingBox): string[] {
+    return this.spatialIndex.query(range)
   }
 
   getEntity(id: string) {

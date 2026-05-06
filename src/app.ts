@@ -80,7 +80,7 @@ export class App {
 
   private getSnappedPoint(worldX: number, worldY: number): { x: number, y: number, snap: SnapPoint | null } {
     const tolerance = 10 / this.viewer.camera.zoom;
-    const snap = SnapEngine.getSnapPoint(worldX, worldY, this.doc.getAllEntities(), tolerance);
+    const snap = SnapEngine.getSnapPointSpatial(worldX, worldY, this.doc, tolerance);
     
     let x = snap ? snap.x : worldX;
     let y = snap ? snap.y : worldY;
@@ -110,7 +110,7 @@ export class App {
 
   private isEditCommand(name?: string): boolean {
     if (!name) return false;
-    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand'];
+    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand'];
     const cmdName = name.endsWith('Command') ? name : name.charAt(0).toUpperCase() + name.slice(1).toLowerCase() + 'Command';
     return editCommands.includes(cmdName);
   }
@@ -244,7 +244,9 @@ export class App {
 
     const activeName = this.cmd.active?.constructor.name;
     const isEditCommand = this.isEditCommand(activeName);
-    const isSelectionStep = !this.cmd.active || (this.cmd.active && this.cmd.active.step === 0 && isEditCommand);
+    const isSelectionStep = !this.cmd.active || 
+        (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
+        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand'));
 
     let result: CommandResponse | undefined;
 
@@ -261,9 +263,9 @@ export class App {
           : this.doc.getAllEntities();
 
         if (isCrossing) {
-            found = SelectionEngine.getEntitiesInCrossing(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, selectableEntities);
+            found = SelectionEngine.getEntitiesInCrossingSpatial(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, this.doc, selectableEntities);
         } else {
-            found = SelectionEngine.getEntitiesInWindow(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, selectableEntities);
+            found = SelectionEngine.getEntitiesInWindowSpatial(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, this.doc, selectableEntities);
         }
         
         found.forEach(e => this.selectedEntityIds.add(e.id));
@@ -285,7 +287,9 @@ export class App {
     // Handle initial selection step for edit commands if clicking an entity
     const activeName = this.cmd.active?.constructor.name;
     const isEditCommand = this.isEditCommand(activeName);
-    const isSelectionStep = !this.cmd.active || (this.cmd.active && this.cmd.active.step === 0 && isEditCommand);
+    const isSelectionStep = !this.cmd.active || 
+        (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
+        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand'));
     const tolerance = 5 / this.viewer.camera.zoom;
 
     if (isSelectionStep) {
@@ -295,7 +299,7 @@ export class App {
             : this.doc.getAllEntities();
 
         // Use original raw coordinate for single-click object selection (snapping is for geometry points)
-        const entity = SelectionEngine.getEntityAt(worldPt.x, worldPt.y, tolerance, selectableEntities);
+        const entity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
         if (entity) {
             if (this.selectedEntityIds.has(entity.id)) {
                 this.selectedEntityIds.delete(entity.id);
@@ -305,9 +309,13 @@ export class App {
 
             if (this.commandLinePrint) this.commandLinePrint(`[Selection] Single: 1 object selected`);
 
-            if (this.cmd.active) {
-                return await this.handleResult(this.cmd.inputString(entity.id, (p) => this.doc.getNextId(p)));
+        if (this.cmd.active) {
+            const res = await this.cmd.inputString(entity.id, (p) => this.doc.getNextId(p));
+            if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend')) {
+                (res as any).pickPt = { x: worldPt.x, y: worldPt.y };
             }
+            return await this.handleResult(res);
+        }
             return;
         } else if (!this.cmd.active) {
             this.selectedEntityIds.clear();
@@ -357,7 +365,7 @@ export class App {
       if (entity) {
         const activeName = this.cmd.active?.constructor.name;
         // Continuous commands remain active after creating an entity
-        const isContinuous = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand' || activeName === 'LayerCommand';
+        const isContinuous = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand' || activeName === 'LayerCommand' || activeName === 'OffsetCommand' || activeName === 'TrimCommand' || activeName === 'ExtendCommand';
         
         // Some continuous commands update the SAME entity ID during interaction (Polyline, Solid)
         // Others create a NEW entity ID for every segment (Line, Trace)
@@ -415,7 +423,7 @@ export class App {
       if (actionResult !== undefined) {
         // If the action resulted in clearing the active command, ensure markers are cleared too
         const activeName = this.cmd.active?.constructor.name;
-        const isContinuous = activeName === 'LayerCommand'; // Actions that keep command active
+        const isContinuous = activeName === 'LayerCommand' || activeName === 'OffsetCommand' || activeName === 'TrimCommand' || activeName === 'ExtendCommand'; // Actions that keep command active
 
         if (!this.cmd.active || (this.cmd.active && !isContinuous)) {
             this.terminateActiveCommand();

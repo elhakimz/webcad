@@ -1,4 +1,3 @@
-
 import { Entity } from "../model/Entity";
 import { Line } from "../model/Line";
 import { Circle } from "../model/Circle";
@@ -7,30 +6,53 @@ import { Point } from "../model/Point";
 import { Polyline } from "../model/Polyline";
 import { Text } from "../model/Text";
 import { Solid } from "../model/Solid";
+import { Document } from "../model/Document";
 import * as MathUtils from "./MathUtils";
 import { bulgeToArc } from "./MathUtils";
 
 export class SelectionEngine {
   static getEntityAt(x: number, y: number, tolerance: number, entities: Entity[]): Entity | null {
-    // Iterate in reverse to select top-most entities
     for (let i = entities.length - 1; i >= 0; i--) {
       const entity = entities[i];
       const box = entity.getBoundingBox();
 
-      // Broad Phase: AABB check with tolerance
       if (
         x >= box.minX - tolerance &&
         x <= box.maxX + tolerance &&
         y >= box.minY - tolerance &&
         y <= box.maxY + tolerance
       ) {
-        // Narrow Phase: Exact geometry check
         if (this.isPointNearEntity(x, y, entity, tolerance)) {
           return entity;
         }
       }
     }
     return null;
+  }
+
+  static getEntityAtSpatial(x: number, y: number, tolerance: number, doc: Document, selectableEntities?: Entity[]): Entity | null {
+    const range = { minX: x - tolerance, minY: y - tolerance, maxX: x + tolerance, maxY: y + tolerance };
+    const ids = doc.querySpatialIndex(range);
+    
+    let topEntity: Entity | null = null;
+    let maxIdx = -1;
+    const allEntities = doc.getAllEntities();
+
+    for (const id of ids) {
+        const entity = doc.getEntity(id);
+        if (entity) {
+            if (selectableEntities && !selectableEntities.includes(entity)) continue;
+
+            if (this.isPointNearEntity(x, y, entity, tolerance)) {
+                const idx = allEntities.indexOf(entity);
+                if (idx > maxIdx) {
+                    maxIdx = idx;
+                    topEntity = entity;
+                }
+            }
+        }
+    }
+    return topEntity;
   }
 
   private static isPointNearEntity(px: number, py: number, entity: Entity, tolerance: number): boolean {
@@ -59,14 +81,8 @@ export class SelectionEngine {
       }
       return false;
     }
-    if (entity instanceof Text) {
-      // For text, the broad phase is often enough, but we can refine if needed.
-      // Since it's a rectangle, the AABB check IS the exact check (mostly).
-      return true;
-    }
-    if (entity instanceof Solid) {
-      return this.isPointInPolygon(px, py, entity.vertices);
-    }
+    if (entity instanceof Text) return true;
+    if (entity instanceof Solid) return this.isPointInPolygon(px, py, entity.vertices);
     return false;
   }
 
@@ -75,8 +91,7 @@ export class SelectionEngine {
     for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
       const xi = vertices[i].x, yi = vertices[i].y;
       const xj = vertices[j].x, yj = vertices[j].y;
-      const intersect = ((yi > py) !== (yj > py)) &&
-        (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
+      const intersect = ((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
       if (intersect) inside = !inside;
     }
     return inside;
@@ -90,14 +105,31 @@ export class SelectionEngine {
 
     return entities.filter(entity => {
       const box = entity.getBoundingBox();
-      // Entirely inside
-      return (
-        box.minX >= minX &&
-        box.maxX <= maxX &&
-        box.minY >= minY &&
-        box.maxY <= maxY
-      );
+      return (box.minX >= minX && box.maxX <= maxX && box.minY >= minY && box.maxY <= maxY);
     });
+  }
+
+  static getEntitiesInWindowSpatial(x1: number, y1: number, x2: number, y2: number, doc: Document, selectableEntities?: Entity[]): Entity[] {
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
+    const range = { minX, minY, maxX, maxY };
+
+    const ids = doc.querySpatialIndex(range);
+    const result: Entity[] = [];
+
+    for (const id of ids) {
+        const entity = doc.getEntity(id);
+        if (entity) {
+            if (selectableEntities && !selectableEntities.includes(entity)) continue;
+            const box = entity.getBoundingBox();
+            if (box.minX >= minX && box.maxX <= maxX && box.minY >= minY && box.maxY <= maxY) {
+                result.push(entity);
+            }
+        }
+    }
+    return result;
   }
 
   static getEntitiesInCrossing(x1: number, y1: number, x2: number, y2: number, entities: Entity[]): Entity[] {
@@ -108,37 +140,41 @@ export class SelectionEngine {
 
     return entities.filter(entity => {
       const box = entity.getBoundingBox();
-      // Broad Phase: Box intersection
-      const overlaps = !(
-        box.maxX < minX ||
-        box.minX > maxX ||
-        box.maxY < minY ||
-        box.minY > maxY
-      );
-
+      const overlaps = !(box.maxX < minX || box.minX > maxX || box.maxY < minY || box.minY > maxY);
       if (!overlaps) return false;
-
-      // Narrow Phase: Precise intersection
       return this.isEntityIntersectingBox(entity, minX, minY, maxX, maxY);
     });
   }
 
+  static getEntitiesInCrossingSpatial(x1: number, y1: number, x2: number, y2: number, doc: Document, selectableEntities?: Entity[]): Entity[] {
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const minY = Math.min(y1, y2);
+    const maxY = Math.max(y1, y2);
+    const range = { minX, minY, maxX, maxY };
+
+    const ids = doc.querySpatialIndex(range);
+    const result: Entity[] = [];
+
+    for (const id of ids) {
+        const entity = doc.getEntity(id);
+        if (entity) {
+            if (selectableEntities && !selectableEntities.includes(entity)) continue;
+            if (this.isEntityIntersectingBox(entity, minX, minY, maxX, maxY)) {
+                result.push(entity);
+            }
+        }
+    }
+    return result;
+  }
+
   private static isEntityIntersectingBox(entity: Entity, minX: number, minY: number, maxX: number, maxY: number): boolean {
-    // If entirely inside, it's also a crossing
     const box = entity.getBoundingBox();
     if (box.minX >= minX && box.maxX <= maxX && box.minY >= minY && box.maxY <= maxY) return true;
 
-    if (entity instanceof Line) {
-      return this.isLineIntersectingBox(entity.x1, entity.y1, entity.x2, entity.y2, minX, minY, maxX, maxY);
-    }
-    if (entity instanceof Circle) {
-      return this.isCircleIntersectingBox(entity.cx, entity.cy, entity.r, minX, minY, maxX, maxY);
-    }
-    if (entity instanceof Arc) {
-      // Simplified: use circle intersection and check angles if needed
-      // For crossing, circle intersection is usually enough for a "fat" select
-      return this.isCircleIntersectingBox(entity.cx, entity.cy, entity.r, minX, minY, maxX, maxY);
-    }
+    if (entity instanceof Line) return this.isLineIntersectingBox(entity.x1, entity.y1, entity.x2, entity.y2, minX, minY, maxX, maxY);
+    if (entity instanceof Circle) return this.isCircleIntersectingBox(entity.cx, entity.cy, entity.r, minX, minY, maxX, maxY);
+    if (entity instanceof Arc) return this.isCircleIntersectingBox(entity.cx, entity.cy, entity.r, minX, minY, maxX, maxY);
     if (entity instanceof Polyline) {
       for (let i = 0; i < entity.vertices.length - (entity.closed ? 0 : 1); i++) {
         const v1 = entity.vertices[i];
@@ -148,7 +184,6 @@ export class SelectionEngine {
       return false;
     }
     if (entity instanceof Solid) {
-        // Check if any edge intersects
         for (let i = 0; i < entity.vertices.length; i++) {
             const v1 = entity.vertices[i];
             const v2 = entity.vertices[(i + 1) % entity.vertices.length];
@@ -156,27 +191,20 @@ export class SelectionEngine {
         }
         return false;
     }
-    // Point, Text: Bounding box overlaps is enough
     return true;
   }
 
   private static isLineIntersectingBox(x1: number, y1: number, x2: number, y2: number, minX: number, minY: number, maxX: number, maxY: number): boolean {
-    // Liang-Barsky or simple side-by-side check
-    // If either endpoint is inside, they intersect
     if (this.isPointInRect(x1, y1, minX, minY, maxX, maxY)) return true;
     if (this.isPointInRect(x2, y2, minX, minY, maxX, maxY)) return true;
-
-    // Check intersection with each side
-    if (this.linesIntersect(x1, y1, x2, y2, minX, minY, maxX, minY)) return true; // Bottom
-    if (this.linesIntersect(x1, y1, x2, y2, minX, maxY, maxX, maxY)) return true; // Top
-    if (this.linesIntersect(x1, y1, x2, y2, minX, minY, minX, maxY)) return true; // Left
-    if (this.linesIntersect(x1, y1, x2, y2, maxX, minY, maxX, maxY)) return true; // Right
-
+    if (this.linesIntersect(x1, y1, x2, y2, minX, minY, maxX, minY)) return true;
+    if (this.linesIntersect(x1, y1, x2, y2, minX, maxY, maxX, maxY)) return true;
+    if (this.linesIntersect(x1, y1, x2, y2, minX, minY, minX, maxY)) return true;
+    if (this.linesIntersect(x1, y1, x2, y2, maxX, minY, maxX, maxY)) return true;
     return false;
   }
 
   private static isCircleIntersectingBox(cx: number, cy: number, r: number, minX: number, minY: number, maxX: number, maxY: number): boolean {
-    // Find closest point on rect to circle center
     const closestX = Math.max(minX, Math.min(cx, maxX));
     const closestY = Math.max(minY, Math.min(cy, maxY));
     const dist = Math.sqrt((cx - closestX) ** 2 + (cy - closestY) ** 2);

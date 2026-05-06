@@ -10,6 +10,7 @@ import { Solid } from "../model/Solid";
 import { Trace } from "../model/Trace";
 import { Hatch } from "../model/Hatch";
 import { Shape } from "../model/Shape";
+import { Insert } from "../model/Insert";
 
 export class DXFExporter {
   export(doc: Document): string {
@@ -34,6 +35,20 @@ export class DXFExporter {
     }
     dxf += "  0\nENDTAB\n";
 
+    dxf += "  0\nENDSEC\n";
+
+    // SECTION BLOCKS
+    dxf += "  0\nSECTION\n  2\nBLOCKS\n";
+    for (const blockName of doc.blocks.listBlocks()) {
+        const block = doc.blocks.getBlock(blockName)!;
+        dxf += "  0\nBLOCK\n  8\n0\n  2\n" + block.name + "\n 70\n0\n";
+        dxf += " 10\n" + block.basePoint.x + "\n 20\n" + block.basePoint.y + "\n 30\n0.0\n";
+        dxf += "  3\n" + block.name + "\n";
+        for (const entity of block.entities) {
+            dxf += this.exportEntity(entity);
+        }
+        dxf += "  0\nENDBLK\n  8\n0\n";
+    }
     dxf += "  0\nENDSEC\n";
 
     // SECTION ENTITIES
@@ -143,6 +158,12 @@ export class DXFExporter {
       }
       s += " 73\n1\n"; // Closed
       s += " 75\n0\n 76\n0\n 98\n0\n";
+    } else if (e instanceof Insert) {
+      s += "  0\nINSERT\n  8\n" + layer + "\n";
+      s += "  2\n" + e.blockName + "\n";
+      s += " 10\n" + e.x + "\n 20\n" + e.y + "\n 30\n0.0\n";
+      s += " 41\n" + e.scaleX + "\n 42\n" + e.scaleY + "\n 43\n1.0\n";
+      s += " 50\n" + e.rotation + "\n";
     }
 
     return s;

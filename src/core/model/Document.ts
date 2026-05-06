@@ -1,12 +1,14 @@
 import { Entity, BoundingBox } from "./Entity"
 import { HistoryManager, HistoryAction } from "./HistoryManager"
 import { LayerManager } from "./Layer"
+import { BlockManager } from "./Block"
 import { Quadtree } from "../engine/Quadtree"
 
 export class Document {
   entities: Map<string, Entity> = new Map()
   history = new HistoryManager()
   layers = new LayerManager()
+  blocks = new BlockManager()
   private spatialIndex: Quadtree
   private idCounters: Map<string, number> = new Map()
 

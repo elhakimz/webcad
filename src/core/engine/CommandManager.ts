@@ -30,6 +30,8 @@ import { ArrayCommand } from "../commands/ArrayCommand"
 import { OffsetCommand } from "../commands/OffsetCommand"
 import { TrimCommand } from "../commands/TrimCommand"
 import { ExtendCommand } from "../commands/ExtendCommand"
+import { BlockCommand } from "../commands/BlockCommand"
+import { InsertCommand } from "../commands/InsertCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 
@@ -175,6 +177,14 @@ export class CommandManager {
     else if(cmdName === "EXTEND"){
       this.active = new ExtendCommand(selection)
       response = "EXTEND"
+    }
+    else if(cmdName === "BLOCK"){
+      this.active = new BlockCommand(selection)
+      response = "BLOCK"
+    }
+    else if(cmdName === "INSERT"){
+      this.active = new InsertCommand()
+      response = "INSERT"
     }
     else if(cmdName === "REGEN"){
       return { action: "regen" }

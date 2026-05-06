@@ -1,0 +1,63 @@
+import { Command, CommandResponse } from "./types"
+import { Point } from "../engine/MathUtils";
+
+export class BlockCommand implements Command {
+  step = 0
+  blockName = ""
+  basePoint: Point | null = null
+  selectedIds: string[] = []
+
+  constructor(ids?: string[]) {
+    if (ids && ids.length > 0) {
+      this.selectedIds = ids;
+      this.step = 2; // Skip to Name if objects already selected
+    }
+  }
+
+  onInput(text: string, id: string): CommandResponse | undefined {
+    const val = text.trim().toUpperCase();
+
+    if (this.step === 0) {
+      this.blockName = val;
+      this.step = 1;
+      return "Insertion base point:";
+    }
+
+    if (this.step === 2) {
+        if (val === "") {
+            if (this.selectedIds.length === 0) return "No objects selected. Select objects:";
+            return this.finish();
+        }
+        this.selectedIds.push(val);
+        return "Select objects:";
+    }
+  }
+
+  onPoint(x: number, y: number, id: string): CommandResponse {
+    if (this.step === 1) {
+      this.basePoint = { x, y };
+      this.step = 2;
+      return "Select objects:";
+    }
+    return this.getPrompt();
+  }
+
+  private finish() {
+    const res: any = { 
+        action: "block", 
+        name: this.blockName, 
+        basePoint: this.basePoint, 
+        ids: [...this.selectedIds] 
+    };
+    this.step = 0;
+    this.selectedIds = [];
+    return res;
+  }
+
+  getPrompt() {
+    if (this.step === 0) return "Block name:";
+    if (this.step === 1) return "Insertion base point:";
+    if (this.step === 2) return "Select objects:";
+    return "";
+  }
+}

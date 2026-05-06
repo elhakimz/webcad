@@ -12,6 +12,8 @@ import { Solid } from "../core/model/Solid"
 import { Trace } from "../core/model/Trace"
 import { Shape } from "../core/model/Shape"
 import { Hatch } from "../core/model/Hatch"
+import { Insert } from "../core/model/Insert"
+import { BlockDefinition } from "../core/model/Block"
 import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb, getLinetypeSettings } from "../core/engine/MathUtils"
 import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
 
@@ -894,6 +896,43 @@ export class Viewer {
     }
     mesh.visible = isVisible;
     this.scene.add(mesh);
+  }
+
+  addInsert(entity: Insert, block: BlockDefinition, layer?: string, isVisible = true) {
+    const group = new THREE.Group();
+    group.name = entity.id;
+    
+    block.entities.forEach(e => {
+        let obj: THREE.Object3D | null = null;
+        const color = e.properties.color || 7;
+
+        if (e instanceof Line) {
+            const geo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(e.x1 - block.basePoint.x, e.y1 - block.basePoint.y, 0),
+                new THREE.Vector3(e.x2 - block.basePoint.x, e.y2 - block.basePoint.y, 0)
+            ]);
+            obj = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: aciToRgb(color) }));
+        } else if (e instanceof Circle) {
+            const curve = new THREE.EllipseCurve(e.cx - block.basePoint.x, e.cy - block.basePoint.y, e.r, e.r, 0, 2 * Math.PI, false, 0);
+            obj = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(curve.getPoints(50)), new THREE.LineBasicMaterial({ color: aciToRgb(color) }));
+        } else if (e instanceof Arc) {
+            const curve = new THREE.EllipseCurve(e.cx - block.basePoint.x, e.cy - block.basePoint.y, e.r, e.r, e.startAngle, e.endAngle, !e.ccw, 0);
+            obj = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(50)), new THREE.LineBasicMaterial({ color: aciToRgb(color) }));
+        } else if (e instanceof Polyline) {
+            const shifted = new Polyline(e.id, e.vertices.map(v => ({ ...v, x: v.x - block.basePoint.x, y: v.y - block.basePoint.y })), e.closed);
+            obj = this.createPolylineObject(shifted, aciToRgb(color));
+        }
+
+        if (obj) group.add(obj);
+    });
+
+    group.position.set(entity.x, entity.y, 0);
+    group.scale.set(entity.scaleX, entity.scaleY, 1);
+    group.rotation.z = entity.rotation * (Math.PI / 180);
+    
+    if (layer) (group as any).userData = { layer };
+    group.visible = isVisible;
+    this.scene.add(group);
   }
 
   private generateDashedLine(

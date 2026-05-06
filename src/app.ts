@@ -14,6 +14,7 @@ import { Solid } from "./core/model/Solid"
 import { Trace } from "./core/model/Trace"
 import { Shape } from "./core/model/Shape"
 import { Hatch } from "./core/model/Hatch"
+import { Insert } from "./core/model/Insert"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
 import { SnapEngine, SnapPoint } from "./core/engine/SnapEngine"
@@ -27,6 +28,7 @@ import { ViewHandler } from "./core/engine/handlers/ViewHandler"
 import { SystemHandler } from "./core/engine/handlers/SystemHandler"
 import { IOHandler } from "./core/engine/handlers/IOHandler"
 import { DraftingHandler } from "./core/engine/handlers/DraftingHandler"
+import { BlockHandler } from "./core/engine/handlers/BlockHandler"
 import { AppContext } from "./core/engine/handlers/types"
 import { DraftingState } from "./core/engine/DraftingState"
 
@@ -68,6 +70,7 @@ export class App {
     this.dispatcher.registerHandler(new SystemHandler());
     this.dispatcher.registerHandler(new IOHandler());
     this.dispatcher.registerHandler(new DraftingHandler());
+    this.dispatcher.registerHandler(new BlockHandler());
 
     this.drafting = new DraftingState()
     this.drafting.subscribe(() => {
@@ -135,7 +138,7 @@ export class App {
 
   private isEditCommand(name?: string): boolean {
     if (!name) return false;
-    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand', 'ArrayCommand', 'OffsetCommand'];
+    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand', 'ArrayCommand', 'OffsetCommand', 'BlockCommand'];
     const cmdName = name.endsWith('Command') ? name : name.charAt(0).toUpperCase() + name.slice(1).toLowerCase() + 'Command';
     return editCommands.includes(cmdName);
   }
@@ -162,10 +165,12 @@ export class App {
   }
 
   async inputText(text:string){
-    // Handle Enter key (empty text) when there are selected entities and command is at step 0
+    // Handle Enter key (empty text) when there are selected entities
     if (text === "" && this.selectedEntityIds.size > 0) {
       const activeName = this.cmd.active?.constructor.name;
       const isEditCommand = this.isEditCommand(activeName);
+      
+      // Step 0: Initial selection for commands like ERASE, MOVE, ARRAY, etc.
       if (isEditCommand && this.cmd.active && this.cmd.active.step === 0) {
         const currentLayer = this.doc.layers.currentLayerName;
         const ids = Array.from(this.selectedEntityIds).filter(id => {
@@ -177,6 +182,17 @@ export class App {
           const res = this.cmd.execute(cmdName, ids, this.doc.entities);
           return await this.handleResult(res);
         }
+      }
+      
+      // Step 2: Object selection for BLOCK command
+      if (activeName === 'BlockCommand' && this.cmd.active && this.cmd.active.step === 2) {
+          const ids = Array.from(this.selectedEntityIds);
+          // We manually feed the IDs to the command
+          const blockCmd = this.cmd.active as any;
+          blockCmd.selectedIds = ids;
+          // Trigger finish by passing empty string
+          const result = this.cmd.inputString("", (p) => this.doc.getNextId(p));
+          return await this.handleResult(result);
       }
     }
     const result = this.cmd.inputString(text, (p) => this.doc.getNextId(p))
@@ -271,7 +287,8 @@ export class App {
     const isEditCommand = this.isEditCommand(activeName);
     const isSelectionStep = !this.cmd.active || 
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
-        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand'));
+        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
+        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand');
 
     let result: CommandResponse | undefined;
 
@@ -314,7 +331,8 @@ export class App {
     const isEditCommand = this.isEditCommand(activeName);
     const isSelectionStep = !this.cmd.active || 
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
-        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand'));
+        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
+        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand');
     const tolerance = 5 / this.viewer.camera.zoom;
 
     if (isSelectionStep) {
@@ -501,6 +519,11 @@ export class App {
       this.viewer.addShape(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Hatch) {
       this.viewer.addHatch(entity, layer, layerColor, isVisible);
+    } else if (entity instanceof Insert) {
+      const block = this.doc.blocks.getBlock(entity.blockName);
+      if (block) {
+        this.viewer.addInsert(entity, block, layer, isVisible);
+      }
     }
     this.viewer.render();
   }

@@ -2,6 +2,7 @@
 import { LineCommand } from "../commands/LineCommand"
 import { CircleCommand } from "../commands/CircleCommand"
 import { DonutCommand } from "../commands/DonutCommand"
+import { SplineCommand } from "../commands/SplineCommand"
 import { EllipseCommand } from "../commands/EllipseCommand"
 import { EraseCommand } from "../commands/EraseCommand"
 import { MoveCommand } from "../commands/MoveCommand"
@@ -75,6 +76,10 @@ export class CommandManager {
     else if(cmdName === "ELLIPSE"){
       this.active = new EllipseCommand()
       response = "ELLIPSE"
+    }
+    else if(cmdName === "SPLINE"){
+      this.active = new SplineCommand()
+      response = "SPLINE"
     }
     else if(cmdName === "ERASE" || cmdName === "E"){
 

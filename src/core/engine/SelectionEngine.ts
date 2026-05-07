@@ -8,6 +8,7 @@ import { Text } from "../model/Text";
 import { Solid } from "../model/Solid";
 import { Ellipse } from "../model/Ellipse";
 import { Dimension } from "../model/Dimension";
+import { Spline } from "../model/Spline";
 import { Document } from "../model/Document";
 import * as MathUtils from "./MathUtils";
 import { bulgeToArc } from "./MathUtils";
@@ -101,6 +102,14 @@ export class SelectionEngine {
         return MathUtils.distancePointToLineSegment(px, py, entity.x1, entity.y1, entity.x2, entity.y2) <= tolerance;
       }
       return true;
+    }
+    if (entity instanceof Spline) {
+      for (let i = 0; i < entity.sampledPoints.length - 1; i++) {
+        const p1 = entity.sampledPoints[i];
+        const p2 = entity.sampledPoints[i + 1];
+        if (MathUtils.distancePointToLineSegment(px, py, p1.x, p1.y, p2.x, p2.y) <= tolerance) return true;
+      }
+      return false;
     }
     return false;
   }

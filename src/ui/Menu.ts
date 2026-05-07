@@ -45,6 +45,7 @@ export class Menu {
         { label: 'POLYGON', command: 'POLYGON' },
         { label: 'RECTANG', command: 'RECTANG' },
         { label: 'SOLID', command: 'SOLID' },
+        { label: 'SPLINE', command: 'SPLINE' },
         { label: 'TRACE', command: 'TRACE' },
         { label: 'HATCH', command: 'HATCH' },
         { label: 'SKETCH', command: 'SKETCH' },

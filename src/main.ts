@@ -128,6 +128,18 @@ window.addEventListener("mousemove", (e) => {
 
 // Global keyboard shortcuts for commands
 window.addEventListener("keydown", async (e) => {
+  // Auto-focus command line on alphanumeric key if no command is active
+  if (!app.cmd.active && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    const key = e.key;
+    if (key.length === 1 && /^[a-z0-9]$/i.test(key)) {
+      const cmdInput = document.getElementById('cmd') as HTMLInputElement;
+      if (cmdInput && document.activeElement !== cmdInput) {
+        cmdInput.focus();
+        // The browser will continue to propagate this event and type the char into the input
+      }
+    }
+  }
+
   // Drafting aids
   if (e.key === 'F7') {
     e.preventDefault();

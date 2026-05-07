@@ -17,9 +17,10 @@ import { Shape } from "../core/model/Shape"
 import { Hatch } from "../core/model/Hatch"
 import { Insert } from "../core/model/Insert"
 import { BlockDefinition } from "../core/model/Block"
-import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb, getLinetypeSettings } from "../core/engine/MathUtils"
+import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb, getLinetypeSettings, tessellateSpline } from "../core/engine/MathUtils"
+import { Spline } from "../core/model/Spline"
 import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
-import { PreviewObject, ZoomWindowPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview } from "../core/commands/types"
+import { PreviewObject, ZoomWindowPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview } from "../core/commands/types"
 
 export class Viewer {
   scene: THREE.Scene
@@ -330,6 +331,11 @@ export class Viewer {
         this.previewObject = new THREE.Line(geo, mat);
       } else if (entity instanceof Text) {
         this.previewObject = this.createTextObject(entity, previewColor);
+      } else if (entity instanceof Spline || ('type' in entity && entity.type === 'spline_preview')) {
+        const sp = (entity instanceof Spline) ? entity : (entity as SplinePreview);
+        const pts = tessellateSpline(sp.controlPoints, sp.degree, sp.knots);
+        const geom = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, 0)));
+        this.previewObject = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: previewColor }));
       } else if (entity instanceof Solid) {
         this.previewObject = this.createSolidObject(entity, previewColor);
       } else if (entity instanceof Donut) {
@@ -346,9 +352,10 @@ export class Viewer {
     this.render();
   }
 
-  private createTextObject(entity: Text, color: number): THREE.Object3D {
+  private createTextObject(entity: Text, colorIndex: number): THREE.Object3D {
     if (!this.font) return new THREE.Group();
 
+    const color = aciToRgb(colorIndex);
     const shapes = this.font.generateShapes(entity.text, entity.height);
     const geometry = new THREE.ShapeGeometry(shapes);
     
@@ -373,7 +380,8 @@ export class Viewer {
     return mesh;
   }
 
-  private createSolidObject(entity: Solid, color: number): THREE.Object3D {
+  private createSolidObject(entity: Solid, colorIndex: number): THREE.Object3D {
+    const color = aciToRgb(colorIndex);
     const shape = new THREE.Shape();
     if (entity.vertices.length > 0) {
       shape.moveTo(entity.vertices[0].x, entity.vertices[0].y);
@@ -388,7 +396,8 @@ export class Viewer {
     return new THREE.Mesh(geometry, mat);
   }
 
-  private createPolylineObject(entity: Polyline, color: number, linetype?: string): THREE.Object3D {
+  private createPolylineObject(entity: Polyline, colorIndex: number, linetype?: string): THREE.Object3D {
+    const color = aciToRgb(colorIndex);
     const group = new THREE.Group();
     const pattern = linetype ? getLinetypeSettings(linetype) : null;
     const material = new THREE.LineBasicMaterial({ color });
@@ -636,7 +645,7 @@ export class Viewer {
     ]);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
+    const mat = new THREE.LineBasicMaterial({ color: aciToRgb(color || 7) });
     const lines = new THREE.LineSegments(geo, mat);
     if (id) {
       lines.name = id;
@@ -649,7 +658,7 @@ export class Viewer {
   }
 
   addPolyline(entity: Polyline, layer?: string, color?: number, isVisible = true, linetype?: string) {
-    const obj = this.createPolylineObject(entity, aciToRgb(color), linetype);
+    const obj = this.createPolylineObject(entity, color || 7, linetype);
     obj.name = entity.id;
     if (layer) {
       obj.userData = { layer };
@@ -664,7 +673,7 @@ export class Viewer {
       this.textQueue.push(entity);
       return;
     }
-    const obj = this.createTextObject(entity, aciToRgb(color));
+    const obj = this.createTextObject(entity, color || 7);
     obj.name = entity.id;
     if (layer) {
       obj.userData = { layer };
@@ -675,7 +684,7 @@ export class Viewer {
   }
 
   addSolid(entity: Solid, layer?: string, color?: number, isVisible = true) {
-    const obj = this.createSolidObject(entity, aciToRgb(color));
+    const obj = this.createSolidObject(entity, color || 7);
     obj.name = entity.id;
     if (layer) {
       obj.userData = { layer };
@@ -685,7 +694,17 @@ export class Viewer {
   }
 
   addDonut(entity: Donut, layer?: string, color?: number, isVisible = true) {
-    const obj = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, aciToRgb(color));
+    const obj = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, color || 7);
+    obj.name = entity.id;
+    if (layer) {
+      obj.userData = { layer };
+    }
+    obj.visible = isVisible;
+    this.scene.add(obj);
+  }
+
+  addSpline(entity: Spline, layer?: string, color?: number, isVisible = true, linetype = 'CONTINUOUS') {
+    const obj = this.createSplineObject(entity, color || 7, linetype);
     obj.name = entity.id;
     if (layer) {
       obj.userData = { layer };
@@ -695,7 +714,7 @@ export class Viewer {
   }
 
   addEllipse(entity: Ellipse, layer?: string, color?: number, isVisible = true) {
-    const obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle, entity.endAngle, entity.ccw, aciToRgb(color));
+    const obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle, entity.endAngle, entity.ccw, color || 7);
     obj.name = entity.id;
     if (layer) {
       obj.userData = { layer };
@@ -705,7 +724,7 @@ export class Viewer {
   }
 
   addDimension(entity: Dimension, layer?: string, color?: number, isVisible = true) {
-    const obj = this.createDimensionObject(entity, aciToRgb(color));
+    const obj = this.createDimensionObject(entity, color || 7);
     obj.name = entity.id;
     if (layer) {
       obj.userData = { layer };
@@ -979,6 +998,27 @@ export class Viewer {
     return mesh;
   }
 
+  private createSplineObject(entity: Spline, color: number, linetype: string): THREE.Object3D {
+    const pts = entity.sampledPoints;
+    if (pts.length < 2) return new THREE.Group();
+
+    const pattern = linetype ? getLinetypeSettings(linetype) : null;
+    const material = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
+    
+    if (pattern) {
+      const group = new THREE.Group();
+      const dashed = this.generateDashedPath(pts, pattern);
+      dashed.forEach(seg => {
+        const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(seg.x1, seg.y1, 0), new THREE.Vector3(seg.x2, seg.y2, 0)]);
+        group.add(new THREE.Line(geo, material));
+      });
+      return group;
+    } else {
+      const geometry = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, 0)));
+      return new THREE.Line(geometry, material);
+    }
+  }
+
   private createEllipseObject(cx: number, cy: number, majorX: number, majorY: number, ratio: number, startAngle: number, endAngle: number, ccw: boolean, color: number): THREE.Object3D {
     const majorR = Math.sqrt(majorX**2 + majorY**2);
     const minorR = majorR * ratio;
@@ -999,7 +1039,8 @@ export class Viewer {
     return new THREE.Line(geo, mat);
   }
 
-  private createDimensionObject(entity: Dimension, color: number): THREE.Object3D {
+  private createDimensionObject(entity: Dimension, colorIndex: number): THREE.Object3D {
+    const color = aciToRgb(colorIndex);
     const group = new THREE.Group();
     const style = entity.style;
     const arrowSize = style.arrowSize;

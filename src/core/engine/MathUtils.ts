@@ -20,6 +20,52 @@ export function isPointInPolygon(p: Point, vertices: Point[]): boolean {
   return inside;
 }
 
+export function basisFunction(i: number, degree: number, t: number, knots: number[]): number {
+  if (degree === 0) {
+    return (t >= knots[i] && t < knots[i + 1]) ? 1 : 0;
+  }
+
+  let leftTerm = 0;
+  const leftDenom = knots[i + degree] - knots[i];
+  if (Math.abs(leftDenom) > 1e-9) {
+    leftTerm = ((t - knots[i]) / leftDenom) * basisFunction(i, degree - 1, t, knots);
+  }
+
+  let rightTerm = 0;
+  const rightDenom = knots[i + degree + 1] - knots[i + 1];
+  if (Math.abs(rightDenom) > 1e-9) {
+    rightTerm = ((knots[i + degree + 1] - t) / rightDenom) * basisFunction(i + 1, degree - 1, t, knots);
+  }
+
+  return leftTerm + rightTerm;
+}
+
+export function evaluateSplinePoint(controlPoints: Point[], knots: number[], degree: number, t: number): Point {
+  let x = 0;
+  let y = 0;
+  for (let i = 0; i < controlPoints.length; i++) {
+    const basis = basisFunction(i, degree, t, knots);
+    x += controlPoints[i].x * basis;
+    y += controlPoints[i].y * basis;
+  }
+  return { x, y };
+}
+
+export function tessellateSpline(controlPoints: Point[], degree: number, knots: number[], segments = 100): Point[] {
+  const points: Point[] = [];
+  const tMin = knots[degree];
+  const tMax = knots[controlPoints.length];
+  
+  if (tMax <= tMin) return [];
+
+  for (let i = 0; i <= segments; i++) {
+    const t = tMin + (tMax - tMin) * (i / segments);
+    const valT = t >= tMax ? tMax - 1e-9 : t;
+    points.push(evaluateSplinePoint(controlPoints, knots, degree, valT));
+  }
+  return points;
+}
+
 /**
  * Calculates circle parameters from 3 points.
  * Returns { cx, cy, r, startAngle, endAngle, ccw } or null if collinear.
@@ -463,7 +509,7 @@ export function aciToRgb(aci?: number): number {
     return colors[aci];
   }
 
-  return 0xffffff; 
+  return 0xffffff;
 }
 
 export const LINETYPES: Record<string, number[]> = {
@@ -782,6 +828,8 @@ export function sortConnected(entities: (LineEntity | ArcEntity)[]): (LineEntity
   }
   return sorted;
 }
+
+
 
 
 

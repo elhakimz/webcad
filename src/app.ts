@@ -18,6 +18,7 @@ import { Trace } from "./core/model/Trace"
 import { Shape } from "./core/model/Shape"
 import { Hatch } from "./core/model/Hatch"
 import { Insert } from "./core/model/Insert"
+import { Spline } from "./core/model/Spline"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
 import { SnapEngine, SnapPoint } from "./core/engine/SnapEngine"
@@ -426,7 +427,7 @@ export class App {
       let entity: Entity | undefined;
       let isCloseAction = false;
       
-      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape) {
+      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape || result instanceof Spline) {
         entity = result as Entity;
       } else if (result && typeof result === 'object' && 'action' in result && result.action === 'close' && result.entity) {
         entity = result.entity;
@@ -476,6 +477,9 @@ export class App {
           const len = Math.sqrt(dx * dx + dy * dy);
           const pIdx = this.cmd.active && 'points' in this.cmd.active ? (this.cmd.active as { points: unknown[] }).points.length : "";
           return `${FormatUtils.formatPoint(entity.x2, entity.y2, this.doc.units, "P" + pIdx)}\nLine created. ${FormatUtils.formatDistance(len, this.doc.units)}`;
+        }
+        if (entity instanceof Spline) {
+          return `Spline created with ${entity.controlPoints.length} control points.`;
         }
 
         if (entity instanceof Polyline) {
@@ -564,6 +568,8 @@ export class App {
       this.viewer.addSolid(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Donut) {
       this.viewer.addDonut(entity, layer, layerColor, isVisible);
+    } else if (entity instanceof Spline) {
+      this.viewer.addSpline(entity, layer, layerColor, isVisible, linetype);
     } else if (entity instanceof Ellipse) {
       this.viewer.addEllipse(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Dimension) {

@@ -13,6 +13,7 @@ import { Shape } from "../model/Shape";
 import { Insert } from "../model/Insert";
 import { Dimension } from "../model/Dimension";
 import { Donut } from "../model/Donut";
+import { Spline } from "../model/Spline";
 
 interface DXFGroup {
   code: number;
@@ -180,6 +181,21 @@ export class DXFImporter {
             }
           }
           entity = new Hatch(doc.getNextId("H"), vertices, pattern, scale, angle);
+        } else if (type === "SPLINE") {
+          const degree = parseInt(props[71] || "3");
+          const knots: number[] = [];
+          const controlPoints: { x: number, y: number }[] = [];
+          
+          for (let k = 0; k < entityGroups.length; k++) {
+            if (entityGroups[k].code === 40) {
+              knots.push(parseFloat(entityGroups[k].value));
+            } else if (entityGroups[k].code === 10) {
+              const vx = parseFloat(entityGroups[k].value);
+              const vy = parseFloat(entityGroups[k+1] && entityGroups[k+1].code === 20 ? entityGroups[k+1].value : "0");
+              controlPoints.push({ x: vx, y: vy });
+            }
+          }
+          entity = new Spline(doc.getNextId("S"), controlPoints, degree, knots);
         } else if (type === "POLYLINE") {
           const vertices: PolylineVertex[] = [];
           const closed = (parseInt(props[70] || "0") & 1) !== 0;

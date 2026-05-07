@@ -84,8 +84,9 @@ export type PolylinePreview = { type: 'polyline_preview', vertices: { x: number,
 export type MovePreview = { type: 'move_preview', dx: number, dy: number };
 export type CopyPreview = { type: 'copy_preview', dx: number, dy: number };
 export type ScalePreview = { type: 'scale_preview', factor: number, baseX: number, baseY: number };
+export type SplinePreview = { type: 'spline_preview', controlPoints: { x: number, y: number }[], degree: number, knots: number[] };
 
-export type PreviewObject = Entity | ZoomWindowPreview | XMarkerPreview | PLinePointsPreview | SolidPointsPreview | RotationPreview | PolylinePreview | MovePreview | CopyPreview | ScalePreview;
+export type PreviewObject = Entity | ZoomWindowPreview | XMarkerPreview | PLinePointsPreview | SolidPointsPreview | RotationPreview | PolylinePreview | MovePreview | CopyPreview | ScalePreview | SplinePreview;
 
 export interface Command {
   onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse;

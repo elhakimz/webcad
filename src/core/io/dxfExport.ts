@@ -14,6 +14,7 @@ import { Hatch } from "../model/Hatch";
 import { Shape } from "../model/Shape";
 import { Insert } from "../model/Insert";
 import { Dimension } from "../model/Dimension";
+import { Spline } from "../model/Spline";
 
 export class DXFExporter {
   export(doc: Document): string {
@@ -109,7 +110,19 @@ export class DXFExporter {
       s += "  0\nELLIPSE\n  8\n" + layer + "\n";
       s += " 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n0.0\n";
       s += " 11\n" + e.majorX + "\n 21\n" + e.majorY + "\n 31\n0.0\n";
-      s += " 40\n" + e.ratio + "\n 41\n0.0\n 42\n6.283185307179586\n";
+      s += " 40\n" + e.ratio + "\n";
+      s += " 41\n" + e.startAngle + "\n 42\n" + e.endAngle + "\n";
+    } else if (e instanceof Spline) {
+      s += "  0\nSPLINE\n  8\n" + layer + "\n";
+      s += " 71\n" + e.degree + "\n";
+      s += " 72\n" + e.knots.length + "\n";
+      s += " 73\n" + e.controlPoints.length + "\n";
+      for (const k of e.knots) {
+        s += " 40\n" + k + "\n";
+      }
+      for (const p of e.controlPoints) {
+        s += " 10\n" + p.x + "\n 20\n" + p.y + "\n 30\n0.0\n";
+      }
     } else if (e instanceof Point) {
       s += "  0\nPOINT\n  8\n" + layer + "\n";
       s += " 10\n" + e.x + "\n 20\n" + e.y + "\n 30\n0.0\n";

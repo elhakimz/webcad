@@ -3,6 +3,7 @@ import { Line } from "../model/Line";
 import { Circle } from "../model/Circle";
 import { Arc } from "../model/Arc";
 import { Polyline } from "../model/Polyline";
+import { Spline } from "../model/Spline";
 import { Document } from "../model/Document";
 import { distancePointToPoint, bulgeToArc } from "./MathUtils";
 
@@ -124,6 +125,20 @@ export class SnapEngine {
             }
           }
         }
+      }
+    } else if (entity instanceof Spline) {
+      if (entity.sampledPoints.length > 0) {
+        const start = entity.sampledPoints[0];
+        const end = entity.sampledPoints[entity.sampledPoints.length - 1];
+        snaps.push({ x: start.x, y: start.y, type: SnapType.ENDPOINT });
+        snaps.push({ x: end.x, y: end.y, type: SnapType.ENDPOINT });
+        
+        const midIdx = Math.floor(entity.sampledPoints.length / 2);
+        const mid = entity.sampledPoints[midIdx];
+        snaps.push({ x: mid.x, y: mid.y, type: SnapType.MIDPOINT });
+      }
+      for (const cp of entity.controlPoints) {
+        snaps.push({ x: cp.x, y: cp.y, type: SnapType.ENDPOINT });
       }
     }
     

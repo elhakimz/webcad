@@ -336,13 +336,20 @@ export class App {
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
         (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand');
-    const tolerance = 5 / this.viewer.camera.zoom;
-
+    let tolerance = 5 / this.viewer.camera.zoom;
+    
     if (isSelectionStep) {
         const currentLayer = this.doc.layers.currentLayerName;
         const selectableEntities = isEditCommand 
             ? this.doc.getAllEntities().filter(e => e.layer === currentLayer)
             : this.doc.getAllEntities();
+
+        // Check if clicking near an Ellipse - use larger tolerance for better selection
+        const entityType = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, 200 / this.viewer.camera.zoom, this.doc, selectableEntities)?.constructor.name;
+        if (entityType === 'Ellipse') {
+            tolerance = 200 / this.viewer.camera.zoom;
+            console.log("[TOLERANCE] Using tolerance 200 for Ellipse");
+        }
 
         // Use original raw coordinate for single-click object selection (snapping is for geometry points)
         const entity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
@@ -356,11 +363,15 @@ export class App {
             this.reportSelectionDimensions();
 
             // For commands that pick a target for immediate action (Trim, Extend, Offset at Step 1, Fillet at Step 0/1)
+            const activeName = this.cmd.active?.constructor.name;
             const isImmediatePick = (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && this.cmd.active?.step === 1;
             const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
+            
+            console.log("[CLICK DEBUG] activeName:", activeName, "step:", this.cmd.active?.step, "isImmediatePick:", isImmediatePick, "entity:", entity.id);
 
             if (this.cmd.active && (isImmediatePick || isFilletPick)) {
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y });
+                console.log("[CLICK DEBUG] inputString result:", res);
                 if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet')) {
                     (res as CommandAction).pickPt = { x: worldPt.x, y: worldPt.y };
                 }

@@ -34,7 +34,7 @@ export class EllipseCommand implements Command {
       const dist = Math.sqrt(dx * dx + dy * dy)
       
       const ratio = dist / this.majorRadius
-      const entity = new Ellipse(id, this.center.x, this.center.y, this.majorX, this.majorY, Math.min(1.0, ratio))
+      const entity = new Ellipse(id, this.center.x, this.center.y, this.majorX, this.majorY, Math.min(1.0, ratio), 0, Math.PI * 2, true)
       this.step = 0
       return entity
     }
@@ -56,7 +56,7 @@ export class EllipseCommand implements Command {
       const dy = y - this.center.y
       const dist = Math.sqrt(dx * dx + dy * dy)
       const ratio = dist / this.majorRadius
-      return new Ellipse("PREVIEW", this.center.x, this.center.y, this.majorX, this.majorY, Math.min(1.0, ratio));
+      return new Ellipse("PREVIEW", this.center.x, this.center.y, this.majorX, this.majorY, Math.min(1.0, ratio), 0, Math.PI * 2, true);
     }
     return null
   }

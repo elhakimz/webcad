@@ -6,6 +6,7 @@ import { Point } from "../model/Point";
 import { Polyline } from "../model/Polyline";
 import { Text } from "../model/Text";
 import { Solid } from "../model/Solid";
+import { Ellipse } from "../model/Ellipse";
 import { Document } from "../model/Document";
 import * as MathUtils from "./MathUtils";
 import { bulgeToArc } from "./MathUtils";
@@ -83,6 +84,16 @@ export class SelectionEngine {
     }
     if (entity instanceof Text) return true;
     if (entity instanceof Solid) return this.isPointInPolygon(px, py, entity.vertices);
+    if (entity instanceof Ellipse) {
+      console.log("[SELECTION] Checking Ellipse:", entity.id);
+      const majorR = Math.sqrt(entity.majorX * entity.majorX + entity.majorY * entity.majorY);
+      const minorR = majorR * entity.ratio;
+      const dist = MathUtils.distancePointToEllipse(px, py, entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle, entity.endAngle, entity.ccw);
+      console.log("[SELECTION] Ellipse distance:", dist, "tolerance:", tolerance);
+      const result = dist <= tolerance;
+      console.log("[SELECTION] Ellipse near:", result);
+      return result;
+    }
     return false;
   }
 

@@ -330,7 +330,7 @@ export class Viewer {
       } else if (entity instanceof Donut) {
         this.previewObject = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, previewColor);
       } else if (entity instanceof Ellipse) {
-        this.previewObject = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, previewColor);
+        this.previewObject = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle || 0, entity.endAngle || Math.PI * 2, entity.ccw !== false, previewColor);
       }
 
       if (this.previewObject) {
@@ -678,7 +678,7 @@ export class Viewer {
   }
 
   addEllipse(entity: Ellipse, layer?: string, color?: number, isVisible = true) {
-    const obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, aciToRgb(color));
+    const obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle, entity.endAngle, entity.ccw, aciToRgb(color));
     obj.name = entity.id;
     if (layer) {
       obj.userData = { layer };
@@ -952,15 +952,24 @@ export class Viewer {
     return mesh;
   }
 
-  private createEllipseObject(cx: number, cy: number, majorX: number, majorY: number, ratio: number, color: number): THREE.Object3D {
+  private createEllipseObject(cx: number, cy: number, majorX: number, majorY: number, ratio: number, startAngle: number, endAngle: number, ccw: boolean, color: number): THREE.Object3D {
     const majorR = Math.sqrt(majorX**2 + majorY**2);
     const minorR = majorR * ratio;
     const rotation = Math.atan2(majorY, majorX);
-    const curve = new THREE.EllipseCurve(cx, cy, majorR, minorR, 0, 2 * Math.PI, false, rotation);
+    
+    const s = startAngle || 0;
+    const e = endAngle || Math.PI * 2;
+    const isFullEllipse = Math.abs(e - s) >= Math.PI * 1.99;
+    
+    const curve = new THREE.EllipseCurve(cx, cy, majorR, minorR, s, e, !ccw, rotation);
     const points = curve.getPoints(100);
     const geo = new THREE.BufferGeometry().setFromPoints(points);
     const mat = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
-    return new THREE.LineLoop(geo, mat);
+    
+    if (isFullEllipse) {
+      return new THREE.LineLoop(geo, mat);
+    }
+    return new THREE.Line(geo, mat);
   }
   private generateDashedPath(
     points: { x: number; y: number }[],

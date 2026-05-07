@@ -5,6 +5,7 @@ import { Line } from "../../model/Line";
 import { Circle as CircleEntity } from "../../model/Circle";
 import { Arc as ArcEntity } from "../../model/Arc";
 import { Polyline } from "../../model/Polyline";
+import { Ellipse as EllipseEntity } from "../../model/Ellipse";
 import * as MathUtils from "../MathUtils";
 import { Point } from "../MathUtils";
 
@@ -254,7 +255,16 @@ export class TransformHandler implements ActionHandler {
     }
 
     if (action.action === 'trim' && action.id && action.boundaryIds && action.pickPt) {
+        console.log("[TRIM DEBUG] === TRIM START ===");
+        console.log("[TRIM DEBUG] Target ID:", action.id);
         const originalTarget = doc.getEntity(action.id);
+        console.log("[TRIM DEBUG] Target entity:", originalTarget?.constructor.name, originalTarget?.id);
+        console.log("[TRIM DEBUG] Boundary IDs:", action.boundaryIds);
+        console.log("[TRIM DEBUG] Pick point:", action.pickPt);
+        console.log("[TRIM DEBUG] Boundary entities:", action.boundaryIds.map(id => {
+            const e = doc.getEntity(id);
+            return e ? `${e.constructor.name}:${e.id}` : `NOT FOUND:${id}`;
+        }));
         if (!originalTarget) return undefined;
         
         const targets: Entity[] = [];
@@ -280,6 +290,9 @@ export class TransformHandler implements ActionHandler {
 
         let trimmedAnything = false;
         const boundaries = action.boundaryIds.map(bid => doc.getEntity(bid)).filter(Boolean) as Entity[];
+        
+        console.log("[TRIM DEBUG] targets count:", targets.length);
+        console.log("[TRIM DEBUG] targets:", targets.map(t => t.constructor.name));
 
         for (const t of targets) {
             if (originalTarget instanceof Polyline) {
@@ -299,6 +312,7 @@ export class TransformHandler implements ActionHandler {
                 if (!uniqueIntersections.some(up => MathUtils.distancePointToPoint(p.x, p.y, up.x, up.y) < 1e-4)) uniqueIntersections.push(p);
             });
 
+            console.log("[TRIM DEBUG] Target:", t.constructor.name, "Intersections found:", uniqueIntersections.length);
             if (uniqueIntersections.length > 0) {
                 if (t instanceof Line) {
                     const pts = [{ x: t.x1, y: t.y1 }, ...uniqueIntersections, { x: t.x2, y: t.y2 }];
@@ -365,11 +379,90 @@ export class TransformHandler implements ActionHandler {
                         }
                         trimmedAnything = true;
                     }
+                } else if (t instanceof EllipseEntity) {
+                    const { cx, cy, majorX, majorY, ratio, startAngle, endAngle, ccw } = t;
+                    const normalize = (a: number) => { while (a < 0) a += Math.PI * 2; while (a >= Math.PI * 2) a -= Math.PI * 2; return a; };
+                    
+                    const intersectionAngles = uniqueIntersections.map(p => {
+                        const ang = MathUtils.getEllipsePointAngle(p.x, p.y, cx, cy, majorX, majorY, ratio);
+                        return normalize(ang);
+                    });
+                    
+                    let s = normalize(startAngle);
+                    let e = normalize(endAngle);
+                    
+                    if (Math.abs(s - e) < 0.01) {
+                        s = 0;
+                        e = Math.PI * 2;
+                    }
+                    
+                    const validIntersections = intersectionAngles.filter(a => {
+                        if (ccw) {
+                            return s <= e ? (a > s + 1e-4 && a < e - 1e-4) : (a > s + 1e-4 || a < e - 1e-4);
+                        } else {
+                            return e <= s ? (a > e + 1e-4 && a < s - 1e-4) : (a > e + 1e-4 || a < s - 1e-4);
+                        }
+                    });
+
+                    const allAngles = [s, ...validIntersections, e];
+                    allAngles.sort((a, b) => {
+                        let da, db;
+                        if (ccw) {
+                            da = a - s; if (da < 0) da += Math.PI * 2;
+                            db = b - s; if (db < 0) db += Math.PI * 2;
+                        } else {
+                            da = s - a; if (da < 0) da += Math.PI * 2;
+                            db = s - b; if (db < 0) db += Math.PI * 2;
+                        }
+                        return da - db;
+                    });
+
+                    const segments = [];
+                    for (let i = 0; i < allAngles.length - 1; i++) {
+                        segments.push({ s: allAngles[i], e: allAngles[i+1] });
+                    }
+
+                    let removeIdx = -1, minDist = Infinity;
+                    const rotation = Math.atan2(majorY, majorX);
+                    const majorR = Math.sqrt(majorX * majorX + majorY * majorY);
+                    const minorR = majorR * ratio;
+
+                    for (let i = 0; i < segments.length; i++) {
+                        const seg = segments[i];
+                        let diff = seg.e - seg.s;
+                        if (ccw && diff < 0) diff += Math.PI * 2;
+                        if (!ccw && diff > 0) diff -= Math.PI * 2;
+                        const midAngle = normalize(seg.s + diff / 2);
+                        
+                        const tx = majorR * Math.cos(midAngle);
+                        const ty = minorR * Math.sin(midAngle);
+                        const rx = tx * Math.cos(rotation) - ty * Math.sin(rotation);
+                        const ry = tx * Math.sin(rotation) + ty * Math.cos(rotation);
+                        const mx = cx + rx;
+                        const my = cy + ry;
+
+                        const d = Math.sqrt((action.pickPt.x - mx)**2 + (action.pickPt.y - my)**2);
+                        if (d < minDist) { minDist = d; removeIdx = i; }
+                    }
+
+                    if (removeIdx !== -1) {
+                        doc.removeEntity(originalTarget.id);
+                        viewer.removeObject(originalTarget.id);
+                        for (let i = 0; i < segments.length; i++) {
+                            if (i === removeIdx) continue;
+                            const newEllipse = new EllipseEntity(doc.getNextId("E"), cx, cy, majorX, majorY, ratio, segments[i].s, segments[i].e, ccw);
+                            newEllipse.layer = t.layer;
+                            newEllipse.properties = JSON.parse(JSON.stringify(t.properties));
+                            addEntity(newEllipse, true, false);
+                        }
+                        trimmedAnything = true;
+                    }
                 }
             }
             if (trimmedAnything) break;
         }
 
+        console.log("[TRIM DEBUG] trimmedAnything:", trimmedAnything);
         if (trimmedAnything) { this.cleanup(context); return "Entity trimmed."; }
     }
 

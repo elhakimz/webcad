@@ -2,6 +2,7 @@ import { Line as LineEntity } from "../model/Line";
 import { Circle as CircleEntity } from "../model/Circle";
 import { Arc as ArcEntity } from "../model/Arc";
 import { Polyline as PolylineEntity } from "../model/Polyline";
+import { Ellipse as EllipseEntity } from "../model/Ellipse";
 import { Entity } from "../model/Entity";
 
 export type Point = { x: number; y: number };
@@ -167,6 +168,77 @@ export function distancePointToArc(px: number, py: number, cx: number, cy: numbe
     const d2 = distancePointToPoint(px, py, cx + r * Math.cos(endAngle), cy + r * Math.sin(endAngle));
     return Math.min(d1, d2);
   }
+}
+
+export function getEllipsePointAngle(px: number, py: number, cx: number, cy: number, majorX: number, majorY: number, ratio: number): number {
+  const rotation = Math.atan2(majorY, majorX);
+  const majorR = Math.sqrt(majorX * majorX + majorY * majorY);
+  const minorR = majorR * ratio;
+
+  const dx = px - cx;
+  const dy = py - cy;
+
+  const cosRot = Math.cos(rotation);
+  const sinRot = Math.sin(rotation);
+
+  const localX = dx * cosRot + dy * sinRot;
+  const localY = -dx * sinRot + dy * cosRot;
+
+  return Math.atan2(localY / minorR, localX / majorR);
+}
+
+export function distancePointToEllipse(px: number, py: number, cx: number, cy: number, majorX: number, majorY: number, ratio: number, startAngle: number, endAngle: number, ccw: boolean): number {
+  const rotation = Math.atan2(majorY, majorX);
+  const majorR = Math.sqrt(majorX * majorX + majorY * majorY);
+  const minorR = majorR * ratio;
+
+  const normalize = (a: number) => {
+    while (a < 0) a += Math.PI * 2;
+    while (a >= Math.PI * 2) a -= Math.PI * 2;
+    return a;
+  };
+
+  const s = normalize(startAngle);
+  let e = normalize(endAngle);
+  if (ccw && e <= s) e += Math.PI * 2;
+  if (!ccw && e >= s) e -= Math.PI * 2;
+  
+  const getPt = (ang: number) => {
+    const tx = majorR * Math.cos(ang);
+    const ty = minorR * Math.sin(ang);
+    const rx = tx * Math.cos(rotation) - ty * Math.sin(rotation);
+    const ry = tx * Math.sin(rotation) + ty * Math.cos(rotation);
+    return { x: cx + rx, y: cy + ry };
+  };
+
+  // Sample ellipse curve and find minimum distance to perimeter (not center!)
+  const steps = 128;
+  let minDist = Infinity;
+  
+  // For full ellipse (startAngle=0, endAngle=2π, ccw=true), use full circle
+  // For arc, only sample the arc portion
+  const isFullEllipse = Math.abs(endAngle - startAngle - 2 * Math.PI) < 0.01 || Math.abs(startAngle) < 0.01 && Math.abs(endAngle - 2 * Math.PI) < 0.01;
+  
+  if (isFullEllipse) {
+    // Full ellipse - sample full circle
+    for (let i = 0; i <= steps; i++) {
+      const ang = (i / steps) * Math.PI * 2;
+      const pt = getPt(ang);
+      const d = Math.sqrt((px - pt.x) ** 2 + (py - pt.y) ** 2);
+      if (d < minDist) minDist = d;
+    }
+  } else {
+    // Arc - sample only the arc portion
+    const sweep = e - s;
+    for (let i = 0; i <= steps; i++) {
+      const ang = s + (i / steps) * sweep;
+      const pt = getPt(ang);
+      const d = Math.sqrt((px - pt.x) ** 2 + (py - pt.y) ** 2);
+      if (d < minDist) minDist = d;
+    }
+  }
+
+  return minDist;
 }
 
 export function rotatePoint(x: number, y: number, cx: number, cy: number, angleRad: number) {
@@ -512,6 +584,34 @@ export function getEntityEntityIntersections(e1: unknown, e2: unknown): Point[] 
                     const arc = bulgeToArc(v1, v2, v1.bulge);
                     if (arc) segments.push(new ArcEntity("TMP", arc.cx, arc.cy, arc.r, arc.startAngle, arc.endAngle, arc.ccw));
                 }
+            }
+            return segments;
+        }
+        if (e instanceof EllipseEntity) {
+            const segments: Entity[] = [];
+            const majorR = Math.sqrt(e.majorX**2 + e.majorY**2);
+            const minorR = majorR * e.ratio;
+            const rotation = Math.atan2(e.majorY, e.majorX);
+            const numSegments = 64;
+            
+            const getPt = (angle: number) => {
+                const tx = majorR * Math.cos(angle);
+                const ty = minorR * Math.sin(angle);
+                const rx = tx * Math.cos(rotation) - ty * Math.sin(rotation);
+                const ry = tx * Math.sin(rotation) + ty * Math.cos(rotation);
+                return { x: e.cx + rx, y: e.cy + ry };
+            };
+
+            const s = e.startAngle;
+            let end = e.endAngle;
+            if (e.ccw && end <= s) end += 2 * Math.PI;
+            if (!e.ccw && end >= s) end -= 2 * Math.PI;
+            const sweep = end - s;
+
+            for (let i = 0; i < numSegments; i++) {
+                const p1 = getPt(s + (sweep * i) / numSegments);
+                const p2 = getPt(s + (sweep * (i + 1)) / numSegments);
+                segments.push(new LineEntity("TMP", p1.x, p1.y, p2.x, p2.y));
             }
             return segments;
         }

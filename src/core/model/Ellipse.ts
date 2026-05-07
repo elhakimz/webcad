@@ -7,14 +7,20 @@ export class Ellipse extends Entity {
   majorX: number; // Vector from center to endpoint of major axis
   majorY: number;
   ratio: number; // Minor axis length / Major axis length
+  startAngle: number;
+  endAngle: number;
+  ccw: boolean;
 
-  constructor(id: string, cx: number, cy: number, majorX: number, majorY: number, ratio: number) {
+  constructor(id: string, cx: number, cy: number, majorX: number, majorY: number, ratio: number, startAngle: number = 0, endAngle: number = 2 * Math.PI, ccw: boolean = true) {
     super(id);
     this.cx = cx;
     this.cy = cy;
     this.majorX = majorX;
     this.majorY = majorY;
     this.ratio = ratio;
+    this.startAngle = startAngle;
+    this.endAngle = endAngle;
+    this.ccw = ccw;
   }
 
   move(dx: number, dy: number) {
@@ -49,12 +55,16 @@ export class Ellipse extends Entity {
     const rEnd = reflectPointAcrossLine(vEnd, p1, p2);
     this.majorX = rEnd.x - this.cx;
     this.majorY = rEnd.y - this.cy;
+    
+    // Reflect angles if it's an arc
+    // This is complex for ellipses, but a simple way is to flip CCW
+    this.ccw = !this.ccw;
   }
 
   getBoundingBox(): BoundingBox {
     const a = Math.sqrt(this.majorX**2 + this.majorY**2);
     const b = a * this.ratio;
-    // Conservative bounding box
+    // Conservative bounding box for now
     const maxR = Math.max(a, b);
     return {
       minX: this.cx - maxR,
@@ -65,7 +75,7 @@ export class Ellipse extends Entity {
   }
 
   clone(newId: string): Ellipse {
-    const copy = new Ellipse(newId, this.cx, this.cy, this.majorX, this.majorY, this.ratio);
+    const copy = new Ellipse(newId, this.cx, this.cy, this.majorX, this.majorY, this.ratio, this.startAngle, this.endAngle, this.ccw);
     copy.layer = this.layer;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;

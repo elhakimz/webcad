@@ -14,14 +14,19 @@ export class PolygonCommand implements Command {
   onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
-    if (this.step === 0) {
+if (this.step === 0) {
       const n = parseInt(val)
       if (!isNaN(n) && n >= 3) {
         this.numSides = n
         this.step = 1
-        return "Edge/<Center of polygon>:"
+        return "Edge/<Center of polygon>:";
       }
-      return "Number of sides <4>:"
+      if (val === "") {
+        this.numSides = 4
+        this.step = 1
+        return "Edge/<Center of polygon>:";
+}
+      return "Number of sides <4>:";
     }
 
     if (this.step === 1) {

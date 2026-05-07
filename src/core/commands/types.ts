@@ -14,7 +14,7 @@ export type CommandAction = {
   dist1?: number;
   dist2?: number;
   filename?: string;
-  value?: boolean;
+  value?: boolean | number;
   spacing?: number;
   precision?: number;
   type?: string;
@@ -64,8 +64,6 @@ export type CommandAction = {
   filter?: string;
   _echo?: string;
   mode?: 'DELTA' | 'PERCENT' | 'TOTAL';
-  value?: number;
-  pickPt?: { x: number, y: number };
   dimStyle?: {
     textHeight?: number;
     arrowSize?: number;

@@ -1090,20 +1090,20 @@ export class Viewer {
       const textOffsetY = ux >= 0 ? perpY * gap : -perpY * gap;
       textPos = { x: midX + textOffsetX, y: midY + textOffsetY };
     } else if (entity.dimLineLocation) {
-      const textGap = 5;
-      const isVerticalObj = Math.abs(ux) < 0.1;
+      const midX = (entity.x1 + entity.x2) / 2;
+      const midY = (entity.y1 + entity.y2) / 2;
+      const toDimLineX = entity.dimLineLocation.x - midX;
+      const toDimLineY = entity.dimLineLocation.y - midY;
+      const offsetDist = toDimLineX * nx + toDimLineY * ny;
       
-      if (isVerticalObj) {
-        const dimLineX = entity.dimLineLocation.x;
-        e1 = { x: dimLineX, y: entity.y1 };
-        e2 = { x: dimLineX, y: entity.y2 };
-        textPos = { x: dimLineX + textGap, y: entity.dimLineLocation.y };
-      } else {
-        const dimLineY = entity.dimLineLocation.y;
-        e1 = { x: entity.x1, y: dimLineY };
-        e2 = { x: entity.x2, y: dimLineY };
-        textPos = { x: entity.dimLineLocation.x, y: dimLineY + textGap };
-      }
+      e1 = { x: entity.x1 + nx * offsetDist, y: entity.y1 + ny * offsetDist };
+      e2 = { x: entity.x2 + nx * offsetDist, y: entity.y2 + ny * offsetDist };
+      
+      const textMidX = (e1.x + e2.x) / 2;
+      const textMidY = (e1.y + e2.y) / 2;
+      const textOffsetX = offsetDist > 0 ? -nx * gap : nx * gap;
+      const textOffsetY = offsetDist > 0 ? -ny * gap : ny * gap;
+      textPos = { x: textMidX + textOffsetX, y: textMidY + textOffsetY };
     } else {
       e1 = { x: entity.x1 + nx * offset, y: entity.y1 + ny * offset };
       e2 = { x: entity.x2 + nx * offset, y: entity.y2 + ny * offset };

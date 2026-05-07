@@ -23,7 +23,12 @@ export class Menu {
   private setupInitialMenu() {
     const root: MenuItem[] = [
       { label: 'BLOCKS', submenu: [{ label: 'BLOCK' }, { label: 'INSERT' }] },
-      { label: 'DIM:', submenu: [{ label: 'DIM' }] },
+      { label: 'DIM:', submenu: [
+        { label: 'LINEAR', command: 'DIMLINEAR' },
+        { label: 'ALIGNED', command: 'DIMALIGNED' },
+        { label: 'RADIUS', command: 'DIMRADIUS' },
+        { label: 'ANGULAR', command: 'DIMANGULAR' }
+      ] },
       { label: 'DISPLAY', submenu: [
         { label: 'ZOOM', command: 'ZOOM' },
         { label: 'PAN', command: 'PAN' },
@@ -57,8 +62,9 @@ export class Menu {
         { label: 'OFFSET', command: 'OFFSET' },
         { label: 'FILLET', command: 'FILLET' },
         { label: 'CHAMFER', command: 'CHAMFER' },
-                { label: 'BREAK', command: 'BREAK' },
+        { label: 'BREAK', command: 'BREAK' },
         { label: 'JOIN', command: 'JOIN' },
+        { label: 'LENGTHEN', command: 'LENGTHEN' },
         { label: 'TRIM', command: 'TRIM' },
         { label: 'EXTEND', command: 'EXTEND' }
       ]},

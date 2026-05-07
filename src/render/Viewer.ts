@@ -11,6 +11,7 @@ import { Text } from "../core/model/Text"
 import { Solid } from "../core/model/Solid"
 import { Donut } from "../core/model/Donut"
 import { Ellipse } from "../core/model/Ellipse"
+import { Dimension } from "../core/model/Dimension"
 import { Trace } from "../core/model/Trace"
 import { Shape } from "../core/model/Shape"
 import { Hatch } from "../core/model/Hatch"
@@ -264,6 +265,8 @@ export class Viewer {
         ]);
         const mat = new THREE.PointsMaterial({ color: previewColor, size: 5, sizeAttenuation: false });
         this.previewObject = new THREE.Points(geo, mat);
+      } else if (entity instanceof Dimension) {
+        this.previewObject = this.createDimensionObject(entity, previewColor);
       } else if ('type' in entity && entity.type === 'xmarker') {
         const m = entity as XMarkerPreview;
         const size = m.size || 10 / this.camera.zoom;
@@ -687,6 +690,16 @@ export class Viewer {
     this.scene.add(obj);
   }
 
+  addDimension(entity: Dimension, layer?: string, color?: number, isVisible = true) {
+    const obj = this.createDimensionObject(entity, aciToRgb(color));
+    obj.name = entity.id;
+    if (layer) {
+      obj.userData = { layer };
+    }
+    obj.visible = isVisible;
+    this.scene.add(obj);
+  }
+
   addTrace(entity: Trace, layer?: string, color?: number, isVisible = true) {
     const dx = entity.x2 - entity.x1;
     const dy = entity.y2 - entity.y1;
@@ -971,6 +984,237 @@ export class Viewer {
     }
     return new THREE.Line(geo, mat);
   }
+
+  private createDimensionObject(entity: Dimension, color: number): THREE.Object3D {
+    const group = new THREE.Group();
+    const style = entity.style;
+    const arrowSize = style.arrowSize;
+    const offset = style.offset;
+    const gap = style.gap;
+
+    const dx = entity.x2 - entity.x1;
+    const dy = entity.y2 - entity.y1;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 1e-6) return group;
+
+    const ux = dx / len;
+    const uy = dy / len;
+
+    const nx = -uy;
+    const ny = ux;
+    let textPos: { x: number, y: number };
+    let e1: { x: number, y: number };
+    let e2: { x: number, y: number };
+
+    if (entity.type === 'RADIUS' && entity.dimLineLocation) {
+      const leaderPoints = [
+        new THREE.Vector3(entity.x1, entity.y1, 0),
+        new THREE.Vector3(entity.dimLineLocation.x, entity.dimLineLocation.y, 0)
+      ];
+      const leaderMat = new THREE.LineBasicMaterial({ color });
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(leaderPoints), leaderMat));
+
+      const arrowDirX = entity.dimLineLocation.x - entity.x1;
+      const arrowDirY = entity.dimLineLocation.y - entity.y1;
+      const arrowLen = Math.sqrt(arrowDirX * arrowDirX + arrowDirY * arrowDirY);
+      if (arrowLen > 0.1) {
+        const ax = arrowDirX / arrowLen;
+        const ay = arrowDirY / arrowLen;
+        const arrowBase = { x: entity.x1 + ax * arrowSize, y: entity.y1 + ay * arrowSize };
+        const perpX = -ay;
+        const perpY = ax;
+        const arrowLeft = { x: arrowBase.x + perpX * arrowSize * 0.5, y: arrowBase.y + perpY * arrowSize * 0.5 };
+        const arrowRight = { x: arrowBase.x - perpX * arrowSize * 0.5, y: arrowBase.y - perpY * arrowSize * 0.5 };
+        const arrowShape = new THREE.Shape();
+        arrowShape.moveTo(entity.x1, entity.y1);
+        arrowShape.lineTo(arrowLeft.x, arrowLeft.y);
+        arrowShape.lineTo(arrowRight.x, arrowRight.y);
+        arrowShape.closePath();
+        group.add(new THREE.Mesh(new THREE.ShapeGeometry(arrowShape), new THREE.MeshBasicMaterial({ color })));
+      }
+
+      textPos = { x: entity.dimLineLocation.x + 5, y: entity.dimLineLocation.y };
+    } else if (entity.type === 'ANGULAR' && entity.properties && entity.properties.vertex && entity.dimLineLocation) {
+      const vertex = entity.properties.vertex as { x: number, y: number };
+      
+      const line1Points = [
+        new THREE.Vector3(vertex.x, vertex.y, 0),
+        new THREE.Vector3(entity.x1, entity.y1, 0)
+      ];
+      const line2Points = [
+        new THREE.Vector3(vertex.x, vertex.y, 0),
+        new THREE.Vector3(entity.x2, entity.y2, 0)
+      ];
+      const extMat = new THREE.LineBasicMaterial({ color });
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line1Points), extMat));
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line2Points), extMat));
+
+      const angle1 = Math.atan2(entity.y1 - vertex.y, entity.x1 - vertex.x);
+      const angle2 = Math.atan2(entity.y2 - vertex.y, entity.x2 - vertex.x);
+      let startAngle = angle1;
+      let endAngle = angle2;
+      if (endAngle < startAngle) {
+        const temp = startAngle;
+        startAngle = endAngle;
+        endAngle = temp;
+      }
+      const arcRadius = 15;
+      
+      const arcPoints: THREE.Vector3[] = [];
+      const segments = 32;
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const a = startAngle + t * (endAngle - startAngle);
+        arcPoints.push(new THREE.Vector3(
+          vertex.x + Math.cos(a) * arcRadius,
+          vertex.y + Math.sin(a) * arcRadius,
+          0
+        ));
+      }
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPoints), extMat));
+
+      textPos = { x: entity.dimLineLocation.x + 5, y: entity.dimLineLocation.y };
+    } else if (entity.type === 'ALIGNED' && entity.dimLineLocation) {
+      const perpX = -uy;
+      const perpY = ux;
+      const toDimLineX = entity.dimLineLocation.x - entity.x1;
+      const toDimLineY = entity.dimLineLocation.y - entity.y1;
+      const offsetDist = toDimLineX * perpX + toDimLineY * perpY;
+      
+      e1 = { x: entity.x1 + perpX * offsetDist, y: entity.y1 + perpY * offsetDist };
+      e2 = { x: entity.x2 + perpX * offsetDist, y: entity.y2 + perpY * offsetDist };
+      
+      const midX = (e1.x + e2.x) / 2;
+      const midY = (e1.y + e2.y) / 2;
+      const textOffsetX = ux >= 0 ? perpX * gap : -perpX * gap;
+      const textOffsetY = ux >= 0 ? perpY * gap : -perpY * gap;
+      textPos = { x: midX + textOffsetX, y: midY + textOffsetY };
+    } else if (entity.dimLineLocation) {
+      const textGap = 5;
+      const isVerticalObj = Math.abs(ux) < 0.1;
+      
+      if (isVerticalObj) {
+        const dimLineX = entity.dimLineLocation.x;
+        e1 = { x: dimLineX, y: entity.y1 };
+        e2 = { x: dimLineX, y: entity.y2 };
+        textPos = { x: dimLineX + textGap, y: entity.dimLineLocation.y };
+      } else {
+        const dimLineY = entity.dimLineLocation.y;
+        e1 = { x: entity.x1, y: dimLineY };
+        e2 = { x: entity.x2, y: dimLineY };
+        textPos = { x: entity.dimLineLocation.x, y: dimLineY + textGap };
+      }
+    } else {
+      e1 = { x: entity.x1 + nx * offset, y: entity.y1 + ny * offset };
+      e2 = { x: entity.x2 + nx * offset, y: entity.y2 + ny * offset };
+      const midX = (e1.x + e2.x) / 2;
+      const midY = (e1.y + e2.y) / 2;
+      textPos = { x: midX + nx * gap, y: midY + ny * gap };
+    }
+
+    const ext1Points = [
+      new THREE.Vector3(entity.x1, entity.y1, 0),
+      new THREE.Vector3(e1.x, e1.y, 0)
+    ];
+    const ext2Points = [
+      new THREE.Vector3(entity.x2, entity.y2, 0),
+      new THREE.Vector3(e2.x, e2.y, 0)
+    ];
+    const extMat = new THREE.LineBasicMaterial({ color });
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ext1Points), extMat));
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ext2Points), extMat));
+
+    const dimLinePoints = [
+      new THREE.Vector3(e1.x, e1.y, 0),
+      new THREE.Vector3(e2.x, e2.y, 0)
+    ];
+    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(dimLinePoints), extMat));
+
+    const isVerticalDimLine = Math.abs(e2.x - e1.x) < 0.1;
+    const isAligned = entity.type === 'ALIGNED';
+    
+    let arrow1Dir: { x: number, y: number };
+    let arrow2Dir: { x: number, y: number };
+
+    if (isAligned) {
+      arrow1Dir = { x: -ux, y: -uy };
+      arrow2Dir = { x: ux, y: uy };
+    } else if (isVerticalDimLine) {
+      const pointUp = e2.y > e1.y;
+      arrow1Dir = { x: 0, y: pointUp ? -1 : 1 };
+      arrow2Dir = { x: 0, y: pointUp ? 1 : -1 };
+    } else {
+      const pointRight = e2.x > e1.x;
+      arrow1Dir = { x: pointRight ? -1 : 1, y: 0 };
+      arrow2Dir = { x: pointRight ? 1 : -1, y: 0 };
+    }
+
+    let arrowPerpX: number, arrowPerpY: number;
+    if (isAligned) {
+      arrowPerpX = -uy;
+      arrowPerpY = ux;
+    } else if (isVerticalDimLine) {
+      arrowPerpX = 1;
+      arrowPerpY = 0;
+    } else {
+      arrowPerpX = 0;
+      arrowPerpY = 1;
+    }
+
+    const arrow1Base = { x: e1.x - arrow1Dir.x * arrowSize, y: e1.y - arrow1Dir.y * arrowSize };
+    const arrow1Left = { x: arrow1Base.x + arrowPerpX * arrowSize * 0.5, y: arrow1Base.y + arrowPerpY * arrowSize * 0.5 };
+    const arrow1Right = { x: arrow1Base.x - arrowPerpX * arrowSize * 0.5, y: arrow1Base.y - arrowPerpY * arrowSize * 0.5 };
+    const arrow1Shape = new THREE.Shape();
+    arrow1Shape.moveTo(e1.x, e1.y);
+    arrow1Shape.lineTo(arrow1Left.x, arrow1Left.y);
+    arrow1Shape.lineTo(arrow1Right.x, arrow1Right.y);
+    arrow1Shape.closePath();
+    const arrow1Mesh = new THREE.Mesh(new THREE.ShapeGeometry(arrow1Shape), new THREE.MeshBasicMaterial({ color }));
+    group.add(arrow1Mesh);
+
+    const arrow2Base = { x: e2.x - arrow2Dir.x * arrowSize, y: e2.y - arrow2Dir.y * arrowSize };
+    const arrow2Left = { x: arrow2Base.x + arrowPerpX * arrowSize * 0.5, y: arrow2Base.y + arrowPerpY * arrowSize * 0.5 };
+    const arrow2Right = { x: arrow2Base.x - arrowPerpX * arrowSize * 0.5, y: arrow2Base.y - arrowPerpY * arrowSize * 0.5 };
+    const arrow2Shape = new THREE.Shape();
+    arrow2Shape.moveTo(e2.x, e2.y);
+    arrow2Shape.lineTo(arrow2Left.x, arrow2Left.y);
+    arrow2Shape.lineTo(arrow2Right.x, arrow2Right.y);
+    arrow2Shape.closePath();
+    const arrow2Mesh = new THREE.Mesh(new THREE.ShapeGeometry(arrow2Shape), new THREE.MeshBasicMaterial({ color }));
+    group.add(arrow2Mesh);
+
+    let value = entity.computeValue();
+    let text: string;
+    if (entity.type === 'RADIUS') {
+      text = "R" + value.toFixed(style.precision);
+    } else if (entity.type === 'ANGULAR' && entity.properties && entity.properties.vertex) {
+      const vertex = entity.properties.vertex as { x: number, y: number };
+      const angle1 = Math.atan2(entity.y1 - vertex.y, entity.x1 - vertex.x);
+      const angle2 = Math.atan2(entity.y2 - vertex.y, entity.x2 - vertex.x);
+      let angleDiff = Math.abs(angle2 - angle1) * (180 / Math.PI);
+      if (angleDiff > 180) angleDiff = 360 - angleDiff;
+      value = angleDiff;
+      text = angleDiff.toFixed(style.precision) + "°";
+    } else {
+      text = value.toFixed(style.precision);
+    }
+
+    if (this.font) {
+      const shapes = this.font.generateShapes(text, style.textHeight);
+      const textGeo = new THREE.ShapeGeometry(shapes);
+      const textMat = new THREE.MeshBasicMaterial({ color });
+      const textMesh = new THREE.Mesh(textGeo, textMat);
+      textMesh.position.set(textPos.x, textPos.y, 0);
+      if (entity.type === 'ALIGNED') {
+        const textAngle = Math.atan2(uy, ux);
+        textMesh.rotation.z = textAngle;
+      }
+      group.add(textMesh);
+    }
+
+    return group;
+  }
+
   private generateDashedPath(
     points: { x: number; y: number }[],
     dashPattern: number[]

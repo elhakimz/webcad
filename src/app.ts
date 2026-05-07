@@ -13,6 +13,7 @@ import { Text } from "./core/model/Text"
 import { Solid } from "./core/model/Solid"
 import { Donut } from "./core/model/Donut"
 import { Ellipse } from "./core/model/Ellipse"
+import { Dimension } from "./core/model/Dimension"
 import { Trace } from "./core/model/Trace"
 import { Shape } from "./core/model/Shape"
 import { Hatch } from "./core/model/Hatch"
@@ -353,7 +354,6 @@ export class App {
         const entityType = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, 200 / this.viewer.camera.zoom, this.doc, selectableEntities)?.constructor.name;
         if (entityType === 'Ellipse') {
             tolerance = 200 / this.viewer.camera.zoom;
-            console.log("[TOLERANCE] Using tolerance 200 for Ellipse");
         }
 
         // Use original raw coordinate for single-click object selection (snapping is for geometry points)
@@ -377,7 +377,6 @@ const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step ==
 
             if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick)) {
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y });
-                console.log("[CLICK DEBUG] inputString result:", res);
                 if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet' || res.action === 'chamfer' || res.action === 'break' || res.action === 'lengthen')) {
                     (res as CommandAction).pickPt = { x: worldPt.x, y: worldPt.y };
                 }
@@ -408,13 +407,12 @@ const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step ==
   }
 
   private async handleResult(result: CommandResponse | undefined): Promise<CommandResponse | undefined> {
-    console.log('handleResult called', result);
     if (result && typeof result === 'object') {
       // Case: New Entity Created (Standard or via 'close')
       let entity: Entity | undefined;
       let isCloseAction = false;
       
-      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Trace || result instanceof Hatch || result instanceof Shape) {
+      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape) {
         entity = result as Entity;
       } else if (result && typeof result === 'object' && 'action' in result && result.action === 'close' && result.entity) {
         entity = result.entity;
@@ -554,6 +552,8 @@ const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step ==
       this.viewer.addDonut(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Ellipse) {
       this.viewer.addEllipse(entity, layer, layerColor, isVisible);
+    } else if (entity instanceof Dimension) {
+      this.viewer.addDimension(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Trace) {
       this.viewer.addTrace(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Shape) {

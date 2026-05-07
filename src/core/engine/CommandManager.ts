@@ -32,6 +32,10 @@ import { ChamferCommand } from "../commands/ChamferCommand"
 import { BreakCommand } from "../commands/BreakCommand"
 import { JoinCommand } from "../commands/JoinCommand"
 import { LengthenCommand } from "../commands/LengthenCommand"
+import { DimLinearCommand } from "../commands/DimLinearCommand"
+import { DimAlignedCommand } from "../commands/DimAlignedCommand"
+import { DimRadiusCommand } from "../commands/DimRadiusCommand"
+import { DimAngularCommand } from "../commands/DimAngularCommand"
 import { OrthoCommand } from "../commands/OrthoCommand"
 import { GridCommand } from "../commands/GridCommand"
 import { SnapCommand } from "../commands/SnapCommand"
@@ -223,6 +227,22 @@ export class CommandManager {
     else if(cmdName === "LENGTHEN"){
       this.active = new LengthenCommand()
       response = "LENGTHEN"
+    }
+    else if(cmdName === "DIMLINEAR"){
+      this.active = new DimLinearCommand()
+      response = "DIMLINEAR"
+    }
+    else if(cmdName === "DIMALIGNED"){
+      this.active = new DimAlignedCommand()
+      response = "DIMALIGNED"
+    }
+    else if(cmdName === "DIMRADIUS"){
+      this.active = new DimRadiusCommand()
+      response = "DIMRADIUS"
+    }
+    else if(cmdName === "DIMANGULAR"){
+      this.active = new DimAngularCommand()
+      response = "DIMANGULAR"
     }
     else if(cmdName === "TRIM"){
       this.active = new TrimCommand(selection)

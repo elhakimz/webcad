@@ -31,6 +31,7 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **CIRCLE:** Center/Radius and Center/Diameter methods (toggle via `D`/`R` keys).
 -   **POLYGON:** Regular polygons via Center/Radius or Edge methods with real-time radius/angle feedback.
 -   **SOLID:** Solid-filled 2D planar triangles and quadrilaterals with chaining.
+-   **SPLINE:** Cubic B-spline curves with multi-point interactive drafting and clamped knot support.
 -   **TRACE:** Solid filled lines of specified width.
 -   **POINT:** Single point entities.
 -   **TEXT:** Single-line annotations with configurable height and rotation (using `osifont` ISO 3098).
@@ -57,6 +58,7 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 ### 🖱️ Selection & Interaction
 -   **Selection Engine:** Advanced AABB-based hit-testing and precise geometry selection (including Lines, Circles, Arcs, and Dimensions).
 -   **Box Selection:** Window/Crossing modes with dashed visual indicators.
+-   **Auto-Focus:** Intelligent command line focus when typing alphanumeric keys without an active process.
 -   **Pan & Zoom:** Intuitive middle-click pan and cursor-centered scroll zoom.
 
 ## 🛠️ Installation & Usage
@@ -101,7 +103,7 @@ npm run lint
     -   **Strict Layer Isolation:** Selection engine now respects the current active layer for both commands and direct editing.
     -   **Robust Hatching:** Upgraded clipping algorithm using midpoint validation for leak-proof patterns in complex boundaries.
     -   **Data Consistency:** Fixed DXF persistence for `HATCH` (repeated codes) and `DONUT` (filled state preservation).
--   [ ] **Spline Support:** Implementation of cubic B-spline curves with control point editing (Planned).
+-   [x] **Advanced Curves:** **SPLINE** command with cubic B-spline drafting, snap support, and DXF R14 persistence.
 -   [ ] **Snaps:** Intersection and Perpendicular snapping modes.
 -   [ ] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT.
 

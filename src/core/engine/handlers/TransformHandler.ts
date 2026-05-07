@@ -11,7 +11,7 @@ import { Point } from "../MathUtils";
 
 export class TransformHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['move', 'rotate', 'scale', 'copy', 'mirror', 'array', 'offset', 'trim', 'extend', 'fillet', 'chamfer'].includes(action.action);
+    return ['move', 'rotate', 'scale', 'copy', 'mirror', 'array', 'offset', 'trim', 'extend', 'fillet', 'chamfer', 'break'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
@@ -111,6 +111,65 @@ export class TransformHandler implements ActionHandler {
       }
       this.cleanup(context);
       return "Chamfer only supported between two lines.";
+    }
+
+    if (action.action === 'break' && action.id && action.pick1 && action.pick2) {
+      const entity = doc.getEntity(action.id);
+      const p1 = action.pick1;
+      const p2 = action.pick2;
+      
+      if (entity instanceof Line) {
+        const proj1 = MathUtils.projectPointOnLine(p1.x, p1.y, entity.x1, entity.y1, entity.x2, entity.y2);
+        const proj2 = MathUtils.projectPointOnLine(p2.x, p2.y, entity.x1, entity.y1, entity.x2, entity.y2);
+        
+        if (proj1 && proj2) {
+          const before = entity.clone(entity.id);
+          doc.removeEntity(entity.id);
+          viewer.removeObject(entity.id);
+          
+          const id1 = doc.getNextId("L");
+          const line1 = new Line(id1, entity.x1, entity.y1, proj1.x, proj1.y);
+          line1.layer = entity.layer;
+          line1.properties = JSON.parse(JSON.stringify(entity.properties));
+          addEntity(line1, true, false);
+          
+          const id2 = doc.getNextId("L");
+          const line2 = new Line(id2, proj2.x, proj2.y, entity.x2, entity.y2);
+          line2.layer = entity.layer;
+          line2.properties = JSON.parse(JSON.stringify(entity.properties));
+          addEntity(line2, true, false);
+          
+          this.cleanup(context);
+          return "Object broken.";
+        }
+      }
+      if (entity instanceof ArcEntity) {
+        const a1 = Math.atan2(p1.y - entity.cy, p1.x - entity.cx);
+        const a2 = Math.atan2(p2.y - entity.cy, p2.x - entity.cx);
+        
+        const normalize = (a: number) => { while (a < 0) a += Math.PI * 2; while (a >= Math.PI * 2) a -= Math.PI * 2; return a; };
+        
+        const before = entity.clone(entity.id);
+        doc.removeEntity(entity.id);
+        viewer.removeObject(entity.id);
+        
+        const id1 = doc.getNextId("A");
+        const arc1 = new ArcEntity(id1, entity.cx, entity.cy, entity.r, entity.startAngle, a1, entity.ccw);
+        arc1.layer = entity.layer;
+        arc1.properties = JSON.parse(JSON.stringify(entity.properties));
+        addEntity(arc1, true, false);
+        
+        const id2 = doc.getNextId("A");
+        const arc2 = new ArcEntity(id2, entity.cx, entity.cy, entity.r, a2, entity.endAngle, entity.ccw);
+        arc2.layer = entity.layer;
+        arc2.properties = JSON.parse(JSON.stringify(entity.properties));
+        addEntity(arc2, true, false);
+        
+        this.cleanup(context);
+        return "Object broken.";
+      }
+      this.cleanup(context);
+      return "Break supported for Line and Arc.";
     }
 
     if (action.action === 'move' && (action.id || action.ids) && action.dx !== undefined) {

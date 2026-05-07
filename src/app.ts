@@ -291,6 +291,7 @@ export class App {
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1 || this.cmd.active.step === 2) && activeName === 'BreakCommand') ||
         (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand');
 
     let result: CommandResponse | undefined;
@@ -337,6 +338,7 @@ export class App {
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1 || this.cmd.active.step === 2) && activeName === 'BreakCommand') ||
         (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand');
     let tolerance = 5 / this.viewer.camera.zoom;
     
@@ -369,11 +371,12 @@ export class App {
             const isImmediatePick = (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && this.cmd.active?.step === 1;
 const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
             const isChamferPick = activeName === 'ChamferCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
+            const isBreakPick = activeName === 'BreakCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1 || this.cmd.active?.step === 2);
 
-            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick)) {
+            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick)) {
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y });
                 console.log("[CLICK DEBUG] inputString result:", res);
-                if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet' || res.action === 'chamfer')) {
+                if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet' || res.action === 'chamfer' || res.action === 'break')) {
                     (res as CommandAction).pickPt = { x: worldPt.x, y: worldPt.y };
                 }
                 return await this.handleResult(res);

@@ -126,6 +126,13 @@ export function distancePointToPoint(x1: number, y1: number, x2: number, y2: num
   return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
 }
 
+export function projectPointOnLine(px: number, py: number, x1: number, y1: number, x2: number, y2: number): { x: number, y: number } | null {
+  const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+  if (l2 === 0) return null;
+  let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+  return { x: x1 + t * (x2 - x1), y: y1 + t * (y2 - y1) };
+}
+
 export function distancePointToLineSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
   const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
   if (l2 === 0) return distancePointToPoint(px, py, x1, y1);

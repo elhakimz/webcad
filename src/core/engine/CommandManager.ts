@@ -37,6 +37,7 @@ import { DimLinearCommand } from "../commands/DimLinearCommand"
 import { DimAlignedCommand } from "../commands/DimAlignedCommand"
 import { DimRadiusCommand } from "../commands/DimRadiusCommand"
 import { DimAngularCommand } from "../commands/DimAngularCommand"
+import { StretchCommand } from "../commands/StretchCommand"
 import { OrthoCommand } from "../commands/OrthoCommand"
 import { GridCommand } from "../commands/GridCommand"
 import { SnapCommand } from "../commands/SnapCommand"
@@ -249,6 +250,10 @@ export class CommandManager {
       this.active = new DimAngularCommand()
       response = "DIMANGULAR"
     }
+    else if(cmdName === "STRETCH"){
+      this.active = new StretchCommand()
+      response = "STRETCH"
+    }
     else if(cmdName === "TRIM"){
       this.active = new TrimCommand(selection)
       response = "TRIM"
@@ -289,18 +294,18 @@ export class CommandManager {
     return response;
   }
 
-  inputPoint(x:number,y:number, units: UnitsConfig, idGenerator?: (prefix: string) => string): CommandResponse | undefined {
+  inputPoint(x:number,y:number, units: UnitsConfig, idGenerator?: (prefix: string) => string, doc?: any): CommandResponse | undefined {
     this.lastPoint = { x, y }
     if(this.active){
       const id = idGenerator ? idGenerator(this.getPrefix(this.active)) : `TMP_${Date.now()}`;
-      return this.active.onPoint(x,y, id, units)
+      return this.active.onPoint(x,y, id, units, doc)
     }
   }
 
-  inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }): CommandResponse | undefined {
+  inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }, doc?: any): CommandResponse | undefined {
     const pt = CoordinateParser.parseCoordinate(text, this.lastPoint || undefined)
     if (pt) {
-      return this.inputPoint(pt.x, pt.y, units, idGenerator)
+      return this.inputPoint(pt.x, pt.y, units, idGenerator, doc)
     }
 
     if(this.active && this.active.onInput){

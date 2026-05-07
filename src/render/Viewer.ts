@@ -20,7 +20,7 @@ import { BlockDefinition } from "../core/model/Block"
 import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb, getLinetypeSettings, tessellateSpline } from "../core/engine/MathUtils"
 import { Spline } from "../core/model/Spline"
 import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
-import { PreviewObject, ZoomWindowPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview } from "../core/commands/types"
+import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview } from "../core/commands/types"
 
 export class Viewer {
   scene: THREE.Scene
@@ -298,6 +298,26 @@ export class Viewer {
         createX(w.x1, w.y1);
         createX(w.x2, w.y2);
         this.previewObject = group;
+      } else if ('type' in entity && entity.type === 'selection_box') {
+        const b = entity as SelectionBoxPreview;
+        const color = b.isCrossing ? 0x00FF00 : 0x0000FF; // Green for crossing, Blue for window
+        const mat = new THREE.LineDashedMaterial({
+            color: color,
+            linewidth: 1,
+            scale: 1,
+            dashSize: 3 / this.camera.zoom,
+            gapSize: 3 / this.camera.zoom,
+        });
+        const geo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(b.x1, b.y1, 0),
+            new THREE.Vector3(b.x2, b.y1, 0),
+            new THREE.Vector3(b.x2, b.y2, 0),
+            new THREE.Vector3(b.x1, b.y2, 0),
+            new THREE.Vector3(b.x1, b.y1, 0)
+        ]);
+        const line = new THREE.Line(geo, mat);
+        line.computeLineDistances();
+        this.previewObject = line;
       } else if ('type' in entity && (entity.type === 'plinepoints' || entity.type === 'solidpoints')) {
         const p = entity as PLinePointsPreview | SolidPointsPreview;
         const size = 10 / this.camera.zoom;
@@ -1133,7 +1153,7 @@ export class Viewer {
       
       const arcRadius = Math.sqrt((dimLoc.x - vertex.x)**2 + (dimLoc.y - vertex.y)**2);
       
-      let sA = angle1;
+      const sA = angle1;
       let eA = angle2;
       
       // Ensure we take the shortest arc or the one that matches the click?

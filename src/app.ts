@@ -200,11 +200,11 @@ export class App {
           const blockCmd = this.cmd.active as unknown as HasSelectedIds;
           blockCmd.selectedIds = ids;
           // Trigger finish by passing empty string
-          const result = this.cmd.inputString("", this.doc.units, (p) => this.doc.getNextId(p));
+          const result = this.cmd.inputString("", this.doc.units, (p) => this.doc.getNextId(p), undefined, this.doc);
           return await this.handleResult(result);
       }
     }
-    const result = this.cmd.inputString(text, this.doc.units, (p) => this.doc.getNextId(p))
+    const result = this.cmd.inputString(text, this.doc.units, (p) => this.doc.getNextId(p), undefined, this.doc)
     return await this.handleResult(result)
   }
 
@@ -392,7 +392,8 @@ export class App {
                 if ((isDimRadiusPick || isDimAngularPick) && (this.cmd.active as any).setEntity) {
                   (this.cmd.active as any).setEntity(entity);
                 }
-                const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y });                   if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet' || res.action === 'chamfer' || res.action === 'break' || res.action === 'lengthen')) {
+                const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);
+                if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet' || res.action === 'chamfer' || res.action === 'break' || res.action === 'lengthen')) {
                     (res as CommandAction).pickPt = { x: worldPt.x, y: worldPt.y };
                 }
                 return await this.handleResult(res);
@@ -417,7 +418,7 @@ export class App {
         }
     }
 
-    const result = this.cmd.inputPoint(x, y, this.doc.units, (p) => this.doc.getNextId(p))
+    const result = this.cmd.inputPoint(x, y, this.doc.units, (p) => this.doc.getNextId(p), this.doc)
     return await this.handleResult(result)
   }
 

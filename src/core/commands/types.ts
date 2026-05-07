@@ -2,7 +2,7 @@ import { Entity } from "../model/Entity";
 import { UnitsConfig } from "../model/Document";
 
 export type CommandAction = {
-  action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen' | 'create3d' | 'save' | 'load' | 'ortho' | 'orthoToggle' | 'grid' | 'gridToggle' | 'gridSet' | 'snap' | 'snapToggle' | 'snapSet' | 'array' | 'offset' | 'trim' | 'extend' | 'block' | 'insert' | 'blockList' | 'unitsSet' | 'fillet' | 'chamfer' | 'break' | 'join' | 'lengthen' | 'dimlinear' | 'dimaligned' | 'dimradius' | 'dimangular' | 'new' | 'listFiles';
+  action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen' | 'create3d' | 'save' | 'load' | 'ortho' | 'orthoToggle' | 'grid' | 'gridToggle' | 'gridSet' | 'snap' | 'snapToggle' | 'snapSet' | 'array' | 'offset' | 'trim' | 'extend' | 'block' | 'insert' | 'blockList' | 'unitsSet' | 'fillet' | 'chamfer' | 'break' | 'join' | 'lengthen' | 'dimlinear' | 'dimaligned' | 'dimradius' | 'dimangular' | 'new' | 'listFiles' | 'stretch';
 
   id?: string;
   ids?: string[];
@@ -33,6 +33,7 @@ export type CommandAction = {
   rotateObjects?: boolean;
 
   entity?: Entity;
+  entities?: Entity[];
   dx?: number;
   dy?: number;
   baseX?: number;
@@ -76,6 +77,7 @@ export type CommandAction = {
 export type CommandResponse = string | Entity | CommandAction;
 
 export type ZoomWindowPreview = { type: 'zoomwindow', id: string, x1: number, y1: number, x2: number, y2: number };
+export type SelectionBoxPreview = { type: 'selection_box', x1: number, y1: number, x2: number, y2: number, isCrossing: boolean };
 export type XMarkerPreview = { type: 'xmarker', x: number, y: number, size?: number };
 export type PLinePointsPreview = { type: 'plinepoints', points: { x: number, y: number }[] };
 export type SolidPointsPreview = { type: 'solidpoints', points: { x: number, y: number }[] };
@@ -86,10 +88,10 @@ export type CopyPreview = { type: 'copy_preview', dx: number, dy: number };
 export type ScalePreview = { type: 'scale_preview', factor: number, baseX: number, baseY: number };
 export type SplinePreview = { type: 'spline_preview', controlPoints: { x: number, y: number }[], degree: number, knots: number[] };
 
-export type PreviewObject = Entity | ZoomWindowPreview | XMarkerPreview | PLinePointsPreview | SolidPointsPreview | RotationPreview | PolylinePreview | MovePreview | CopyPreview | ScalePreview | SplinePreview;
+export type PreviewObject = Entity | ZoomWindowPreview | SelectionBoxPreview | XMarkerPreview | PLinePointsPreview | SolidPointsPreview | RotationPreview | PolylinePreview | MovePreview | CopyPreview | ScalePreview | SplinePreview;
 
 export interface Command {
-  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse;
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: any): CommandResponse;
   onInput?(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }): CommandResponse | undefined;
   getPreview?(x: number, y: number, units: UnitsConfig): PreviewObject | null;
   getReferencePoints?(): { x: number, y: number }[];

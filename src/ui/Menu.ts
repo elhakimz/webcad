@@ -57,6 +57,7 @@ export class Menu {
         { label: 'ERASE', command: 'ERASE' },
         { label: 'MOVE', command: 'MOVE' },
         { label: 'COPY', command: 'COPY' },
+        { label: 'STRETCH', command: 'STRETCH' },
         { label: 'ROTATE', command: 'ROTATE' },
         { label: 'SCALE', command: 'SCALE' },
         { label: 'MIRROR', command: 'MIRROR' },

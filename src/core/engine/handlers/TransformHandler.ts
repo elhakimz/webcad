@@ -11,7 +11,7 @@ import { Point } from "../MathUtils";
 
 export class TransformHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['move', 'rotate', 'scale', 'copy', 'mirror', 'array', 'offset', 'trim', 'extend', 'fillet', 'chamfer', 'break', 'join', 'lengthen'].includes(action.action);
+    return ['move', 'rotate', 'scale', 'copy', 'mirror', 'array', 'offset', 'trim', 'extend', 'fillet', 'chamfer', 'break', 'join', 'lengthen', 'stretch'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
@@ -308,6 +308,19 @@ export class TransformHandler implements ActionHandler {
       });
       this.cleanup(context);
       return `Entities [${ids.join(', ')}] moved.`;
+    }
+
+    if (action.action === 'stretch' && action.entities) {
+      const modifiedCount = action.entities.length;
+      action.entities.forEach(modifiedEntity => {
+        const original = doc.getEntity(modifiedEntity.id);
+        if (original) {
+          doc.recordTransform(original.clone(original.id), modifiedEntity);
+          addEntity(modifiedEntity, false, false);
+        }
+      });
+      this.cleanup(context);
+      return `Stretched ${modifiedCount} entities.`;
     }
 
     if (action.action === 'rotate' && (action.id || action.ids) && action.angle !== undefined) {

@@ -710,5 +710,55 @@ export function getEntityEntityIntersections(e1: unknown, e2: unknown): Point[] 
         }
     }
 
-    return results;
+return results;
+}
+
+export function sortConnected(entities: (LineEntity | ArcEntity)[]): (LineEntity | ArcEntity)[] | null {
+  const sorted: (LineEntity | ArcEntity)[] = [];
+  const remaining = new Set(entities);
+
+  let current = entities[0];
+  sorted.push(current);
+  remaining.delete(current);
+
+  while (remaining.size > 0) {
+    let found = false;
+    for (const entity of remaining) {
+      const cEnd = (current instanceof LineEntity) 
+        ? { x: current.x2, y: current.y2 } 
+        : { x: current.cx + current.r * Math.cos(current.endAngle), y: current.cy + current.r * Math.sin(current.endAngle) };
+      const eStart = (entity instanceof LineEntity) 
+        ? { x: entity.x1, y: entity.y1 } 
+        : { x: entity.cx + entity.r * Math.cos(entity.startAngle), y: entity.cy + entity.r * Math.sin(entity.startAngle) };
+      const eEnd = (entity instanceof LineEntity) 
+        ? { x: entity.x2, y: entity.y2 } 
+        : { x: entity.cx + entity.r * Math.cos(entity.endAngle), y: entity.cy + entity.r * Math.sin(entity.endAngle) };
+
+      if (distancePointToPoint(cEnd.x, cEnd.y, eStart.x, eStart.y) < 1e-3) {
+        sorted.push(entity);
+        remaining.delete(entity);
+        current = entity;
+        found = true;
+        break;
+      } else if (distancePointToPoint(cEnd.x, cEnd.y, eEnd.x, eEnd.y) < 1e-3) {
+        if (entity instanceof LineEntity) {
+          const temp = { x: entity.x1, y: entity.y1 };
+          entity.x1 = entity.x2; entity.y1 = entity.y2;
+          entity.x2 = temp.x; entity.y2 = temp.y;
+        } else {
+          const temp = entity.startAngle;
+          entity.startAngle = entity.endAngle;
+          entity.endAngle = temp;
+          entity.ccw = !entity.ccw;
+        }
+        sorted.push(entity);
+        remaining.delete(entity);
+        current = entity;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return null;
+  }
+  return sorted;
 }

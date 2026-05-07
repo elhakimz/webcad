@@ -11,7 +11,7 @@ import { Point } from "../MathUtils";
 
 export class TransformHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['move', 'rotate', 'scale', 'copy', 'mirror', 'array', 'offset', 'trim', 'extend', 'fillet', 'chamfer', 'break'].includes(action.action);
+    return ['move', 'rotate', 'scale', 'copy', 'mirror', 'array', 'offset', 'trim', 'extend', 'fillet', 'chamfer', 'break', 'join'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
@@ -118,58 +118,72 @@ export class TransformHandler implements ActionHandler {
       const p1 = action.pick1;
       const p2 = action.pick2;
       
+      let broken = false;
       if (entity instanceof Line) {
         const proj1 = MathUtils.projectPointOnLine(p1.x, p1.y, entity.x1, entity.y1, entity.x2, entity.y2);
         const proj2 = MathUtils.projectPointOnLine(p2.x, p2.y, entity.x1, entity.y1, entity.x2, entity.y2);
-        
         if (proj1 && proj2) {
-          const before = entity.clone(entity.id);
           doc.removeEntity(entity.id);
           viewer.removeObject(entity.id);
-          
-          const id1 = doc.getNextId("L");
-          const line1 = new Line(id1, entity.x1, entity.y1, proj1.x, proj1.y);
+          const line1 = new Line(doc.getNextId("L"), entity.x1, entity.y1, proj1.x, proj1.y);
           line1.layer = entity.layer;
           line1.properties = JSON.parse(JSON.stringify(entity.properties));
           addEntity(line1, true, false);
-          
-          const id2 = doc.getNextId("L");
-          const line2 = new Line(id2, proj2.x, proj2.y, entity.x2, entity.y2);
+          const line2 = new Line(doc.getNextId("L"), proj2.x, proj2.y, entity.x2, entity.y2);
           line2.layer = entity.layer;
           line2.properties = JSON.parse(JSON.stringify(entity.properties));
           addEntity(line2, true, false);
-          
-          this.cleanup(context);
-          return "Object broken.";
+          broken = true;
         }
-      }
-      if (entity instanceof ArcEntity) {
+      } else if (entity instanceof ArcEntity) {
         const a1 = Math.atan2(p1.y - entity.cy, p1.x - entity.cx);
         const a2 = Math.atan2(p2.y - entity.cy, p2.x - entity.cx);
-        
-        const normalize = (a: number) => { while (a < 0) a += Math.PI * 2; while (a >= Math.PI * 2) a -= Math.PI * 2; return a; };
-        
-        const before = entity.clone(entity.id);
         doc.removeEntity(entity.id);
         viewer.removeObject(entity.id);
-        
-        const id1 = doc.getNextId("A");
-        const arc1 = new ArcEntity(id1, entity.cx, entity.cy, entity.r, entity.startAngle, a1, entity.ccw);
+        const arc1 = new ArcEntity(doc.getNextId("A"), entity.cx, entity.cy, entity.r, entity.startAngle, a1, entity.ccw);
         arc1.layer = entity.layer;
         arc1.properties = JSON.parse(JSON.stringify(entity.properties));
         addEntity(arc1, true, false);
-        
-        const id2 = doc.getNextId("A");
-        const arc2 = new ArcEntity(id2, entity.cx, entity.cy, entity.r, a2, entity.endAngle, entity.ccw);
+        const arc2 = new ArcEntity(doc.getNextId("A"), entity.cx, entity.cy, entity.r, a2, entity.endAngle, entity.ccw);
         arc2.layer = entity.layer;
         arc2.properties = JSON.parse(JSON.stringify(entity.properties));
         addEntity(arc2, true, false);
-        
-        this.cleanup(context);
-        return "Object broken.";
+        broken = true;
       }
       this.cleanup(context);
-      return "Break supported for Line and Arc.";
+      return broken ? "Object broken." : "Break supported for Line and Arc.";
+    }
+
+    if (action.action === 'join' && action.ids) {
+      const entities = action.ids.map(id => doc.getEntity(id)).filter(e => e instanceof Line || e instanceof ArcEntity) as (Line | ArcEntity)[];
+      
+      console.log('[JOIN] entities:', entities.map(e => e.id));
+      const sorted = MathUtils.sortConnected(entities);
+      console.log('[JOIN] sorted:', sorted ? sorted.map(e => e.id) : 'null');
+      if (sorted) {
+        const vertices = [];
+        for (const e of sorted) {
+          if (e instanceof Line) {
+            vertices.push({ x: e.x1, y: e.y1, bulge: 0 });
+          } else {
+             const bulge = Math.tan((e.endAngle - e.startAngle) / 4);
+             vertices.push({ x: e.cx + e.r * Math.cos(e.startAngle), y: e.cy + e.r * Math.sin(e.startAngle), bulge: e.ccw ? -bulge : bulge });
+          }
+        }
+        const last = sorted[sorted.length - 1];
+        if (last instanceof Line) vertices.push({ x: last.x2, y: last.y2, bulge: 0 });
+        else vertices.push({ x: last.cx + last.r * Math.cos(last.endAngle), y: last.cy + last.r * Math.sin(last.endAngle), bulge: 0 });
+        
+        entities.forEach(e => { doc.removeEntity(e.id); viewer.removeObject(e.id); });
+        const polyId = doc.getNextId("PL");
+        const poly = new Polyline(polyId, vertices, false);
+        addEntity(poly, true, false);
+        
+        this.cleanup(context);
+        return "Entities joined.";
+      }
+      this.cleanup(context);
+      return "Entities cannot be joined.";
     }
 
     if (action.action === 'move' && (action.id || action.ids) && action.dx !== undefined) {

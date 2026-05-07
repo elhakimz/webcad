@@ -30,6 +30,7 @@ import { UnitsCommand } from "../commands/UnitsCommand"
 import { FilletCommand } from "../commands/FilletCommand"
 import { ChamferCommand } from "../commands/ChamferCommand"
 import { BreakCommand } from "../commands/BreakCommand"
+import { JoinCommand } from "../commands/JoinCommand"
 import { OrthoCommand } from "../commands/OrthoCommand"
 import { GridCommand } from "../commands/GridCommand"
 import { SnapCommand } from "../commands/SnapCommand"
@@ -210,6 +211,13 @@ export class CommandManager {
     else if(cmdName === "BREAK"){
       this.active = new BreakCommand()
       response = "BREAK"
+    }
+    else if(cmdName === "JOIN"){
+      if (selection && selection.length > 0) {
+        return { action: "join", ids: [...selection] };
+      }
+      this.active = new JoinCommand()
+      response = "JOIN"
     }
     else if(cmdName === "TRIM"){
       this.active = new TrimCommand(selection)

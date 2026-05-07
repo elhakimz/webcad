@@ -47,7 +47,6 @@ export class BreakCommand implements Command {
   }
 
   getPreview(x: number, y: number, _units: UnitsConfig): XMarkerPreview | null {
-    console.log("[BreakCommand] getPreview step:", this.step, "x:", x, "y:", y);
     if (this.step >= 1) {
       return { type: 'xmarker', x, y };
     }

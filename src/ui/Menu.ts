@@ -57,7 +57,8 @@ export class Menu {
         { label: 'OFFSET', command: 'OFFSET' },
         { label: 'FILLET', command: 'FILLET' },
         { label: 'CHAMFER', command: 'CHAMFER' },
-        { label: 'BREAK', command: 'BREAK' },
+                { label: 'BREAK', command: 'BREAK' },
+        { label: 'JOIN', command: 'JOIN' },
         { label: 'TRIM', command: 'TRIM' },
         { label: 'EXTEND', command: 'EXTEND' }
       ]},

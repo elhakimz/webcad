@@ -44,7 +44,7 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **TRIM / EXTEND:** Precise geometric modification using entity-to-entity intersections.
 -   **OFFSET / ARRAY:** Distance-based offset and Rectangular/Polar array generation.
 -   **BLOCK / INSERT:** Symbol management with block definitions and efficient viewport instantiation.
--   **ERASE / MOVE / COPY / ROTATE / SCALE / MIRROR:** Full suite of precise modification tools.
+-   **ERASE / MOVE / COPY / STRETCH / ROTATE / SCALE / MIRROR:** Full suite of precise modification tools with crossing-window support.
 -   **DIMENSIONING:** Professional engineering annotations including `DIMLINEAR`, `DIMALIGNED`, `DIMRADIUS` (with automatic one-click placement), and `DIMANGULAR`.
 -   **ZOOM:** `Zoom Window`, `Zoom All`, and factor-based zooming.
 -   **NEW:** Workspace reset with safety confirmation prompt.
@@ -104,6 +104,7 @@ npm run lint
     -   **Robust Hatching:** Upgraded clipping algorithm using midpoint validation for leak-proof patterns in complex boundaries.
     -   **Data Consistency:** Fixed DXF persistence for `HATCH` (repeated codes) and `DONUT` (filled state preservation).
 -   [x] **Advanced Curves:** **SPLINE** command with cubic B-spline drafting, snap support, and DXF R14 persistence.
+-   [x] **Modification:** **STRETCH** command with crossing-window selection and dynamic vertex displacement.
 -   [ ] **Snaps:** Intersection and Perpendicular snapping modes.
 -   [ ] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT.
 

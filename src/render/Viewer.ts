@@ -1028,26 +1028,30 @@ export class Viewer {
       const leaderMat = new THREE.LineBasicMaterial({ color });
       group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(leaderPoints), leaderMat));
 
-      const arrowDirX = entity.dimLineLocation.x - entity.x1;
-      const arrowDirY = entity.dimLineLocation.y - entity.y1;
+      const arrowDirX = entity.x1 - entity.dimLineLocation.x;
+      const arrowDirY = entity.y1 - entity.dimLineLocation.y;
       const arrowLen = Math.sqrt(arrowDirX * arrowDirX + arrowDirY * arrowDirY);
       if (arrowLen > 0.1) {
         const ax = arrowDirX / arrowLen;
         const ay = arrowDirY / arrowLen;
-        const arrowBase = { x: entity.x1 + ax * arrowSize, y: entity.y1 + ay * arrowSize };
+        const arrowBase = { x: entity.dimLineLocation.x + ax * arrowSize, y: entity.dimLineLocation.y + ay * arrowSize };
         const perpX = -ay;
         const perpY = ax;
         const arrowLeft = { x: arrowBase.x + perpX * arrowSize * 0.5, y: arrowBase.y + perpY * arrowSize * 0.5 };
         const arrowRight = { x: arrowBase.x - perpX * arrowSize * 0.5, y: arrowBase.y - perpY * arrowSize * 0.5 };
         const arrowShape = new THREE.Shape();
-        arrowShape.moveTo(entity.x1, entity.y1);
+        arrowShape.moveTo(entity.dimLineLocation.x, entity.dimLineLocation.y);
         arrowShape.lineTo(arrowLeft.x, arrowLeft.y);
         arrowShape.lineTo(arrowRight.x, arrowRight.y);
         arrowShape.closePath();
         group.add(new THREE.Mesh(new THREE.ShapeGeometry(arrowShape), new THREE.MeshBasicMaterial({ color })));
       }
 
-      textPos = { x: entity.dimLineLocation.x + 5, y: entity.dimLineLocation.y };
+      const midX = (entity.x1 + entity.dimLineLocation.x) / 2;
+      const midY = (entity.y1 + entity.dimLineLocation.y) / 2;
+      const perpX = -arrowDirY / arrowLen;
+      const perpY = arrowDirX / arrowLen;
+      textPos = { x: midX + perpX * gap, y: midY + perpY * gap };
     } else if (entity.type === 'ANGULAR' && entity.properties && entity.properties.vertex && entity.dimLineLocation) {
       const vertex = entity.properties.vertex as { x: number, y: number };
       

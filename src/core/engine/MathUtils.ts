@@ -530,6 +530,30 @@ export function filletLines(p1: Point, p2: Point, p3: Point, p4: Point, radius: 
   return { cx, cy, radius, startAngle: sAngle, endAngle: eAngle, ccw: sweep > 0, tp1, tp2 };
 }
 
+export function chamferLines(p1: Point, p2: Point, p3: Point, p4: Point, dist1: number, dist2: number, pick1: Point, pick2: Point) {
+  const intersect = getLineLineIntersectionInfinite(p1, p2, p3, p4);
+  if (!intersect) return null;
+
+  const getUnitDir = (pa: Point, pb: Point, pick: Point, inter: Point) => {
+    const dx = pb.x - pa.x;
+    const dy = pb.y - pa.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const ux = dx / len;
+    const uy = dy / len;
+    const tPick = (pick.x - inter.x) * ux + (pick.y - inter.y) * uy;
+    const sign = tPick > 0 ? 1 : -1;
+    return { x: ux * sign, y: uy * sign };
+  };
+
+  const dir1 = getUnitDir(p1, p2, pick1, intersect);
+  const dir2 = getUnitDir(p3, p4, pick2, intersect);
+
+  const cp1 = { x: intersect.x + dist1 * dir1.x, y: intersect.y + dist1 * dir1.y };
+  const cp2 = { x: intersect.x + dist2 * dir2.x, y: intersect.y + dist2 * dir2.y };
+
+  return { tp1: cp1, tp2: cp2, cp1, cp2 };
+}
+
 export function getLineCircleIntersections(p1: Point, p2: Point, cx: number, cy: number, r: number): Point[] {
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;

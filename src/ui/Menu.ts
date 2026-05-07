@@ -56,6 +56,7 @@ export class Menu {
         { label: 'MIRROR', command: 'MIRROR' },
         { label: 'OFFSET', command: 'OFFSET' },
         { label: 'FILLET', command: 'FILLET' },
+        { label: 'CHAMFER', command: 'CHAMFER' },
         { label: 'TRIM', command: 'TRIM' },
         { label: 'EXTEND', command: 'EXTEND' }
       ]},

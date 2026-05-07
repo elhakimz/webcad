@@ -28,6 +28,7 @@ import { LinetypeCommand } from "../commands/LinetypeCommand"
 import { SaveCommand, LoadCommand, NewCommand } from "../commands/IOCommands"
 import { UnitsCommand } from "../commands/UnitsCommand"
 import { FilletCommand } from "../commands/FilletCommand"
+import { ChamferCommand } from "../commands/ChamferCommand"
 import { OrthoCommand } from "../commands/OrthoCommand"
 import { GridCommand } from "../commands/GridCommand"
 import { SnapCommand } from "../commands/SnapCommand"
@@ -200,6 +201,10 @@ export class CommandManager {
     else if(cmdName === "FILLET"){
       this.active = new FilletCommand()
       response = "FILLET"
+    }
+    else if(cmdName === "CHAMFER"){
+      this.active = new ChamferCommand()
+      response = "CHAMFER"
     }
     else if(cmdName === "TRIM"){
       this.active = new TrimCommand(selection)

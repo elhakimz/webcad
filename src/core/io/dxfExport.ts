@@ -102,9 +102,9 @@ export class DXFExporter {
       s += " 50\n" + norm(start) + "\n";
       s += " 51\n" + norm(end) + "\n";
     } else if (e instanceof Donut) {
-      // Export as two circles
-      s += "  0\nCIRCLE\n  8\n" + layer + "\n 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n0.0\n 40\n" + e.innerRadius + "\n";
-      s += "  0\nCIRCLE\n  8\n" + layer + "\n 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n0.0\n 40\n" + e.outerRadius + "\n";
+      s += "  0\nDONUT\n  8\n" + layer + "\n";
+      s += " 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n0.0\n";
+      s += " 40\n" + e.innerRadius + "\n 41\n" + e.outerRadius + "\n";
     } else if (e instanceof Ellipse) {
       s += "  0\nELLIPSE\n  8\n" + layer + "\n";
       s += " 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n0.0\n";
@@ -187,28 +187,21 @@ export class DXFExporter {
       else if (e.type === 'RADIUS') dimTypeCode = 3;
       s += " 70\n" + dimTypeCode + "\n";
       
-      let textX = (e.x1 + e.x2) / 2;
-      let textY = (e.y1 + e.y2) / 2;
-      
+      let dimLineX = e.x1;
+      let dimLineY = e.y1;
+      if (e.dimLineLocation) {
+        dimLineX = e.dimLineLocation.x;
+        dimLineY = e.dimLineLocation.y;
+      }
+
+      s += " 10\n" + dimLineX + "\n 20\n" + dimLineY + "\n 30\n0.0\n";
+      s += " 13\n" + e.x1 + "\n 23\n" + e.y1 + "\n 33\n0.0\n";
+      s += " 14\n" + e.x2 + "\n 24\n" + e.y2 + "\n 34\n0.0\n";
+
       if (e.type === 'ANGULAR' && e.properties && (e.properties as { vertex?: { x: number, y: number } }).vertex) {
         const vertex = (e.properties as { vertex: { x: number, y: number } }).vertex;
-        s += " 13\n" + e.x1 + "\n 23\n" + e.y1 + "\n 33\n0.0\n";
-        s += " 14\n" + e.x2 + "\n 24\n" + e.y2 + "\n 34\n0.0\n";
         s += " 15\n" + vertex.x + "\n 25\n" + vertex.y + "\n 35\n0.0\n";
-        if (e.dimLineLocation) {
-          textX = e.dimLineLocation.x;
-          textY = e.dimLineLocation.y;
-        }
-        s += " 16\n" + textX + "\n 26\n" + textY + "\n 36\n0.0\n";
-      } else {
-        s += " 13\n" + e.x1 + "\n 23\n" + e.y1 + "\n 33\n0.0\n";
-        s += " 14\n" + e.x2 + "\n 24\n" + e.y2 + "\n 34\n0.0\n";
-        if (e.dimLineLocation) {
-          s += " 15\n" + e.dimLineLocation.x + "\n 25\n" + e.dimLineLocation.y + "\n 35\n0.0\n";
-        }
       }
-      
-      s += " 10\n" + textX + "\n 20\n" + textY + "\n 30\n0.0\n";
       s += " 40\n" + e.style.textHeight + "\n";
       s += "  1\n" + e.computeValue().toFixed(e.style.precision) + "\n";
       if (e.type === 'LINEAR' || e.type === 'ALIGNED') {

@@ -1085,44 +1085,86 @@ export class Viewer {
       return group;
     } else if (entity.type === 'ANGULAR') {
       const vertex = entity.properties.vertex as { x: number, y: number };
+      const dimLoc = entity.dimLineLocation || { x: entity.x1, y: entity.y1 };
       
-      const line1Points = [
-        new THREE.Vector3(vertex.x, vertex.y, 0),
-        new THREE.Vector3(entity.x1, entity.y1, 0)
-      ];
-      const line2Points = [
-        new THREE.Vector3(vertex.x, vertex.y, 0),
-        new THREE.Vector3(entity.x2, entity.y2, 0)
-      ];
-      const extMat = new THREE.LineBasicMaterial({ color });
-      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line1Points), extMat));
-      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line2Points), extMat));
-
       const angle1 = Math.atan2(entity.y1 - vertex.y, entity.x1 - vertex.x);
       const angle2 = Math.atan2(entity.y2 - vertex.y, entity.x2 - vertex.x);
-      let startAngle = angle1;
-      let endAngle = angle2;
-      if (endAngle < startAngle) {
-        const temp = startAngle;
-        startAngle = endAngle;
-        endAngle = temp;
-      }
-      const arcRadius = 15;
       
+      const arcRadius = Math.sqrt((dimLoc.x - vertex.x)**2 + (dimLoc.y - vertex.y)**2);
+      
+      let sA = angle1;
+      let eA = angle2;
+      
+      // Ensure we take the shortest arc or the one that matches the click?
+      // For now, consistent ordering
+      let diff = eA - sA;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      eA = sA + diff;
+
       const arcPoints: THREE.Vector3[] = [];
       const segments = 32;
       for (let i = 0; i <= segments; i++) {
         const t = i / segments;
-        const a = startAngle + t * (endAngle - startAngle);
+        const a = sA + t * (eA - sA);
         arcPoints.push(new THREE.Vector3(
           vertex.x + Math.cos(a) * arcRadius,
           vertex.y + Math.sin(a) * arcRadius,
           0
         ));
       }
-      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPoints), extMat));
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPoints), new THREE.LineBasicMaterial({ color })));
 
-      textPos = { x: entity.dimLineLocation.x + 5, y: entity.dimLineLocation.y };
+      // Arrowheads at both ends
+      const addArrowAtAngle = (ang: number, isEnd: boolean) => {
+        const p = { x: vertex.x + Math.cos(ang) * arcRadius, y: vertex.y + Math.sin(ang) * arcRadius };
+        const tangentAng = ang + (isEnd ? Math.PI / 2 : -Math.PI / 2) * (diff > 0 ? 1 : -1);
+        const ux = Math.cos(tangentAng);
+        const uy = Math.sin(tangentAng);
+        
+        const arrowSize = style.arrowSize;
+        const arrowBase = { x: p.x - ux * arrowSize, y: p.y - uy * arrowSize };
+        const perpX = -uy;
+        const perpY = ux;
+        const arrowLeft = { x: arrowBase.x + perpX * arrowSize * 0.4, y: arrowBase.y + perpY * arrowSize * 0.4 };
+        const arrowRight = { x: arrowBase.x - perpX * arrowSize * 0.4, y: arrowBase.y - perpY * arrowSize * 0.4 };
+        
+        const arrowShape = new THREE.Shape();
+        arrowShape.moveTo(p.x, p.y);
+        arrowShape.lineTo(arrowLeft.x, arrowLeft.y);
+        arrowShape.lineTo(arrowRight.x, arrowRight.y);
+        arrowShape.closePath();
+        group.add(new THREE.Mesh(new THREE.ShapeGeometry(arrowShape), new THREE.MeshBasicMaterial({ color })));
+      };
+      
+      addArrowAtAngle(sA, false);
+      addArrowAtAngle(eA, true);
+
+      // Text at midpoint
+      const midA = sA + (eA - sA) * 0.5;
+      const deg = Math.abs(diff * 180 / Math.PI);
+      const text = deg.toFixed(style.precision) + "°";
+      
+      if (this.font) {
+        const shapes = this.font.generateShapes(text, style.textHeight);
+        const textGeo = new THREE.ShapeGeometry(shapes);
+        const textMesh = new THREE.Mesh(textGeo, new THREE.MeshBasicMaterial({ color }));
+        
+        const tx = vertex.x + Math.cos(midA) * (arcRadius + style.textHeight + 2);
+        const ty = vertex.y + Math.sin(midA) * (arcRadius + style.textHeight + 2);
+        
+        // Rotate text to be readable (tangent to arc)
+        let textAng = midA + Math.PI / 2;
+        // Keep text upright
+        if (textAng > Math.PI / 2 && textAng < 3 * Math.PI / 2) textAng += Math.PI;
+        
+        textMesh.rotation.z = textAng;
+        textMesh.position.set(tx, ty, 0);
+        group.add(textMesh);
+      }
+      
+      textPos = { x: vertex.x + Math.cos(midA) * arcRadius, y: vertex.y + Math.sin(midA) * arcRadius };
+      return group;
     } else if (entity.type === 'ALIGNED' && entity.dimLineLocation) {
       const perpX = -uy;
       const perpY = ux;

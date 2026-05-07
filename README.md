@@ -96,9 +96,12 @@ npm run lint
 -   **`src/ui/`**: DOS-style screens and components (`MainMenuScreen`, `CommandLine`, `StatusBar`).
 
 ## 📍 Roadmap Priorities
--   [x] **Engineering Annotation:** Implement `DIMLINEAR`, `DIMALIGNED`, `DIMRADIUS`, and `DIMANGULAR`.
--   [x] **Refinement:** `CHAMFER` (beveled corners) and `DONUT` entities.
--   [x] **Selection:** Support for editing and erasing Dimension entities.
+-   [x] **Engineering Annotation:** Professional `DIMANGULAR` with one-click selection and standardized DXF R12 persistence for all dimension types.
+-   [x] **Precision & Data Integrity:**
+    -   **Strict Layer Isolation:** Selection engine now respects the current active layer for both commands and direct editing.
+    -   **Robust Hatching:** Upgraded clipping algorithm using midpoint validation for leak-proof patterns in complex boundaries.
+    -   **Data Consistency:** Fixed DXF persistence for `HATCH` (repeated codes) and `DONUT` (filled state preservation).
+-   [ ] **Spline Support:** Implementation of cubic B-spline curves with control point editing (Planned).
 -   [ ] **Snaps:** Intersection and Perpendicular snapping modes.
 -   [ ] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT.
 

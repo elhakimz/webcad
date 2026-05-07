@@ -37,6 +37,20 @@ export class Dimension extends Entity {
   }
 
   computeValue(): number {
+    if (this.type === 'RADIUS') {
+      return distancePointToPoint(this.x1, this.y1, this.x2, this.y2);
+    }
+    if (this.type === 'ANGULAR') {
+      const vertex = this.properties?.vertex as { x: number, y: number } | undefined;
+      if (vertex) {
+        const a1 = Math.atan2(this.y1 - vertex.y, this.x1 - vertex.x);
+        const a2 = Math.atan2(this.y2 - vertex.y, this.x2 - vertex.x);
+        let diff = Math.abs(a2 - a1) * 180 / Math.PI;
+        if (diff > 180) diff = 360 - diff;
+        return diff;
+      }
+      return 0;
+    }
     return distancePointToPoint(this.x1, this.y1, this.x2, this.y2);
   }
 

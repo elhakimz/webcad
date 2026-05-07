@@ -9,3 +9,10 @@
 - **ACI Mapping:** Ensure all standard ACI colors (1-9) are mapped to RGB. Missing mappings for default colors (like ACI 7 White) can cause runtime crashes or incorrect rendering.
 - **Preview Types:** `getPreview` return types must match test expectations and `Viewer` capabilities (e.g., returning a `Polyline` entity instead of a point list).
 - **Interaction Consistency:** Standardized interaction flow for ROTATE and SCALE (Base Point -> Angle/Factor) improves UX consistency.
+
+- **Command State Machines:** When refactoring multi-step commands, ensure onInput correctly routes pick-points to onPoint. This is critical for commands that mix direct point input with object selection.
+- **Entity Property Mapping:** Always verify where rendering engines expect properties (like dimLineLocation). Mismatches between properties objects and direct entity properties can cause 'stuck' previews or rendering failures.
+- **Selection List Integration:** New commands that support entity selection must be added to the 'immediate pick' list in App.ts. Failure to do so causes selection clicks to be treated as generic coordinate inputs, breaking the command flow.
+- **Return Early Pattern:** In large rendering functions like createDimensionObject, always return early after finishing a specific branch (e.g., ANGULAR or RADIUS) to prevent falling through to logic that expects uninitialized variables from other branches.
+- **Direct Selection Layer Constraints:** Selection now respects the current layer even when no command is active. This ensures that 'pre-selected' entities (those colored yellow before a command is run) are always from the current layer, preventing cross-layer accidental edits during subsequent commands like ERASE or MOVE.
+- **Strict Selection Layer Isolation:** All object selection (including DIMANGULAR, DIMRADIUS, and direct clicks) is now strictly isolated to the current active layer. This ensures that users can only interact with entities on their 'working' layer, maintaining high data integrity and preventing cross-layer clutter during measurement or editing.

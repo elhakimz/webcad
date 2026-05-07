@@ -12,6 +12,7 @@ import { Hatch } from "../model/Hatch";
 import { Shape } from "../model/Shape";
 import { Insert } from "../model/Insert";
 import { Dimension } from "../model/Dimension";
+import { Donut } from "../model/Donut";
 
 interface DXFGroup {
   code: number;
@@ -125,8 +126,10 @@ export class DXFImporter {
       const type = g.value;
       if (g.code === 0) {
         i++;
+        const entityGroups: DXFGroup[] = [];
         const props: Record<number, string> = {};
         while (i < groups.length && groups[i].code !== 0) {
+          entityGroups.push(groups[i]);
           props[groups[i].code] = groups[i].value;
           i++;
         }
@@ -138,6 +141,8 @@ export class DXFImporter {
           entity = new Line(doc.getNextId("L"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[11]), parseFloat(props[21]));
         } else if (type === "CIRCLE") {
           entity = new Circle(doc.getNextId("C"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]));
+        } else if (type === "DONUT") {
+          entity = new Donut(doc.getNextId("D"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]), parseFloat(props[41]));
         } else if (type === "ARC") {
           entity = new Arc(doc.getNextId("A"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]), 
             parseFloat(props[50]) * Math.PI / 180, parseFloat(props[51]) * Math.PI / 180, true);
@@ -167,14 +172,12 @@ export class DXFImporter {
           const angle = parseFloat(props[52] || "0");
           const vertices: { x: number, y: number }[] = [];
           
-          let k = i - Object.keys(props).length * 2 - 2; 
-          while (k < groups.length && !(groups[k].code === 0 && groups[k].value !== "HATCH")) {
-            if (groups[k].code === 10) {
-              const vx = parseFloat(groups[k].value);
-              const vy = parseFloat(groups[k+1].code === 20 ? groups[k+1].value : "0");
+          for (let k = 0; k < entityGroups.length; k++) {
+            if (entityGroups[k].code === 10) {
+              const vx = parseFloat(entityGroups[k].value);
+              const vy = parseFloat(entityGroups[k+1] && entityGroups[k+1].code === 20 ? entityGroups[k+1].value : "0");
               vertices.push({ x: vx, y: vy });
             }
-            k++;
           }
           entity = new Hatch(doc.getNextId("H"), vertices, pattern, scale, angle);
         } else if (type === "POLYLINE") {
@@ -206,21 +209,21 @@ export class DXFImporter {
             else if (dimType === 3) typeStr = 'RADIUS';
             else if (dimType === 1) typeStr = 'LINEAR';
             
-            const x1 = parseFloat(props[13]);
-            const y1 = parseFloat(props[23]);
-            const x2 = parseFloat(props[14]);
-            const y2 = parseFloat(props[24]);
+            const x1 = parseFloat(props[13] || "0");
+            const y1 = parseFloat(props[23] || "0");
+            const x2 = parseFloat(props[14] || "0");
+            const y2 = parseFloat(props[24] || "0");
             const textHeight = parseFloat(props[40] || "2.5");
             const offset = 10;
             
             const dim = new Dimension(doc.getNextId("DIM"), typeStr, x1, y1, x2, y2, offset);
             dim.style.textHeight = textHeight;
             
-            if (props[15] && props[25]) {
-              dim.dimLineLocation = { x: parseFloat(props[15]), y: parseFloat(props[25]) };
+            if (props[10] !== undefined && props[20] !== undefined) {
+              dim.dimLineLocation = { x: parseFloat(props[10]), y: parseFloat(props[20]) };
             }
             
-            if (typeStr === 'ANGULAR' && props[15] && props[25]) {
+            if (typeStr === 'ANGULAR' && props[15] !== undefined && props[25] !== undefined) {
               dim.properties = { vertex: { x: parseFloat(props[15]), y: parseFloat(props[25]) } };
             }
             

@@ -10,7 +10,7 @@
 
 ### Phase B (Advanced Drafting & Refinement)
 - [ ] Implement CHAMFER command <!-- id: 20 -->
-- [ ] Implement DIMRADIUS and DIMANGULAR commands <!-- id: 27 -->
+- [x] Implement DIMRADIUS and DIMANGULAR commands <!-- id: 27 -->
 - [ ] Implement RECTANG command (wrapper for Polyline) <!-- id: 28 -->
 - [ ] Implement DONUT command <!-- id: 23 -->
 - [ ] Implement BREAK and JOIN commands <!-- id: 29 -->
@@ -44,3 +44,4 @@
 - [x] Implement ROTATE and SCALE commands <!-- id: 6 -->
 - [x] Standardize dynamic prompts <!-- id: 7 -->
 - [x] Implement MIRROR command <!-- id: 3 -->
+- [x] Implement DIMRADIUS and DIMANGULAR commands <!-- id: 27 -->

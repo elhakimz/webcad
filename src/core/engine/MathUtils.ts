@@ -7,6 +7,19 @@ import { Entity } from "../model/Entity";
 
 export type Point = { x: number; y: number };
 
+export function isPointInPolygon(p: Point, vertices: Point[]): boolean {
+  let inside = false;
+  for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    const xi = vertices[i].x, yi = vertices[i].y;
+    const xj = vertices[j].x, yj = vertices[j].y;
+
+    const intersect = ((yi > p.y) !== (yj > p.y)) &&
+      (p.x < (xj - xi) * (p.y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 /**
  * Calculates circle parameters from 3 points.
  * Returns { cx, cy, r, startAngle, endAngle, ccw } or null if collinear.
@@ -356,7 +369,7 @@ export function lineSegmentIntersection(line: Line, segStart: Point, segEnd: Poi
   const t = ((sx1 - lx1) * dy2 - (sy1 - ly1) * dx2) / denom;
   const u = ((sx1 - lx1) * dy1 - (sy1 - ly1) * dx1) / denom;
   
-  if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
     return { x: lx1 + t * dx1, y: ly1 + t * dy1 };
   }
   return null;
@@ -368,7 +381,11 @@ export function clipLineWithPolygon(line: Line, vertices: Point[]): Line[] {
   for (let i = 0; i < vertices.length; i++) {
     const j = (i + 1) % vertices.length;
     const pt = lineSegmentIntersection(line, vertices[i], vertices[j]);
-    if (pt) intersections.push(pt);
+    if (pt) {
+      // Avoid duplicate points at vertices
+      const exists = intersections.some(p => Math.abs(p.x - pt.x) < 1e-6 && Math.abs(p.y - pt.y) < 1e-6);
+      if (!exists) intersections.push(pt);
+    }
   }
   
   if (intersections.length < 2) return [];
@@ -384,9 +401,12 @@ export function clipLineWithPolygon(line: Line, vertices: Point[]): Line[] {
   });
   
   const segments: Line[] = [];
-  for (let i = 0; i < intersections.length - 1; i += 2) {
-    if (i + 1 < intersections.length) {
-      segments.push({ p1: intersections[i], p2: intersections[i + 1] });
+  // For convex polygons, pairing should be 0-1, 2-3, etc.
+  for (let i = 0; i < intersections.length - 1; i++) {
+    const p1 = intersections[i];
+    const p2 = intersections[i + 1];
+    if (isPointInPolygon({ x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }, vertices)) {
+      segments.push({ p1, p2 });
     }
   }
   return segments;
@@ -762,3 +782,6 @@ export function sortConnected(entities: (LineEntity | ArcEntity)[]): (LineEntity
   }
   return sorted;
 }
+
+
+

@@ -290,6 +290,7 @@ export class App {
     const isEditCommand = this.isEditCommand(activeName);
     const isSelectionStep = !this.cmd.active || 
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
         (this.cmd.active && this.cmd.active.step === 0 && activeName === 'DimRadiusCommand') ||
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
@@ -307,9 +308,7 @@ export class App {
         const isCrossing = worldPt.x < this.selectionStartPoint.x;
         let found: Entity[] = [];
         const currentLayer = this.doc.layers.currentLayerName;
-        const selectableEntities = isEditCommand 
-          ? this.doc.getAllEntities().filter(e => e.layer === currentLayer)
-          : this.doc.getAllEntities();
+        const selectableEntities = this.doc.getAllEntities().filter(e => e.layer === currentLayer);
 
         if (isCrossing) {
             found = SelectionEngine.getEntitiesInCrossingSpatial(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, this.doc, selectableEntities);
@@ -317,7 +316,16 @@ export class App {
             found = SelectionEngine.getEntitiesInWindowSpatial(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, this.doc, selectableEntities);
         }
         
-        found.forEach(e => this.selectedEntityIds.add(e.id));
+        for (const e of found) {
+            this.selectedEntityIds.add(e.id);
+            if (this.cmd.active) {
+                if ('setEntity' in this.cmd.active) {
+                    (this.cmd.active as any).setEntity(e);
+                }
+                const res = await this.cmd.inputString(e.id, this.doc.units);
+                if (res) result = res;
+            }
+        }
         this.reportSelectionDimensions();
     }
 
@@ -338,6 +346,7 @@ export class App {
     const isEditCommand = this.isEditCommand(activeName);
     const isSelectionStep = !this.cmd.active || 
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
         (this.cmd.active && this.cmd.active.step === 0 && activeName === 'DimRadiusCommand') ||
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
@@ -349,9 +358,7 @@ export class App {
     
     if (isSelectionStep) {
         const currentLayer = this.doc.layers.currentLayerName;
-        const selectableEntities = isEditCommand 
-            ? this.doc.getAllEntities().filter(e => e.layer === currentLayer)
-            : this.doc.getAllEntities();
+        const selectableEntities = this.doc.getAllEntities().filter(e => e.layer === currentLayer);
 
         // Check if clicking near an Ellipse - use larger tolerance for better selection
         const entityType = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, 200 / this.viewer.camera.zoom, this.doc, selectableEntities)?.constructor.name;
@@ -378,9 +385,10 @@ export class App {
             const isBreakPick = activeName === 'BreakCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1 || this.cmd.active?.step === 2);
             const isLengthenPick = activeName === 'LengthenCommand' && this.cmd.active?.step === 2;
             const isDimRadiusPick = activeName === 'DimRadiusCommand' && this.cmd.active?.step === 0;
+            const isDimAngularPick = activeName === 'DimAngularCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
 
-            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isDimRadiusPick)) {       
-                if (isDimRadiusPick && (this.cmd.active as any).setEntity) {
+            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isDimRadiusPick || isDimAngularPick)) {       
+                if ((isDimRadiusPick || isDimAngularPick) && (this.cmd.active as any).setEntity) {
                   (this.cmd.active as any).setEntity(entity);
                 }
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y });                   if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet' || res.action === 'chamfer' || res.action === 'break' || res.action === 'lengthen')) {

@@ -44,6 +44,7 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **OFFSET / ARRAY:** Distance-based offset and Rectangular/Polar array generation.
 -   **BLOCK / INSERT:** Symbol management with block definitions and efficient viewport instantiation.
 -   **ERASE / MOVE / COPY / ROTATE / SCALE / MIRROR:** Full suite of precise modification tools.
+-   **DIMENSIONING:** Professional engineering annotations including `DIMLINEAR`, `DIMALIGNED`, `DIMRADIUS` (with automatic one-click placement), and `DIMANGULAR`.
 -   **ZOOM:** `Zoom Window`, `Zoom All`, and factor-based zooming.
 -   **NEW:** Workspace reset with safety confirmation prompt.
 
@@ -54,7 +55,7 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **Status Bar:** Real-time world coordinate tracking (respecting `UNITS`), layer info, and clickable mode tags (**[SNAP]**, **[GRID]**, **[ORTHO]**).
 
 ### 🖱️ Selection & Interaction
--   **Selection Engine:** Advanced AABB-based hit-testing and precise geometry selection.
+-   **Selection Engine:** Advanced AABB-based hit-testing and precise geometry selection (including Lines, Circles, Arcs, and Dimensions).
 -   **Box Selection:** Window/Crossing modes with dashed visual indicators.
 -   **Pan & Zoom:** Intuitive middle-click pan and cursor-centered scroll zoom.
 
@@ -95,8 +96,9 @@ npm run lint
 -   **`src/ui/`**: DOS-style screens and components (`MainMenuScreen`, `CommandLine`, `StatusBar`).
 
 ## 📍 Roadmap Priorities
--   [ ] **Engineering Annotation:** Implement `DIMLINEAR` and `DIMALIGNED` dimensioning.
--   [ ] **Refinement:** `CHAMFER` (beveled corners) and `DONUT` entities.
+-   [x] **Engineering Annotation:** Implement `DIMLINEAR`, `DIMALIGNED`, `DIMRADIUS`, and `DIMANGULAR`.
+-   [x] **Refinement:** `CHAMFER` (beveled corners) and `DONUT` entities.
+-   [x] **Selection:** Support for editing and erasing Dimension entities.
 -   [ ] **Snaps:** Intersection and Perpendicular snapping modes.
 -   [ ] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT.
 

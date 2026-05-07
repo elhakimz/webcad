@@ -4,6 +4,7 @@ import { SelectionEngine } from './SelectionEngine'
 import { Line } from '../model/Line'
 import { Circle } from '../model/Circle'
 import { Polyline } from '../model/Polyline'
+import { Dimension } from '../model/Dimension'
 
 describe('SelectionEngine', () => {
   it('should select a line within tolerance', () => {
@@ -53,5 +54,16 @@ describe('SelectionEngine', () => {
     expect(SelectionEngine.getEntityAt(50, 0, 5, entities)).toBe(poly);
     expect(SelectionEngine.getEntityAt(100, 50, 5, entities)).toBe(poly);
     expect(SelectionEngine.getEntityAt(50, 50, 5, entities)).toBeNull();
+  });
+  it('should select a dimension (RADIUS) within tolerance', () => {
+    const dim = new Dimension('D1', 'RADIUS', 0, 0, 50, 0, 10);
+    const entities = [dim];
+    
+    // Near the radius line (center 0,0 to edge 50,0)
+    expect(SelectionEngine.getEntityAt(25, 0, 5, entities)).toBe(dim);
+    expect(SelectionEngine.getEntityAt(25, 3, 5, entities)).toBe(dim);
+    
+    // Far from the radius line
+    expect(SelectionEngine.getEntityAt(25, 10, 5, entities)).toBeNull();
   });
 });

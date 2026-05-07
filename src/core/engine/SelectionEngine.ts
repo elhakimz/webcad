@@ -7,6 +7,7 @@ import { Polyline } from "../model/Polyline";
 import { Text } from "../model/Text";
 import { Solid } from "../model/Solid";
 import { Ellipse } from "../model/Ellipse";
+import { Dimension } from "../model/Dimension";
 import { Document } from "../model/Document";
 import * as MathUtils from "./MathUtils";
 import { bulgeToArc } from "./MathUtils";
@@ -93,6 +94,13 @@ export class SelectionEngine {
       const result = dist <= tolerance;
       console.log("[SELECTION] Ellipse near:", result);
       return result;
+    }
+    if (entity instanceof Dimension) {
+      if (entity.type === 'RADIUS') {
+        // Radius line from center (x1,y1) to edge (x2,y2)
+        return MathUtils.distancePointToLineSegment(px, py, entity.x1, entity.y1, entity.x2, entity.y2) <= tolerance;
+      }
+      return true;
     }
     return false;
   }

@@ -1020,39 +1020,70 @@ export class Viewer {
     let e1: { x: number, y: number };
     let e2: { x: number, y: number };
 
-    if (entity.type === 'RADIUS' && entity.dimLineLocation) {
-      const leaderPoints = [
-        new THREE.Vector3(entity.x1, entity.y1, 0),
-        new THREE.Vector3(entity.dimLineLocation.x, entity.dimLineLocation.y, 0)
+    if (entity.type === 'RADIUS') {
+      const p1 = { x: entity.x1, y: entity.y1 }; // Center
+      const p2 = { x: entity.x2, y: entity.y2 }; // Boundary point
+      const click = entity.dimLineLocation || p2;
+      
+      const r = entity.computeValue();
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const ux = r > 1e-6 ? dx / r : 1;
+      const uy = r > 1e-6 ? dy / r : 0;
+      
+      const clickDx = click.x - p1.x;
+      const clickDy = click.y - p1.y;
+      const clickDist = Math.sqrt(clickDx * clickDx + clickDy * clickDy);
+      
+      // Line from center to boundary (no extra extension beyond arrow)
+      const linePoints = [
+        new THREE.Vector3(p1.x, p1.y, 0),
+        new THREE.Vector3(p2.x, p2.y, 0)
       ];
-      const leaderMat = new THREE.LineBasicMaterial({ color });
-      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(leaderPoints), leaderMat));
-
-      const arrowDirX = entity.x1 - entity.dimLineLocation.x;
-      const arrowDirY = entity.y1 - entity.dimLineLocation.y;
-      const arrowLen = Math.sqrt(arrowDirX * arrowDirX + arrowDirY * arrowDirY);
-      if (arrowLen > 0.1) {
-        const ax = arrowDirX / arrowLen;
-        const ay = arrowDirY / arrowLen;
-        const arrowBase = { x: entity.dimLineLocation.x + ax * arrowSize, y: entity.dimLineLocation.y + ay * arrowSize };
-        const perpX = -ay;
-        const perpY = ax;
-        const arrowLeft = { x: arrowBase.x + perpX * arrowSize * 0.5, y: arrowBase.y + perpY * arrowSize * 0.5 };
-        const arrowRight = { x: arrowBase.x - perpX * arrowSize * 0.5, y: arrowBase.y - perpY * arrowSize * 0.5 };
-        const arrowShape = new THREE.Shape();
-        arrowShape.moveTo(entity.dimLineLocation.x, entity.dimLineLocation.y);
-        arrowShape.lineTo(arrowLeft.x, arrowLeft.y);
-        arrowShape.lineTo(arrowRight.x, arrowRight.y);
-        arrowShape.closePath();
-        group.add(new THREE.Mesh(new THREE.ShapeGeometry(arrowShape), new THREE.MeshBasicMaterial({ color })));
+      
+      const lineMat = new THREE.LineBasicMaterial({ color });
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), lineMat));
+      
+      // Arrow at boundary p2 pointing to object's edge
+      const arrowBase = { x: p2.x - ux * arrowSize, y: p2.y - uy * arrowSize };
+      const perpX = -uy;
+      const perpY = ux;
+      const arrowLeft = { x: arrowBase.x + perpX * arrowSize * 0.5, y: arrowBase.y + perpY * arrowSize * 0.5 };
+      const arrowRight = { x: arrowBase.x - perpX * arrowSize * 0.5, y: arrowBase.y - perpY * arrowSize * 0.5 };
+      const arrowShape = new THREE.Shape();
+      arrowShape.moveTo(p2.x, p2.y);
+      arrowShape.lineTo(arrowLeft.x, arrowLeft.y);
+      arrowShape.lineTo(arrowRight.x, arrowRight.y);
+      arrowShape.closePath();
+      group.add(new THREE.Mesh(new THREE.ShapeGeometry(arrowShape), new THREE.MeshBasicMaterial({ color })));
+      
+      const text = "R" + r.toFixed(style.precision);
+      if (this.font) {
+        const shapes = this.font.generateShapes(text, style.textHeight);
+        const textGeo = new THREE.ShapeGeometry(shapes);
+        const textMat = new THREE.MeshBasicMaterial({ color });
+        const textMesh = new THREE.Mesh(textGeo, textMat);
+        
+        // Align text with dimension line
+        const angle = Math.atan2(uy, ux);
+        textMesh.rotation.z = angle;
+        
+        // Position at 50% of the radius (middle of the line)
+        const midDist = r * 0.5;
+        const tx = p1.x + ux * midDist;
+        const ty = p1.y + uy * midDist;
+        
+        // Offset text slightly perpendicular to sit "over" the line
+        const vOffset = 1;
+        const ox = -uy * vOffset;
+        const oy = ux * vOffset;
+        
+        textMesh.position.set(tx + ox, ty + oy, 0);
+        
+        group.add(textMesh);
       }
-
-      const midX = (entity.x1 + entity.dimLineLocation.x) / 2;
-      const midY = (entity.y1 + entity.dimLineLocation.y) / 2;
-      const perpX = -arrowDirY / arrowLen;
-      const perpY = arrowDirX / arrowLen;
-      textPos = { x: midX + perpX * gap, y: midY + perpY * gap };
-    } else if (entity.type === 'ANGULAR' && entity.properties && entity.properties.vertex && entity.dimLineLocation) {
+      return group;
+    } else if (entity.type === 'ANGULAR') {
       const vertex = entity.properties.vertex as { x: number, y: number };
       
       const line1Points = [

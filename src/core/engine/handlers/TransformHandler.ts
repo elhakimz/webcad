@@ -11,7 +11,7 @@ import { Point } from "../MathUtils";
 
 export class TransformHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['move', 'rotate', 'scale', 'copy', 'mirror', 'array', 'offset', 'trim', 'extend', 'fillet', 'chamfer', 'break', 'join'].includes(action.action);
+    return ['move', 'rotate', 'scale', 'copy', 'mirror', 'array', 'offset', 'trim', 'extend', 'fillet', 'chamfer', 'break', 'join', 'lengthen'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
@@ -184,6 +184,115 @@ export class TransformHandler implements ActionHandler {
       }
       this.cleanup(context);
       return "Entities cannot be joined.";
+    }
+
+    if (action.action === 'lengthen' && action.id && action.mode && action.value !== undefined && action.pickPt) {
+      const entity = doc.getEntity(action.id);
+
+      if (entity instanceof Line) {
+        const dx = entity.x2 - entity.x1;
+        const dy = entity.y2 - entity.y1;
+        const currentLength = Math.sqrt(dx * dx + dy * dy);
+        if (currentLength < 1e-6) {
+          this.cleanup(context);
+          return "Cannot lengthen zero-length line.";
+        }
+
+        let newLength: number;
+        switch (action.mode) {
+          case 'DELTA':
+            newLength = currentLength + action.value;
+            break;
+          case 'PERCENT':
+            newLength = currentLength * (action.value / 100);
+            break;
+          case 'TOTAL':
+            newLength = action.value;
+            break;
+        }
+
+        if (newLength < 1e-6) {
+          this.cleanup(context);
+          return "Resulting length too small.";
+        }
+
+        const delta = newLength - currentLength;
+        const ux = dx / currentLength;
+        const uy = dy / currentLength;
+
+        const d1 = Math.sqrt((action.pickPt.x - entity.x1) ** 2 + (action.pickPt.y - entity.y1) ** 2);
+        const d2 = Math.sqrt((action.pickPt.x - entity.x2) ** 2 + (action.pickPt.y - entity.y2) ** 2);
+        const extendEnd = d2 < d1;
+
+        const before = entity.clone(entity.id);
+        if (extendEnd) {
+          entity.x2 = entity.x2 + ux * delta;
+          entity.y2 = entity.y2 + uy * delta;
+        } else {
+          entity.x1 = entity.x1 - ux * delta;
+          entity.y1 = entity.y1 - uy * delta;
+        }
+
+        doc.recordTransform(before, entity);
+        addEntity(entity, false, false);
+        this.cleanup(context);
+        return `Line lengthened to ${newLength.toFixed(2)}.`;
+      }
+
+      if (entity instanceof ArcEntity) {
+        const startPt = { x: entity.cx + entity.r * Math.cos(entity.startAngle), y: entity.cy + entity.r * Math.sin(entity.startAngle) };
+        const endPt = { x: entity.cx + entity.r * Math.cos(entity.endAngle), y: entity.cy + entity.r * Math.sin(entity.endAngle) };
+
+        let sweepAngle = entity.endAngle - entity.startAngle;
+        if (entity.ccw && sweepAngle < 0) sweepAngle += Math.PI * 2;
+        if (!entity.ccw && sweepAngle > 0) sweepAngle -= Math.PI * 2;
+        
+        const currentArcLength = Math.abs(entity.r * sweepAngle);
+        if (currentArcLength < 1e-6) {
+          this.cleanup(context);
+          return "Cannot lengthen zero-length arc.";
+        }
+
+        let newArcLength: number;
+        switch (action.mode) {
+          case 'DELTA':
+            newArcLength = currentArcLength + action.value;
+            break;
+          case 'PERCENT':
+            newArcLength = currentArcLength * (action.value / 100);
+            break;
+          case 'TOTAL':
+            newArcLength = action.value;
+            break;
+        }
+
+        if (newArcLength < 1e-6) {
+          this.cleanup(context);
+          return "Resulting arc length too small.";
+        }
+
+        const deltaAngle = newArcLength / entity.r - Math.abs(sweepAngle);
+        const sign = entity.ccw ? 1 : -1;
+
+        const d1 = Math.sqrt((action.pickPt.x - startPt.x) ** 2 + (action.pickPt.y - startPt.y) ** 2);
+        const d2 = Math.sqrt((action.pickPt.x - endPt.x) ** 2 + (action.pickPt.y - endPt.y) ** 2);
+        const extendEnd = d2 < d1;
+
+        const before = entity.clone(entity.id);
+        if (extendEnd) {
+          entity.endAngle = entity.endAngle + sign * deltaAngle;
+        } else {
+          entity.startAngle = entity.startAngle - sign * deltaAngle;
+        }
+
+        doc.recordTransform(before, entity);
+        addEntity(entity, false, false);
+        this.cleanup(context);
+        return `Arc lengthened to ${newArcLength.toFixed(2)}.`;
+      }
+
+      this.cleanup(context);
+      return "Lengthen not supported for this entity type.";
     }
 
     if (action.action === 'move' && (action.id || action.ids) && action.dx !== undefined) {

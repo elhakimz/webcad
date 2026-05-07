@@ -129,7 +129,7 @@ export function distancePointToPoint(x1: number, y1: number, x2: number, y2: num
 export function projectPointOnLine(px: number, py: number, x1: number, y1: number, x2: number, y2: number): { x: number, y: number } | null {
   const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
   if (l2 === 0) return null;
-  let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+  const t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
   return { x: x1 + t * (x2 - x1), y: y1 + t * (y2 - y1) };
 }
 

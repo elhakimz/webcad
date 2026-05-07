@@ -144,7 +144,7 @@ export class App {
 
   private isEditCommand(name?: string): boolean {
     if (!name) return false;
-    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand', 'ArrayCommand', 'OffsetCommand', 'BlockCommand', 'JoinCommand'];
+    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand', 'ArrayCommand', 'OffsetCommand', 'BlockCommand', 'JoinCommand', 'LengthenCommand'];
     const cmdName = name.endsWith('Command') ? name : name.charAt(0).toUpperCase() + name.slice(1).toLowerCase() + 'Command';
     return editCommands.includes(cmdName);
   }
@@ -339,7 +339,8 @@ export class App {
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1 || this.cmd.active.step === 2) && activeName === 'BreakCommand') ||
-        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand');
+        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand') ||
+        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'LengthenCommand');
     let tolerance = 5 / this.viewer.camera.zoom;
     
     if (isSelectionStep) {
@@ -366,17 +367,18 @@ export class App {
 
             this.reportSelectionDimensions();
 
-            // For commands that pick a target for immediate action (Trim, Extend, Offset at Step 1, Fillet at Step 0/1)
+            // For commands that pick a target for immediate action (Trim, Extend, Offset at Step 1, Fillet at Step 0/1, Lengthen at Step 2)
             const activeName = this.cmd.active?.constructor.name;
             const isImmediatePick = (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && this.cmd.active?.step === 1;
 const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
             const isChamferPick = activeName === 'ChamferCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
             const isBreakPick = activeName === 'BreakCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1 || this.cmd.active?.step === 2);
+            const isLengthenPick = activeName === 'LengthenCommand' && this.cmd.active?.step === 2;
 
-            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick)) {
+            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick)) {
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y });
                 console.log("[CLICK DEBUG] inputString result:", res);
-                if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet' || res.action === 'chamfer' || res.action === 'break')) {
+                if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet' || res.action === 'chamfer' || res.action === 'break' || res.action === 'lengthen')) {
                     (res as CommandAction).pickPt = { x: worldPt.x, y: worldPt.y };
                 }
                 return await this.handleResult(res);
@@ -496,7 +498,7 @@ const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step ==
       if (actionResult !== undefined) {
         // If the action resulted in clearing the active command, ensure markers are cleared too
         const activeName = this.cmd.active?.constructor.name;
-        const isContinuous = activeName === 'LayerCommand' || activeName === 'OffsetCommand' || activeName === 'TrimCommand' || activeName === 'ExtendCommand'; // Actions that keep command active
+        const isContinuous = activeName === 'LayerCommand' || activeName === 'OffsetCommand' || activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'LengthenCommand'; // Actions that keep command active
 
         if (!this.cmd.active || (this.cmd.active && !isContinuous)) {
             this.terminateActiveCommand();

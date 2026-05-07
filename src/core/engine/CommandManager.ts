@@ -31,6 +31,7 @@ import { FilletCommand } from "../commands/FilletCommand"
 import { ChamferCommand } from "../commands/ChamferCommand"
 import { BreakCommand } from "../commands/BreakCommand"
 import { JoinCommand } from "../commands/JoinCommand"
+import { LengthenCommand } from "../commands/LengthenCommand"
 import { OrthoCommand } from "../commands/OrthoCommand"
 import { GridCommand } from "../commands/GridCommand"
 import { SnapCommand } from "../commands/SnapCommand"
@@ -218,6 +219,10 @@ export class CommandManager {
       }
       this.active = new JoinCommand()
       response = "JOIN"
+    }
+    else if(cmdName === "LENGTHEN"){
+      this.active = new LengthenCommand()
+      response = "LENGTHEN"
     }
     else if(cmdName === "TRIM"){
       this.active = new TrimCommand(selection)

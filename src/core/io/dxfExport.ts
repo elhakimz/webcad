@@ -13,6 +13,7 @@ import { Trace } from "../model/Trace";
 import { Hatch } from "../model/Hatch";
 import { Shape } from "../model/Shape";
 import { Insert } from "../model/Insert";
+import { Dimension } from "../model/Dimension";
 
 export class DXFExporter {
   export(doc: Document): string {
@@ -175,6 +176,47 @@ export class DXFExporter {
       s += " 10\n" + e.x + "\n 20\n" + e.y + "\n 30\n0.0\n";
       s += " 41\n" + e.scaleX + "\n 42\n" + e.scaleY + "\n 43\n1.0\n";
       s += " 50\n" + e.rotation + "\n";
+    } else if (e instanceof Dimension) {
+      s += "  0\nDIMENSION\n";
+      s += "  8\n" + layer + "\n";
+      
+      let dimTypeCode = 1;
+      if (e.type === 'LINEAR') dimTypeCode = 1;
+      else if (e.type === 'ALIGNED') dimTypeCode = 1;
+      else if (e.type === 'ANGULAR') dimTypeCode = 2;
+      else if (e.type === 'RADIUS') dimTypeCode = 3;
+      s += " 70\n" + dimTypeCode + "\n";
+      
+      let textX = (e.x1 + e.x2) / 2;
+      let textY = (e.y1 + e.y2) / 2;
+      
+      if (e.type === 'ANGULAR' && e.properties && (e.properties as { vertex?: { x: number, y: number } }).vertex) {
+        const vertex = (e.properties as { vertex: { x: number, y: number } }).vertex;
+        s += " 13\n" + e.x1 + "\n 23\n" + e.y1 + "\n 33\n0.0\n";
+        s += " 14\n" + e.x2 + "\n 24\n" + e.y2 + "\n 34\n0.0\n";
+        s += " 15\n" + vertex.x + "\n 25\n" + vertex.y + "\n 35\n0.0\n";
+        if (e.dimLineLocation) {
+          textX = e.dimLineLocation.x;
+          textY = e.dimLineLocation.y;
+        }
+        s += " 16\n" + textX + "\n 26\n" + textY + "\n 36\n0.0\n";
+      } else {
+        s += " 13\n" + e.x1 + "\n 23\n" + e.y1 + "\n 33\n0.0\n";
+        s += " 14\n" + e.x2 + "\n 24\n" + e.y2 + "\n 34\n0.0\n";
+        if (e.dimLineLocation) {
+          s += " 15\n" + e.dimLineLocation.x + "\n 25\n" + e.dimLineLocation.y + "\n 35\n0.0\n";
+        }
+      }
+      
+      s += " 10\n" + textX + "\n 20\n" + textY + "\n 30\n0.0\n";
+      s += " 40\n" + e.style.textHeight + "\n";
+      s += "  1\n" + e.computeValue().toFixed(e.style.precision) + "\n";
+      if (e.type === 'LINEAR' || e.type === 'ALIGNED') {
+        const dx = e.x2 - e.x1;
+        const dy = e.y2 - e.y1;
+        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+        s += " 50\n" + angle + "\n";
+      }
     }
 
     return s;

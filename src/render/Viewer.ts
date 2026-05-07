@@ -30,6 +30,8 @@ export class Viewer {
 
   private isPanning = false
   private isLeftPanEnabled = false
+  private hasPanned = false
+  private panEnded = false
   private lastPanPos = new THREE.Vector2()
   private panStartX = 0
   private panStartY = 0
@@ -549,6 +551,13 @@ export class Viewer {
 
     this.canvas.addEventListener('pointerdown', (e) => {
       if (e.button === 1 || (e.button === 0 && this.isLeftPanEnabled)) { 
+        if (e.button === 0 && this.isLeftPanEnabled && this.hasPanned) {
+          this.isLeftPanEnabled = false
+          this.isPanning = false
+          this.hasPanned = false
+          this.panEnded = true
+          return
+        }
         this.isPanning = true
         this.lastPanPos.set(e.clientX, e.clientY)
         if (this.isLeftPanEnabled) {
@@ -561,6 +570,7 @@ export class Viewer {
 
     this.canvas.addEventListener('pointermove', (e) => {
       if (this.isPanning) {
+        if (this.isLeftPanEnabled) this.hasPanned = true
         const dx = e.clientX - this.lastPanPos.x
         const dy = e.clientY - this.lastPanPos.y
         this.camera.position.x -= dx / this.camera.zoom
@@ -572,6 +582,10 @@ export class Viewer {
 
     this.canvas.addEventListener('pointerup', (e) => {
       if (e.button === 1) {
+        this.isPanning = false
+        this.canvas.releasePointerCapture(e.pointerId)
+      }
+      if (e.button === 0 && this.isLeftPanEnabled) {
         this.isPanning = false
         this.canvas.releasePointerCapture(e.pointerId)
       }
@@ -1579,12 +1593,25 @@ export class Viewer {
     if (enabled) {
       this.panStartX = this.camera.position.x
       this.panStartY = this.camera.position.y
+      this.hasPanned = false
     }
     if (!enabled) this.isPanning = false
   }
 
+  wasPanEnded(): boolean {
+    return this.panEnded
+  }
+
+  clearPanEndedFlag() {
+    this.panEnded = false
+  }
+
   getPanStartPosition() {
     return { x: this.panStartX, y: this.panStartY }
+  }
+
+  isPanningActive() {
+    return this.isPanning;
   }
 
   setPanStartPosition(x: number, y: number) {
@@ -1634,6 +1661,23 @@ export class Viewer {
           const points = curve.getPoints(16);
           geo = new THREE.BufferGeometry().setFromPoints(points);
           mesh = new THREE.LineLoop(geo, mat);
+          break;
+        case SnapType.INTERSECTION:
+          geo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(-size, -size, 0),
+            new THREE.Vector3(size, size, 0),
+            new THREE.Vector3(-size, size, 0),
+            new THREE.Vector3(size, -size, 0)
+          ]);
+          mesh = new THREE.LineSegments(geo, mat);
+          break;
+        case SnapType.PERPENDICULAR:
+          geo = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(0, size, 0),
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(size, 0, 0)
+          ]);
+          mesh = new THREE.Line(geo, mat);
           break;
       }
 

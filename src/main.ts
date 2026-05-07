@@ -185,7 +185,6 @@ window.addEventListener("keydown", async (e) => {
   // Handle Enter to accept PAN
   if (e.key === 'Enter' && app.cmd.active) {
     if (app.cmd.active.constructor.name === 'PanCommand') {
-      cmdLine.print("PAN command ended.")
       app.terminateActiveCommand()
       viewer.setLeftPanEnabled(false)
       updatePrompt()
@@ -253,6 +252,12 @@ cmdLine.onCommand(async (val) => {
 // simple click input
 canvas.addEventListener("pointerdown", (e) => {
   app.pointerDown(e.clientX, e.clientY);
+  // Check if pan was just ended by this click
+  if (viewer.wasPanEnded()) {
+    cmdLine.print("PAN ended.")
+    updatePrompt()
+    viewer.clearPanEndedFlag()
+  }
 });
 
 canvas.addEventListener("pointerup", async (e) => {

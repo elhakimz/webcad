@@ -11,6 +11,7 @@ import { Ellipse } from "../model/Ellipse";
 import { Hatch } from "../model/Hatch";
 import { Shape } from "../model/Shape";
 import { Insert } from "../model/Insert";
+import { Dimension } from "../model/Dimension";
 
 interface DXFGroup {
   code: number;
@@ -198,6 +199,32 @@ export class DXFImporter {
         } else if (type === "INSERT") {
             entity = new Insert(doc.getNextId("I"), props[2], parseFloat(props[10]), parseFloat(props[20]), 
                 parseFloat(props[41] || "1.0"), parseFloat(props[42] || "1.0"), parseFloat(props[50] || "0"));
+        } else if (type === "DIMENSION") {
+            const dimType = parseInt(props[70] || "1");
+            let typeStr: 'LINEAR' | 'ALIGNED' | 'ANGULAR' | 'RADIUS' = 'LINEAR';
+            if (dimType === 2) typeStr = 'ANGULAR';
+            else if (dimType === 3) typeStr = 'RADIUS';
+            else if (dimType === 1) typeStr = 'LINEAR';
+            
+            const x1 = parseFloat(props[13]);
+            const y1 = parseFloat(props[23]);
+            const x2 = parseFloat(props[14]);
+            const y2 = parseFloat(props[24]);
+            const textHeight = parseFloat(props[40] || "2.5");
+            const offset = 10;
+            
+            const dim = new Dimension(doc.getNextId("DIM"), typeStr, x1, y1, x2, y2, offset);
+            dim.style.textHeight = textHeight;
+            
+            if (props[15] && props[25]) {
+              dim.dimLineLocation = { x: parseFloat(props[15]), y: parseFloat(props[25]) };
+            }
+            
+            if (typeStr === 'ANGULAR' && props[15] && props[25]) {
+              dim.properties = { vertex: { x: parseFloat(props[15]), y: parseFloat(props[25]) } };
+            }
+            
+            entity = dim;
         }
 
         if (entity) {

@@ -87,7 +87,12 @@ export class App {
 
   private getSnappedPoint(worldX: number, worldY: number): { x: number, y: number, snap: SnapPoint | null } {
     const tolerance = 10 / this.viewer.camera.zoom;
-    const snap = SnapEngine.getSnapPointSpatial(worldX, worldY, this.doc, tolerance);
+    
+    // Get base point from active command if available for PERPENDICULAR snap
+    const basePointCmd = this.cmd.active as unknown as HasBasePoint;
+    const base = (typeof basePointCmd?.getBasePoint === 'function') ? basePointCmd.getBasePoint() : null;
+    
+    const snap = SnapEngine.getSnapPointSpatial(worldX, worldY, this.doc, tolerance, base || undefined);
     
     let x = snap ? snap.x : worldX;
     let y = snap ? snap.y : worldY;
@@ -100,17 +105,13 @@ export class App {
 
     // 2. Ortho Constraint (lowest priority)
     if (this.drafting.orthoEnabled && this.cmd.active) {
-        const basePointCmd = this.cmd.active as unknown as HasBasePoint;
-        if (typeof basePointCmd.getBasePoint === 'function') {
-            const base = basePointCmd.getBasePoint();
-            if (base && this.cmd.active.step && this.cmd.active.step >= 1) {
-                const dx = Math.abs(x - base.x);
-                const dy = Math.abs(y - base.y);
-                if (dx > dy) {
-                    y = base.y;
-                } else {
-                    x = base.x;
-                }
+        if (base && this.cmd.active.step && this.cmd.active.step >= 1) {
+            const dx = Math.abs(x - base.x);
+            const dy = Math.abs(y - base.y);
+            if (dx > dy) {
+                y = base.y;
+            } else {
+                x = base.x;
             }
         }
     }

@@ -11,6 +11,6 @@ export class PanCommand implements Command {
   }
 
   getPrompt() {
-    return "PAN Drag with left mouse button. Press Enter or ESC to finish.";
+    return "";
   }
 }

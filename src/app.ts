@@ -290,6 +290,7 @@ export class App {
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
         (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand');
 
     let result: CommandResponse | undefined;
@@ -335,6 +336,7 @@ export class App {
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
         (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand');
     let tolerance = 5 / this.viewer.camera.zoom;
     
@@ -365,14 +367,13 @@ export class App {
             // For commands that pick a target for immediate action (Trim, Extend, Offset at Step 1, Fillet at Step 0/1)
             const activeName = this.cmd.active?.constructor.name;
             const isImmediatePick = (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && this.cmd.active?.step === 1;
-            const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
-            
-            console.log("[CLICK DEBUG] activeName:", activeName, "step:", this.cmd.active?.step, "isImmediatePick:", isImmediatePick, "entity:", entity.id);
+const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
+            const isChamferPick = activeName === 'ChamferCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
 
-            if (this.cmd.active && (isImmediatePick || isFilletPick)) {
+            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick)) {
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y });
                 console.log("[CLICK DEBUG] inputString result:", res);
-                if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet')) {
+                if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet' || res.action === 'chamfer')) {
                     (res as CommandAction).pickPt = { x: worldPt.x, y: worldPt.y };
                 }
                 return await this.handleResult(res);

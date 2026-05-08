@@ -38,6 +38,8 @@ import { DimAlignedCommand } from "../commands/DimAlignedCommand"
 import { DimRadiusCommand } from "../commands/DimRadiusCommand"
 import { DimDiameterCommand } from "../commands/DimDiameterCommand"
 import { DimAngularCommand } from "../commands/DimAngularCommand"
+import { DimTohCommand } from "../commands/DimTohCommand"
+import { DimTadCommand } from "../commands/DimTadCommand"
 import { StretchCommand } from "../commands/StretchCommand"
 import { OrthoCommand } from "../commands/OrthoCommand"
 import { GridCommand } from "../commands/GridCommand"
@@ -68,7 +70,7 @@ export class CommandManager {
       "CHAMFER", "BREAK", "JOIN", "LENGTHEN", "DIMLINEAR", 
       "DIMALIGNED", "DIMRADIUS", "DIMDIAMETER", "DIMANGULAR", 
       "STRETCH", "TRIM", "EXTEND", "BLOCK", "INSERT", "REGEN", 
-      "UNDO", "U", "REDO", "R"
+      "UNDO", "U", "REDO", "R", "DIMTOH", "DIMTAD"
     ];
   }
 
@@ -219,6 +221,14 @@ export class CommandManager {
     else if(cmdName === "SNAP"){
       this.active = new SnapCommand()
       response = "SNAP"
+    }
+    else if(cmdName === "DIMTOH"){
+      this.active = new DimTohCommand()
+      response = "DIMTOH"
+    }
+    else if(cmdName === "DIMTAD"){
+      this.active = new DimTadCommand()
+      response = "DIMTAD"
     }
     else if(cmdName === "ARRAY"){
       this.active = new ArrayCommand(selection)

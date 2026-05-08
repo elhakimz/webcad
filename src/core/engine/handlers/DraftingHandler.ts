@@ -3,11 +3,11 @@ import { CommandAction, CommandResponse } from "../../commands/types";
 
 export class DraftingHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['ortho', 'orthoToggle', 'grid', 'gridToggle', 'gridSet', 'snap', 'snapToggle', 'snapSet'].includes(action.action);
+    return ['ortho', 'orthoToggle', 'grid', 'gridToggle', 'gridSet', 'snap', 'snapToggle', 'snapSet', 'dimtoh', 'dimtad', 'dimtohToggle', 'dimtadToggle'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { drafting, terminateActiveCommand } = context;
+    const { drafting, terminateActiveCommand, doc } = context;
 
     if (action.action === 'ortho') {
       drafting.orthoEnabled = !!action.value; drafting.notify();
@@ -46,6 +46,24 @@ export class DraftingHandler implements ActionHandler {
         drafting.snapEnabled = true; drafting.notify();
         terminateActiveCommand();
         return `Snap spacing set to ${action.spacing}.`;
+    }
+
+    if (action.action === 'dimtoh') {
+        doc.dimtoh = !!action.value;
+        return `DIMTOH ${doc.dimtoh ? 'ON' : 'OFF'}`;
+    }
+    if (action.action === 'dimtohToggle') {
+        doc.dimtoh = !doc.dimtoh;
+        return `DIMTOH ${doc.dimtoh ? 'ON' : 'OFF'}`;
+    }
+
+    if (action.action === 'dimtad') {
+        doc.dimtad = !!action.value;
+        return `DIMTAD ${doc.dimtad ? 'ON' : 'OFF'}`;
+    }
+    if (action.action === 'dimtadToggle') {
+        doc.dimtad = !doc.dimtad;
+        return `DIMTAD ${doc.dimtad ? 'ON' : 'OFF'}`;
     }
 
     return undefined;

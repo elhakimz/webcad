@@ -7,6 +7,8 @@ export interface DimStyle {
   offset: number;
   gap: number;
   precision: number;
+  DIMTOH?: boolean;
+  DIMTAD?: boolean;
 }
 
 export class Dimension extends Entity {
@@ -32,7 +34,9 @@ export class Dimension extends Entity {
       arrowSize: 2.5,
       offset: 10,
       gap: 0,
-      precision: 2
+      precision: 2,
+      DIMTOH: false,
+      DIMTAD: false
     };
   }
 

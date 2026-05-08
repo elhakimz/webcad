@@ -1135,7 +1135,7 @@ export class Viewer {
         const ty = p1.y + uy * midDist;
         
         // Offset text slightly perpendicular to sit "over" the line
-        const vOffset = 1;
+        const vOffset = style.DIMTAD === false ? 0 : 1;
         const ox = -uy * vOffset;
         const oy = ux * vOffset;
         
@@ -1183,13 +1183,31 @@ export class Viewer {
       };
 
       const isAligned = entity.properties?.textAligned === true;
+      const useDogLeg = style.DIMTOH === true || (!isAligned && style.DIMTOH !== false);
 
       if (isInside) {
-        const linePoints = [
-          new THREE.Vector3(oppositePt.x, oppositePt.y, 0),
-          new THREE.Vector3(edgePt.x, edgePt.y, 0)
-        ];
-        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), lineMat));
+        if (style.DIMTAD === false) {
+          const midX = (oppositePt.x + edgePt.x) / 2;
+          const midY = (oppositePt.y + edgePt.y) / 2;
+          const gapHalf = textWidthApprox / 2 + style.gap;
+          
+          const line1 = [
+            new THREE.Vector3(oppositePt.x, oppositePt.y, 0),
+            new THREE.Vector3(midX - ux * gapHalf, midY - uy * gapHalf, 0)
+          ];
+          const line2 = [
+            new THREE.Vector3(midX + ux * gapHalf, midY + uy * gapHalf, 0),
+            new THREE.Vector3(edgePt.x, edgePt.y, 0)
+          ];
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line1), lineMat));
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line2), lineMat));
+        } else {
+          const linePoints = [
+            new THREE.Vector3(oppositePt.x, oppositePt.y, 0),
+            new THREE.Vector3(edgePt.x, edgePt.y, 0)
+          ];
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), lineMat));
+        }
         
         createArrow(edgePt, -ux, -uy);
         createArrow(oppositePt, ux, uy);
@@ -1210,8 +1228,9 @@ export class Viewer {
           const ox = -Math.cos(angle) * (width / 2);
           const oy = -Math.sin(angle) * (width / 2);
           
-          const vox = -Math.sin(angle) * 1;
-          const voy = Math.cos(angle) * 1;
+          const vOffset = style.DIMTAD === false ? 0 : 1;
+          const vox = -Math.sin(angle) * vOffset;
+          const voy = Math.cos(angle) * vOffset;
           
           textMesh.position.set(center.x + ox + vox, center.y + oy + voy, 0);
           group.add(textMesh);
@@ -1220,7 +1239,7 @@ export class Viewer {
         const outsideDist = Math.max(distToClick, radius + 5);
         const leaderEnd = { x: center.x + ux * outsideDist, y: center.y + uy * outsideDist };
         
-        if (isAligned) {
+        if (!useDogLeg) {
           const nx = -uy;
           const ny = ux;
           
@@ -1240,14 +1259,32 @@ export class Viewer {
              new THREE.Vector3(edgePt.x, edgePt.y, 0),
              new THREE.Vector3(dimLineEnd.x + nx * signD * overhang, dimLineEnd.y + ny * signD * overhang, 0)
           ];
-          const dimLine = [
-             new THREE.Vector3(dimLineStart.x, dimLineStart.y, 0),
-             new THREE.Vector3(dimLineEnd.x, dimLineEnd.y, 0)
-          ];
           
           group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(extLine1), lineMat));
           group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(extLine2), lineMat));
-          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(dimLine), lineMat));
+          
+          if (style.DIMTAD === false) {
+            const midX = (dimLineStart.x + dimLineEnd.x) / 2;
+            const midY = (dimLineStart.y + dimLineEnd.y) / 2;
+            const gapHalf = textWidthApprox / 2 + style.gap;
+            
+            const line1 = [
+              new THREE.Vector3(dimLineStart.x, dimLineStart.y, 0),
+              new THREE.Vector3(midX - ux * gapHalf, midY - uy * gapHalf, 0)
+            ];
+            const line2 = [
+              new THREE.Vector3(midX + ux * gapHalf, midY + uy * gapHalf, 0),
+              new THREE.Vector3(dimLineEnd.x, dimLineEnd.y, 0)
+            ];
+            group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line1), lineMat));
+            group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line2), lineMat));
+          } else {
+            const dimLine = [
+               new THREE.Vector3(dimLineStart.x, dimLineStart.y, 0),
+               new THREE.Vector3(dimLineEnd.x, dimLineEnd.y, 0)
+            ];
+            group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(dimLine), lineMat));
+          }
           
           createArrow(dimLineEnd, ux, uy);
           createArrow(dimLineStart, -ux, -uy);
@@ -1269,8 +1306,9 @@ export class Viewer {
             const midXText = midX - Math.cos(angle) * (width / 2);
             const midYText = ((dimLineStart.y + dimLineEnd.y) / 2) - Math.sin(angle) * (width / 2);
             
-            const vox = -Math.sin(angle) * 1;
-            const voy = Math.cos(angle) * 1;
+            const vOffset = style.DIMTAD === false ? 0 : 1;
+            const vox = -Math.sin(angle) * vOffset;
+            const voy = Math.cos(angle) * vOffset;
             
             textMesh.position.set(midXText + vox, midYText + voy, 0);
             group.add(textMesh);

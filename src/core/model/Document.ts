@@ -16,6 +16,8 @@ export class Document {
   layers = new LayerManager()
   blocks = new BlockManager()
   units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 }
+  dimtoh: boolean = false;
+  dimtad: boolean = false;
   private spatialIndex: Quadtree
   private idCounters: Map<string, number> = new Map()
 

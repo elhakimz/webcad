@@ -28,14 +28,14 @@ export class DimRadiusCommand implements Command {
     return this.getPrompt();
   }
 
-  onPoint(x: number, y: number, id: string, _units: UnitsConfig): CommandResponse {
+  onPoint(x: number, y: number, id: string, _units: UnitsConfig, doc?: any): CommandResponse {
     if (this.step === 1) {
-      return this.finishCommand(x, y, id);
+      return this.finishCommand(x, y, id, doc);
     }
     return this.getPrompt();
   }
 
-  private finishCommand(x: number, y: number, id: string): CommandResponse {
+  private finishCommand(x: number, y: number, id: string, doc?: any): CommandResponse {
     let cx = x;
     let cy = y;
     let tx = x;
@@ -59,6 +59,12 @@ export class DimRadiusCommand implements Command {
     }
 
     const dim = new Dimension(id || "DIM", "RADIUS", cx, cy, tx, ty, 10);
+    
+    if (doc) {
+      dim.style.DIMTOH = doc.dimtoh;
+      dim.style.DIMTAD = doc.dimtad;
+    }
+    
     const dx = tx - cx;
     const dy = ty - cy;
     const dist = Math.sqrt(dx * dx + dy * dy);

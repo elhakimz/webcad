@@ -451,7 +451,9 @@ export function clipLineWithPolygon(line: Line, vertices: Point[]): Line[] {
   for (let i = 0; i < intersections.length - 1; i++) {
     const p1 = intersections[i];
     const p2 = intersections[i + 1];
-    if (isPointInPolygon({ x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }, vertices)) {
+    const pt1 = { x: p1.x + (p2.x - p1.x) / 3, y: p1.y + (p2.y - p1.y) / 3 };
+    const pt2 = { x: p1.x + (p2.x - p1.x) * 2 / 3, y: p1.y + (p2.y - p1.y) * 2 / 3 };
+    if (isPointInPolygon(pt1, vertices) && isPointInPolygon(pt2, vertices)) {
       segments.push({ p1, p2 });
     }
   }

@@ -19,6 +19,7 @@ import { Shape } from "./core/model/Shape"
 import { Hatch } from "./core/model/Hatch"
 import { Insert } from "./core/model/Insert"
 import { Spline } from "./core/model/Spline"
+import { Note } from "./core/model/Note"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
 import { SnapEngine, SnapPoint } from "./core/engine/SnapEngine"
@@ -33,6 +34,7 @@ import { SystemHandler } from "./core/engine/handlers/SystemHandler"
 import { IOHandler } from "./core/engine/handlers/IOHandler"
 import { DraftingHandler } from "./core/engine/handlers/DraftingHandler"
 import { BlockHandler } from "./core/engine/handlers/BlockHandler"
+import { InquiryHandler } from "./core/engine/handlers/InquiryHandler"
 import { AppContext } from "./core/engine/handlers/types"
 import { DraftingState } from "./core/engine/DraftingState"
 import { HasBasePoint, HasUpdateSketch, HasStartSketch, HasFinishSketch, HasSelectedIds } from "./core/commands/types"
@@ -76,6 +78,7 @@ export class App {
     this.dispatcher.registerHandler(new IOHandler());
     this.dispatcher.registerHandler(new DraftingHandler());
     this.dispatcher.registerHandler(new BlockHandler());
+    this.dispatcher.registerHandler(new InquiryHandler());
 
     this.drafting = new DraftingState()
     this.drafting.subscribe(() => {
@@ -428,7 +431,7 @@ export class App {
       let entity: Entity | undefined;
       let isCloseAction = false;
       
-      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape || result instanceof Spline) {
+      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape || result instanceof Spline || result instanceof Note) {
         entity = result as Entity;
       } else if (result && typeof result === 'object' && 'action' in result && result.action === 'close' && result.entity) {
         entity = result.entity;
@@ -575,6 +578,8 @@ export class App {
       this.viewer.addEllipse(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Dimension) {
       this.viewer.addDimension(entity, layer, layerColor, isVisible);
+    } else if (entity instanceof Note) {
+      this.viewer.addNote(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Trace) {
       this.viewer.addTrace(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Shape) {

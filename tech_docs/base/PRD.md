@@ -217,11 +217,11 @@ interface Command {
 
 Start small:
 
-* LINE
-* CIRCLE
-* ERASE
-* MOVE
-* ZOOM
+* LINE ✅
+* CIRCLE ✅
+* ERASE ✅
+* MOVE ✅
+* ZOOM ✅
 
 DO NOT expand yet.
 
@@ -281,12 +281,12 @@ Command-based history:
 
 Add:
 
-* COPY
-* ROTATE
-* SCALE
-* MIRROR
-* TRIM (hard)
-* EXTEND
+* COPY ✅
+* ROTATE ✅
+* SCALE ✅
+* MIRROR ✅
+* TRIM ✅
+* EXTEND ✅
 
 ---
 

@@ -19,6 +19,7 @@ import { Insert } from "../core/model/Insert"
 import { BlockDefinition } from "../core/model/Block"
 import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb, getLinetypeSettings, tessellateSpline } from "../core/engine/MathUtils"
 import { Spline } from "../core/model/Spline"
+import { Note } from "../core/model/Note"
 import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
 import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview } from "../core/commands/types"
 
@@ -45,6 +46,7 @@ export class Viewer {
   private activePointMarkerGroup: THREE.Group = new THREE.Group()
   private gridGroup: THREE.Group = new THREE.Group()
   private textQueue: Text[] = []
+  private noteQueue: Note[] = []
   private selectionBox: THREE.Line | null = null
 
   constructor(canvas:HTMLCanvasElement){
@@ -81,6 +83,8 @@ export class Viewer {
       this.font = new Font(json);
       this.textQueue.forEach(entity => this.addText(entity));
       this.textQueue = [];
+      this.noteQueue.forEach(entity => this.addNote(entity));
+      this.noteQueue = [];
       this.render();
     });
   }
@@ -351,6 +355,8 @@ export class Viewer {
         this.previewObject = new THREE.Line(geo, mat);
       } else if (entity instanceof Text) {
         this.previewObject = this.createTextObject(entity, previewColor);
+      } else if (entity instanceof Note) {
+        this.previewObject = this.createNoteObject(entity, previewColor);
       } else if (entity instanceof Spline || ('type' in entity && entity.type === 'spline_preview')) {
         const sp = (entity instanceof Spline) ? entity : (entity as SplinePreview);
         const pts = tessellateSpline(sp.controlPoints, sp.degree, sp.knots);
@@ -858,6 +864,10 @@ export class Viewer {
     const allSegments: { x1: number; y1: number; x2: number; y2: number }[] = [];
     const vertices = entity.boundaryVertices;
 
+    if (!patternData && entity.pattern.toUpperCase() !== "SOLID") {
+      console.warn(`[Viewer] Hatch pattern "${entity.pattern}" not found, falling back to default.`);
+    }
+
     if (patternData && patternData.lines.length > 0) {
       for (const lineDef of patternData.lines) {
         const effectiveAngle = lineDef.angle + entity.angle;
@@ -879,7 +889,7 @@ export class Viewer {
         }
       }
     } else {
-      const spacing = 8 / entity.patternScale;
+      const spacing = 8 * entity.patternScale;
       const angle = entity.angle;
       const lines = generateHatchLines(vertices, spacing, angle);
 
@@ -889,6 +899,10 @@ export class Viewer {
           allSegments.push({ x1: seg.p1.x, y1: seg.p1.y, x2: seg.p2.x, y2: seg.p2.y });
         }
       }
+    }
+
+    if (allSegments.length === 0 && entity.pattern.toUpperCase() !== "SOLID") {
+      console.warn(`[Viewer] Hatch "${entity.id}" (Pattern: ${entity.pattern}) generated no lines. The boundary might be too small for the current pattern scale.`);
     }
 
     if (allSegments.length === 0) return;
@@ -2029,6 +2043,157 @@ export class Viewer {
       }
     }
     this.render();
+  }
+
+  addNote(entity: Note, layer?: string, color?: number, isVisible = true) {
+    if (!this.font) {
+      this.noteQueue.push(entity);
+      return;
+    }
+    const obj = this.createNoteObject(entity, color || 7);
+    if (entity.id) obj.name = entity.id;
+    if (layer) obj.userData = { layer };
+    obj.visible = isVisible;
+    this.scene.add(obj);
+  }
+
+  private createNoteObject(entity: Note, colorIndex: number): THREE.Object3D {
+    const group = new THREE.Group();
+    const color = aciToRgb(colorIndex);
+    const mat = new THREE.LineDashedMaterial({
+      color,
+      dashSize: 0.5,
+      gapSize: 0.25
+    });
+
+    const p1 = entity.anchorPoint;
+    const p2 = entity.bendPoint;
+    const isFreePoint = entity.targetEntityId === null;
+
+    let textWidth = 0.5; // Default fallback
+    let textMesh: THREE.Mesh | null = null;
+    
+    if (this.font) {
+      const shapes = this.font.generateShapes(entity.text, entity.height);
+      const geometry = new THREE.ShapeGeometry(shapes);
+      geometry.computeBoundingBox();
+      if (geometry.boundingBox) {
+        textWidth = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+      }
+      const textMat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+      textMesh = new THREE.Mesh(geometry, textMat);
+      textMesh.renderOrder = 10;
+    } else {
+      // Fallback if font not loaded: render a red box
+      const shapes = [new THREE.Shape([
+        new THREE.Vector2(0, 0),
+        new THREE.Vector2(entity.height, 0),
+        new THREE.Vector2(entity.height, entity.height),
+        new THREE.Vector2(0, entity.height)
+      ])];
+      const geometry = new THREE.ShapeGeometry(shapes);
+      const textMat = new THREE.MeshBasicMaterial({ color: 0xFF0000, side: THREE.DoubleSide });
+      textMesh = new THREE.Mesh(geometry, textMat);
+      textWidth = entity.height;
+    }
+
+    if (isFreePoint) {
+      // Just vertical line at p2 (bendPoint)
+      const sepHeight = entity.height;
+      const sepPoints = [
+        new THREE.Vector3(p2.x, p2.y - entity.height, 0),
+        new THREE.Vector3(p2.x, p2.y + sepHeight, 0)
+      ];
+      const sepGeo = new THREE.BufferGeometry().setFromPoints(sepPoints);
+      const sepLine = new THREE.Line(sepGeo, mat);
+      sepLine.computeLineDistances();
+      group.add(sepLine);
+
+      // Place text
+      if (textMesh) {
+        const textGap = 0.1;
+        textMesh.position.set(p2.x + textGap, p2.y, 0);
+        group.add(textMesh);
+      }
+    } else {
+      // Normal note with leader and shelf
+      const leaderPoints = [
+        new THREE.Vector3(p1.x, p1.y, 0),
+        new THREE.Vector3(p2.x, p2.y, 0)
+      ];
+      const leaderGeo = new THREE.BufferGeometry().setFromPoints(leaderPoints);
+      const leaderLine = new THREE.Line(leaderGeo, mat);
+      leaderLine.computeLineDistances();
+      group.add(leaderLine);
+
+      // Arrowhead at p1 pointing towards p1 (from p2)
+      const dir = new THREE.Vector3(p1.x - p2.x, p1.y - p2.y, 0).normalize();
+      const arrowSize = entity.height * 0.5;
+      const leftWing = new THREE.Vector3()
+        .copy(dir)
+        .applyAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 6)
+        .multiplyScalar(-arrowSize)
+        .add(new THREE.Vector3(p1.x, p1.y, 0));
+      const rightWing = new THREE.Vector3()
+        .copy(dir)
+        .applyAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 6)
+        .multiplyScalar(-arrowSize)
+        .add(new THREE.Vector3(p1.x, p1.y, 0));
+      
+      const arrowShape = new THREE.Shape();
+      arrowShape.moveTo(p1.x, p1.y);
+      arrowShape.lineTo(leftWing.x, leftWing.y);
+      arrowShape.lineTo(rightWing.x, rightWing.y);
+      arrowShape.closePath();
+      
+      const arrowMesh = new THREE.Mesh(new THREE.ShapeGeometry(arrowShape), new THREE.MeshBasicMaterial({ color }));
+      group.add(arrowMesh);
+
+      // Shelf
+      const shelfDir = p2.x >= p1.x ? 1 : -1;
+      const shelfLength = Math.max(textWidth, entity.height * 2) + 0.5;
+      const shelfEnd = {
+        x: p2.x + shelfDir * shelfLength,
+        y: p2.y
+      };
+
+      const shelfPoints = [
+        new THREE.Vector3(p2.x, p2.y, 0),
+        new THREE.Vector3(shelfEnd.x, shelfEnd.y, 0)
+      ];
+      const shelfGeo = new THREE.BufferGeometry().setFromPoints(shelfPoints);
+      const shelfLine = new THREE.Line(shelfGeo, mat);
+      shelfLine.computeLineDistances();
+      group.add(shelfLine);
+
+      // Vertical separator
+      const sepHeight = entity.height;
+      const sepTop = {
+        x: shelfEnd.x,
+        y: shelfEnd.y + sepHeight
+      };
+      const sepPoints = [
+        new THREE.Vector3(shelfEnd.x, shelfEnd.y - entity.height, 0),
+        new THREE.Vector3(sepTop.x, sepTop.y, 0)
+      ];
+      const sepGeo = new THREE.BufferGeometry().setFromPoints(sepPoints);
+      const sepLine = new THREE.Line(sepGeo, mat);
+      group.add(sepLine);
+
+      // Place text
+      if (textMesh) {
+        const textGap = 0.1;
+        // Align text based on shelf direction
+        if (shelfDir > 0) {
+          textMesh.position.set(shelfEnd.x + textGap, shelfEnd.y, 0);
+        } else {
+          textMesh.position.set(shelfEnd.x - textWidth - textGap, shelfEnd.y, 0);
+        }
+        group.add(textMesh);
+      }
+    }
+
+    return group;
   }
 
   render(){

@@ -84,14 +84,12 @@ export function calculateArcFrom3Points(p1: Point, p2: Point, p3: Point) {
   const r = Math.sqrt((x1 - cx) * (x1 - cx) + (y1 - cy_fixed) * (y1 - cy_fixed));
 
   const startAngle = Math.atan2(y1 - cy_fixed, x1 - cx);
-  const endAngle = Math.atan2(endAngle - cy_fixed, x3 - cx); // BUG detected: endAngle was using variable of same name
-  // Wait, I should re-calculate endAngle properly
-  const endAngle_fixed = Math.atan2(y3 - cy_fixed, x3 - cx);
+  const endAngle = Math.atan2(y3 - cy_fixed, x3 - cx);
 
   const cross = (x2 - x1) * (y3 - y2) - (y2 - y1) * (x3 - x2);
   const ccw = cross > 0;
 
-  return { cx, cy: cy_fixed, r, startAngle, endAngle: endAngle_fixed, ccw };
+  return { cx, cy: cy_fixed, r, startAngle, endAngle, ccw };
 }
 
 /**
@@ -381,6 +379,9 @@ export function generateHatchLines(vertices: Point[], spacing: number, angle: nu
   }
 
   const originOffset = originX * normX + originY * normY;
+  const origMin = minProj;
+  const origMax = maxProj;
+  
   minProj -= spacing * 2;
   maxProj += spacing * 2;
 
@@ -388,15 +389,45 @@ export function generateHatchLines(vertices: Point[], spacing: number, angle: nu
   const endIdx = Math.ceil((maxProj - originOffset) / spacing);
 
   const lines: Line[] = [];
+  let hasLineInBox = false;
+
   for (let i = startIdx; i <= endIdx; i++) {
     const d = i * spacing + originOffset;
+    if (d >= origMin && d <= origMax) {
+      hasLineInBox = true;
+    }
     const baseX = normX * d;
     const baseY = normY * d;
+    const cx = (bbox.minX + bbox.maxX) / 2;
+    const cy = (bbox.minY + bbox.maxY) / 2;
+    const t = (cx - baseX) * dirX + (cy - baseY) * dirY;
+    const lineCenterX = baseX + t * dirX;
+    const lineCenterY = baseY + t * dirY;
+    
     lines.push({
-      p1: { x: baseX - dirX * diag, y: baseY - dirY * diag },
-      p2: { x: baseX + dirX * diag, y: baseY + dirY * diag }
+      p1: { x: lineCenterX - dirX * diag, y: lineCenterY - dirY * diag },
+      p2: { x: lineCenterX + dirX * diag, y: lineCenterY + dirY * diag }
     });
   }
+
+  // If no line falls inside the original bounding box projection,
+  // force at least one line at the center to ensure the hatch is not empty.
+  if (!hasLineInBox) {
+    const d = (origMin + origMax) / 2;
+    const baseX = normX * d;
+    const baseY = normY * d;
+    const cx = (bbox.minX + bbox.maxX) / 2;
+    const cy = (bbox.minY + bbox.maxY) / 2;
+    const t = (cx - baseX) * dirX + (cy - baseY) * dirY;
+    const lineCenterX = baseX + t * dirX;
+    const lineCenterY = baseY + t * dirY;
+    
+    lines.push({
+      p1: { x: lineCenterX - dirX * diag, y: lineCenterY - dirY * diag },
+      p2: { x: lineCenterX + dirX * diag, y: lineCenterY + dirY * diag }
+    });
+  }
+
   return lines;
 }
 
@@ -830,8 +861,22 @@ export function sortConnected(entities: (LineEntity | ArcEntity)[]): (LineEntity
   }
   return sorted;
 }
+export function polygonArea(vertices: Point[]): number {
+  let area = 0;
+  const n = vertices.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area += vertices[i].x * vertices[j].y;
+    area -= vertices[j].x * vertices[i].y;
+  }
+  return Math.abs(area) / 2;
+}
 
-
-
-
+export function polylineLength(vertices: Point[]): number {
+  let total = 0;
+  for (let i = 0; i < vertices.length - 1; i++) {
+    total += distancePointToPoint(vertices[i].x, vertices[i].y, vertices[i+1].x, vertices[i+1].y);
+  }
+  return total;
+}
 

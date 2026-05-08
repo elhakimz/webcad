@@ -104,7 +104,8 @@ function updatePrompt() {
       prompt.startsWith("Scale <") ||
       prompt.startsWith("Radius of polygon") ||
       prompt.startsWith("Load drawing") ||
-      prompt.startsWith("Save drawing");
+      prompt.startsWith("Save drawing") ||
+      prompt.startsWith("Enter note text");
 
     if (shouldFocus) {
       cmdLine.focus();

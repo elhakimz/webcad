@@ -14,6 +14,7 @@ import { Insert } from "../model/Insert";
 import { Dimension } from "../model/Dimension";
 import { Donut } from "../model/Donut";
 import { Spline } from "../model/Spline";
+import { Note } from "../model/Note";
 
 interface DXFGroup {
   code: number;
@@ -196,6 +197,13 @@ export class DXFImporter {
             }
           }
           entity = new Spline(doc.getNextId("S"), controlPoints, degree, knots);
+        } else if (type === "NOTE") {
+          const anchor = { x: parseFloat(props[10]), y: parseFloat(props[20]) };
+          const bend = { x: parseFloat(props[11]), y: parseFloat(props[21]) };
+          const text = props[1] || "";
+          const height = parseFloat(props[40] || "2.5");
+          const targetId = props[2] || null;
+          entity = new Note(doc.getNextId("N"), targetId, anchor, bend, text, height);
         } else if (type === "POLYLINE") {
           const vertices: PolylineVertex[] = [];
           const closed = (parseInt(props[70] || "0") & 1) !== 0;

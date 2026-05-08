@@ -15,6 +15,7 @@ import { Shape } from "../model/Shape";
 import { Insert } from "../model/Insert";
 import { Dimension } from "../model/Dimension";
 import { Spline } from "../model/Spline";
+import { Note } from "../model/Note";
 
 export class DXFExporter {
   export(doc: Document): string {
@@ -227,6 +228,15 @@ export class DXFExporter {
         const dy = e.y2 - e.y1;
         const angle = Math.atan2(dy, dx) * 180 / Math.PI;
         s += " 50\n" + angle + "\n";
+      }
+    } else if (e instanceof Note) {
+      s += "  0\nNOTE\n  8\n" + layer + "\n";
+      s += " 10\n" + e.anchorPoint.x + "\n 20\n" + e.anchorPoint.y + "\n 30\n0.0\n";
+      s += " 11\n" + e.bendPoint.x + "\n 21\n" + e.bendPoint.y + "\n 31\n0.0\n";
+      s += "  1\n" + e.text + "\n";
+      s += " 40\n" + e.height + "\n";
+      if (e.targetEntityId) {
+        s += "  2\n" + e.targetEntityId + "\n";
       }
     }
 

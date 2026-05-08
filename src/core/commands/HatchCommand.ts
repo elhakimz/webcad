@@ -1,7 +1,7 @@
 import { Hatch } from "../model/Hatch"
 import { Command, CommandResponse, PreviewObject } from "./types"
 import { UnitsConfig } from "../model/Document"
-import { getAllPatternNames } from "../io/Patterns"
+import { getAllPatternNames, getPattern } from "../io/Patterns"
 
 export class HatchCommand implements Command {
   step = 0
@@ -25,8 +25,7 @@ export class HatchCommand implements Command {
       }
 
       // Check if user typed a valid pattern name directly
-      const names = getAllPatternNames();
-      if (names.includes(val)) {
+      if (getPattern(val)) {
           this.pattern = val;
           this.step = 2;
           return "Scale <1.0>:";

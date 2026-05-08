@@ -40,6 +40,11 @@ import { DimDiameterCommand } from "../commands/DimDiameterCommand"
 import { DimAngularCommand } from "../commands/DimAngularCommand"
 import { DimTohCommand } from "../commands/DimTohCommand"
 import { DimTadCommand } from "../commands/DimTadCommand"
+import { IdCommand } from "../commands/IdCommand"
+import { DistCommand } from "../commands/DistCommand"
+import { AreaCommand } from "../commands/AreaCommand"
+import { ListCommand } from "../commands/ListCommand"
+import { NoteCommand } from "../commands/NoteCommand"
 import { StretchCommand } from "../commands/StretchCommand"
 import { OrthoCommand } from "../commands/OrthoCommand"
 import { GridCommand } from "../commands/GridCommand"
@@ -69,8 +74,9 @@ export class CommandManager {
       "ORTHO", "GRID", "SNAP", "ARRAY", "OFFSET", "FILLET", 
       "CHAMFER", "BREAK", "JOIN", "LENGTHEN", "DIMLINEAR", 
       "DIMALIGNED", "DIMRADIUS", "DIMDIAMETER", "DIMANGULAR", 
-      "STRETCH", "TRIM", "EXTEND", "BLOCK", "INSERT", "REGEN", 
-      "UNDO", "U", "REDO", "R", "DIMTOH", "DIMTAD"
+      "BLOCK", "INSERT", "STRETCH", "DIMTOH", "DIMTAD",
+      "ID", "DIST", "AREA", "LIST", "ANNOTATE", "NOTE", "REGEN", 
+      "UNDO", "U", "REDO", "R"
     ];
   }
 
@@ -100,6 +106,26 @@ export class CommandManager {
     else if(cmdName === "SPLINE"){
       this.active = new SplineCommand()
       response = "SPLINE"
+    }
+    else if(cmdName === "ID"){
+      this.active = new IdCommand()
+      response = "ID"
+    }
+    else if(cmdName === "DIST"){
+      this.active = new DistCommand()
+      response = "DIST"
+    }
+    else if(cmdName === "AREA"){
+      this.active = new AreaCommand()
+      response = "AREA"
+    }
+    else if(cmdName === "LIST"){
+      this.active = new ListCommand()
+      response = "LIST"
+    }
+    else if(cmdName === "ANNOTATE" || cmdName === "NOTE"){
+      this.active = new NoteCommand()
+      response = "ANNOTATE"
     }
     else if(cmdName === "ERASE" || cmdName === "E"){
 

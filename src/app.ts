@@ -292,7 +292,7 @@ export class App {
     const isSelectionStep = !this.cmd.active || 
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
-        (this.cmd.active && this.cmd.active.step === 0 && activeName === 'DimRadiusCommand') ||
+        (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
@@ -348,7 +348,7 @@ export class App {
     const isSelectionStep = !this.cmd.active || 
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
-        (this.cmd.active && this.cmd.active.step === 0 && activeName === 'DimRadiusCommand') ||
+        (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
@@ -385,7 +385,7 @@ export class App {
             const isChamferPick = activeName === 'ChamferCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
             const isBreakPick = activeName === 'BreakCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1 || this.cmd.active?.step === 2);
             const isLengthenPick = activeName === 'LengthenCommand' && this.cmd.active?.step === 2;
-            const isDimRadiusPick = activeName === 'DimRadiusCommand' && this.cmd.active?.step === 0;
+            const isDimRadiusPick = (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand') && this.cmd.active?.step === 0;
             const isDimAngularPick = activeName === 'DimAngularCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
 
             if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isDimRadiusPick || isDimAngularPick)) {       

@@ -1144,6 +1144,172 @@ export class Viewer {
         group.add(textMesh);
       }
       return group;
+    } else if (entity.type === 'DIAMETER') {
+      const center = { x: entity.x1, y: entity.y1 };
+      const edgePt = { x: entity.x2, y: entity.y2 };
+      const click = entity.dimLineLocation || edgePt;
+      
+      const dx = edgePt.x - center.x;
+      const dy = edgePt.y - center.y;
+      const radius = Math.sqrt(dx * dx + dy * dy);
+      const diameter = radius * 2;
+      
+      const ux = radius > 1e-6 ? dx / radius : 1;
+      const uy = radius > 1e-6 ? dy / radius : 0;
+      
+      const oppositePt = { x: center.x - ux * radius, y: center.y - uy * radius };
+      
+      const text = "Ø" + diameter.toFixed(style.precision);
+      const textWidthApprox = text.length * style.textHeight * 0.75;
+      
+      const distToClick = Math.sqrt((click.x - center.x)**2 + (click.y - center.y)**2);
+      const fitsInside = textWidthApprox < (diameter * 0.75);
+      const isInside = (distToClick <= radius) && fitsInside;
+      
+      const lineMat = new THREE.LineBasicMaterial({ color });
+      
+      const createArrow = (pt: {x:number, y:number}, dirX: number, dirY: number) => {
+        const arrowBase = { x: pt.x + dirX * arrowSize, y: pt.y + dirY * arrowSize };
+        const perpX = -dirY;
+        const perpY = dirX;
+        const arrowLeft = { x: arrowBase.x + perpX * arrowSize * 0.4, y: arrowBase.y + perpY * arrowSize * 0.4 };
+        const arrowRight = { x: arrowBase.x - perpX * arrowSize * 0.4, y: arrowBase.y - perpY * arrowSize * 0.4 };
+        const arrowShape = new THREE.Shape();
+        arrowShape.moveTo(pt.x, pt.y);
+        arrowShape.lineTo(arrowLeft.x, arrowLeft.y);
+        arrowShape.lineTo(arrowRight.x, arrowRight.y);
+        arrowShape.closePath();
+        group.add(new THREE.Mesh(new THREE.ShapeGeometry(arrowShape), new THREE.MeshBasicMaterial({ color })));
+      };
+
+      const isAligned = entity.properties?.textAligned === true;
+
+      if (isInside) {
+        const linePoints = [
+          new THREE.Vector3(oppositePt.x, oppositePt.y, 0),
+          new THREE.Vector3(edgePt.x, edgePt.y, 0)
+        ];
+        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), lineMat));
+        
+        createArrow(edgePt, -ux, -uy);
+        createArrow(oppositePt, ux, uy);
+        
+        if (this.font) {
+          const shapes = this.font.generateShapes(text, style.textHeight);
+          const textGeo = new THREE.ShapeGeometry(shapes);
+          const textMesh = new THREE.Mesh(textGeo, new THREE.MeshBasicMaterial({ color }));
+          
+          let angle = Math.atan2(uy, ux);
+          if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
+          textMesh.rotation.z = angle;
+          
+          textGeo.computeBoundingBox();
+          const bbox = textGeo.boundingBox;
+          const width = bbox ? bbox.max.x - bbox.min.x : textWidthApprox;
+          
+          const ox = -Math.cos(angle) * (width / 2);
+          const oy = -Math.sin(angle) * (width / 2);
+          
+          const vox = -Math.sin(angle) * 1;
+          const voy = Math.cos(angle) * 1;
+          
+          textMesh.position.set(center.x + ox + vox, center.y + oy + voy, 0);
+          group.add(textMesh);
+        }
+      } else {
+        const outsideDist = Math.max(distToClick, radius + 5);
+        const leaderEnd = { x: center.x + ux * outsideDist, y: center.y + uy * outsideDist };
+        
+        if (isAligned) {
+          const nx = -uy;
+          const ny = ux;
+          
+          const D = (click.x - center.x) * nx + (click.y - center.y) * ny;
+          
+          const dimLineStart = { x: oppositePt.x + nx * D, y: oppositePt.y + ny * D };
+          const dimLineEnd = { x: edgePt.x + nx * D, y: edgePt.y + ny * D };
+          
+          const overhang = 1.5;
+          const signD = D >= 0 ? 1 : -1;
+          
+          const extLine1 = [
+             new THREE.Vector3(oppositePt.x, oppositePt.y, 0),
+             new THREE.Vector3(dimLineStart.x + nx * signD * overhang, dimLineStart.y + ny * signD * overhang, 0)
+          ];
+          const extLine2 = [
+             new THREE.Vector3(edgePt.x, edgePt.y, 0),
+             new THREE.Vector3(dimLineEnd.x + nx * signD * overhang, dimLineEnd.y + ny * signD * overhang, 0)
+          ];
+          const dimLine = [
+             new THREE.Vector3(dimLineStart.x, dimLineStart.y, 0),
+             new THREE.Vector3(dimLineEnd.x, dimLineEnd.y, 0)
+          ];
+          
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(extLine1), lineMat));
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(extLine2), lineMat));
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(dimLine), lineMat));
+          
+          createArrow(dimLineEnd, ux, uy);
+          createArrow(dimLineStart, -ux, -uy);
+
+          if (this.font) {
+            const shapes = this.font.generateShapes(text, style.textHeight);
+            const textGeo = new THREE.ShapeGeometry(shapes);
+            const textMesh = new THREE.Mesh(textGeo, new THREE.MeshBasicMaterial({ color }));
+            
+            let angle = Math.atan2(uy, ux);
+            if (angle > Math.PI / 2 || angle <= -Math.PI / 2) angle += Math.PI;
+            textMesh.rotation.z = angle;
+            
+            textGeo.computeBoundingBox();
+            const bbox = textGeo.boundingBox;
+            const width = bbox ? bbox.max.x - bbox.min.x : textWidthApprox;
+            
+            const midX = (dimLineStart.x + dimLineEnd.x) / 2;
+            const midXText = midX - Math.cos(angle) * (width / 2);
+            const midYText = ((dimLineStart.y + dimLineEnd.y) / 2) - Math.sin(angle) * (width / 2);
+            
+            const vox = -Math.sin(angle) * 1;
+            const voy = Math.cos(angle) * 1;
+            
+            textMesh.position.set(midXText + vox, midYText + voy, 0);
+            group.add(textMesh);
+          }
+        } else {
+          const isRight = leaderEnd.x >= center.x;
+          const doglegLength = style.textHeight * 1.5;
+          const doglegEnd = { x: leaderEnd.x + (isRight ? doglegLength : -doglegLength), y: leaderEnd.y };
+          
+          const linePoints = [
+            new THREE.Vector3(oppositePt.x, oppositePt.y, 0),
+            new THREE.Vector3(edgePt.x, edgePt.y, 0),
+            new THREE.Vector3(leaderEnd.x, leaderEnd.y, 0),
+            new THREE.Vector3(doglegEnd.x, doglegEnd.y, 0)
+          ];
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), lineMat));
+          
+          createArrow(edgePt, -ux, -uy);
+          createArrow(oppositePt, ux, uy);
+          
+          if (this.font) {
+            const shapes = this.font.generateShapes(text, style.textHeight);
+            const textGeo = new THREE.ShapeGeometry(shapes);
+            const textMesh = new THREE.Mesh(textGeo, new THREE.MeshBasicMaterial({ color }));
+            
+            textGeo.computeBoundingBox();
+            const bbox = textGeo.boundingBox;
+            const width = bbox ? bbox.max.x - bbox.min.x : textWidthApprox;
+            
+            const textGap = 1;
+            const tx = isRight ? doglegEnd.x + textGap : doglegEnd.x - textGap - width;
+            const ty = doglegEnd.y + 0.5;
+            
+            textMesh.position.set(tx, ty, 0);
+            group.add(textMesh);
+          }
+        }
+      }
+      return group;
     } else if (entity.type === 'ANGULAR') {
       const vertex = entity.properties.vertex as { x: number, y: number };
       const dimLoc = entity.dimLineLocation || { x: entity.x1, y: entity.y1 };

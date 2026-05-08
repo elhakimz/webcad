@@ -20,7 +20,7 @@ export class DimRadiusCommand implements Command {
     if (this.step === 0 && text) {
       this.entityId = text;
       if (pickPt) {
-        return this.finishCommand(pickPt.x, pickPt.y, id);
+        this.pickPt = pickPt;
       }
       this.step = 1;
       return "Specify dimension line location:";
@@ -29,8 +29,7 @@ export class DimRadiusCommand implements Command {
   }
 
   onPoint(x: number, y: number, id: string, _units: UnitsConfig): CommandResponse {
-    if (this.step === 0) {
-      this.entityId = id;
+    if (this.step === 1) {
       return this.finishCommand(x, y, id);
     }
     return this.getPrompt();
@@ -82,9 +81,10 @@ export class DimRadiusCommand implements Command {
   }
 
   getPreview(x: number, y: number, _units: UnitsConfig): PreviewObject | null {
-    if (this.step === 1 && this.pickPt) {
-      // (This step is technically skipped now but kept for robustness)
-      return null;
+    if (this.step === 1) {
+      const id = "PREVIEW";
+      const dim = this.finishCommand(x, y, id) as Dimension;
+      return dim;
     }
     return null;
   }

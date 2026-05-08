@@ -27,6 +27,7 @@ export class Menu {
         { label: 'LINEAR', command: 'DIMLINEAR' },
         { label: 'ALIGNED', command: 'DIMALIGNED' },
         { label: 'RADIUS', command: 'DIMRADIUS' },
+        { label: 'DIAMETER', command: 'DIMDIAMETER' },
         { label: 'ANGULAR', command: 'DIMANGULAR' }
       ] },
       { label: 'DISPLAY', submenu: [

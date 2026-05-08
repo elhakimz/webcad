@@ -36,6 +36,7 @@ import { LengthenCommand } from "../commands/LengthenCommand"
 import { DimLinearCommand } from "../commands/DimLinearCommand"
 import { DimAlignedCommand } from "../commands/DimAlignedCommand"
 import { DimRadiusCommand } from "../commands/DimRadiusCommand"
+import { DimDiameterCommand } from "../commands/DimDiameterCommand"
 import { DimAngularCommand } from "../commands/DimAngularCommand"
 import { StretchCommand } from "../commands/StretchCommand"
 import { OrthoCommand } from "../commands/OrthoCommand"
@@ -245,6 +246,10 @@ export class CommandManager {
     else if(cmdName === "DIMRADIUS"){
       this.active = new DimRadiusCommand()
       response = "DIMRADIUS"
+    }
+    else if(cmdName === "DIMDIAMETER"){
+      this.active = new DimDiameterCommand()
+      response = "DIMDIAMETER"
     }
     else if(cmdName === "DIMANGULAR"){
       this.active = new DimAngularCommand()

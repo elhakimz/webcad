@@ -10,7 +10,7 @@ export interface DimStyle {
 }
 
 export class Dimension extends Entity {
-  type: 'LINEAR' | 'ALIGNED' | 'ANGULAR' | 'RADIUS';
+  type: 'LINEAR' | 'ALIGNED' | 'ANGULAR' | 'RADIUS' | 'DIAMETER';
   x1: number;
   y1: number;
   x2: number;
@@ -19,7 +19,7 @@ export class Dimension extends Entity {
   style: DimStyle;
   dimLineLocation?: { x: number, y: number };
 
-  constructor(id: string, type: 'LINEAR' | 'ALIGNED' | 'ANGULAR' | 'RADIUS', x1: number, y1: number, x2: number, y2: number, offset: number = 10) {
+  constructor(id: string, type: 'LINEAR' | 'ALIGNED' | 'ANGULAR' | 'RADIUS' | 'DIAMETER', x1: number, y1: number, x2: number, y2: number, offset: number = 10) {
     super(id);
     this.type = type;
     this.x1 = x1;
@@ -39,6 +39,9 @@ export class Dimension extends Entity {
   computeValue(): number {
     if (this.type === 'RADIUS') {
       return distancePointToPoint(this.x1, this.y1, this.x2, this.y2);
+    }
+    if (this.type === 'DIAMETER') {
+      return distancePointToPoint(this.x1, this.y1, this.x2, this.y2) * 2;
     }
     if (this.type === 'ANGULAR') {
       const vertex = this.properties?.vertex as { x: number, y: number } | undefined;

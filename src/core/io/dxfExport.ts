@@ -198,7 +198,12 @@ export class DXFExporter {
       else if (e.type === 'ALIGNED') dimTypeCode = 1;
       else if (e.type === 'ANGULAR') dimTypeCode = 2;
       else if (e.type === 'RADIUS') dimTypeCode = 3;
+      else if (e.type === 'DIAMETER') dimTypeCode = 4;
       s += " 70\n" + dimTypeCode + "\n";
+      
+      if (e.properties?.textAligned) {
+        s += " 71\n1\n";
+      }
       
       let dimLineX = e.x1;
       let dimLineY = e.y1;

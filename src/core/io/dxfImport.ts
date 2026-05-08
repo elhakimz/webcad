@@ -220,9 +220,10 @@ export class DXFImporter {
                 parseFloat(props[41] || "1.0"), parseFloat(props[42] || "1.0"), parseFloat(props[50] || "0"));
         } else if (type === "DIMENSION") {
             const dimType = parseInt(props[70] || "1");
-            let typeStr: 'LINEAR' | 'ALIGNED' | 'ANGULAR' | 'RADIUS' = 'LINEAR';
+            let typeStr: 'LINEAR' | 'ALIGNED' | 'ANGULAR' | 'RADIUS' | 'DIAMETER' = 'LINEAR';
             if (dimType === 2) typeStr = 'ANGULAR';
             else if (dimType === 3) typeStr = 'RADIUS';
+            else if (dimType === 4) typeStr = 'DIAMETER';
             else if (dimType === 1) typeStr = 'LINEAR';
             
             const x1 = parseFloat(props[13] || "0");
@@ -241,6 +242,10 @@ export class DXFImporter {
             
             if (typeStr === 'ANGULAR' && props[15] !== undefined && props[25] !== undefined) {
               dim.properties = { vertex: { x: parseFloat(props[15]), y: parseFloat(props[25]) } };
+            }
+            
+            if (parseInt(props[71] || "0") === 1) {
+              dim.properties = { ...dim.properties, textAligned: true };
             }
             
             entity = dim;

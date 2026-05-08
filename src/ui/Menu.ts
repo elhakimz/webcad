@@ -1,3 +1,5 @@
+import { DockingManager } from "./DockingManager"
+
 interface MenuItem {
   label: string;
   command?: string;
@@ -10,14 +12,49 @@ export class Menu {
   private history: MenuItem[][] = [];
   private currentItems: MenuItem[] = [];
 
-  constructor(private onAction: (cmd: string) => void) {
+  constructor(private onAction: (cmd: string) => void, private dockingManager?: DockingManager) {
     this.container = document.getElementById('menu-items')!;
     this.headerEl = document.querySelector('#side-menu .menu-header')!;
     
     (this.headerEl as HTMLElement).style.cursor = 'pointer';
-    this.headerEl.onclick = () => this.goBack();
+    this.headerEl.onclick = (e) => {
+      if ((e.target as HTMLElement).classList.contains('control-btn')) return;
+      this.goBack();
+    };
+
+    if (this.dockingManager) {
+      this.setupDocking();
+    }
 
     this.setupInitialMenu();
+  }
+
+  private setupDocking() {
+    const sideMenu = document.getElementById('side-menu')!;
+    if (!sideMenu) return;
+
+    const controls = document.createElement('div');
+    controls.className = 'toolbar-controls';
+    controls.innerHTML = `
+      <span class="control-btn" id="menu-dock">[ ]</span>
+      <span class="control-btn" id="menu-minimize">_</span>
+    `;
+    this.headerEl.appendChild(controls);
+
+    const dockBtn = controls.querySelector('#menu-dock')!;
+    dockBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.dockingManager?.toggleDock('menu');
+    });
+
+    const minimizeBtn = controls.querySelector('#menu-minimize')!;
+    minimizeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const items = document.getElementById('menu-items')!;
+      items.style.display = items.style.display === 'none' ? 'block' : 'none';
+    });
+
+    this.dockingManager?.registerWindow('menu', sideMenu, true);
   }
 
   private setupInitialMenu() {
@@ -109,7 +146,25 @@ export class Menu {
 
   render(items: MenuItem[], headerText: string) {
     this.currentItems = items;
-    this.headerEl.innerText = headerText;
+    
+    let textEl = this.headerEl.querySelector('.header-text') as HTMLElement;
+    if (!textEl) {
+      // Clear anything that is NOT a control to prevent duplication
+      Array.from(this.headerEl.childNodes).forEach(node => {
+        if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).classList.contains('toolbar-controls')) {
+          return;
+        }
+        this.headerEl.removeChild(node);
+      });
+
+      textEl = document.createElement('span');
+      textEl.className = 'header-text';
+      this.headerEl.insertBefore(textEl, this.headerEl.firstChild);
+    }
+    
+    // Change 'ROOT\nMENU' to 'Menu' as requested
+    textEl.innerText = headerText === 'ROOT\nMENU' ? 'Menu' : headerText;
+
     this.container.innerHTML = '';
 
     items.forEach(item => {

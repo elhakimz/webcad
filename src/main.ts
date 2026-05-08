@@ -5,6 +5,8 @@ import { StatusBar } from "./ui/StatusBar"
 import { Menu } from "./ui/Menu"
 import { MainMenuScreen } from "./ui/MainMenuScreen"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
+import { FloatingToolbar } from "./ui/FloatingToolbar"
+import { DockingManager } from "./ui/DockingManager"
 
 const canvas = document.getElementById("c") as HTMLCanvasElement
 const viewer = new Viewer(canvas)
@@ -26,6 +28,8 @@ statusBar.onTagClick('snap', () => app.drafting.toggleSnap());
 statusBar.onTagClick('grid', () => app.drafting.toggleGrid());
 statusBar.onTagClick('ortho', () => app.drafting.toggleOrtho());
 
+const dockingManager = new DockingManager();
+
 const menu = new Menu(async (cmd) => {
   cmdLine.print(`Command: ${cmd}`)
   const res = await app.execute(cmd)
@@ -34,7 +38,17 @@ const menu = new Menu(async (cmd) => {
   }
   cmdLine.focus()
   updatePrompt()
-})
+}, dockingManager)
+
+const floatingToolbar = new FloatingToolbar(async (cmd) => {
+  cmdLine.print(`Command: ${cmd}`)
+  const res = await app.execute(cmd)
+  if (typeof res === 'string') {
+    cmdLine.print(res)
+  }
+  cmdLine.focus()
+  updatePrompt()
+}, dockingManager)
 
 // Correct initial sizing and handle resize
 viewer.resize()
@@ -44,6 +58,7 @@ window.addEventListener("resize", () => viewer.resize())
 const mainMenu = new MainMenuScreen(async (filename?: string) => {
   // Callback when starting/loading a drawing
   document.getElementById('drawing-editor')!.style.display = 'block';
+  floatingToolbar.show();
   
   if (filename) {
     // Option 2: Load existing
@@ -245,6 +260,7 @@ cmdLine.onCommand(async (val) => {
 
   if (trimmedUpper === "QUIT" || trimmedUpper === "EXIT") {
     document.getElementById('drawing-editor')!.style.display = 'none';
+    floatingToolbar.hide();
     menu.goToRoot();
     mainMenu.show();
     return;

@@ -10,7 +10,9 @@ import { distancePointToPoint, bulgeToArc } from "./MathUtils";
 export enum SnapType {
   ENDPOINT = 'Endpoint',
   MIDPOINT = 'Midpoint',
-  CENTER = 'Center'
+  CENTER = 'Center',
+  INTERSECTION = 'Intersection',
+  PERPENDICULAR = 'Perpendicular'
 }
 
 export interface SnapPoint {

@@ -28,7 +28,7 @@ export class Viewer {
   camera: THREE.OrthographicCamera
   renderer: THREE.WebGLRenderer
   canvas: HTMLCanvasElement
-  font: Font | null = null
+  font: any = null
 
   private isPanning = false
   private isLeftPanEnabled = false
@@ -1555,9 +1555,10 @@ export class Viewer {
 
     let value = entity.computeValue();
     let text: string;
-    if (entity.type === 'RADIUS') {
+    const entityType = (entity as any).type;
+    if (entityType === 'RADIUS') {
       text = "R" + value.toFixed(style.precision);
-    } else if (entity.type === 'ANGULAR' && entity.properties && entity.properties.vertex) {
+    } else if (entityType === 'ANGULAR' && entity.properties && entity.properties.vertex) {
       const vertex = entity.properties.vertex as { x: number, y: number };
       const angle1 = Math.atan2(entity.y1 - vertex.y, entity.x1 - vertex.x);
       const angle2 = Math.atan2(entity.y2 - vertex.y, entity.x2 - vertex.x);
@@ -1921,6 +1922,12 @@ export class Viewer {
       this.camera.zoom = rect.height / height;
     }
 
+    this.camera.updateProjectionMatrix();
+    this.render();
+  }
+
+  zoomScale(factor: number) {
+    this.camera.zoom *= factor;
     this.camera.updateProjectionMatrix();
     this.render();
   }

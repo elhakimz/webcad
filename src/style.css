@@ -1,10 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;700&display=swap');
+
 :root {
-  --bg-color: #000;
-  --text-color: #fff;
-  --accent-color: #00ff00;
-  --border-color: #fff;
-  --menu-border-color: #ff0000;
-  --font-family: 'Courier New', Courier, monospace;
+  --bg-color: #1e1e1e; /* Graphite */
+  --text-color: #e5e2e1; /* Off-white */
+  --accent-color: #3b82f6; /* Professional Blue */
+  --border-color: #3f3f3f; /* Ghost border */
+  --menu-border-color: #3f3f3f;
+  --panel-bg: #2d2d2d; /* Slate */
+  --popover-bg: #363636;
+  --error-color: #f97316; /* Constraint Orange */
+  --font-family: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --radius-sm: 2px;
+  --radius-md: 4px;
 }
 
 * {
@@ -18,7 +26,7 @@ body {
   background-color: var(--bg-color);
   color: var(--text-color);
   font-family: var(--font-family);
-  font-size: 14px;
+  font-size: 13px; /* Compact as requested */
   line-height: 1.2;
 }
 
@@ -35,8 +43,10 @@ body {
   align-items: center;
   padding: 0 10px;
   border-bottom: 1px solid var(--border-color);
-  font-weight: bold;
+  background-color: var(--panel-bg);
+  font-weight: 600;
   gap: 20px;
+  font-family: var(--font-mono); /* Technical data */
 }
 
 #drafting-aids {
@@ -45,7 +55,7 @@ body {
 }
 
 .status-tag {
-  color: #555;
+  color: #666;
   cursor: pointer;
   user-select: none;
 }
@@ -56,14 +66,55 @@ body {
 
 #main-area {
   display: grid;
-  grid-template-columns: 1fr 180px;
+  grid-template-columns: 1fr auto;
   overflow: hidden;
+}
+
+#docking-pane {
+  width: 200px;
+  background-color: var(--bg-color);
+  border-left: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  overflow-y: auto;
+  transition: width 0.2s ease;
+}
+
+.pane-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 5px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--accent-color);
+}
+
+#docking-pane.minimized {
+  width: 30px !important;
+  padding: 10px 5px;
+}
+
+#docking-pane.minimized .pane-content {
+  display: none;
+}
+
+#docking-pane.minimized .pane-title {
+  display: none;
+}
+
+#docking-pane.minimized .pane-header {
+  justify-content: center;
 }
 
 #viewport-container {
   position: relative;
   overflow: hidden;
-  border-right: 1px solid var(--menu-border-color);
+  border-right: 1px solid var(--border-color);
 }
 
 #c {
@@ -73,36 +124,54 @@ body {
   cursor: crosshair;
 }
 
-#side-menu {
-  display: flex;
-  flex-direction: column;
-  background-color: var(--bg-color);
-  padding: 5px 0;
-  overflow-y: auto;
-  border-left: 1px solid var(--menu-border-color);
+.dockable-window {
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.dockable-window.floating {
+  position: absolute;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+}
+
+.dockable-window.docked {
+  position: relative;
+  width: 100% !important;
+  height: auto !important;
 }
 
 .menu-header {
-  text-align: center;
-  padding: 10px 0;
-  font-weight: bold;
-  letter-spacing: 2px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
   border-bottom: 1px solid var(--border-color);
   margin-bottom: 10px;
-}
-
-.menu-item {
-  padding: 5px 15px;
-  cursor: pointer;
   text-transform: uppercase;
 }
 
+.menu-item {
+  padding: 6px 15px; /* Tight padding */
+  cursor: pointer;
+  text-transform: uppercase;
+  font-size: 12px;
+  color: #c2c6d6; /* Dim text */
+  transition: background-color 0.1s, color 0.1s;
+}
+
 .menu-item:hover {
-  background-color: #333;
+  background-color: var(--popover-bg);
+  color: var(--text-color);
 }
 
 .menu-item.active {
-  color: var(--accent-color);
+  background-color: var(--accent-color);
+  color: #fff;
 }
 
 #command-area {
@@ -111,6 +180,7 @@ body {
   border-top: 1px solid var(--border-color);
   padding: 5px 10px;
   background-color: var(--bg-color);
+  font-family: var(--font-mono); /* Console font */
 }
 
 #command-log {
@@ -119,6 +189,7 @@ body {
   margin-bottom: 5px;
   white-space: pre-wrap;
   scrollbar-width: none;
+  color: #c2c6d6; /* Dimmed secondary text for logs */
 }
 
 #command-log::-webkit-scrollbar {
@@ -132,6 +203,7 @@ body {
 
 #command-prompt {
   margin-right: 5px;
+  color: var(--accent-color); /* Blue '>' character style */
 }
 
 #cmd {
@@ -145,6 +217,7 @@ body {
   padding: 0;
 }
 
+/* Main Menu Screen */
 #main-menu-screen {
   display: flex;
   justify-content: center;
@@ -158,38 +231,112 @@ body {
 
 #main-menu-content {
   width: 500px;
+  background-color: var(--panel-bg);
+  padding: 30px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
 }
 
 .menu-title {
   text-align: center;
   font-size: 1.5em;
+  font-weight: 600;
   margin-bottom: 30px;
-  text-decoration: underline;
+  color: var(--accent-color);
 }
 
 .menu-options p {
-  margin: 5px 0;
+  margin: 8px 0;
+  font-family: var(--font-mono);
 }
 
 #main-menu-selection {
   margin-top: 40px;
   display: flex;
   align-items: center;
+  font-family: var(--font-mono);
 }
 
 #main-menu-input {
-  background: none;
-  border: none;
+  background: #181818; /* Submerged input */
+  border: 1px solid var(--border-color);
   color: var(--accent-color);
   font-family: inherit;
   font-size: inherit;
   outline: none;
   margin-left: 10px;
   width: 50px;
+  padding: 2px 5px;
+  border-radius: var(--radius-sm);
+}
+
+#main-menu-input:focus {
+  border-color: var(--accent-color);
 }
 
 #main-menu-status {
   margin-top: 20px;
-  color: var(--menu-border-color);
+  color: var(--error-color); /* Use error color for status/warnings */
   min-height: 1.2em;
+  font-family: var(--font-mono);
+}
+
+/* Floating Toolbar */
+.floating-toolbar {
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Subtle shadow for floating effect */
+  overflow: hidden;
+  min-width: 100px;
+}
+
+.toolbar-header {
+  background-color: var(--bg-color);
+  padding: 6px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toolbar-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.control-btn {
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.1s;
+}
+
+.control-btn:hover {
+  opacity: 1;
+  color: var(--accent-color);
+}
+
+.tool-button:hover {
+  background-color: var(--popover-bg) !important;
+}
+
+.tool-button:active {
+  background-color: var(--accent-color) !important;
+  color: #fff;
+}
+
+.tool-button img {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  background: linear-gradient(135deg, transparent 50%, var(--border-color) 50%);
 }

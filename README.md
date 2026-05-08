@@ -2,7 +2,7 @@
 
 A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, reimagined for the modern web using **TypeScript**, **Three.js**, and **Vite**.
 
-![WebCAD Interface Screenshot](uidesign/Autocad%202.18%20-%20Columbia_example.png)
+![WebCAD Interface Screenshot](screenshots/screen1.png)
 
 ## 🚀 Features
 
@@ -114,3 +114,5 @@ MIT
 ---
 
 **Note:** AutoCAD is an Autodesk product. This project is a modern web-based recreation of the classic AutoCAD 2.18 interface for educational and demonstration purposes.
+
+**Disclaimer:** This application uses open-source icons from LibreCAD.

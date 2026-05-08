@@ -13,6 +13,15 @@ export class ZoomCommand implements Command {
     if (val === "E" || val === "EXTENTS") {
         return { action: "zoom", zoomType: "extents" } as CommandResponse;
     }
+    if (val === "W" || val === "WINDOW") {
+        this.step = 0;
+        return "First corner:";
+    }
+    
+    const factor = parseFloat(val);
+    if (!isNaN(factor) && factor > 0) {
+        return { action: "zoom", zoomType: "scale", factor } as CommandResponse;
+    }
   }
 
   onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {

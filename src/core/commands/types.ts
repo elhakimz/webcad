@@ -45,7 +45,7 @@ export type CommandAction = {
   factor?: number;
   scaleX?: number;
   scaleY?: number;
-  zoomType?: 'window' | 'all' | 'extents';
+  zoomType?: 'window' | 'all' | 'extents' | 'scale';
   p1?: { x: number; y: number };
   p2?: { x: number; y: number };
   deleteOriginal?: boolean;

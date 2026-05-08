@@ -1,5 +1,23 @@
 # WebCAD Tasks
 
+## Current Task: Docking Pane and Dockable Windows
+- [x] Update layout and add styles for docking pane in `src/style.css` <!-- id: 107 -->
+- [x] Create `src/ui/DockingManager.ts` <!-- id: 108 -->
+- [x] Make `Menu` dockable and place in docking pane <!-- id: 109 -->
+- [x] Make `FloatingToolbar` dockable <!-- id: 110 -->
+- [x] Integrate `DockingManager` in `src/main.ts` <!-- id: 111 -->
+
+## Current Task: Floating Toolbar for DRAW Commands
+- [x] Create `public/icons/black_blue` and copy needed icons <!-- id: 103 -->
+- [x] Create `src/ui/FloatingToolbar.ts` <!-- id: 104 -->
+- [x] Add styles for floating toolbar in `src/style.css` <!-- id: 105 -->
+- [x] Integrate `FloatingToolbar` in `src/main.ts` or `App.ts` <!-- id: 106 -->
+
+## Current Task: UI Theme Reform
+- [x] Research and extract color tokens from `DESIGN.md` <!-- id: 100 -->
+- [x] Update `src/style.css` with new variables and styles <!-- id: 101 -->
+- [/] Verify UI changes in browser <!-- id: 102 -->
+
 ## Todo (Phase 7 — Engineering Drafting & Annotation)
 
 ### Phase A (Critical Engineering Foundation)

@@ -20,6 +20,11 @@ export class ViewHandler implements ActionHandler {
         terminateActiveCommand();
         return "Zooming to window.";
       }
+      if (action.zoomType === 'scale' && action.factor !== undefined) {
+        viewer.zoomScale(action.factor);
+        terminateActiveCommand();
+        return `Zooming with scale factor ${action.factor}.`;
+      }
     }
 
     return undefined;

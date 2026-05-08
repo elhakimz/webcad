@@ -9,8 +9,8 @@ import { OpenCascadeService } from "./core/io/OpenCascadeService"
 const canvas = document.getElementById("c") as HTMLCanvasElement
 const viewer = new Viewer(canvas)
 const app = new App(viewer)
-
 const cmdLine = new CommandLine()
+cmdLine.setCommands(app.cmd.getAvailableCommands());
 app.setCommandLine((msg: string) => cmdLine.print(msg))
 const statusBar = new StatusBar()
 app.setStatusBar((layer) => {

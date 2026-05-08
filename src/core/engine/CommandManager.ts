@@ -56,6 +56,22 @@ export class CommandManager {
   active: Command | null = null
   lastPoint: { x: number; y: number } | null = null
 
+  getAvailableCommands(): string[] {
+    return [
+      "LINE", "CIRCLE", "DONUT", "ELLIPSE", "SPLINE", 
+      "ERASE", "E", "MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", 
+      "ZOOM", "Z", "PAN", "P", "TEST3D", "ARC", "POINT", "PLINE", 
+      "POLYGON", "RECTANG", "REC", "RECTANGLE", "TEXT", "SOLID", 
+      "TRACE", "HATCH", "SKETCH", "SHAPE", "LAYER", "LA", 
+      "LINETYPE", "LTYPE", "LT", "SAVE", "LOAD", "NEW", "UNITS", 
+      "ORTHO", "GRID", "SNAP", "ARRAY", "OFFSET", "FILLET", 
+      "CHAMFER", "BREAK", "JOIN", "LENGTHEN", "DIMLINEAR", 
+      "DIMALIGNED", "DIMRADIUS", "DIMDIAMETER", "DIMANGULAR", 
+      "STRETCH", "TRIM", "EXTEND", "BLOCK", "INSERT", "REGEN", 
+      "UNDO", "U", "REDO", "R"
+    ];
+  }
+
   execute(cmd:string, units: UnitsConfig, selection?: string[], entities?: Map<string, Entity>): CommandResponse {
     const parts = cmd.trim().split(/\s+/);
     const cmdName = parts[0].toUpperCase();

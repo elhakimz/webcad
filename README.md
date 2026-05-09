@@ -45,7 +45,7 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **OFFSET / ARRAY:** Distance-based offset and Rectangular/Polar array generation.
 -   **BLOCK / INSERT:** Symbol management with block definitions and efficient viewport instantiation.
 -   **ERASE / MOVE / COPY / STRETCH / ROTATE / SCALE / MIRROR:** Full suite of precise modification tools with crossing-window support.
--   **DIMENSIONING:** Professional engineering annotations including `DIMLINEAR`, `DIMALIGNED`, `DIMRADIUS` (with automatic one-click placement), and `DIMANGULAR`.
+-   **DIMENSIONING:** Professional engineering annotations including `DIMLINEAR`, `DIMALIGNED`, `DIMRADIUS` (with automatic one-click placement), and `DIMANGULAR`. Now features crisp high-resolution text rendering and automatic dimension line breaking for centered text.
 -   **ZOOM:** `Zoom Window`, `Zoom All`, and factor-based zooming.
 -   **NEW:** Workspace reset with safety confirmation prompt.
 

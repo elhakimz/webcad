@@ -26,6 +26,13 @@ export class Document {
     this.spatialIndex = new Quadtree({ minX: -1000000, minY: -1000000, maxX: 1000000, maxY: 1000000 })
   }
 
+  clear() {
+    this.entities.clear();
+    this.history.clear();
+    this.idCounters.clear();
+    this.spatialIndex.clear();
+  }
+
   getNextId(prefix: string): string {
     const count = (this.idCounters.get(prefix) || 0) + 1;
     this.idCounters.set(prefix, count);

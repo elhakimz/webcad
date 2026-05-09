@@ -17,6 +17,7 @@ import { LayerWindow } from "./ui/LayerWindow"
 import { DimToolbar } from "./ui/DimToolbar"
 import { EditToolbar } from "./ui/EditToolbar"
 import { InquiryToolbar } from "./ui/InquiryToolbar"
+import { FileToolWindow } from "./ui/FileToolWindow"
 
 const canvas = document.getElementById("c") as HTMLCanvasElement
 const viewer = new Viewer(canvas)
@@ -166,6 +167,11 @@ const inquiryToolbar = new InquiryToolbar(async (cmd) => {
   cmdLine.focus()
   updatePrompt()
 }, dockingManager)
+
+const fileToolbar = new ToolWindow("file", "File Operations")
+const fileToolWindow = new FileToolWindow(fileToolbar, app)
+mainArea.insertBefore(fileToolbar.getElement(), toolWindowBar.getElement().nextSibling);
+toolWindowBar.addWindow("F", fileToolbar)
 
 // Correct initial sizing and handle resize
 viewer.resize()

@@ -56,7 +56,7 @@ body {
   border: 1px solid var(--border-color);
   background-color: var(--popover-bg);
   border-radius: var(--radius-sm);
-  min-width: 100px;
+  width: max-content;
 }
 
 .ribbon-bar-header {
@@ -237,8 +237,10 @@ body {
 }
 
 .tool-window-content {
+  display: flex;
+  flex-direction: column;
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   color: var(--text-color);
 }
 

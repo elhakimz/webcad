@@ -2,6 +2,8 @@ import * as THREE from "three"
 import { Font } from 'three/examples/jsm/loaders/FontLoader.js'
 import { TTFLoader } from 'three/examples/jsm/loaders/TTFLoader.js'
 import { Entity } from "../core/model/Entity"
+import { UnitsConfig } from "../core/model/Document"
+import { FormatUtils } from "../core/engine/FormatUtils"
 import { Line } from "../core/model/Line"
 import { Circle } from "../core/model/Circle"
 import { Arc } from "../core/model/Arc"
@@ -46,6 +48,7 @@ export class Viewer {
   private snapMarkerGroup: THREE.Group = new THREE.Group()
   private activePointMarkerGroup: THREE.Group = new THREE.Group()
   private gridGroup: THREE.Group = new THREE.Group()
+  private axesGroup: THREE.Group = new THREE.Group()
   private textQueue: Text[] = []
   private noteQueue: Note[] = []
   private selectionBox: THREE.Line | null = null
@@ -60,6 +63,43 @@ export class Viewer {
     this.scene.add(this.snapMarkerGroup);
     this.scene.add(this.activePointMarkerGroup);
     this.scene.add(this.gridGroup);
+    this.scene.add(this.axesGroup);
+
+    // Create XYZ axes gizmo at 0,0
+    const hex = 0x888888;
+    const origin = new THREE.Vector3(0, 0, 0);
+    
+    // Dot at origin
+    const dotGeo = new THREE.BufferGeometry().setFromPoints([origin]);
+    const dotMat = new THREE.PointsMaterial({ color: hex, size: 6, sizeAttenuation: false });
+    const dot = new THREE.Points(dotGeo, dotMat);
+    this.axesGroup.add(dot);
+
+    // Arrows
+    const arrowX = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), origin, 50, hex, 10, 5);
+    const arrowY = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), origin, 50, hex, 10, 5);
+    this.axesGroup.add(arrowX, arrowY);
+
+    // Labels
+    const createLabel = (text: string, pos: THREE.Vector3) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d')!;
+      ctx.font = '24px Arial';
+      ctx.fillStyle = '#888888';
+      ctx.fillText(text, 8, 24);
+      const texture = new THREE.CanvasTexture(canvas);
+      const mat = new THREE.SpriteMaterial({ map: texture });
+      const sprite = new THREE.Sprite(mat);
+      sprite.position.copy(pos);
+      sprite.scale.set(15, 15, 1);
+      return sprite;
+    };
+    
+    const labelX = createLabel('X', new THREE.Vector3(65, 0, 0));
+    const labelY = createLabel('Y', new THREE.Vector3(0, 65, 0));
+    this.axesGroup.add(labelX, labelY);
     
     this.cursorGroup.renderOrder = 999; // Render on top
     this.snapMarkerGroup.renderOrder = 1000; // Render snap on top of cursor
@@ -160,6 +200,11 @@ export class Viewer {
     this.render();
   }
 
+  setAxesVisible(visible: boolean) {
+    this.axesGroup.visible = visible;
+    this.render();
+  }
+
   updateGrid(spacing: number, enabled: boolean) {
     this.gridGroup.visible = enabled;
     
@@ -227,7 +272,7 @@ export class Viewer {
     );
   }
 
-  setPreview(entity: PreviewObject | null) {
+  setPreview(entity: PreviewObject | null, units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 }) {
     if (this.previewObject) {
       this.scene.remove(this.previewObject);
       if (this.previewObject instanceof THREE.Line || this.previewObject instanceof THREE.LineLoop || this.previewObject instanceof THREE.Points || this.previewObject instanceof THREE.Group || this.previewObject instanceof THREE.Mesh) {
@@ -274,7 +319,7 @@ export class Viewer {
         const mat = new THREE.PointsMaterial({ color: previewColor, size: 5, sizeAttenuation: false });
         this.previewObject = new THREE.Points(geo, mat);
       } else if (entity instanceof Dimension) {
-        this.previewObject = this.createDimensionObject(entity, previewColor);
+        this.previewObject = this.createDimensionObject(entity, units, previewColor);
       } else if ('type' in entity && entity.type === 'xmarker') {
         const m = entity as XMarkerPreview;
         const size = m.size || 10 / this.camera.zoom;
@@ -846,8 +891,8 @@ export class Viewer {
     this.scene.add(obj);
   }
 
-  addDimension(entity: Dimension, layer?: string, color?: number, isVisible = true) {
-    const obj = this.createDimensionObject(entity, color || 7);
+  addDimension(entity: Dimension, units: UnitsConfig, layer?: string, color?: number, isVisible = true) {
+    const obj = this.createDimensionObject(entity, units, color || 7);
     obj.name = entity.id;
     if (layer) {
       obj.userData = { layer };
@@ -1170,7 +1215,7 @@ export class Viewer {
     return new THREE.Line(geo, mat);
   }
 
-  private createDimensionObject(entity: Dimension, colorIndex: number): THREE.Object3D {
+  private createDimensionObject(entity: Dimension, units: UnitsConfig, colorIndex: number): THREE.Object3D {
     const color = aciToRgb(colorIndex);
     const group = new THREE.Group();
     const style = entity.style;
@@ -1208,7 +1253,7 @@ export class Viewer {
       const clickDist = Math.sqrt(clickDx * clickDx + clickDy * clickDy);
       
       // Line from center to boundary (no extra extension beyond arrow)
-      const text = "R" + r.toFixed(style.precision);
+      const text = "R" + FormatUtils.formatValue(r, units);
       const textMesh = this.createTextObject(text, style.textHeight, colorIndex, "osifont");
       const mesh = textMesh.children[0] as THREE.Mesh;
       const textWidth = (mesh.geometry as THREE.PlaneGeometry).parameters.width;
@@ -1282,7 +1327,7 @@ export class Viewer {
       
       const oppositePt = { x: center.x - ux * radius, y: center.y - uy * radius };
       
-      const text = "Ø" + diameter.toFixed(style.precision);
+      const text = "Ø" + FormatUtils.formatValue(diameter, units);
       const textWidthApprox = text.length * style.textHeight * 0.75;
       
       const distToClick = Math.sqrt((click.x - center.x)**2 + (click.y - center.y)**2);
@@ -1611,7 +1656,7 @@ export class Viewer {
     let text: string;
     const entityType = (entity as any).type;
     if (entityType === 'RADIUS') {
-      text = "R" + value.toFixed(style.precision);
+      text = "R" + FormatUtils.formatValue(value, units);
     } else if (entityType === 'ANGULAR' && entity.properties && entity.properties.vertex) {
       const vertex = entity.properties.vertex as { x: number, y: number };
       const angle1 = Math.atan2(entity.y1 - vertex.y, entity.x1 - vertex.x);
@@ -1621,7 +1666,7 @@ export class Viewer {
       value = angleDiff;
       text = angleDiff.toFixed(style.precision) + "°";
     } else {
-      text = value.toFixed(style.precision);
+      text = FormatUtils.formatValue(value, units);
     }
 
     const textMesh = this.createTextObject(text, style.textHeight, colorIndex, "osifont");
@@ -2320,6 +2365,10 @@ export class Viewer {
   }
 
   render(){
+    if (this.axesGroup && this.axesGroup.visible) {
+      const scale = 1 / this.camera.zoom;
+      this.axesGroup.scale.set(scale, scale, 1);
+    }
     this.renderer.render(this.scene,this.camera)
   }
 }

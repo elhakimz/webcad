@@ -1,7 +1,11 @@
 import { Viewer } from "./render/Viewer"
 import { App } from "./app"
 import { CommandLine } from "./ui/CommandLine"
-import { StatusBar } from "./ui/StatusBar"
+import { RibbonContainer } from "./ui/RibbonContainer"
+import { LayerInfoRibbonBar } from "./ui/LayerInfoRibbonBar"
+import { DraftingAidsRibbonBar } from "./ui/DraftingAidsRibbonBar"
+import { UnitsAndCoordRibbonBar } from "./ui/UnitsAndCoordRibbonBar"
+import { DisplayRibbonBar } from "./ui/DisplayRibbonBar"
 import { Menu } from "./ui/Menu"
 import { MainMenuScreen } from "./ui/MainMenuScreen"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
@@ -25,19 +29,66 @@ app.doc.layers.createLayer("01", 3, "DASHDOT");
 const cmdLine = new CommandLine()
 cmdLine.setCommands(app.cmd.getAvailableCommands());
 app.setCommandLine((msg: string) => cmdLine.print(msg))
-const statusBar = new StatusBar()
-app.setStatusBar((layer) => {
-  statusBar.updateLayer(layer);
-  statusBar.updateDraftingStatus({
+let updateStatusBar: () => void;
+
+const ribbonContainer = new RibbonContainer();
+const layerRibbon = new LayerInfoRibbonBar();
+const draftingRibbon = new DraftingAidsRibbonBar(
+  (type) => {
+    if (type === 'snap') app.drafting.toggleSnap();
+    if (type === 'grid') app.drafting.toggleGrid();
+    if (type === 'ortho') app.drafting.toggleOrtho();
+    if (type === 'xyz') app.drafting.toggleXyz();
+  },
+  (type, value) => {
+    if (type === 'snap') app.drafting.setSnapSpacing(value);
+    if (type === 'grid') app.drafting.setGridSpacing(value);
+  },
+  app.drafting.snapSpacing,
+  app.drafting.gridSpacing
+);
+const unitsRibbon = new UnitsAndCoordRibbonBar((type) => {
+  app.doc.units.type = type;
+  app.syncFromDocument();
+  if (updateStatusBar) updateStatusBar();
+});
+const displayRibbon = new DisplayRibbonBar(async (action) => {
+  if (action === 'PAN') {
+    await app.execute('PAN');
+  } else if (action === 'ZOOM_ALL') {
+    await app.execute('ZOOM');
+    await app.inputText('ALL');
+  } else if (action === 'ZOOM_WINDOW') {
+    await app.execute('ZOOM');
+    await app.inputText('WINDOW');
+  }
+});
+
+ribbonContainer.addBar(layerRibbon);
+ribbonContainer.addBar(draftingRibbon);
+ribbonContainer.addBar(unitsRibbon);
+ribbonContainer.addBar(displayRibbon);
+
+const statusBarEl = document.getElementById('status-bar')!;
+statusBarEl.innerHTML = '';
+statusBarEl.appendChild(ribbonContainer.getElement());
+
+updateStatusBar = () => {
+  layerRibbon.updateLayer(app.doc.layers.getCurrentLayer());
+  draftingRibbon.updateStatus({
     snap: app.drafting.snapEnabled,
     grid: app.drafting.gridEnabled,
-    ortho: app.drafting.orthoEnabled
+    ortho: app.drafting.orthoEnabled,
+    xyz: app.drafting.xyzEnabled
   });
-})
+  draftingRibbon.updateSizes(app.drafting.snapSpacing, app.drafting.gridSpacing);
+  unitsRibbon.updateUnits(app.doc.units);
+  viewer.setAxesVisible(app.drafting.xyzEnabled);
+};
 
-statusBar.onTagClick('snap', () => app.drafting.toggleSnap());
-statusBar.onTagClick('grid', () => app.drafting.toggleGrid());
-statusBar.onTagClick('ortho', () => app.drafting.toggleOrtho());
+app.setStatusBar((layer) => {
+  updateStatusBar();
+});
 
 const dockingManager = new DockingManager();
 
@@ -211,7 +262,7 @@ window.addEventListener("mousemove", (e) => {
   lastMouseX = e.clientX
   lastMouseY = e.clientY
   const worldPt = viewer.screenToWorld(e.clientX, e.clientY)
-  statusBar.updateCoordinates(worldPt.x, worldPt.y)
+  unitsRibbon.updateCoordinates(worldPt.x, worldPt.y, app.doc.units)
   app.move(e.clientX, e.clientY)
   if (app.cmd.active) {
     updatePrompt()

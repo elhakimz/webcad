@@ -589,22 +589,6 @@ LINE
   8
 01
  10
--145
- 20
-0
- 30
-0.0
- 11
-175
- 21
-0
- 31
-0.0
-  0
-LINE
-  8
-01
- 10
 -90
  20
 70
@@ -1948,6 +1932,26 @@ DIMENSION
 2.5
   1
 38.97
+  0
+MTEXT
+  8
+0
+ 10
+176.73056223501223
+ 20
+107.69725359044867
+ 30
+0.0
+ 40
+5.126386436194806
+ 41
+63.85657055655065
+  1
+A bolt is a threaded fastener used to join two or more components together, typically secured with a matching nut.
+ 50
+0
+ 71
+1
   0
 ENDSEC
   0

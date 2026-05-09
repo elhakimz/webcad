@@ -1,5 +1,11 @@
 # WebCAD Tasks
 
+## Current Task: Implement Units & Measurement Features
+- [x] Support unit suffixes in `CoordinateParser.ts` <!-- id: 610 -->
+- [x] Pass units to `CoordinateParser` in `CommandManager.ts` <!-- id: 611 -->
+- [x] Use `FormatUtils` in `Viewer.ts` for dimensions <!-- id: 612 -->
+- [x] Add unit tests for coordinate parser with suffixes <!-- id: 613 -->
+
 ## Current Task: Preserve Polygon ID Prefix on DXF Reload
 - [x] Add XData to Polyline in `dxfExport.ts` if ID starts with `PG` <!-- id: 600 -->
 - [x] Read XData in `dxfImport.ts` and use `PG` prefix if found <!-- id: 601 -->

@@ -1,3 +1,5 @@
+import { UnitsConfig } from "../model/Document";
+
 export class CoordinateParser {
   /**
    * Parses a coordinate string.
@@ -6,7 +8,7 @@ export class CoordinateParser {
    * - Relative Cartesian: "@dx,dy"
    * - Relative Polar: "@dist<angle"
    */
-  static parseCoordinate(text: string, lastPoint?: { x: number; y: number }): { x: number; y: number } | null {
+  static parseCoordinate(text: string, units: UnitsConfig, lastPoint?: { x: number; y: number }): { x: number; y: number } | null {
     text = text.trim();
     if (!text) return null;
 
@@ -19,7 +21,7 @@ export class CoordinateParser {
       const parts = content.split('<');
       if (parts.length !== 2) return null;
 
-      const dist = parseFloat(parts[0]);
+      const dist = this.parseValueWithUnits(parts[0], units);
       const angleDeg = parseFloat(parts[1]);
 
       if (isNaN(dist) || isNaN(angleDeg)) return null;
@@ -34,8 +36,8 @@ export class CoordinateParser {
       const parts = content.split(',');
       if (parts.length !== 2) return null;
 
-      const xVal = parseFloat(parts[0]);
-      const yVal = parseFloat(parts[1]);
+      const xVal = this.parseValueWithUnits(parts[0], units);
+      const yVal = this.parseValueWithUnits(parts[1], units);
 
       if (isNaN(xVal) || isNaN(yVal)) return null;
 
@@ -51,5 +53,31 @@ export class CoordinateParser {
     }
 
     return null;
+  }
+
+  private static parseValueWithUnits(text: string, units: UnitsConfig): number {
+    text = text.trim();
+    if (!text) return NaN;
+
+    // Extract numeric part and suffix
+    const match = text.match(/^([+-]?\d*\.?\d+)(.*)$/);
+    if (!match) return NaN;
+
+    const val = parseFloat(match[1]);
+    const suffix = match[2].trim().toLowerCase();
+
+    if (!suffix) return val; // No suffix
+
+    if (units.type === 'metric') {
+      if (suffix === 'mm') return val;
+      if (suffix === 'cm') return val * 10;
+      if (suffix === 'm') return val * 1000;
+    } else if (units.type === 'architectural') {
+      if (suffix === "'" || suffix === "ft") return val * 12;
+      if (suffix === '"' || suffix === "in") return val;
+    }
+
+    // If suffix is not recognized for the current unit type, ignore it or fallback
+    return val;
   }
 }

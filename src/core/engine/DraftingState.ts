@@ -4,6 +4,7 @@ export class DraftingState {
   gridSpacing: number = 10;
   snapEnabled: boolean = false;
   snapSpacing: number = 5;
+  xyzEnabled: boolean = true;
 
   private listeners: (() => void)[] = [];
 
@@ -27,6 +28,11 @@ export class DraftingState {
 
   toggleSnap() {
     this.snapEnabled = !this.snapEnabled;
+    this.notify();
+  }
+
+  toggleXyz() {
+    this.xyzEnabled = !this.xyzEnabled;
     this.notify();
   }
 

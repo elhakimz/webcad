@@ -88,7 +88,11 @@ export class App {
 
     this.drafting = new DraftingState()
     this.drafting.subscribe(() => {
-      this.viewer.updateGrid(this.drafting.gridSpacing, this.drafting.gridEnabled);
+      let spacing = this.drafting.gridSpacing;
+      if (this.doc.units.type === 'architectural') {
+        spacing = spacing * 25.4;
+      }
+      this.viewer.updateGrid(spacing, this.drafting.gridEnabled);
       if (this.statusBarUpdate) {
           this.statusBarUpdate(this.doc.layers.getCurrentLayer());
       }
@@ -109,8 +113,12 @@ export class App {
 
     // 1. Grid Snap (lower priority than geometric snap)
     if (!snap && this.drafting.snapEnabled) {
-        x = Math.round(x / this.drafting.snapSpacing) * this.drafting.snapSpacing;
-        y = Math.round(y / this.drafting.snapSpacing) * this.drafting.snapSpacing;
+        let spacing = this.drafting.snapSpacing;
+        if (this.doc.units.type === 'architectural') {
+          spacing = spacing * 25.4;
+        }
+        x = Math.round(x / spacing) * spacing;
+        y = Math.round(y / spacing) * spacing;
     }
 
     // 2. Ortho Constraint (lowest priority)
@@ -242,7 +250,7 @@ export class App {
 
     if (this.cmd.active && this.cmd.active.getPreview) {
       const preview = this.cmd.active.getPreview(worldPt.x, worldPt.y, this.doc.units);
-      this.viewer.setPreview(preview);
+      this.viewer.setPreview(preview, this.doc.units);
     } else {
       this.viewer.setPreview(null);
     }
@@ -588,7 +596,7 @@ export class App {
     } else if (entity instanceof Ellipse) {
       this.viewer.addEllipse(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Dimension) {
-      this.viewer.addDimension(entity, layer, layerColor, isVisible);
+      this.viewer.addDimension(entity, this.doc.units, layer, layerColor, isVisible);
     } else if (entity instanceof Note) {
       this.viewer.addNote(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Trace) {

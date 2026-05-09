@@ -4,6 +4,7 @@ export interface DraftingStatus {
   snap: boolean;
   grid: boolean;
   ortho: boolean;
+  xyz: boolean;
 }
 
 export class StatusBar {

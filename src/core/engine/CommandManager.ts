@@ -366,7 +366,7 @@ export class CommandManager {
   }
 
   inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }, doc?: any): CommandResponse | undefined {
-    const pt = CoordinateParser.parseCoordinate(text, this.lastPoint || undefined)
+    const pt = CoordinateParser.parseCoordinate(text, units, this.lastPoint || undefined)
     if (pt) {
       return this.inputPoint(pt.x, pt.y, units, idGenerator, doc)
     }

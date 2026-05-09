@@ -3,10 +3,15 @@ import { UnitsConfig } from "../model/Document";
 export class FormatUtils {
   static formatValue(val: number, units: UnitsConfig): string {
     if (units.type === 'architectural') {
-      const feet = Math.floor(val / 12);
-      const inches = Math.abs(val % 12);
-      const sign = val < 0 ? "-" : "";
-      return `${sign}${feet}' ${inches.toFixed(units.precision)}"`;
+      const inches = val / 25.4; // Convert mm to inches
+      const absVal = Math.abs(inches);
+      const feet = Math.floor(absVal / 12);
+      const remInches = absVal % 12;
+      const sign = inches < 0 ? "-" : "";
+      return `${sign}${feet}' ${remInches.toFixed(units.precision)}"`;
+    }
+    if (units.type === 'metric') {
+      return `${val.toFixed(units.precision)} mm`;
     }
     return val.toFixed(units.precision);
   }

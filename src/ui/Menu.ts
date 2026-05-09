@@ -59,16 +59,6 @@ export class Menu {
 
   private setupInitialMenu() {
     const root: MenuItem[] = [
-      { label: 'DISPLAY', submenu: [
-        { label: 'ZOOM', command: 'ZOOM' },
-        { label: 'PAN', command: 'PAN' },
-        { label: 'REGEN', command: 'REGEN' }
-      ] },
-      { label: 'MODES', submenu: [
-        { label: 'ORTHO', command: 'ORTHO' },
-        { label: 'GRID', command: 'GRID' },
-        { label: 'SNAP', command: 'SNAP' }
-      ]},
       { label: 'PLOT' },
       { label: 'UTILITY', submenu: [
         { label: 'LTYPE', command: 'LINETYPE' },

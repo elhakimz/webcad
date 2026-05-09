@@ -1,5 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;700&display=swap');
 
+@font-face {
+  font-family: 'osifont';
+  src: url('/fonts/osifont.ttf') format('truetype');
+}
+
 :root {
   --bg-color: #1e1e1e; /* Graphite */
   --text-color: #e5e2e1; /* Off-white */
@@ -415,12 +420,12 @@ body {
 
 .toolbar-header {
   background-color: var(--bg-color);
-  padding: 6px 10px;
+  padding: 4px 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-weight: 600;
-  font-size: 12px;
+  font-size: 10px;
   text-transform: uppercase;
   border-bottom: 1px solid var(--border-color);
 }

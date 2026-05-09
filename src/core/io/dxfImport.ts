@@ -233,7 +233,8 @@ export class DXFImporter {
               i++;
             }
           }
-          entity = new Polyline(doc.getNextId("PL"), vertices, closed);
+          const prefix = props[1000] === "PG" ? "PG" : "PL";
+          entity = new Polyline(doc.getNextId(prefix), vertices, closed);
         } else if (type === "INSERT") {
             entity = new Insert(doc.getNextId("I"), props[2], parseFloat(props[10]), parseFloat(props[20]), 
                 parseFloat(props[41] || "1.0"), parseFloat(props[42] || "1.0"), parseFloat(props[50] || "0"));

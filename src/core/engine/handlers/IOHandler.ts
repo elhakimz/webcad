@@ -9,13 +9,17 @@ export class IOHandler implements ActionHandler {
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, syncFromDocument, terminateActiveCommand } = context;
+    const { doc, syncFromDocument, terminateActiveCommand, onLayersChange } = context;
 
     if (action.action === 'new') {
       doc.entities.clear();
       doc.history.clear();
+      doc.layers.layers.clear();
+      doc.layers.createLayer("0", 7, "CONTINUOUS");
+      doc.layers.currentLayerName = "0";
       syncFromDocument();
       terminateActiveCommand();
+      onLayersChange();
       return "New drawing started.";
     }
 
@@ -73,6 +77,7 @@ export class IOHandler implements ActionHandler {
           
           syncFromDocument();
           terminateActiveCommand();
+          onLayersChange();
           return `Drawing loaded from files/${action.filename}`;
         } else {
           return `File not found: ${action.filename}`;

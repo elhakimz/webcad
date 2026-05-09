@@ -10,6 +10,9 @@ import { DockingManager } from "./ui/DockingManager"
 import { ToolWindowBar } from "./ui/ToolWindowBar"
 import { ToolWindow } from "./ui/ToolWindow"
 import { LayerWindow } from "./ui/LayerWindow"
+import { DimToolbar } from "./ui/DimToolbar"
+import { EditToolbar } from "./ui/EditToolbar"
+import { InquiryToolbar } from "./ui/InquiryToolbar"
 
 const canvas = document.getElementById("c") as HTMLCanvasElement
 const viewer = new Viewer(canvas)
@@ -54,6 +57,12 @@ const layerWindow = new LayerWindow(layersWindow, app.doc.layers, (name) => {
   app.execute(`LAYER Color ${color} ${layerName}`);
 }, (layerName, ltype) => {
   app.execute(`LAYER Ltype ${ltype} ${layerName}`);
+}, (layerName, action) => {
+  app.execute(`LAYER ${action} ${layerName}`);
+}, (layerName, action) => {
+  app.execute(`LAYER ${action} ${layerName}`);
+}, (cmd) => {
+  app.execute(cmd);
 });
 app.setLayersWindowUpdate(() => layerWindow.refresh());
 
@@ -68,6 +77,36 @@ const menu = new Menu(async (cmd) => {
 }, dockingManager)
 
 const floatingToolbar = new FloatingToolbar(async (cmd) => {
+  cmdLine.print(`Command: ${cmd}`)
+  const res = await app.execute(cmd)
+  if (typeof res === 'string') {
+    cmdLine.print(res)
+  }
+  cmdLine.focus()
+  updatePrompt()
+}, dockingManager)
+
+const dimToolbar = new DimToolbar(async (cmd) => {
+  cmdLine.print(`Command: ${cmd}`)
+  const res = await app.execute(cmd)
+  if (typeof res === 'string') {
+    cmdLine.print(res)
+  }
+  cmdLine.focus()
+  updatePrompt()
+}, dockingManager)
+
+const editToolbar = new EditToolbar(async (cmd) => {
+  cmdLine.print(`Command: ${cmd}`)
+  const res = await app.execute(cmd)
+  if (typeof res === 'string') {
+    cmdLine.print(res)
+  }
+  cmdLine.focus()
+  updatePrompt()
+}, dockingManager)
+
+const inquiryToolbar = new InquiryToolbar(async (cmd) => {
   cmdLine.print(`Command: ${cmd}`)
   const res = await app.execute(cmd)
   if (typeof res === 'string') {
@@ -96,6 +135,9 @@ const mainMenu = new MainMenuScreen(async (filename?: string) => {
   // Callback when starting/loading a drawing
   document.getElementById('drawing-editor')!.style.display = 'block';
   floatingToolbar.show();
+  dimToolbar.show();
+  editToolbar.show();
+  inquiryToolbar.show();
   
   if (filename) {
     // Option 2: Load existing
@@ -103,10 +145,7 @@ const mainMenu = new MainMenuScreen(async (filename?: string) => {
     await app.execute(`LOAD ${filename}`);
   } else {
     // Option 1: Begin NEW drawing - Clear everything
-    app.doc.entities.clear();
-    app.doc.history.clear();
-    app.syncFromDocument();
-    cmdLine.print("New drawing started.");
+    await app.execute('NEW');
   }
 
   viewer.resize();
@@ -183,6 +222,11 @@ window.addEventListener("mousemove", (e) => {
 window.addEventListener("keydown", async (e) => {
   // Auto-focus command line on alphanumeric key if no command is active
   if (!app.cmd.active && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    // Don't hijack focus if user is already typing in an input or textarea
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+      return;
+    }
+
     const key = e.key;
     if (key.length === 1 && /^[a-z0-9]$/i.test(key)) {
       const cmdInput = document.getElementById('cmd') as HTMLInputElement;

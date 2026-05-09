@@ -1,6 +1,6 @@
 import { DockingManager } from "./DockingManager"
 
-export class FloatingToolbar {
+export class EditToolbar {
   private container!: HTMLElement;
   private headerEl!: HTMLElement;
   private gridEl!: HTMLElement;
@@ -19,27 +19,24 @@ export class FloatingToolbar {
     this.populateCommands();
 
     if (this.dockingManager) {
-      this.dockingManager.registerWindow('toolbar', this.container, false, 'calc(100vw - 350px)', 100); // Default floating on the right
+      // Register with docking manager, default docked = true
+      this.dockingManager.registerWindow('edit_toolbar', this.container, true); 
     }
   }
 
   private createToolbar() {
     this.container = document.createElement('div');
-    this.container.id = 'floating-toolbar';
-    this.container.className = 'floating-toolbar';
-    this.container.style.position = 'absolute';
-    this.container.style.top = '100px';
-    this.container.style.left = 'calc(100vw - 350px)'; // Position at the right
+    this.container.id = 'edit-toolbar';
+    this.container.className = 'floating-toolbar'; // Reuse styles
     this.container.style.width = '120px'; // Fixed width for 3 columns
-    this.container.style.zIndex = '1000';
 
     this.headerEl = document.createElement('div');
     this.headerEl.className = 'toolbar-header';
     this.headerEl.innerHTML = `
-      <span>Draw</span>
+      <span>Edit</span>
       <div class="toolbar-controls">
-        <span class="control-btn" id="tb-dock">[ ]</span>
-        <span class="control-btn" id="tb-minimize">_</span>
+        <span class="control-btn" id="edit-tb-dock">[ ]</span>
+        <span class="control-btn" id="edit-tb-minimize">_</span>
       </div>
     `;
 
@@ -58,17 +55,14 @@ export class FloatingToolbar {
     resizeHandle.className = 'resize-handle';
     this.container.appendChild(resizeHandle);
 
-    document.body.appendChild(this.container);
-    this.container.style.display = 'none'; // Start hidden
-
     // Dock behavior
-    const dockBtn = this.headerEl.querySelector('#tb-dock')!;
+    const dockBtn = this.headerEl.querySelector('#edit-tb-dock')!;
     dockBtn.addEventListener('click', () => {
-      this.dockingManager?.toggleDock('toolbar');
+      this.dockingManager?.toggleDock('edit_toolbar');
     });
 
     // Minimize behavior
-    const minimizeBtn = this.headerEl.querySelector('#tb-minimize')!;
+    const minimizeBtn = this.headerEl.querySelector('#edit-tb-minimize')!;
     minimizeBtn.addEventListener('click', () => {
       this.gridEl.style.display = this.gridEl.style.display === 'none' ? 'grid' : 'none';
       this.container.style.height = 'auto';
@@ -77,31 +71,27 @@ export class FloatingToolbar {
 
   private populateCommands() {
     const commands = [
-      { cmd: 'LINE', icon: 'line.svg' },
-      { cmd: 'CIRCLE', icon: 'circle.svg' },
-      { cmd: 'ARC', icon: 'arc_3_points.svg' },
-      { cmd: 'RECTANG', icon: 'line_rectangle.svg' },
-      { cmd: 'PLINE', icon: 'polylines.svg' },
-      { cmd: 'POINT', icon: 'point_dot.svg' },
-      { cmd: 'POLYGON', icon: 'line_polygon_cor_cor.svg' },
-      { cmd: 'ELLIPSE', icon: 'ellipse_axis.svg' },
-      { cmd: 'HATCH', icon: 'hatch.svg' },
-      { cmd: 'TEXT', icon: 'text.svg' },
-      { cmd: 'MTEXT', icon: 'mtext.svg' },
-      { cmd: 'SPLINE', icon: 'spline.svg' },
-      { cmd: 'DONUT', icon: 'cross_circle.svg' },
-      { cmd: 'SOLID', icon: 'SOLID.svg' },
-      { cmd: 'TRACE', icon: 'TRACE.svg' },
-      { cmd: 'SKETCH', icon: 'SKETCH.svg' },
-      { cmd: 'SHAPE', icon: 'SHAPE.svg' },
-      { cmd: 'BLOCK', icon: 'create_block.svg' },
-      { cmd: 'INSERT', icon: 'insert_active_block.svg' }
+      { cmd: 'MOVE', icon: 'move_copy.svg', title: 'Move' },
+      { cmd: 'COPY', icon: 'copy.svg', title: 'Copy' },
+      { cmd: 'ERASE', icon: 'delete.svg', title: 'Erase' },
+      { cmd: 'ROTATE', icon: 'rotate.svg', title: 'Rotate' },
+      { cmd: 'SCALE', icon: 'scale.svg', title: 'Scale' },
+      { cmd: 'MIRROR', icon: 'mirror.svg', title: 'Mirror' },
+      { cmd: 'OFFSET', icon: 'offset.svg', title: 'Offset' },
+      { cmd: 'FILLET', icon: 'fillet.svg', title: 'Fillet' },
+      { cmd: 'CHAMFER', icon: 'bevel.svg', title: 'Chamfer' },
+      { cmd: 'TRIM', icon: 'trim.svg', title: 'Trim' },
+      { cmd: 'EXTEND', icon: 'trim2.svg', title: 'Extend' },
+      { cmd: 'STRETCH', icon: 'stretch.svg', title: 'Stretch' },
+      { cmd: 'ARRAY', icon: 'duplicate.svg', title: 'Array' },
+      { cmd: 'BREAK', icon: 'break_out_trim.svg', title: 'Break' },
+      { cmd: 'JOIN', icon: 'line_join.svg', title: 'Join' }
     ];
 
     commands.forEach(b => {
       const btn = document.createElement('div');
       btn.className = 'tool-button';
-      btn.title = b.cmd;
+      btn.title = b.title;
       btn.style.width = '32px';
       btn.style.height = '32px';
       btn.style.border = '1px solid var(--border-color)';
@@ -115,15 +105,7 @@ export class FloatingToolbar {
       img.src = `/icons/black_blue/${b.icon}`;
       img.style.width = '24px';
       img.style.height = '24px';
-      img.style.pointerEvents = 'none'; // So click goes to div
-
-      // Fallback if image fails
-      img.onerror = () => {
-        img.style.display = 'none';
-        btn.textContent = b.cmd.substring(0, 2); // Show first 2 letters
-        btn.style.fontSize = '10px';
-        btn.style.fontWeight = 'bold';
-      };
+      img.style.pointerEvents = 'none';
 
       btn.appendChild(img);
 
@@ -143,7 +125,7 @@ export class FloatingToolbar {
       this.isDragging = true;
       this.startX = e.clientX - this.container.offsetLeft;
       this.startY = e.clientY - this.container.offsetTop;
-      this.container.style.right = ''; // Clear right when dragging starts to prevent stretching
+      this.container.style.right = '';
       e.preventDefault();
     });
 
@@ -176,8 +158,7 @@ export class FloatingToolbar {
     document.addEventListener('mousemove', (e) => {
       if (!this.isResizing) return;
       const width = this.startWidth + (e.clientX - this.startX);
-      // Determine columns based on width
-      const btnSize = 36; // 32 width + 4 gap approx
+      const btnSize = 36;
       const cols = Math.max(1, Math.floor(width / btnSize));
       if (cols !== this.currentCols) {
         this.currentCols = cols;

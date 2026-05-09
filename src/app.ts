@@ -355,6 +355,7 @@ export class App {
     const activeName = this.cmd.active?.constructor.name;
     const isEditCommand = this.isEditCommand(activeName);
     const isSelectionStep = !this.cmd.active || 
+        (activeName === 'ListCommand') ||
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
         (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
@@ -396,9 +397,10 @@ export class App {
             const isLengthenPick = activeName === 'LengthenCommand' && this.cmd.active?.step === 2;
             const isDimRadiusPick = (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand') && this.cmd.active?.step === 0;
             const isDimAngularPick = activeName === 'DimAngularCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
+            const isListPick = activeName === 'ListCommand';
 
-            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isDimRadiusPick || isDimAngularPick)) {       
-                if ((isDimRadiusPick || isDimAngularPick) && (this.cmd.active as any).setEntity) {
+            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isDimRadiusPick || isDimAngularPick || isListPick)) {       
+                if ((isDimRadiusPick || isDimAngularPick || isListPick) && (this.cmd.active as any).setEntity) {
                   (this.cmd.active as any).setEntity(entity);
                 }
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);

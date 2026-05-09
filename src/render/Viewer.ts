@@ -191,7 +191,7 @@ export class Viewer {
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const mat = new THREE.PointsMaterial({ color: 0x333333, size: 1, sizeAttenuation: false });
+    const mat = new THREE.PointsMaterial({ color: 0x444444, size: 1, sizeAttenuation: false });
     const grid = new THREE.Points(geo, mat);
     this.gridGroup.add(grid);
     this.render();

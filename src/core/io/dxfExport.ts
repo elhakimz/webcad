@@ -130,6 +130,9 @@ export class DXFExporter {
       s += " 10\n" + e.x + "\n 20\n" + e.y + "\n 30\n0.0\n";
     } else if (e instanceof Polyline) {
       s += "  0\nPOLYLINE\n  8\n" + layer + "\n 66\n1\n 70\n" + (e.closed ? 1 : 0) + "\n";
+      if (e.id.startsWith('PG')) {
+        s += "1001\nWEBCAD\n1000\nPG\n";
+      }
       for (const v of e.vertices) {
         s += "  0\nVERTEX\n  8\n" + layer + "\n";
         s += " 10\n" + v.x + "\n 20\n" + v.y + "\n 30\n0.0\n";

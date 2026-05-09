@@ -59,70 +59,11 @@ export class Menu {
 
   private setupInitialMenu() {
     const root: MenuItem[] = [
-      { label: 'BLOCKS', submenu: [{ label: 'BLOCK' }, { label: 'INSERT' }] },
-      { label: 'DIM:', submenu: [
-        { label: 'LINEAR', command: 'DIMLINEAR' },
-        { label: 'ALIGNED', command: 'DIMALIGNED' },
-        { label: 'RADIUS', command: 'DIMRADIUS' },
-        { label: 'DIAMETER', command: 'DIMDIAMETER' },
-        { label: 'ANGULAR', command: 'DIMANGULAR' }
-      ] },
       { label: 'DISPLAY', submenu: [
         { label: 'ZOOM', command: 'ZOOM' },
         { label: 'PAN', command: 'PAN' },
         { label: 'REGEN', command: 'REGEN' }
       ] },
-      { label: 'DRAW', submenu: [
-        { label: 'ARC', command: 'ARC' },
-        { label: 'CIRCLE', command: 'CIRCLE' },
-        { label: 'DONUT', command: 'DONUT' },
-        { label: 'ELLIPSE', command: 'ELLIPSE' },
-        { label: 'LINE:', command: 'LINE' },
-        { label: 'PLINE', command: 'PLINE' },
-        { label: 'POINT', command: 'POINT' },
-        { label: 'POLYGON', command: 'POLYGON' },
-        { label: 'RECTANG', command: 'RECTANG' },
-        { label: 'SOLID', command: 'SOLID' },
-        { label: 'SPLINE', command: 'SPLINE' },
-        { label: 'TRACE', command: 'TRACE' },
-        { label: 'HATCH', command: 'HATCH' },
-        { label: 'SKETCH', command: 'SKETCH' },
-        { label: 'SHAPE', command: 'SHAPE' },
-        { label: 'TEXT', command: 'TEXT' }
-      ]},
-      { label: 'EDIT', submenu: [
-        { label: 'ARRAY', command: 'ARRAY' },
-        { label: 'ERASE', command: 'ERASE' },
-        { label: 'MOVE', command: 'MOVE' },
-        { label: 'COPY', command: 'COPY' },
-        { label: 'STRETCH', command: 'STRETCH' },
-        { label: 'ROTATE', command: 'ROTATE' },
-        { label: 'SCALE', command: 'SCALE' },
-        { label: 'MIRROR', command: 'MIRROR' },
-        { label: 'OFFSET', command: 'OFFSET' },
-        { label: 'FILLET', command: 'FILLET' },
-        { label: 'CHAMFER', command: 'CHAMFER' },
-        { label: 'BREAK', command: 'BREAK' },
-        { label: 'JOIN', command: 'JOIN' },
-        { label: 'LENGTHEN', command: 'LENGTHEN' },
-        { label: 'TRIM', command: 'TRIM' },
-        { label: 'EXTEND', command: 'EXTEND' }
-      ]},
-      { label: 'INQUIRY' },
-      { label: 'LAYERS', submenu: [
-        { label: 'LIST', command: 'LAYER ?' },
-        { label: 'NEW', command: 'LAYER N' },
-        { label: 'SET', command: 'LAYER S' },
-        { label: 'ON', command: 'LAYER ON' },
-        { label: 'OFF', command: 'LAYER OFF' },
-        { label: 'FREEZE', command: 'LAYER F' },
-        { label: 'THAW', command: 'LAYER T' },
-        { label: 'LOCK', command: 'LAYER L' },
-        { label: 'UNLOCK', command: 'LAYER U' },
-        { label: 'COLOR', command: 'LAYER C' },
-        { label: 'LTYPE', command: 'LAYER LT' },
-        { label: 'DELETE', command: 'LAYER D' }
-      ]},
       { label: 'MODES', submenu: [
         { label: 'ORTHO', command: 'ORTHO' },
         { label: 'GRID', command: 'GRID' },

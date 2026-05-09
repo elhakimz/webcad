@@ -19,6 +19,7 @@ import { PolylineCommand } from "../commands/PolylineCommand"
 import { PolygonCommand } from "../commands/PolygonCommand"
 import { RectangCommand } from "../commands/RectangCommand"
 import { TextCommand } from "../commands/TextCommand"
+import { MTextCommand } from "../commands/MTextCommand"
 import { TraceCommand } from "../commands/TraceCommand"
 import { SolidCommand } from "../commands/SolidCommand"
 import { HatchCommand } from "../commands/HatchCommand"
@@ -58,6 +59,7 @@ import { InsertCommand } from "../commands/InsertCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 import { UnitsConfig } from "../model/Document"
+import { Entity } from "../model/Entity"
 
 export class CommandManager {
   active: Command | null = null
@@ -191,6 +193,10 @@ export class CommandManager {
     else if(cmdName === "TEXT"){
       this.active = new TextCommand()
       response = "TEXT"
+    }
+    else if(cmdName === "MTEXT"){
+      this.active = new MTextCommand()
+      response = "MTEXT"
     }
     else if(cmdName === "SOLID"){
       this.active = new SolidCommand()

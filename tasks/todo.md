@@ -1,5 +1,10 @@
 # WebCAD Tasks
 
+## Current Task: Preserve Polygon ID Prefix on DXF Reload
+- [x] Add XData to Polyline in `dxfExport.ts` if ID starts with `PG` <!-- id: 600 -->
+- [x] Read XData in `dxfImport.ts` and use `PG` prefix if found <!-- id: 601 -->
+- [ ] Verify by creating, saving, and reloading a polygon <!-- id: 602 -->
+
 
 ## Current Task: Create DataTable Component (Base)
 - [x] Create `src/ui/DataTable.ts` (Base class) <!-- id: 300 -->
@@ -18,6 +23,23 @@
 - [ ] Add styles for `ColorSelectList` in `src/style.css` <!-- id: 305 -->
 - [ ] Implement color items and selection logic <!-- id: 306 -->
 - [ ] Verify component by creating a dummy instance <!-- id: 307 -->
+
+## Current Task: Implement Layer Table Right-Click Toggles
+- [x] Add `onVisibilityToggle` and `onFreezeToggle` to `LayerDataTable` <!-- id: 502 -->
+- [x] Add `contextmenu` listeners to `visIcon` and `freezeIcon` in `LayerDataTable` <!-- id: 503 -->
+- [x] Add callbacks to `LayerWindow` constructor for visibility and freeze <!-- id: 504 -->
+- [x] Wire callbacks in `LayerWindow` to `LayerDataTable` <!-- id: 505 -->
+- [x] Pass command execution callbacks in `main.ts` <!-- id: 506 -->
+- [x] Verify behavior by right-clicking in UI (or unit tests) <!-- id: 507 -->
+- [x] Reset layer list to only Layer 0 on New drawing <!-- id: 508 -->
+
+## Current Task: Make Layer Window Filter and Buttons Functional
+- [x] Store `filterInput` as class property in `LayerWindow` <!-- id: 509 -->
+- [x] Implement filtering in `LayerWindow.refresh()` <!-- id: 510 -->
+- [x] Add `input` event listener to `filterInput` <!-- id: 511 -->
+- [x] Add click handlers to toolbar buttons in `LayerWindow` <!-- id: 512 -->
+- [x] Implement popup input for "New Layer" button <!-- id: 513 -->
+- [x] Verify functionality by filtering and creating layers <!-- id: 514 -->
 
 ## Current Task: Docking Pane and Dockable Windows
 - [x] Update layout and add styles for docking pane in `src/style.css` <!-- id: 107 -->
@@ -98,3 +120,9 @@
 - [x] Standardize dynamic prompts <!-- id: 7 -->
 - [x] Implement MIRROR command <!-- id: 3 -->
 - [x] Implement DIMRADIUS and DIMANGULAR commands <!-- id: 27 -->
+- [x] Fix layer data table initialization when loading a drawing <!-- id: 501 -->
+
+## Review: Fix Layer Table Initialization
+- Problem: Layer table UI did not refresh when loading a DXF drawing or starting a new drawing.
+- Fix: Added `onLayersChange()` calls in `IOHandler.ts` for `load` and `new` actions. Also reset layers to default on `new`.
+- Verification: Added `IOHandler.test.ts` and verified with Vitest. Tests passed.

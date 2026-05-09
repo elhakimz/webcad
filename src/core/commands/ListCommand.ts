@@ -19,7 +19,7 @@ export class ListCommand implements Command {
   }
 
   onInput(text: string, _id: string, _units: UnitsConfig): CommandResponse | undefined {
-    if ((text === "" || text.toUpperCase() === "ENTER") && this.selectedEntity) {
+    if (this.selectedEntity) {
       const action: CommandAction = { action: 'list', entity: this.selectedEntity };
       this.selectedEntity = null;
       return action as CommandResponse;

@@ -10,6 +10,7 @@ import { Arc } from "./core/model/Arc"
 import { Point } from "./core/model/Point"
 import { Polyline } from "./core/model/Polyline"
 import { Text } from "./core/model/Text"
+import { MText } from "./core/model/MText"
 import { Solid } from "./core/model/Solid"
 import { Donut } from "./core/model/Donut"
 import { Ellipse } from "./core/model/Ellipse"
@@ -101,7 +102,7 @@ export class App {
     const basePointCmd = this.cmd.active as unknown as HasBasePoint;
     const base = (typeof basePointCmd?.getBasePoint === 'function') ? basePointCmd.getBasePoint() : null;
     
-    const snap = SnapEngine.getSnapPointSpatial(worldX, worldY, this.doc, tolerance, base || undefined);
+    const snap = SnapEngine.getSnapPointSpatial(worldX, worldY, this.doc, tolerance);
     
     let x = snap ? snap.x : worldX;
     let y = snap ? snap.y : worldY;
@@ -436,7 +437,7 @@ export class App {
       let entity: Entity | undefined;
       let isCloseAction = false;
       
-      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape || result instanceof Spline || result instanceof Note) {
+      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof MText || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape || result instanceof Spline || result instanceof Note) {
         entity = result as Entity;
       } else if (result && typeof result === 'object' && 'action' in result && result.action === 'close' && result.entity) {
         entity = result.entity;
@@ -574,6 +575,8 @@ export class App {
       this.viewer.addPolyline(entity, layer, layerColor, isVisible, linetype);
     } else if (entity instanceof Text) {
       this.viewer.addText(entity, layer, layerColor, isVisible);
+    } else if (entity instanceof MText) {
+      this.viewer.addMText(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Solid) {
       this.viewer.addSolid(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Donut) {

@@ -8,6 +8,8 @@ export class TextCommand implements Command {
   startPt = { x: 0, y: 0 }
   height = 5
   rotation = 0
+  currentMouseX = 0
+  currentMouseY = 0
 
   onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.step === 0) {
@@ -46,10 +48,44 @@ export class TextCommand implements Command {
     }
   }
 
+  getPreview(x: number, y: number, _units: UnitsConfig) {
+    this.currentMouseX = x;
+    this.currentMouseY = y;
+    
+    if (this.step === 1) {
+      const dx = x - this.startPt.x;
+      const dy = y - this.startPt.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const h = dist > 0 ? dist : this.height;
+      return new Text("PREVIEW", this.startPt.x, this.startPt.y, h, 0, "TEXT");
+    } else if (this.step === 2) {
+      const angle = Math.atan2(y - this.startPt.y, x - this.startPt.x) * (180 / Math.PI);
+      return new Text("PREVIEW", this.startPt.x, this.startPt.y, this.height, angle, "TEXT");
+    }
+    return null;
+  }
+
+  getReferencePoints() {
+    if (this.step === 1 || this.step === 2) {
+      return [this.startPt];
+    }
+    return [];
+  }
+
   getPrompt() {
     if (this.step === 0) return "TEXT start point:";
-    if (this.step === 1) return "Height <5>:";
-    if (this.step === 2) return "Rotation angle <0>:";
+    if (this.step === 1) {
+      const dx = this.currentMouseX - this.startPt.x;
+      const dy = this.currentMouseY - this.startPt.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const h = dist > 0 ? dist : this.height;
+      return `Height <${h.toFixed(2)}>:`;
+    }
+    if (this.step === 2) {
+      const angle = Math.atan2(this.currentMouseY - this.startPt.y, this.currentMouseX - this.startPt.x) * (180 / Math.PI);
+      const a = angle !== 0 ? angle : this.rotation;
+      return `Rotation angle <${a.toFixed(2)}>:`;
+    }
     return "Text:";
   }
 }

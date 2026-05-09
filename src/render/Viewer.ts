@@ -8,6 +8,7 @@ import { Arc } from "../core/model/Arc"
 import { Point } from "../core/model/Point"
 import { Polyline } from "../core/model/Polyline"
 import { Text } from "../core/model/Text"
+import { MText } from "../core/model/MText"
 import { Solid } from "../core/model/Solid"
 import { Donut } from "../core/model/Donut"
 import { Ellipse } from "../core/model/Ellipse"
@@ -379,30 +380,110 @@ export class Viewer {
   }
 
   private createTextObject(entity: Text, colorIndex: number): THREE.Object3D {
-    if (!this.font) return new THREE.Group();
+    const scale = 20.0; // Use high scale for crispness
+    
+    // Create a temporary canvas to measure text
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d')!;
+    tempCtx.font = `${entity.height * scale}px Arial`;
+    const metrics = tempCtx.measureText(entity.text);
+    
+    const cw = Math.max(1, metrics.width);
+    const ch = Math.max(1, entity.height * scale);
 
-    const color = aciToRgb(colorIndex);
-    const shapes = this.font.generateShapes(entity.text, entity.height);
-    const geometry = new THREE.ShapeGeometry(shapes);
-    
-    const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
-    const mesh = new THREE.Mesh(geometry, mat);
-    
-    mesh.position.set(entity.x, entity.y, 0);
-    mesh.rotation.z = entity.rotation * (Math.PI / 180);
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d')!;
+
+    // Draw text
+    ctx.font = `${entity.height * scale}px Arial`;
+    ctx.textBaseline = "top";
+    const threeColor = new THREE.Color(aciToRgb(colorIndex));
+    ctx.fillStyle = threeColor.getStyle(); // Use ACI color
+    ctx.fillText(entity.text, 0, 0);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+
+    const width = cw / scale;
+    const height = ch / scale;
+    const geometry = new THREE.PlaneGeometry(width, height);
+    const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = 10;
 
-    geometry.computeBoundingBox();
-    const bbox = geometry.boundingBox!;
-    const width = bbox.max.x - bbox.min.x;
-    const height = bbox.max.y - bbox.min.y;
+    // Position: Text insertion point is usually bottom-left or top-left depending on baseline.
+    // Canvas fills from top, so let's position it accordingly.
+    // align to insertion point (entity.x, entity.y)
+    mesh.position.x = entity.x + width / 2;
+    mesh.position.y = entity.y - height / 2;
+    mesh.position.z = 0.2; // Lift above other geometry to avoid z-fighting
+    mesh.rotation.z = entity.rotation * (Math.PI / 180);
+
+    return mesh;
+  }
+
+  private createMTextObject(entity: MText, colorIndex: number): THREE.Object3D {
+    // Use a higher fixed scale to ensure crisp text regardless of zoom
+    let scale = 20.0; 
+    let cw = entity.width * scale;
+    let ch = entity.height * scale;
+
+    // Safety limit to prevent exceeding browser canvas limits
+    const maxDim = 4096;
+    if (cw > maxDim || ch > maxDim) {
+      const reduction = Math.min(maxDim / cw, maxDim / ch);
+      scale *= reduction;
+      cw = entity.width * scale;
+      ch = entity.height * scale;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = cw;
+    canvas.height = ch;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.scale(scale, scale);
+    ctx.clearRect(0, 0, entity.width, entity.height);
+
+    const color = aciToRgb(colorIndex);
+    const hexColor = `#${color.toString(16).padStart(6, '0')}`;
     
-    const hitBoxGeo = new THREE.PlaneGeometry(width || 0.1, height || 0.1);
-    const hitBoxMat = new THREE.MeshBasicMaterial({ visible: false });
-    const hitBox = new THREE.Mesh(hitBoxGeo, hitBoxMat);
-    hitBox.position.set(width / 2, height / 2, 0);
-    mesh.add(hitBox);
-    
+    ctx.font = `${entity.textHeight}px Arial`;
+    ctx.fillStyle = hexColor;
+    ctx.textBaseline = "top";
+
+    entity.layoutLines.forEach(line => {
+      const canvasX = line.x - entity.bounds.x;
+      const canvasY = (entity.bounds.y + entity.height) - line.y;
+      ctx.fillText(line.text, canvasX, canvasY);
+    });
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+
+    const geometry = new THREE.PlaneGeometry(entity.width, entity.height);
+    const mesh = new THREE.Mesh(geometry, material);
+
+    mesh.position.x = entity.bounds.x + entity.width / 2;
+    mesh.position.y = entity.bounds.y + entity.height / 2;
+    mesh.position.z = 0;
+
+    mesh.rotation.z = entity.rotation;
+
     return mesh;
   }
 
@@ -695,11 +776,18 @@ export class Viewer {
 
 
   addText(entity: Text, layer?: string, color?: number, isVisible = true) {
-    if (!this.font) {
-      this.textQueue.push(entity);
-      return;
-    }
     const obj = this.createTextObject(entity, color || 7);
+    obj.name = entity.id;
+    if (layer) {
+      obj.userData = { layer };
+    }
+    obj.visible = isVisible;
+    this.scene.add(obj);
+    this.render();
+  }
+  
+  addMText(entity: MText, layer?: string, color?: number, isVisible = true) {
+    const obj = this.createMTextObject(entity, color || 7);
     obj.name = entity.id;
     if (layer) {
       obj.userData = { layer };

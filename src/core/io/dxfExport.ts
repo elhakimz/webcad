@@ -6,6 +6,7 @@ import { Arc } from "../model/Arc";
 import { Point } from "../model/Point";
 import { Polyline } from "../model/Polyline";
 import { Text } from "../model/Text";
+import { MText } from "../model/MText";
 import { Solid } from "../model/Solid";
 import { Donut } from "../model/Donut";
 import { Ellipse } from "../model/Ellipse";
@@ -141,6 +142,14 @@ export class DXFExporter {
       s += " 40\n" + e.height + "\n";
       s += "  1\n" + e.text + "\n";
       s += " 50\n" + e.rotation + "\n";
+    } else if (e instanceof MText) {
+      s += "  0\nMTEXT\n  8\n" + layer + "\n";
+      s += " 10\n" + e.insertionPoint.x + "\n 20\n" + e.insertionPoint.y + "\n 30\n0.0\n";
+      s += " 40\n" + e.textHeight + "\n";
+      s += " 41\n" + e.width + "\n";
+      s += "  1\n" + e.contents + "\n";
+      s += " 50\n" + (e.rotation * 180 / Math.PI) + "\n"; // Convert to degrees
+      s += " 71\n" + e.attachmentPoint + "\n";
     } else if (e instanceof Solid) {
       s += "  0\nSOLID\n  8\n" + layer + "\n";
       for (let i = 0; i < Math.min(e.vertices.length, 4); i++) {

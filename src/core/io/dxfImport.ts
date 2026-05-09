@@ -6,6 +6,7 @@ import { Arc } from "../model/Arc";
 import { Point } from "../model/Point";
 import { Polyline, PolylineVertex } from "../model/Polyline";
 import { Text } from "../model/Text";
+import { MText, AttachmentPoint } from "../model/MText";
 import { Solid } from "../model/Solid";
 import { Ellipse } from "../model/Ellipse";
 import { Hatch } from "../model/Hatch";
@@ -152,6 +153,16 @@ export class DXFImporter {
           entity = new Point(doc.getNextId("PT"), parseFloat(props[10]), parseFloat(props[20]));
         } else if (type === "TEXT") {
           entity = new Text(doc.getNextId("TX"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]), parseFloat(props[50] || "0"), props[1] || "");
+        } else if (type === "MTEXT") {
+          const insertionPoint = { x: parseFloat(props[10] || "0"), y: parseFloat(props[20] || "0") };
+          const width = parseFloat(props[41] || "0");
+          const contents = props[1] || "";
+          const mtext = new MText(doc.getNextId("MTX"), insertionPoint, width, 0, contents);
+          mtext.textHeight = parseFloat(props[40] || "2.5");
+          mtext.rotation = parseFloat(props[50] || "0") * Math.PI / 180; // Convert to radians
+          mtext.attachmentPoint = parseInt(props[71] || "1") as AttachmentPoint;
+          mtext.layoutMText();
+          entity = mtext;
         } else if (type === "ELLIPSE") {
           entity = new Ellipse(doc.getNextId("E"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[11]), parseFloat(props[21]), parseFloat(props[40]));
         } else if (type === "SOLID" || type === "TRACE") {

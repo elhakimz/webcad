@@ -10,6 +10,7 @@ export class PolylineCommand implements Command {
   closed = false
   isArcMode = false
   private entityId: string | null = null;
+  private currentDirection: { x: number, y: number } | null = null;
 
   onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
     if (this.step === 0) {
@@ -18,13 +19,26 @@ export class PolylineCommand implements Command {
       this.step = 1
       return FormatUtils.formatPoint(x, y, units, "P1")
     } else {
+      const prev = this.vertices[this.vertices.length - 1];
       const v: PolylineVertex = { x, y, bulge: 0 }
       
-      // If we were in ARC mode, the previous vertex should have a bulge
       if (this.isArcMode) {
-          const prev = this.vertices[this.vertices.length - 1];
-          // Simple bulge for semi-circle for now if in arc mode
-          prev.bulge = 0.5; 
+          if (this.currentDirection) {
+              const bulgeResult = this.calculateTangentArcBulge(prev, v, this.currentDirection);
+              prev.bulge = bulgeResult.bulge;
+              this.currentDirection = bulgeResult.endDirection;
+          } else {
+              prev.bulge = 0.5; // Default semi-circle fallback
+              this.currentDirection = { x: 1, y: 0 };
+          }
+      } else {
+          // Line mode - update direction
+          const dx = x - prev.x;
+          const dy = y - prev.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 1e-6) {
+              this.currentDirection = { x: dx / len, y: dy / len };
+          }
       }
 
       this.vertices.push(v)
@@ -64,7 +78,19 @@ export class PolylineCommand implements Command {
 
   getPreview(x: number, y: number, _units: UnitsConfig): PreviewObject | null {
     if (this.step === 1 && this.vertices.length > 0) {
-      const tempVertices = [...this.vertices, { x, y, bulge: this.isArcMode ? 0.5 : 0 }]
+      const prev = this.vertices[this.vertices.length - 1];
+      let bulge = 0;
+      if (this.isArcMode && this.currentDirection) {
+        const bulgeResult = this.calculateTangentArcBulge(prev, { x, y }, this.currentDirection);
+        bulge = bulgeResult.bulge;
+      }
+      
+      const tempVertices = [...this.vertices];
+      if (tempVertices.length > 0) {
+          tempVertices[tempVertices.length - 1] = { ...prev, bulge };
+      }
+      tempVertices.push({ x, y, bulge: 0 });
+      
       return { type: 'polyline_preview', vertices: tempVertices, closed: this.closed };
     }
     return null
@@ -89,5 +115,59 @@ export class PolylineCommand implements Command {
     if (this.step === 0) return "PLINE specify start point:";
     const mode = this.isArcMode ? "Arc" : "Line";
     return `Arc/Close/Halfwidth/Length/Undo/Width/<Endpoint of ${mode}>:`;
+  }
+
+  private calculateTangentArcBulge(p1: {x: number, y: number}, p2: {x: number, y: number}, vTangent: {x: number, y: number}): { bulge: number, endDirection: {x: number, y: number} } {
+    const x = p2.x - p1.x;
+    const y = p2.y - p1.y;
+    const tx = vTangent.x;
+    const ty = vTangent.y;
+
+    const denom = 2 * (y * tx - x * ty);
+    if (Math.abs(denom) < 1e-6) {
+      // Points are collinear with tangent! Render as line.
+      return { bulge: 0, endDirection: vTangent };
+    }
+
+    const R = (x * x + y * y) / denom;
+    
+    // Center of arc
+    const cx = p1.x - R * ty;
+    const cy = p1.y + R * tx;
+
+    // Chord midpoint
+    const mx = (p1.x + p2.x) / 2;
+    const my = (p1.y + p2.y) / 2;
+
+    // Distance from center to chord midpoint
+    const d = Math.sqrt((cx - mx) * (cx - mx) + (cy - my) * (cy - my));
+    
+    // Sagitta h
+    const h = Math.abs(R) - d;
+
+    // Chord length L
+    const L = Math.sqrt(x * x + y * y);
+
+    // Bulge = h / (L / 2)
+    let bulge = h / (L / 2);
+    
+    // Sign of bulge matches sign of R
+    if (R < 0) bulge = -bulge;
+
+    // Tangent at end point (P2)
+    const r2x = p2.x - cx;
+    const r2y = p2.y - cy;
+    const r2len = Math.sqrt(r2x * r2x + r2y * r2y);
+    
+    let endDirection = { x: 1, y: 0 };
+    if (r2len > 1e-6) {
+      if (R > 0) {
+        endDirection = { x: -r2y / r2len, y: r2x / r2len };
+      } else {
+        endDirection = { x: r2y / r2len, y: -r2x / r2len };
+      }
+    }
+
+    return { bulge, endDirection };
   }
 }

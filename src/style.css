@@ -32,7 +32,7 @@ body {
 
 #app {
   display: grid;
-  grid-template-rows: 30px 1fr 100px;
+  grid-template-rows: 30px 1fr auto;
   height: 100vh;
   width: 100vw;
 }
@@ -65,8 +65,7 @@ body {
 }
 
 #main-area {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
   overflow: hidden;
 }
 
@@ -79,7 +78,11 @@ body {
   gap: 10px;
   padding: 10px;
   overflow-y: auto;
-  transition: width 0.2s ease;
+}
+
+#main-area, #main-area * {
+  transition: none !important;
+  animation: none !important;
 }
 
 .pane-header {
@@ -111,10 +114,104 @@ body {
   justify-content: center;
 }
 
+/* Tool Window Bar (Sidebar) */
+#tool-window-bar {
+  width: 40px;
+  background-color: var(--panel-bg);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0;
+  gap: 15px;
+}
+
+.bar-item {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-color);
+  transition: background-color 0.1s, color 0.1s;
+}
+
+.bar-item:hover {
+  background-color: var(--popover-bg);
+}
+
+.bar-item.active {
+  background-color: var(--accent-color);
+  color: #fff;
+}
+
+.bar-item .icon {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* Tool Window (Panel) */
+.tool-window {
+  width: 250px;
+  background-color: var(--bg-color);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.tool-window-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  background-color: transparent;
+  transition: background-color 0.2s;
+}
+
+.tool-window-resizer:hover {
+  background-color: var(--accent-color);
+  opacity: 0.5;
+}
+
+.tool-window-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--accent-color);
+}
+
+.tool-window-content {
+  flex: 1;
+  overflow-y: auto;
+  color: var(--text-color);
+}
+
+.tool-window-controls .control-btn {
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.1s;
+}
+
+.tool-window-controls .control-btn:hover {
+  opacity: 1;
+}
+
 #viewport-container {
   position: relative;
   overflow: hidden;
   border-right: 1px solid var(--border-color);
+  flex: 1;
 }
 
 #c {
@@ -181,6 +278,8 @@ body {
   padding: 5px 10px;
   background-color: var(--bg-color);
   font-family: var(--font-mono); /* Console font */
+  position: relative;
+  height: 100px;
 }
 
 #command-log {
@@ -190,6 +289,29 @@ body {
   white-space: pre-wrap;
   scrollbar-width: none;
   color: #c2c6d6; /* Dimmed secondary text for logs */
+}
+
+#command-log-toggle {
+  position: absolute;
+  top: 5px;
+  right: 10px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.1s;
+  color: var(--accent-color);
+  font-weight: bold;
+}
+
+#command-log-toggle:hover {
+  opacity: 1;
+}
+
+#command-area.minimized {
+  height: 30px !important;
+}
+
+#command-area.minimized #command-log {
+  display: none;
 }
 
 #command-log::-webkit-scrollbar {
@@ -339,4 +461,115 @@ body {
   width: 10px;
   height: 10px;
   background: linear-gradient(135deg, transparent 50%, var(--border-color) 50%);
+}
+
+/* Data Table */
+.data-table-container {
+  width: 100%;
+  overflow-x: hidden; /* Avoid horizontal scrollbar */
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  table-layout: fixed; /* Force fixed layout to prevent overflow */
+}
+
+.data-table th, .data-table td {
+  padding: 4px 2px;
+  border: 1px solid var(--border-color);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-table th {
+  background-color: var(--bg-color);
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+/* Specific column widths for Layer Table */
+.data-table th:nth-child(1), .data-table td:nth-child(1) { width: 35%; text-align: left; padding-left: 5px; } /* Name */
+.data-table th:nth-child(2), .data-table td:nth-child(2) { width: 15%; } /* Color */
+.data-table th:nth-child(3), .data-table td:nth-child(3) { width: 26%; } /* Ltype */
+.data-table th:nth-child(4), .data-table td:nth-child(4) { width: 12%; } /* On */
+.data-table th:nth-child(5), .data-table td:nth-child(5) { width: 12%; } /* Freeze */
+
+.col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background-color: transparent;
+}
+
+.col-resizer:hover {
+  background-color: var(--accent-color);
+  opacity: 0.5;
+}
+
+.selectable-row {
+  cursor: pointer;
+}
+
+.selectable-row:hover {
+  background-color: var(--bg-color);
+}
+
+.active-row {
+  background-color: var(--accent-color) !important;
+  color: #fff !important;
+}
+
+/* Color Select List */
+.color-select-list {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  padding: 5px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+}
+
+.color-select-list .color-box {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  transition: transform 0.1s;
+}
+
+.color-select-list .color-box:hover {
+  transform: scale(1.1);
+  border-color: var(--accent-color);
+}
+
+/* Linetype Select List */
+.ltype-select-list {
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  padding: 5px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ltype-item {
+  padding: 5px 10px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.ltype-item:hover {
+  background-color: var(--accent-color);
+  color: #fff;
 }

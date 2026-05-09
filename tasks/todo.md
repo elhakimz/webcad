@@ -1,5 +1,24 @@
 # WebCAD Tasks
 
+
+## Current Task: Create DataTable Component (Base)
+- [x] Create `src/ui/DataTable.ts` (Base class) <!-- id: 300 -->
+- [x] Add styles for `DataTable` in `src/style.css` <!-- id: 301 -->
+- [x] Implement row selection and data population logic <!-- id: 302 -->
+
+## Current Task: Create Layer Tool Window
+- [x] Create `src/ui/LayerDataTable.ts` inheriting from `DataTable` <!-- id: 312 -->
+- [x] Create `src/ui/LayerWindow.ts` or implement in `main.ts` <!-- id: 308 -->
+- [x] Add toolbar and filter input to Layer Window <!-- id: 309 -->
+- [x] Use `LayerDataTable` to list layers with status icons <!-- id: 310 -->
+- [ ] Handle layer selection and state toggles <!-- id: 311 -->
+
+## Current Task: Create ColorSelectList Component
+- [ ] Create `src/ui/ColorSelectList.ts` <!-- id: 304 -->
+- [ ] Add styles for `ColorSelectList` in `src/style.css` <!-- id: 305 -->
+- [ ] Implement color items and selection logic <!-- id: 306 -->
+- [ ] Verify component by creating a dummy instance <!-- id: 307 -->
+
 ## Current Task: Docking Pane and Dockable Windows
 - [x] Update layout and add styles for docking pane in `src/style.css` <!-- id: 107 -->
 - [x] Create `src/ui/DockingManager.ts` <!-- id: 108 -->
@@ -44,6 +63,22 @@
 
 
 ## Done
+- [x] Fix Polyline offset to handle arcs and global side <!-- id: 401 -->
+- [x] Convert `#main-area` to flexbox to fix animation issue <!-- id: 214 -->
+- [x] Move `#docking-pane` to initial HTML to prevent load animation <!-- id: 212 -->
+- [x] Position `FloatingToolbar` (DRAW) at the right of screen by default <!-- id: 213 -->
+- [x] Add minimize button to `#command-area` in `CommandLine.ts` <!-- id: 209 -->
+- [x] Add click handler to toggle minimized state in `CommandLine.ts` <!-- id: 210 -->
+- [x] Update styles in `src/style.css` to handle minimized state <!-- id: 211 -->
+- [x] Update `#main-area` layout in `src/style.css` to support left sidebar <!-- id: 205 -->
+- [x] Instantiate `ToolWindowBar` and `ToolWindow` in `src/main.ts` <!-- id: 206 -->
+- [x] Add "Layers" window to the bar with dummy content <!-- id: 207 -->
+- [x] Style the `ToolWindowBar` and `ToolWindow` in `src/style.css` <!-- id: 208 -->
+- [x] Create `src/ui/ToolWindow.ts` (Base component) <!-- id: 203 -->
+- [x] Create `src/ui/ToolWindowBar.ts` <!-- id: 204 -->
+- [x] Rename folder `tech_docs` to `Documents` <!-- id: 201 -->
+- [x] Update `.gitignore` to replace `tech_docs/` with `Documents/` <!-- id: 202 -->
+- [x] Untrack `tech_docs` from git <!-- id: 200 -->
 - [x] Implement GRID snap and toggle (F7) <!-- id: 11 -->
 - [x] Implement ORTHO mode and toggle (F8) <!-- id: 12 -->
 - [x] Implement TRIM and EXTEND commands <!-- id: 10 -->

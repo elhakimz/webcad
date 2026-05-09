@@ -17,6 +17,7 @@ export interface AppContext {
   updateLayerVisibility(): void;
   terminateActiveCommand(): void;
   onStatusBarUpdate(layer: Layer): void;
+  onLayersChange(): void;
 }
 
 export interface ActionHandler {

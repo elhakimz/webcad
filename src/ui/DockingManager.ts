@@ -33,14 +33,14 @@ export class DockingManager {
     });
   }
 
-  public registerWindow(id: string, el: HTMLElement, defaultDocked = false) {
+  public registerWindow(id: string, el: HTMLElement, defaultDocked = false, x: string | number = 100, y: string | number = 100) {
     this.windows.set(id, el);
     el.classList.add('dockable-window');
     
     if (defaultDocked) {
       this.dock(id);
     } else {
-      this.undock(id);
+      this.undock(id, x, y);
     }
   }
 
@@ -63,15 +63,15 @@ export class DockingManager {
     this.contentContainer.appendChild(el);
   }
 
-  public undock(id: string, x = 100, y = 100) {
+  public undock(id: string, x: string | number = 100, y: string | number = 100) {
     const el = this.windows.get(id);
     if (!el) return;
 
     el.classList.remove('docked');
     el.classList.add('floating');
     el.style.position = 'absolute';
-    el.style.top = `${y}px`;
-    el.style.left = `${x}px`;
+    el.style.top = typeof y === 'number' ? `${y}px` : y;
+    el.style.left = typeof x === 'number' ? `${x}px` : x;
     
     document.body.appendChild(el);
   }

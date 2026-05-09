@@ -35,6 +35,7 @@ export class LayerHandler implements ActionHandler {
       const layer = doc.layers.createLayer(name);
       doc.layers.setCurrentLayer(name);
       onStatusBarUpdate(layer);
+      context.onLayersChange();
       return exists 
         ? `Layer "${name}" already exists. Set as current.`
         : `Layer "${name}" created and set as current.`;
@@ -45,6 +46,7 @@ export class LayerHandler implements ActionHandler {
       const layer = doc.layers.setCurrentLayer(name);
       if (layer) {
         onStatusBarUpdate(layer);
+        context.onLayersChange();
         return `Layer "${name}" is now current.`;
       }
       return `Cannot set layer "${name}" as current (not found or frozen).`;
@@ -67,6 +69,7 @@ export class LayerHandler implements ActionHandler {
       }
       updateLayerVisibility();
       onStatusBarUpdate(doc.layers.getCurrentLayer());
+      context.onLayersChange();
       
       const msgMap: Record<string, string> = {
         'layerOn': "Layers turned ON.",
@@ -88,6 +91,7 @@ export class LayerHandler implements ActionHandler {
       }
       syncFromDocument();
       onStatusBarUpdate(doc.layers.getCurrentLayer());
+      context.onLayersChange();
       return `Layer color set to ${color}.`;
     }
 
@@ -100,6 +104,7 @@ export class LayerHandler implements ActionHandler {
       }
       syncFromDocument();
       onStatusBarUpdate(doc.layers.getCurrentLayer());
+      context.onLayersChange();
       return `Layer linetype set to ${linetype}.`;
     }
 
@@ -109,6 +114,7 @@ export class LayerHandler implements ActionHandler {
       for (const name of names) {
         if (doc.layers.deleteLayer(name)) deleted++;
       }
+      context.onLayersChange();
       return `Deleted ${deleted} layer(s).`;
     }
 

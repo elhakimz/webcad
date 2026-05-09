@@ -68,7 +68,7 @@ describe('PolylineCommand', () => {
     // Draw semi-circle to (2, 2). Chord angle is 90 deg.
     // alpha = 90 - 0 = 90. bulge = tan(45) = 1.
     const pline = cmd.onPoint(2, 2, 'PL1', { type: 'decimal', precision: 2, scale: 1.0 }) as Polyline
-    expect(pline.vertices[1].bulge).toBeCloseTo(0.5)
+    expect(pline.vertices[1].bulge).toBeCloseTo(1.0)
     
     // Tangent at (2,2) should be 0 + 180 = 180 deg (Left)
     // Actually chord angle 90 + alpha 90 = 180. Correct.

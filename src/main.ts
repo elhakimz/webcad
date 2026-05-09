@@ -7,10 +7,18 @@ import { MainMenuScreen } from "./ui/MainMenuScreen"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
 import { FloatingToolbar } from "./ui/FloatingToolbar"
 import { DockingManager } from "./ui/DockingManager"
+import { ToolWindowBar } from "./ui/ToolWindowBar"
+import { ToolWindow } from "./ui/ToolWindow"
+import { LayerWindow } from "./ui/LayerWindow"
 
 const canvas = document.getElementById("c") as HTMLCanvasElement
 const viewer = new Viewer(canvas)
 const app = new App(viewer)
+
+// Initialize layers requested by user
+app.doc.layers.createLayer("1", 7, "CONTINUOUS");
+app.doc.layers.createLayer("2", 4, "CONTINUOUS");
+app.doc.layers.createLayer("01", 3, "DASHDOT");
 const cmdLine = new CommandLine()
 cmdLine.setCommands(app.cmd.getAvailableCommands());
 app.setCommandLine((msg: string) => cmdLine.print(msg))
@@ -29,6 +37,25 @@ statusBar.onTagClick('grid', () => app.drafting.toggleGrid());
 statusBar.onTagClick('ortho', () => app.drafting.toggleOrtho());
 
 const dockingManager = new DockingManager();
+
+const toolWindowBar = new ToolWindowBar();
+const layersWindow = new ToolWindow("layers", "Layers");
+
+const mainArea = document.getElementById('main-area')!;
+// Insert at the beginning of mainArea
+mainArea.insertBefore(toolWindowBar.getElement(), mainArea.firstChild);
+// Insert layers window after the bar
+mainArea.insertBefore(layersWindow.getElement(), toolWindowBar.getElement().nextSibling);
+
+toolWindowBar.addWindow("L", layersWindow);
+const layerWindow = new LayerWindow(layersWindow, app.doc.layers, (name) => {
+  app.execute(`LAYER Set ${name}`);
+}, (layerName, color) => {
+  app.execute(`LAYER Color ${color} ${layerName}`);
+}, (layerName, ltype) => {
+  app.execute(`LAYER Ltype ${ltype} ${layerName}`);
+});
+app.setLayersWindowUpdate(() => layerWindow.refresh());
 
 const menu = new Menu(async (cmd) => {
   cmdLine.print(`Command: ${cmd}`)
@@ -53,6 +80,16 @@ const floatingToolbar = new FloatingToolbar(async (cmd) => {
 // Correct initial sizing and handle resize
 viewer.resize()
 window.addEventListener("resize", () => viewer.resize())
+
+// Handle container resize (e.g. when docking pane minimizes)
+const viewportContainer = document.getElementById("viewport-container");
+if (viewportContainer) {
+  const resizeObserver = new ResizeObserver(() => {
+    viewer.resize();
+    viewer.render();
+  });
+  resizeObserver.observe(viewportContainer);
+}
 
 // Main Menu Logic
 const mainMenu = new MainMenuScreen(async (filename?: string) => {

@@ -19,3 +19,11 @@
 
 - **Hatch Line Generation Centering:** When generating pattern lines for a bounding box, ensure the lines are centered on the box center (along the line direction). Otherwise, if the lines are centered on the origin or normal and only extended by the box size, objects far from the origin will not be reached and will appear empty.
 - **TypeScript Property Initialization**: When initializing properties in a separate method called by the constructor (e.g., `createToolbar()`), use the definite assignment assertion operator (`!`) on the property declarations (e.g., `private container!: HTMLElement;`) to satisfy TypeScript's strict property initialization check.
+
+- **CSS Grid Layout Animations:** Modern browsers may implicitly animate grid track changes even when `transition: none` is applied. Converting the layout to Flexbox is a reliable way to bypass these implicit animations and ensure instant snapping.
+- **Manager Overrides on Load:** When initializing UI components that register with a manager (like `DockingManager`), ensure the manager's registration method accepts and respects initial positions. Otherwise, the manager might override the component's initial CSS positioning with its own defaults on load.
+
+- **Polyline Offset Orientation:** When offsetting a complex polyline (especially closed or concave), determine the orientation (CW/CCW) and apply the offset side (Left/Right) consistently based on whether the user wants to offset OUTWARDS or INWARDS. Do not calculate the side per segment independently, as this causes crossovers.
+- **Polyline Offset Arc Radius**: For arc segments in a polyline, the radius change during offset depends on the bulge sign and the global offset direction (Outwards/Inwards). Use `sign = (v1.bulge > 0 === goOutwards) ? 1 : -1;` to determine if radius increases or decreases.
+- **Polyline Offset Join Logic**: Differentiate between convex and concave corners during polyline offset. For concave corners, intersect and trim the extended segments. For convex corners, insert a miter line (or corner arc) to avoid large jumps.
+- **Polyline Offset Side Intent**: Use the segment closest to the user's pick point to determine the intended offset side (Left/Right), rather than always using the first segment. This makes the command feel more natural and responsive to the user's click.

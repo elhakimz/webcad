@@ -48,7 +48,12 @@ export class App {
   private selectionStartPoint: { x: number, y: number } | null = null
   private commandLinePrint: ((msg: string) => void) | null = null
   private statusBarUpdate: ((layer: Layer) => void) | null = null
+  private layersWindowUpdate: (() => void) | null = null
   private dispatcher: ResultDispatcher;
+
+  setLayersWindowUpdate(updateFn: () => void) {
+    this.layersWindowUpdate = updateFn;
+  }
 
   setCommandLine(printFn: (msg: string) => void) {
     this.commandLinePrint = printFn;
@@ -505,7 +510,8 @@ export class App {
         syncFromDocument: () => this.syncFromDocument(),
         updateLayerVisibility: () => this.updateLayerVisibility(),
         terminateActiveCommand: () => this.terminateActiveCommand(),
-        onStatusBarUpdate: (l) => { if (this.statusBarUpdate) this.statusBarUpdate(l); }
+        onStatusBarUpdate: (l) => { if (this.statusBarUpdate) this.statusBarUpdate(l); },
+        onLayersChange: () => { if (this.layersWindowUpdate) this.layersWindowUpdate(); }
       };
 
       const actionResult = await (async () => {

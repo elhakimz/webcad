@@ -19,7 +19,7 @@ export class FloatingToolbar {
     this.populateCommands();
 
     if (this.dockingManager) {
-      this.dockingManager.registerWindow('toolbar', this.container, false); // Default floating
+      this.dockingManager.registerWindow('toolbar', this.container, false, 'calc(100vw - 350px)', 100); // Default floating on the right
     }
   }
 
@@ -29,7 +29,8 @@ export class FloatingToolbar {
     this.container.className = 'floating-toolbar';
     this.container.style.position = 'absolute';
     this.container.style.top = '100px';
-    this.container.style.left = '100px';
+    this.container.style.left = 'calc(100vw - 350px)'; // Position at the right
+    this.container.style.width = '120px'; // Fixed width for 3 columns
     this.container.style.zIndex = '1000';
 
     this.headerEl = document.createElement('div');
@@ -126,6 +127,7 @@ export class FloatingToolbar {
       this.isDragging = true;
       this.startX = e.clientX - this.container.offsetLeft;
       this.startY = e.clientY - this.container.offsetTop;
+      this.container.style.right = ''; // Clear right when dragging starts to prevent stretching
       e.preventDefault();
     });
 

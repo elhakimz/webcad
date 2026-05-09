@@ -11,8 +11,29 @@ export class CommandLine {
     this.inputEl = document.getElementById('cmd') as HTMLInputElement;
     this.promptEl = document.getElementById('command-prompt')!;
 
+    const commandArea = document.getElementById('command-area')!;
+    const toggleBtn = document.createElement('div');
+    toggleBtn.id = 'command-log-toggle';
+    toggleBtn.className = 'control-btn';
+    toggleBtn.textContent = '_';
+    toggleBtn.title = "Minimize Command Log";
+    
+    commandArea.appendChild(toggleBtn);
+
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent focusing input when clicking button
+      commandArea.classList.toggle('minimized');
+      if (commandArea.classList.contains('minimized')) {
+        toggleBtn.textContent = '[';
+        toggleBtn.title = "Restore Command Log";
+      } else {
+        toggleBtn.textContent = '_';
+        toggleBtn.title = "Minimize Command Log";
+      }
+    });
+
     // Focus input on any click in command area
-    document.getElementById('command-area')!.addEventListener('click', () => {
+    commandArea.addEventListener('click', () => {
       this.inputEl.focus();
     });
   }

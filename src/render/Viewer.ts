@@ -355,7 +355,7 @@ export class Viewer {
         const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
         this.previewObject = new THREE.Line(geo, mat);
       } else if (entity instanceof Text) {
-        this.previewObject = this.createTextObject(entity, previewColor);
+        this.previewObject = this.createTextObject(entity.text, entity.height, previewColor, "Arial");
       } else if (entity instanceof Note) {
         this.previewObject = this.createNoteObject(entity, previewColor);
       } else if (entity instanceof Spline || ('type' in entity && entity.type === 'spline_preview')) {
@@ -379,17 +379,17 @@ export class Viewer {
     this.render();
   }
 
-  private createTextObject(entity: Text, colorIndex: number): THREE.Object3D {
+  private createTextObject(text: string, textHeight: number, colorIndex: number, fontName = "Arial"): THREE.Object3D {
     const scale = 20.0; // Use high scale for crispness
     
     // Create a temporary canvas to measure text
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d')!;
-    tempCtx.font = `${entity.height * scale}px Arial`;
-    const metrics = tempCtx.measureText(entity.text);
+    tempCtx.font = `${textHeight * scale}px ${fontName}`;
+    const metrics = tempCtx.measureText(text);
     
     const cw = Math.max(1, metrics.width);
-    const ch = Math.max(1, entity.height * scale);
+    const ch = Math.max(1, textHeight * scale);
 
     const canvas = document.createElement('canvas');
     canvas.width = cw;
@@ -397,11 +397,11 @@ export class Viewer {
     const ctx = canvas.getContext('2d')!;
 
     // Draw text
-    ctx.font = `${entity.height * scale}px Arial`;
+    ctx.font = `${textHeight * scale}px ${fontName}`;
     ctx.textBaseline = "top";
     const threeColor = new THREE.Color(aciToRgb(colorIndex));
     ctx.fillStyle = threeColor.getStyle(); // Use ACI color
-    ctx.fillText(entity.text, 0, 0);
+    ctx.fillText(text, 0, 0);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
@@ -420,15 +420,15 @@ export class Viewer {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.renderOrder = 10;
 
-    // Position: Text insertion point is usually bottom-left or top-left depending on baseline.
-    // Canvas fills from top, so let's position it accordingly.
-    // align to insertion point (entity.x, entity.y)
-    mesh.position.x = entity.x + width / 2;
-    mesh.position.y = entity.y - height / 2;
-    mesh.position.z = 0.2; // Lift above other geometry to avoid z-fighting
-    mesh.rotation.z = entity.rotation * (Math.PI / 180);
+    // Center the mesh inside the group so group origin is text center
+    mesh.position.x = 0; // PlaneGeometry is already centered!
+    mesh.position.y = 0; // PlaneGeometry is already centered!
+    mesh.position.z = 0.2; // Lift above other geometry
 
-    return mesh;
+    const group = new THREE.Group();
+    group.add(mesh);
+
+    return group;
   }
 
   private createMTextObject(entity: MText, colorIndex: number): THREE.Object3D {
@@ -776,7 +776,16 @@ export class Viewer {
 
 
   addText(entity: Text, layer?: string, color?: number, isVisible = true) {
-    const obj = this.createTextObject(entity, color || 7);
+    const obj = this.createTextObject(entity.text, entity.height, color || 7, "Arial");
+    const mesh = obj.children[0] as THREE.Mesh;
+    const width = (mesh.geometry as THREE.PlaneGeometry).parameters.width;
+    const height = (mesh.geometry as THREE.PlaneGeometry).parameters.height;
+    
+    // Group origin is center. To place bottom-left at (x,y):
+    obj.position.x = entity.x + width / 2;
+    obj.position.y = entity.y + height / 2;
+    obj.rotation.z = entity.rotation * (Math.PI / 180);
+
     obj.name = entity.id;
     if (layer) {
       obj.userData = { layer };
@@ -1199,14 +1208,34 @@ export class Viewer {
       const clickDist = Math.sqrt(clickDx * clickDx + clickDy * clickDy);
       
       // Line from center to boundary (no extra extension beyond arrow)
-      const linePoints = [
-        new THREE.Vector3(p1.x, p1.y, 0),
-        new THREE.Vector3(p2.x, p2.y, 0)
-      ];
-      
+      const text = "R" + r.toFixed(style.precision);
+      const textMesh = this.createTextObject(text, style.textHeight, colorIndex, "osifont");
+      const mesh = textMesh.children[0] as THREE.Mesh;
+      const textWidth = (mesh.geometry as THREE.PlaneGeometry).parameters.width;
+
       const lineMat = new THREE.LineBasicMaterial({ color });
-      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), lineMat));
-      
+
+      if (!style.DIMTAD) {
+        const midDist = r * 0.5;
+        const gapHalf = textWidth / 2 + style.gap;
+        
+        const line1 = [
+          new THREE.Vector3(p1.x, p1.y, 0),
+          new THREE.Vector3(p1.x + ux * (midDist - gapHalf), p1.y + uy * (midDist - gapHalf), 0)
+        ];
+        const line2 = [
+          new THREE.Vector3(p1.x + ux * (midDist + gapHalf), p1.y + uy * (midDist + gapHalf), 0),
+          new THREE.Vector3(p2.x, p2.y, 0)
+        ];
+        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line1), lineMat));
+        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line2), lineMat));
+      } else {
+        const linePoints = [
+          new THREE.Vector3(p1.x, p1.y, 0),
+          new THREE.Vector3(p2.x, p2.y, 0)
+        ];
+        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), lineMat));
+      }
       // Arrow at boundary p2 pointing to object's edge
       const arrowBase = { x: p2.x - ux * arrowSize, y: p2.y - uy * arrowSize };
       const perpX = -uy;
@@ -1219,13 +1248,6 @@ export class Viewer {
       arrowShape.lineTo(arrowRight.x, arrowRight.y);
       arrowShape.closePath();
       group.add(new THREE.Mesh(new THREE.ShapeGeometry(arrowShape), new THREE.MeshBasicMaterial({ color })));
-      
-      const text = "R" + r.toFixed(style.precision);
-      if (this.font) {
-        const shapes = this.font.generateShapes(text, style.textHeight);
-        const textGeo = new THREE.ShapeGeometry(shapes);
-        const textMat = new THREE.MeshBasicMaterial({ color });
-        const textMesh = new THREE.Mesh(textGeo, textMat);
         
         // Align text with dimension line
         const angle = Math.atan2(uy, ux);
@@ -1244,7 +1266,6 @@ export class Viewer {
         textMesh.position.set(tx + ox, ty + oy, 0);
         
         group.add(textMesh);
-      }
       return group;
     } else if (entity.type === 'DIAMETER') {
       const center = { x: entity.x1, y: entity.y1 };
@@ -1314,29 +1335,18 @@ export class Viewer {
         createArrow(edgePt, -ux, -uy);
         createArrow(oppositePt, ux, uy);
         
-        if (this.font) {
-          const shapes = this.font.generateShapes(text, style.textHeight);
-          const textGeo = new THREE.ShapeGeometry(shapes);
-          const textMesh = new THREE.Mesh(textGeo, new THREE.MeshBasicMaterial({ color }));
-          
-          let angle = Math.atan2(uy, ux);
-          if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
-          textMesh.rotation.z = angle;
-          
-          textGeo.computeBoundingBox();
-          const bbox = textGeo.boundingBox;
-          const width = bbox ? bbox.max.x - bbox.min.x : textWidthApprox;
-          
-          const ox = -Math.cos(angle) * (width / 2);
-          const oy = -Math.sin(angle) * (width / 2);
-          
-          const vOffset = style.DIMTAD === false ? 0 : 1;
-          const vox = -Math.sin(angle) * vOffset;
-          const voy = Math.cos(angle) * vOffset;
-          
-          textMesh.position.set(center.x + ox + vox, center.y + oy + voy, 0);
-          group.add(textMesh);
-        }
+        const textMesh = this.createTextObject(text, style.textHeight, colorIndex, "osifont");
+        
+        let angle = Math.atan2(uy, ux);
+        if (angle > Math.PI / 2 || angle < -Math.PI / 2) angle += Math.PI;
+        textMesh.rotation.z = angle;
+        
+        const vOffset = style.DIMTAD === false ? 0 : 1;
+        const vox = -Math.sin(angle) * vOffset;
+        const voy = Math.cos(angle) * vOffset;
+        
+        textMesh.position.set(center.x + vox, center.y + voy, 0);
+        group.add(textMesh);
       } else {
         const outsideDist = Math.max(distToClick, radius + 5);
         const leaderEnd = { x: center.x + ux * outsideDist, y: center.y + uy * outsideDist };
@@ -1391,30 +1401,21 @@ export class Viewer {
           createArrow(dimLineEnd, ux, uy);
           createArrow(dimLineStart, -ux, -uy);
 
-          if (this.font) {
-            const shapes = this.font.generateShapes(text, style.textHeight);
-            const textGeo = new THREE.ShapeGeometry(shapes);
-            const textMesh = new THREE.Mesh(textGeo, new THREE.MeshBasicMaterial({ color }));
-            
-            let angle = Math.atan2(uy, ux);
-            if (angle > Math.PI / 2 || angle <= -Math.PI / 2) angle += Math.PI;
-            textMesh.rotation.z = angle;
-            
-            textGeo.computeBoundingBox();
-            const bbox = textGeo.boundingBox;
-            const width = bbox ? bbox.max.x - bbox.min.x : textWidthApprox;
-            
-            const midX = (dimLineStart.x + dimLineEnd.x) / 2;
-            const midXText = midX - Math.cos(angle) * (width / 2);
-            const midYText = ((dimLineStart.y + dimLineEnd.y) / 2) - Math.sin(angle) * (width / 2);
-            
-            const vOffset = style.DIMTAD === false ? 0 : 1;
-            const vox = -Math.sin(angle) * vOffset;
-            const voy = Math.cos(angle) * vOffset;
-            
-            textMesh.position.set(midXText + vox, midYText + voy, 0);
-            group.add(textMesh);
-          }
+        const textMesh = this.createTextObject(text, style.textHeight, colorIndex, "osifont");
+        
+        let angle = Math.atan2(uy, ux);
+        if (angle > Math.PI / 2 || angle <= -Math.PI / 2) angle += Math.PI;
+        textMesh.rotation.z = angle;
+        
+        const midX = (dimLineStart.x + dimLineEnd.x) / 2;
+        const midY = (dimLineStart.y + dimLineEnd.y) / 2;
+        
+        const vOffset = style.DIMTAD === false ? 0 : 1;
+        const vox = -Math.sin(angle) * vOffset;
+        const voy = Math.cos(angle) * vOffset;
+        
+        textMesh.position.set(midX + vox, midY + voy, 0);
+        group.add(textMesh);
         } else {
           const isRight = leaderEnd.x >= center.x;
           const doglegLength = style.textHeight * 1.5;
@@ -1431,22 +1432,16 @@ export class Viewer {
           createArrow(edgePt, -ux, -uy);
           createArrow(oppositePt, ux, uy);
           
-          if (this.font) {
-            const shapes = this.font.generateShapes(text, style.textHeight);
-            const textGeo = new THREE.ShapeGeometry(shapes);
-            const textMesh = new THREE.Mesh(textGeo, new THREE.MeshBasicMaterial({ color }));
-            
-            textGeo.computeBoundingBox();
-            const bbox = textGeo.boundingBox;
-            const width = bbox ? bbox.max.x - bbox.min.x : textWidthApprox;
-            
-            const textGap = 1;
-            const tx = isRight ? doglegEnd.x + textGap : doglegEnd.x - textGap - width;
-            const ty = doglegEnd.y + 0.5;
-            
-            textMesh.position.set(tx, ty, 0);
-            group.add(textMesh);
-          }
+        const textMesh = this.createTextObject(text, style.textHeight, colorIndex, "osifont");
+        const mesh = textMesh.children[0] as THREE.Mesh;
+        const width = (mesh.geometry as THREE.PlaneGeometry).parameters.width;
+        
+        const textGap = 1;
+        const tx = isRight ? doglegEnd.x + textGap + width / 2 : doglegEnd.x - textGap - width / 2;
+        const ty = doglegEnd.y + 0.5;
+        
+        textMesh.position.set(tx, ty, 0);
+        group.add(textMesh);
         }
       }
       return group;
@@ -1469,18 +1464,59 @@ export class Viewer {
       while (diff > Math.PI) diff -= Math.PI * 2;
       eA = sA + diff;
 
-      const arcPoints: THREE.Vector3[] = [];
-      const segments = 32;
-      for (let i = 0; i <= segments; i++) {
-        const t = i / segments;
-        const a = sA + t * (eA - sA);
-        arcPoints.push(new THREE.Vector3(
-          vertex.x + Math.cos(a) * arcRadius,
-          vertex.y + Math.sin(a) * arcRadius,
-          0
-        ));
+      const midA = sA + (eA - sA) * 0.5;
+      const deg = Math.abs(diff * 180 / Math.PI);
+      const text = deg.toFixed(style.precision) + "°";
+
+      const textMesh = this.createTextObject(text, style.textHeight, colorIndex, "osifont");
+      const mesh = textMesh.children[0] as THREE.Mesh;
+      const textWidth = (mesh.geometry as THREE.PlaneGeometry).parameters.width;
+
+      const gapHalf = textWidth / 2 + style.gap;
+      const angularGap = gapHalf / arcRadius;
+
+      if (!style.DIMTAD) {
+        // Part 1: sA to midA - angularGap
+        const arcPoints1: THREE.Vector3[] = [];
+        const segments1 = 16;
+        for (let i = 0; i <= segments1; i++) {
+          const t = i / segments1;
+          const a = sA + t * (midA - angularGap - sA);
+          arcPoints1.push(new THREE.Vector3(
+            vertex.x + Math.cos(a) * arcRadius,
+            vertex.y + Math.sin(a) * arcRadius,
+            0
+          ));
+        }
+        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPoints1), new THREE.LineBasicMaterial({ color })));
+
+        // Part 2: midA + angularGap to eA
+        const arcPoints2: THREE.Vector3[] = [];
+        const segments2 = 16;
+        for (let i = 0; i <= segments2; i++) {
+          const t = i / segments2;
+          const a = midA + angularGap + t * (eA - (midA + angularGap));
+          arcPoints2.push(new THREE.Vector3(
+            vertex.x + Math.cos(a) * arcRadius,
+            vertex.y + Math.sin(a) * arcRadius,
+            0
+          ));
+        }
+        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPoints2), new THREE.LineBasicMaterial({ color })));
+      } else {
+        const arcPoints: THREE.Vector3[] = [];
+        const segments = 32;
+        for (let i = 0; i <= segments; i++) {
+          const t = i / segments;
+          const a = sA + t * (eA - sA);
+          arcPoints.push(new THREE.Vector3(
+            vertex.x + Math.cos(a) * arcRadius,
+            vertex.y + Math.sin(a) * arcRadius,
+            0
+          ));
+        }
+        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPoints), new THREE.LineBasicMaterial({ color })));
       }
-      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPoints), new THREE.LineBasicMaterial({ color })));
 
       // Arrowheads at both ends
       const addArrowAtAngle = (ang: number, isEnd: boolean) => {
@@ -1507,28 +1543,17 @@ export class Viewer {
       addArrowAtAngle(sA, false);
       addArrowAtAngle(eA, true);
 
-      // Text at midpoint
-      const midA = sA + (eA - sA) * 0.5;
-      const deg = Math.abs(diff * 180 / Math.PI);
-      const text = deg.toFixed(style.precision) + "°";
+      const tx = vertex.x + Math.cos(midA) * (!style.DIMTAD ? arcRadius : arcRadius + style.textHeight + 2);
+      const ty = vertex.y + Math.sin(midA) * (!style.DIMTAD ? arcRadius : arcRadius + style.textHeight + 2);
       
-      if (this.font) {
-        const shapes = this.font.generateShapes(text, style.textHeight);
-        const textGeo = new THREE.ShapeGeometry(shapes);
-        const textMesh = new THREE.Mesh(textGeo, new THREE.MeshBasicMaterial({ color }));
-        
-        const tx = vertex.x + Math.cos(midA) * (arcRadius + style.textHeight + 2);
-        const ty = vertex.y + Math.sin(midA) * (arcRadius + style.textHeight + 2);
-        
-        // Rotate text to be readable (tangent to arc)
-        let textAng = midA + Math.PI / 2;
-        // Keep text upright
-        if (textAng > Math.PI / 2 && textAng < 3 * Math.PI / 2) textAng += Math.PI;
-        
-        textMesh.rotation.z = textAng;
-        textMesh.position.set(tx, ty, 0);
-        group.add(textMesh);
-      }
+      // Rotate text to be readable (tangent to arc)
+      let textAng = midA + Math.PI / 2;
+      // Keep text upright
+      if (textAng > Math.PI / 2 && textAng < 3 * Math.PI / 2) textAng += Math.PI;
+      
+      textMesh.rotation.z = textAng;
+      textMesh.position.set(tx, ty, 0);
+      group.add(textMesh);
       
       textPos = { x: vertex.x + Math.cos(midA) * arcRadius, y: vertex.y + Math.sin(midA) * arcRadius };
       return group;
@@ -1544,8 +1569,8 @@ export class Viewer {
       
       const midX = (e1.x + e2.x) / 2;
       const midY = (e1.y + e2.y) / 2;
-      const textOffsetX = ux >= 0 ? perpX * gap : -perpX * gap;
-      const textOffsetY = ux >= 0 ? perpY * gap : -perpY * gap;
+      const textOffsetX = style.DIMTAD === false ? 0 : (ux >= 0 ? perpX * gap : -perpX * gap);
+      const textOffsetY = style.DIMTAD === false ? 0 : (ux >= 0 ? perpY * gap : -perpY * gap);
       textPos = { x: midX + textOffsetX, y: midY + textOffsetY };
     } else if (entity.dimLineLocation) {
       const midX = (entity.x1 + entity.x2) / 2;
@@ -1559,15 +1584,15 @@ export class Viewer {
       
       const textMidX = (e1.x + e2.x) / 2;
       const textMidY = (e1.y + e2.y) / 2;
-      const textOffsetX = offsetDist > 0 ? -nx * gap : nx * gap;
-      const textOffsetY = offsetDist > 0 ? -ny * gap : ny * gap;
+      const textOffsetX = style.DIMTAD === false ? 0 : (offsetDist > 0 ? -nx * gap : nx * gap);
+      const textOffsetY = style.DIMTAD === false ? 0 : (offsetDist > 0 ? -ny * gap : ny * gap);
       textPos = { x: textMidX + textOffsetX, y: textMidY + textOffsetY };
     } else {
       e1 = { x: entity.x1 + nx * offset, y: entity.y1 + ny * offset };
       e2 = { x: entity.x2 + nx * offset, y: entity.y2 + ny * offset };
       const midX = (e1.x + e2.x) / 2;
       const midY = (e1.y + e2.y) / 2;
-      textPos = { x: midX + nx * gap, y: midY + ny * gap };
+      textPos = { x: midX + (style.DIMTAD === false ? 0 : nx * gap), y: midY + (style.DIMTAD === false ? 0 : ny * gap) };
     }
 
     const ext1Points = [
@@ -1582,11 +1607,49 @@ export class Viewer {
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ext1Points), extMat));
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ext2Points), extMat));
 
-    const dimLinePoints = [
-      new THREE.Vector3(e1.x, e1.y, 0),
-      new THREE.Vector3(e2.x, e2.y, 0)
-    ];
-    group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(dimLinePoints), extMat));
+    let value = entity.computeValue();
+    let text: string;
+    const entityType = (entity as any).type;
+    if (entityType === 'RADIUS') {
+      text = "R" + value.toFixed(style.precision);
+    } else if (entityType === 'ANGULAR' && entity.properties && entity.properties.vertex) {
+      const vertex = entity.properties.vertex as { x: number, y: number };
+      const angle1 = Math.atan2(entity.y1 - vertex.y, entity.x1 - vertex.x);
+      const angle2 = Math.atan2(entity.y2 - vertex.y, entity.x2 - vertex.x);
+      let angleDiff = Math.abs(angle2 - angle1) * (180 / Math.PI);
+      if (angleDiff > 180) angleDiff = 360 - angleDiff;
+      value = angleDiff;
+      text = angleDiff.toFixed(style.precision) + "°";
+    } else {
+      text = value.toFixed(style.precision);
+    }
+
+    const textMesh = this.createTextObject(text, style.textHeight, colorIndex, "osifont");
+    const mesh = textMesh.children[0] as THREE.Mesh;
+    const textWidth = (mesh.geometry as THREE.PlaneGeometry).parameters.width;
+
+    if (style.DIMTAD === false) {
+      const midX = (e1.x + e2.x) / 2;
+      const midY = (e1.y + e2.y) / 2;
+      const gapHalf = textWidth / 2 + style.gap;
+      
+      const line1 = [
+        new THREE.Vector3(e1.x, e1.y, 0),
+        new THREE.Vector3(midX - ux * gapHalf, midY - uy * gapHalf, 0)
+      ];
+      const line2 = [
+        new THREE.Vector3(midX + ux * gapHalf, midY + uy * gapHalf, 0),
+        new THREE.Vector3(e2.x, e2.y, 0)
+      ];
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line1), extMat));
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(line2), extMat));
+    } else {
+      const dimLinePoints = [
+        new THREE.Vector3(e1.x, e1.y, 0),
+        new THREE.Vector3(e2.x, e2.y, 0)
+      ];
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(dimLinePoints), extMat));
+    }
 
     const isVerticalDimLine = Math.abs(e2.x - e1.x) < 0.1;
     const isAligned = entity.type === 'ALIGNED';
@@ -1641,35 +1704,12 @@ export class Viewer {
     const arrow2Mesh = new THREE.Mesh(new THREE.ShapeGeometry(arrow2Shape), new THREE.MeshBasicMaterial({ color }));
     group.add(arrow2Mesh);
 
-    let value = entity.computeValue();
-    let text: string;
-    const entityType = (entity as any).type;
-    if (entityType === 'RADIUS') {
-      text = "R" + value.toFixed(style.precision);
-    } else if (entityType === 'ANGULAR' && entity.properties && entity.properties.vertex) {
-      const vertex = entity.properties.vertex as { x: number, y: number };
-      const angle1 = Math.atan2(entity.y1 - vertex.y, entity.x1 - vertex.x);
-      const angle2 = Math.atan2(entity.y2 - vertex.y, entity.x2 - vertex.x);
-      let angleDiff = Math.abs(angle2 - angle1) * (180 / Math.PI);
-      if (angleDiff > 180) angleDiff = 360 - angleDiff;
-      value = angleDiff;
-      text = angleDiff.toFixed(style.precision) + "°";
-    } else {
-      text = value.toFixed(style.precision);
-    }
-
-    if (this.font) {
-      const shapes = this.font.generateShapes(text, style.textHeight);
-      const textGeo = new THREE.ShapeGeometry(shapes);
-      const textMat = new THREE.MeshBasicMaterial({ color });
-      const textMesh = new THREE.Mesh(textGeo, textMat);
       textMesh.position.set(textPos.x, textPos.y, 0);
       if (entity.type === 'ALIGNED') {
         const textAngle = Math.atan2(uy, ux);
         textMesh.rotation.z = textAngle;
       }
       group.add(textMesh);
-    }
 
     return group;
   }
@@ -2166,31 +2206,12 @@ export class Viewer {
     const isFreePoint = entity.targetEntityId === null;
 
     let textWidth = 0.5; // Default fallback
-    let textMesh: THREE.Mesh | null = null;
+    let textMesh: THREE.Object3D | null = null;
     
-    if (this.font) {
-      const shapes = this.font.generateShapes(entity.text, entity.height);
-      const geometry = new THREE.ShapeGeometry(shapes);
-      geometry.computeBoundingBox();
-      if (geometry.boundingBox) {
-        textWidth = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
-      }
-      const textMat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
-      textMesh = new THREE.Mesh(geometry, textMat);
-      textMesh.renderOrder = 10;
-    } else {
-      // Fallback if font not loaded: render a red box
-      const shapes = [new THREE.Shape([
-        new THREE.Vector2(0, 0),
-        new THREE.Vector2(entity.height, 0),
-        new THREE.Vector2(entity.height, entity.height),
-        new THREE.Vector2(0, entity.height)
-      ])];
-      const geometry = new THREE.ShapeGeometry(shapes);
-      const textMat = new THREE.MeshBasicMaterial({ color: 0xFF0000, side: THREE.DoubleSide });
-      textMesh = new THREE.Mesh(geometry, textMat);
-      textWidth = entity.height;
-    }
+    const textMeshObj = this.createTextObject(entity.text, entity.height, colorIndex, "osifont");
+    const mesh = textMeshObj.children[0] as THREE.Mesh;
+    textWidth = (mesh.geometry as THREE.PlaneGeometry).parameters.width;
+    textMesh = textMeshObj;
 
     if (isFreePoint) {
       // Just vertical line at p2 (bendPoint)
@@ -2207,7 +2228,10 @@ export class Viewer {
       // Place text
       if (textMesh) {
         const textGap = 0.1;
-        textMesh.position.set(p2.x + textGap, p2.y, 0);
+        const mesh = textMesh.children[0] as THREE.Mesh;
+        const width = (mesh.geometry as THREE.PlaneGeometry).parameters.width;
+        const height = (mesh.geometry as THREE.PlaneGeometry).parameters.height;
+        textMesh.position.set(p2.x + textGap + width / 2, p2.y + height / 2, 0);
         group.add(textMesh);
       }
     } else {
@@ -2278,11 +2302,15 @@ export class Viewer {
       // Place text
       if (textMesh) {
         const textGap = 0.1;
+        const mesh = textMesh.children[0] as THREE.Mesh;
+        const width = (mesh.geometry as THREE.PlaneGeometry).parameters.width;
+        const height = (mesh.geometry as THREE.PlaneGeometry).parameters.height;
+        
         // Align text based on shelf direction
         if (shelfDir > 0) {
-          textMesh.position.set(shelfEnd.x + textGap, shelfEnd.y, 0);
+          textMesh.position.set(shelfEnd.x + textGap + width / 2, shelfEnd.y + height / 2, 0);
         } else {
-          textMesh.position.set(shelfEnd.x - textWidth - textGap, shelfEnd.y, 0);
+          textMesh.position.set(shelfEnd.x - textGap - width / 2, shelfEnd.y + height / 2, 0);
         }
         group.add(textMesh);
       }

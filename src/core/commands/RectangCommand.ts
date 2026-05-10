@@ -66,4 +66,20 @@ export class RectangCommand implements Command {
     if (this.step === 0) return "RECTANG first corner:";
     return "Other corner:";
   }
+
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 0) {
+      return ["First corner:"];
+    } else {
+      const dx = x - this.firstCorner.x;
+      const dy = y - this.firstCorner.y;
+      const distStr = FormatUtils.formatDistance(Math.sqrt(dx*dx + dy*dy), units);
+      const angleStr = FormatUtils.formatAngle(Math.atan2(dy, dx), units.precision);
+      return [`D:${distStr}`, `A:${angleStr}`];
+    }
+  }
+
+  getOptions(_units: UnitsConfig): string[] {
+    return [];
+  }
 }

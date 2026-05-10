@@ -57,6 +57,23 @@ export class LineCommand implements Command {
     return null;
   }
 
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.points.length > 0) {
+      const last = this.points[this.points.length - 1];
+      const dx = x - last.x;
+      const dy = y - last.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      if (angle < 0) angle += 360;
+
+      const distStr = `D:${FormatUtils.formatValue(dist, units)}`;
+      const angleStr = `A:${angle.toFixed(1)}`;
+
+      return [distStr, angleStr];
+    }
+    return null;
+  }
+
   getReferencePoints() {
     if (this.points.length > 0) {
       return [this.points[this.points.length - 1]];

@@ -84,4 +84,32 @@ describe('PolylineCommand', () => {
     const _pline3 = cmd.onPoint(0, 0, 'PL1', { type: 'decimal', precision: 2, scale: 1.0 }) as Polyline
     // removed
   })
+
+  it('should return dynamic input info when points exist', () => {
+    const cmd = new PolylineCommand()
+    cmd.onPoint(0, 0, 'PL1', { type: 'decimal', precision: 2, scale: 1.0 })
+    
+    const info = cmd.getDynamicInput(10, 10, { type: 'decimal', precision: 2, scale: 1.0 })
+    expect(info).toEqual(['L', 'D:14.14', 'A:45.0'])
+  })
+
+  it('should return correct options based on mode', () => {
+    const cmd = new PolylineCommand()
+    const units = { type: 'decimal' as const, precision: 2, scale: 1.0 }
+    
+    // Step 0: Start point
+    expect(cmd.getOptions(units)).toEqual([])
+    
+    cmd.onPoint(0, 0, 'PL1', units)
+    // Step 1: Next point (Line mode)
+    expect(cmd.getOptions(units)).toEqual(["Close", "Undo", "Arc"])
+    
+    cmd.onInput('A', 'PL1', units)
+    // Arc mode
+    expect(cmd.getOptions(units)).toEqual(["Close", "Undo", "Line"])
+    
+    cmd.onInput('L', 'PL1', units)
+    // Back to Line mode
+    expect(cmd.getOptions(units)).toEqual(["Close", "Undo", "Arc"])
+  })
 })

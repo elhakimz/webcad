@@ -74,7 +74,11 @@ export type CommandAction = {
   };
 };
 
-export type CommandResponse = string | Entity | CommandAction;
+export type TaggedPrompt = { type: 'prompt'; text: string };
+export type TaggedEntity = { type: 'entity'; entity: Entity };
+export type TaggedAction = { type: 'action' } & CommandAction;
+
+export type CommandResponse = string | Entity | CommandAction | TaggedPrompt | TaggedEntity | TaggedAction;
 
 export type ZoomWindowPreview = { type: 'zoomwindow', id: string, x1: number, y1: number, x2: number, y2: number };
 export type SelectionBoxPreview = { type: 'selection_box', x1: number, y1: number, x2: number, y2: number, isCrossing: boolean };
@@ -97,6 +101,8 @@ export interface Command {
   getPreview?(x: number, y: number, units: UnitsConfig): PreviewObject | null;
   getReferencePoints?(): { x: number, y: number }[];
   getPrompt?(): string;
+  getDynamicInput?(x: number, y: number, units: UnitsConfig): string[] | null;
+  getOptions?(units: UnitsConfig): string[];
   step?: number;
 }
 

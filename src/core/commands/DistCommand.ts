@@ -9,12 +9,12 @@ export class DistCommand implements Command {
     if (this.step === 0) {
       this.p1 = { x, y };
       this.step = 1;
-      return "Specify second point:";
+      return { type: 'prompt', text: "Specify second point:" };
     } else {
       const p1 = this.p1!;
       this.step = 0;
       this.p1 = null;
-      return { action: 'dist', pick1: p1, pick2: { x, y } } as CommandAction;
+      return { type: 'action', action: 'dist', pick1: p1, pick2: { x, y } };
     }
   }
 

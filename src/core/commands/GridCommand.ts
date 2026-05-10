@@ -2,20 +2,22 @@ import { Command, CommandResponse } from "./types"
 import { UnitsConfig } from "../model/Document";
 
 export class GridCommand implements Command {
-  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse { return "Grid spacing(X) or [On/Off]:"; }
+  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse { 
+    return { type: 'prompt', text: "Grid spacing(X) or [On/Off]:" }; 
+  }
 
   onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
-    if (val === "ON") return { action: "grid", value: true } as CommandResponse;
-    if (val === "OFF") return { action: "grid", value: false } as CommandResponse;
+    if (val === "ON") return { type: 'action', action: "grid", value: true };
+    if (val === "OFF") return { type: 'action', action: "grid", value: false };
     
     const num = parseFloat(text);
     if (!isNaN(num) && num > 0) {
-        return { action: "gridSet", spacing: num } as CommandResponse;
+        return { type: 'action', action: "gridSet", spacing: num };
     }
     
-    if (val === "") return { action: "gridToggle" } as CommandResponse;
-    return "Invalid option. Grid spacing(X) or [On/Off]:";
+    if (val === "") return { type: 'action', action: "gridToggle" };
+    return { type: 'prompt', text: "Invalid option. Grid spacing(X) or [On/Off]:" };
   }
 
   getPrompt() { return "Grid spacing(X) or [On/Off] <Toggle>:"; }

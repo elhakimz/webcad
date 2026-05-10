@@ -2,6 +2,7 @@ import { Ellipse } from "../model/Ellipse"
 import { Command, CommandResponse } from "./types"
 import { UnitsConfig } from "../model/Document"
 import { Point } from "../engine/MathUtils"
+import { FormatUtils } from "../engine/FormatUtils"
 
 export class EllipseCommand implements Command {
   step = 0
@@ -59,6 +60,33 @@ export class EllipseCommand implements Command {
       return new Ellipse("PREVIEW", this.center.x, this.center.y, this.majorX, this.majorY, Math.min(1.0, ratio), 0, Math.PI * 2, true);
     }
     return null
+  }
+
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 1) {
+      const dx = x - this.p1.x;
+      const dy = y - this.p1.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      if (angle < 0) angle += 360;
+
+      const distStr = FormatUtils.formatValue(dist, units);
+      const angleStr = angle.toFixed(1);
+
+      return [distStr, angleStr];
+    } else if (this.step === 2) {
+      const dx = x - this.center.x;
+      const dy = y - this.center.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      if (angle < 0) angle += 360;
+
+      const distStr = FormatUtils.formatValue(dist, units);
+      const angleStr = angle.toFixed(1);
+
+      return [distStr, angleStr];
+    }
+    return null;
   }
 
   getReferencePoints() {

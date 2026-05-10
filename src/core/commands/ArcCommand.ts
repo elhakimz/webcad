@@ -64,6 +64,35 @@ export class ArcCommand implements Command {
     return null
   }
 
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 1) {
+      const dx = x - this.p1.x;
+      const dy = y - this.p1.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      if (angle < 0) angle += 360;
+
+      const distStr = `D:${FormatUtils.formatValue(dist, units)}`;
+      const angleStr = `A:${angle.toFixed(1)}`;
+
+      return [distStr, angleStr];
+    } else if (this.step === 2) {
+      const arc = this.calculateArc(this.p1, this.p2, { x, y }, "PREVIEW", units);
+      if (arc) {
+        const dx = x - arc.cx;
+        const dy = y - arc.cy;
+        let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+        if (angle < 0) angle += 360;
+
+        const distStr = `D:${FormatUtils.formatValue(arc.r, units)}`;
+        const angleStr = `A:${angle.toFixed(1)}`;
+
+        return [distStr, angleStr];
+      }
+    }
+    return null;
+  }
+
   getReferencePoints() {
     if (this.step === 1) return [this.p1]
     if (this.step === 2) return [this.p1, this.p2]

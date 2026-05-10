@@ -18,6 +18,7 @@ import { Dimension } from "./core/model/Dimension"
 import { Trace } from "./core/model/Trace"
 import { Shape } from "./core/model/Shape"
 import { Hatch } from "./core/model/Hatch"
+import { getAllPatternNames } from "./core/io/Patterns"
 import { Insert } from "./core/model/Insert"
 import { Spline } from "./core/model/Spline"
 import { Note } from "./core/model/Note"
@@ -27,6 +28,7 @@ import { SnapEngine, SnapPoint } from "./core/engine/SnapEngine"
 import * as THREE from "three"
 
 import { Layer } from "./core/model/Layer"
+import { DynamicInput } from "./ui/DynamicInput"
 import { ResultDispatcher } from "./core/engine/handlers/ResultDispatcher"
 import { LayerHandler } from "./core/engine/handlers/LayerHandler"
 import { ArrayHandler } from "./core/engine/handlers/transform/ArrayHandler"
@@ -61,10 +63,18 @@ export class App {
   drafting: DraftingState
   selectedEntityIds: Set<string> = new Set()
   private selectionStartPoint: { x: number, y: number } | null = null
+  private lastWorldPt: { x: number, y: number } | null = null;
   private commandLinePrint: ((msg: string) => void) | null = null
+  private currentControls: any[] | null | undefined = null;
   private statusBarUpdate: ((layer: Layer) => void) | null = null
   private layersWindowUpdate: (() => void) | null = null
+  private promptUpdate: (() => void) | null = null;
   private dispatcher: ResultDispatcher;
+
+  setPromptUpdate(updateFn: () => void) {
+    this.promptUpdate = updateFn;
+  }
+  private dynamicInput: DynamicInput;
 
   setLayersWindowUpdate(updateFn: () => void) {
     this.layersWindowUpdate = updateFn;
@@ -91,6 +101,30 @@ export class App {
     this.viewer.scene.add(ambient, directional);
 
     this.dispatcher = new ResultDispatcher();
+    this.dynamicInput = new DynamicInput();
+    
+    this.dynamicInput.onInputSubmitted(async (text) => {
+      const res = await this.inputText(text);
+      if (typeof res === 'string' && this.commandLinePrint) {
+        this.commandLinePrint(res);
+      }
+    });
+    
+    this.dynamicInput.onOptionClicked(async (option) => {
+      if (option === "Apply" && this.currentControls) {
+        const pattern = this.currentControls.find(c => c.key === 'pattern')?.value;
+        const scale = this.currentControls.find(c => c.key === 'scale')?.value;
+        
+        if (pattern) await this.inputText(pattern);
+        if (scale !== undefined) await this.inputText(scale.toString());
+        return;
+      }
+      const res = await this.inputText(option);
+      if (typeof res === 'string' && this.commandLinePrint) {
+        this.commandLinePrint(res);
+      }
+    });
+
     this.dispatcher.registerHandler(new LayerHandler());
     this.dispatcher.registerHandler(new ArrayHandler());
     this.dispatcher.registerHandler(new FilletHandler());
@@ -219,6 +253,12 @@ export class App {
   }
 
   async inputText(text:string){
+    const callHandleResult = async (res: any) => {
+      const output = await this.handleResult(res);
+      if (this.promptUpdate) this.promptUpdate();
+      return output;
+    }
+
     // Handle Enter key (empty text) when there are selected entities
     if (text === "" && this.selectedEntityIds.size > 0) {
       const activeName = this.cmd.active?.constructor.name;
@@ -234,7 +274,7 @@ export class App {
         const cmdName = activeName?.replace('Command', '').toUpperCase();
         if (cmdName && ids.length > 0) {
           const res = this.cmd.execute(cmdName, this.doc.units, ids, this.doc.entities);
-          return await this.handleResult(res);
+          return await callHandleResult(res);
         }
       }
       
@@ -246,17 +286,18 @@ export class App {
           blockCmd.selectedIds = ids;
           // Trigger finish by passing empty string
           const result = this.cmd.inputString("", this.doc.units, (p) => this.doc.getNextId(p), undefined, this.doc);
-          return await this.handleResult(result);
+          return await callHandleResult(result);
       }
     }
-    const result = this.cmd.inputString(text, this.doc.units, (p) => this.doc.getNextId(p), undefined, this.doc)
-    return await this.handleResult(result)
+    const result = this.cmd.inputString(text, this.doc.units, (p) => this.doc.getNextId(p), this.lastWorldPt || undefined, this.doc)
+    return await callHandleResult(result)
   }
 
   move(screenX: number, screenY: number) {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
     const { x, y, snap } = snapped;
+    this.lastWorldPt = { x, y };
 
     this.viewer.setCursor(x, y);
     this.viewer.setSnapMarker(snap);
@@ -306,6 +347,41 @@ export class App {
       }
     } else {
       this.viewer.setBaseLine(null, null);
+    }
+
+    if (this.cmd.active && this.cmd.active.getDynamicInput) {
+      const lines = this.cmd.active.getDynamicInput(x, y, this.doc.units);
+      if (lines) {
+        const options = this.cmd.active.getOptions ? this.cmd.active.getOptions(this.doc.units) : [];
+        const cmdName = this.cmd.active.constructor.name;
+        const showInput = !['LineCommand', 'CircleCommand', 'ArcCommand', 'EllipseCommand', 'HatchCommand', 'RectangCommand'].includes(cmdName);
+        
+        let controls: any[] | undefined = undefined;
+        if (cmdName === 'HatchCommand') {
+          const hatchCmd = this.cmd.active as any;
+          if (hatchCmd.step < 3) {
+            controls = [
+              { type: 'select', label: 'Pattern', key: 'pattern', value: hatchCmd.pattern, options: getAllPatternNames(), onChange: (val: string) => { hatchCmd.pattern = val; } },
+              { type: 'number', label: 'Scale', key: 'scale', value: hatchCmd.scale, onChange: (val: number) => { hatchCmd.scale = val; } }
+            ];
+            if (!options.includes('Apply')) {
+              options.push('Apply');
+            }
+          }
+        }
+        this.currentControls = controls;
+        
+        let footer: string | undefined = undefined;
+        if (cmdName === 'HatchCommand') {
+          footer = "Esc to end hatch command";
+        }
+        
+        this.dynamicInput.show(screenX, screenY, lines, options, showInput, controls, footer);
+      } else {
+        this.dynamicInput.hide();
+      }
+    } else {
+      this.dynamicInput.hide();
     }
   }
 
@@ -478,14 +554,29 @@ export class App {
 
   private async handleResult(result: CommandResponse | undefined): Promise<CommandResponse | undefined> {
     if (result && typeof result === 'object') {
+      // Handle tagged responses
+      if ('type' in result) {
+        const tagged = result as any;
+        if (tagged.type === 'prompt') {
+          return tagged.text;
+        } else if (tagged.type === 'entity') {
+          result = tagged.entity;
+        } else if (tagged.type === 'action') {
+          const { type, ...action } = tagged;
+          result = action;
+        }
+      }
+
       // Case: New Entity Created (Standard or via 'close')
       let entity: Entity | undefined;
       let isCloseAction = false;
       
       if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof MText || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape || result instanceof Spline || result instanceof Note) {
         entity = result as Entity;
-      } else if (result && typeof result === 'object' && 'action' in result && result.action === 'close' && result.entity) {
-        entity = result.entity;
+      } else if (result && typeof result === 'object' && 'action' in result && result.action === 'close') {
+        if (result.entity) {
+          entity = result.entity;
+        }
         isCloseAction = true;
       }
 

@@ -38,7 +38,7 @@ describe('DimRadiusCommand', () => {
     expect(dim.y2).toBe(0)
     expect(dim.computeValue()).toBe(50)
     // dimLineLocation should be at 50% of radius (50 * 0.5 = 25)
-    expect(dim.dimLineLocation.x).toBeCloseTo(25)
+    expect(dim.dimLineLocation!.x).toBeCloseTo(25)
   })
 
   it('should calculate correct radius when clicking inside the circle', () => {
@@ -58,6 +58,6 @@ describe('DimRadiusCommand', () => {
     expect(dim.x2).toBe(35) // Point on boundary
     expect(dim.y2).toBe(10)
     // dimLineLocation should be at 50% of radius (25 * 0.5 = 12.5 from center at 10,10)
-    expect(dim.dimLineLocation.x).toBeCloseTo(22.5)
+    expect(dim.dimLineLocation!.x).toBeCloseTo(22.5)
   })
 })

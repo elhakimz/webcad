@@ -91,4 +91,19 @@ describe('CircleCommand', () => {
     expect(cmd.step).toBe(1)
     expect(result).toContain('Invalid radius or option')
   })
+
+  it('should return dynamic input info', () => {
+    const cmd = new CircleCommand()
+    cmd.onPoint(100, 100, 'C1', { type: 'decimal', precision: 2, scale: 1.0 })
+    
+    // Step 1: Radius mode
+    const info1 = cmd.getDynamicInput(200, 100, { type: 'decimal', precision: 2, scale: 1.0 })
+    expect(info1).toEqual(['R:(100.00)', '0.0'])
+
+    cmd.onInput('D', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
+    
+    // Step 2: Diameter mode
+    const info2 = cmd.getDynamicInput(200, 100, { type: 'decimal', precision: 2, scale: 1.0 })
+    expect(info2).toEqual(['D:(100.00)', '0.0'])
+  })
 })

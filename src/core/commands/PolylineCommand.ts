@@ -70,9 +70,12 @@ export class PolylineCommand implements Command {
         this.isArcMode = false;
         return "Line mode enabled. Specify next point:";
     }
-    if (val === "" && this.vertices.length > 1) {
-        const poly = new Polyline(currentId, [...this.vertices], false)
-        return { action: "close", entity: poly } as CommandResponse;
+    if (val === "") {
+        if (this.vertices.length > 1) {
+            const poly = new Polyline(currentId, [...this.vertices], false)
+            return { action: "close", entity: poly } as CommandResponse;
+        }
+        return { action: "close" } as CommandResponse;
     }
   }
 
@@ -96,6 +99,24 @@ export class PolylineCommand implements Command {
     return null
   }
 
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 1 && this.vertices.length > 0) {
+      const prev = this.vertices[this.vertices.length - 1];
+      const dx = x - prev.x;
+      const dy = y - prev.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      if (angle < 0) angle += 360;
+
+      const modeStr = this.isArcMode ? "A" : "L";
+      const distStr = `D:${FormatUtils.formatValue(dist, units)}`;
+      const angleStr = `A:${angle.toFixed(1)}`;
+
+      return [modeStr, distStr, angleStr];
+    }
+    return null;
+  }
+
   getReferencePoints(): Point[] {
     if (this.vertices.length > 0) {
         return this.vertices.map(v => ({ x: v.x, y: v.y }));
@@ -115,6 +136,19 @@ export class PolylineCommand implements Command {
     if (this.step === 0) return "PLINE specify start point:";
     const mode = this.isArcMode ? "Arc" : "Line";
     return `Arc/Close/Halfwidth/Length/Undo/Width/<Endpoint of ${mode}>:`;
+  }
+
+  getOptions(_units: UnitsConfig): string[] {
+    if (this.step === 1) {
+      const options = ["Close", "Undo"];
+      if (this.isArcMode) {
+        options.push("Line");
+      } else {
+        options.push("Arc");
+      }
+      return options;
+    }
+    return [];
   }
 
   private calculateTangentArcBulge(p1: {x: number, y: number}, p2: {x: number, y: number}, vTangent: {x: number, y: number}): { bulge: number, endDirection: {x: number, y: number} } {

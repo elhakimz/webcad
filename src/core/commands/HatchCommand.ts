@@ -95,4 +95,18 @@ export class HatchCommand implements Command {
     if (this.step === 3) return "Pick next point (Enter to finish):";
     return "";
   }
+
+  getDynamicInput(_x: number, _y: number, _units: UnitsConfig): string[] | null {
+    if (this.step < 3) {
+      return ["Hatch Settings"];
+    }
+    return ["Pick next point"];
+  }
+
+  getOptions(_units: UnitsConfig): string[] {
+    if (this.step < 3) {
+      return ["Apply"];
+    }
+    return [];
+  }
 }

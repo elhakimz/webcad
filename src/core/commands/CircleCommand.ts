@@ -66,6 +66,24 @@ export class CircleCommand implements Command {
     return null;
   }
 
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step >= 1) {
+      const dx = x - this.cx;
+      const dy = y - this.cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      if (angle < 0) angle += 360;
+
+      const isDiameter = this.step === 2 || this.isDiameterMode;
+      const prefix = isDiameter ? "D:" : "R:";
+      const valStr = `${prefix}(${FormatUtils.formatValue(dist, units)})`;
+      const angleStr = angle.toFixed(1);
+
+      return [valStr, angleStr];
+    }
+    return null;
+  }
+
   getReferencePoints() {
     if (this.step >= 1) {
       return [{ x: this.cx, y: this.cy }];

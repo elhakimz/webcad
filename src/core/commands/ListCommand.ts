@@ -11,20 +11,20 @@ export class ListCommand implements Command {
 
   onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse {
     if (this.selectedEntity) {
-      const action: CommandAction = { action: 'list', entity: this.selectedEntity };
+      const action: CommandResponse = { type: 'action', action: 'list', entity: this.selectedEntity };
       this.selectedEntity = null;
-      return action as CommandResponse;
+      return action;
     }
-    return "Select object:";
+    return { type: 'prompt', text: "Select object:" };
   }
 
   onInput(_text: string, _id: string, _units: UnitsConfig): CommandResponse | undefined {
     if (this.selectedEntity) {
-      const action: CommandAction = { action: 'list', entity: this.selectedEntity };
+      const action: CommandResponse = { type: 'action', action: 'list', entity: this.selectedEntity };
       this.selectedEntity = null;
-      return action as CommandResponse;
+      return action;
     }
-    return "Select object:";
+    return { type: 'prompt', text: "Select object:" };
   }
 
   getPrompt() {

@@ -239,8 +239,8 @@ function updatePrompt() {
     // Auto-focus command line for specific inputs that primarily expect text/numbers
     const shouldFocus =
       prompt === "Text:" ||
-      prompt.startsWith("POLYGON Number of sides") ||
-      prompt.includes("(I/C) <I>:") ||
+      // prompt.startsWith("POLYGON Number of sides") ||
+      // prompt.includes("(I/C) <I>:") ||
       prompt.startsWith("Height <") ||
       prompt.startsWith("Rotation angle <") ||
       prompt.startsWith("Diameter") ||
@@ -249,7 +249,7 @@ function updatePrompt() {
       prompt.startsWith("Enter shape name") ||
       prompt.startsWith("Delete old objects?") ||
       prompt.startsWith("Scale <") ||
-      prompt.startsWith("Radius of polygon") ||
+      // prompt.startsWith("Radius of polygon") ||
       prompt.startsWith("Load drawing") ||
       prompt.startsWith("Save drawing") ||
       prompt.startsWith("Enter note text");
@@ -261,6 +261,8 @@ function updatePrompt() {
     cmdLine.setPrompt("Command:");
   }
 }
+
+app.setPromptUpdate(() => updatePrompt());
 
 // Update coordinate display on mouse move
 window.addEventListener("mousemove", (e) => {

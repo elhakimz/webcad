@@ -70,4 +70,12 @@ describe('LineCommand (Classic Behavior)', () => {
     const res = cmd.onInput('E', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as CommandAction
     expect(res.action).toBe('finish')
   })
+
+  it('should return dynamic input info when points exist', () => {
+    const cmd = new LineCommand()
+    cmd.onPoint(0, 0, 'L1', { type: 'decimal', precision: 2, scale: 1.0 })
+    
+    const info = cmd.getDynamicInput(10, 10, { type: 'decimal', precision: 2, scale: 1.0 })
+    expect(info).toEqual(['D:14.14', 'A:45.0'])
+  })
 })

@@ -15,21 +15,23 @@ export class UnitsCommand implements Command {
       } else if (val === "A" || val === "ARCHITECTURAL") {
           this.config.type = "architectural";
       } else {
-          return "Invalid unit type. Units [Decimal/Metric/Architectural] <Decimal>:";
+          return { type: 'prompt', text: "Invalid unit type. Units [Decimal/Metric/Architectural] <Decimal>:" };
       }
       
       this.step = 1;
-      return "Precision (0-8) <4>:";
+      return { type: 'prompt', text: "Precision (0-8) <4>:" };
     }
 
     if (this.step === 1) {
       const p = parseInt(val);
       this.config.precision = isNaN(p) ? 4 : Math.max(0, Math.min(8, p));
-      return { action: "unitsSet", ...this.config } as CommandAction;
+      return { type: 'action', action: "unitsSet", ...this.config } as CommandResponse;
     }
   }
 
-  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse { return this.getPrompt(); }
+  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse { 
+    return { type: 'prompt', text: this.getPrompt() }; 
+  }
 
   getPrompt() {
     if (this.step === 0) return "Units [Decimal/Metric/Architectural] <Decimal>:";

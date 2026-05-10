@@ -1,11 +1,34 @@
 # WebCAD Tasks
 
-## Current Task: Refactor CommandResponse to Tagged Union
-- [ ] Define tagged union in `types.ts` <!-- id: 920 -->
-- [ ] Update `CommandManager.ts` <!-- id: 921 -->
-- [ ] Update `app.ts` (`handleResult`) <!-- id: 922 -->
-- [ ] Update all commands and handlers (HUGE) <!-- id: 923 -->
-- [ ] Verify with tests <!-- id: 924 -->
+## Current Task: Implement Dynamic Input for Arc, Circle, and Ellipse
+- [x] Create implementation plan and obtain approval <!-- id: 940 -->
+- [x] Implement `getDynamicInput` in `ArcCommand.ts` <!-- id: 941 -->
+- [x] Implement `getDynamicInput` in `CircleCommand.ts` <!-- id: 942 -->
+- [x] Implement `getDynamicInput` in `EllipseCommand.ts` <!-- id: 943 -->
+- [x] Verify with tests <!-- id: 944 -->
+
+## Current Task: Advanced Dynamic Input (Floating Input & Clickable Options)
+- [x] Create implementation plan and obtain approval <!-- id: 950 -->
+- [x] Modify `DynamicInput.ts` to support input and options <!-- id: 951 -->
+- [x] Extend `Command` interface in `types.ts` <!-- id: 952 -->
+- [x] Implement `getOptions` in `PolygonCommand.ts` <!-- id: 953 -->
+- [x] Implement `getOptions` in `PolylineCommand.ts` <!-- id: 954 -->
+- [x] Integrate with `App.ts` <!-- id: 955 -->
+- [x] Verify with tests <!-- id: 956 -->
+
+## Current Task: Implement Dynamic Input for LINE Command
+- [x] Create implementation plan and obtain approval <!-- id: 930 -->
+- [x] Create `DynamicInput` UI component <!-- id: 931 -->
+- [x] Add `getDynamicInput` to `Command` interface <!-- id: 932 -->
+- [x] Implement `getDynamicInput` in `LineCommand.ts` <!-- id: 933 -->
+- [x] Update `app.ts` to use `DynamicInput` <!-- id: 934 -->
+- [x] Verify with tests <!-- id: 935 -->
+
+## Current Task: Refactor CommandResponse to Tagged Union (Incremental)
+- [x] Extend `CommandResponse` in `types.ts` with tagged types (non-breaking) <!-- id: 920 -->
+- [x] Update `app.ts` (`handleResult`) to support tagged responses <!-- id: 921 -->
+- [/] Migrate commands one by one (Ortho, Grid, Snap, Pan, Units, Id, Dist, Layer, DimTad, DimToh, Linetype, List done) <!-- id: 922 -->
+- [x] Verify with tests <!-- id: 924 -->
 
 ## Current Task: Use Typed Center Field in Polyline
 - [x] Add `center` field to `Polyline.ts` <!-- id: 910 -->

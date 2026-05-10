@@ -49,4 +49,19 @@ describe('ArcCommand', () => {
     expect(preview?.cx).toBeCloseTo(100)
     expect(preview?.cy).toBeCloseTo(0)
   })
+
+  it('should return dynamic input info', () => {
+    const cmd = new ArcCommand()
+    cmd.onPoint(0, 0, 'A1', { type: 'decimal', precision: 2, scale: 1.0 })
+    
+    // Step 1
+    const info1 = cmd.getDynamicInput(10, 0, { type: 'decimal', precision: 2, scale: 1.0 })
+    expect(info1).toEqual(['D:10.00', 'A:0.0'])
+
+    cmd.onPoint(10, 0, 'A1', { type: 'decimal', precision: 2, scale: 1.0 })
+    
+    // Step 2
+    const info2 = cmd.getDynamicInput(10, 10, { type: 'decimal', precision: 2, scale: 1.0 })
+    expect(info2).toEqual(['D:7.07', 'A:45.0'])
+  })
 })

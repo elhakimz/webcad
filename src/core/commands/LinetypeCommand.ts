@@ -3,14 +3,14 @@ import { UnitsConfig } from "../model/Document"
 
 export class LinetypeCommand implements Command {
   onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse {
-    return this.getPrompt();
+    return { type: 'prompt', text: this.getPrompt() };
   }
 
   onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
-    if (val === "?" || val === "LIST") return { action: "linetypeList" } as CommandResponse;
-    if (val === "") return "Linetype name (or ?):";
-    return { action: "linetypeSet", linetype: val } as CommandResponse;
+    if (val === "?" || val === "LIST") return { type: 'action', action: "linetypeList" };
+    if (val === "") return { type: 'prompt', text: "Linetype name (or ?):" };
+    return { type: 'action', action: "linetypeSet", linetype: val };
   }
 
   getPrompt() {

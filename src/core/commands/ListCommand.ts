@@ -18,7 +18,7 @@ export class ListCommand implements Command {
     return "Select object:";
   }
 
-  onInput(text: string, _id: string, _units: UnitsConfig): CommandResponse | undefined {
+  onInput(_text: string, _id: string, _units: UnitsConfig): CommandResponse | undefined {
     if (this.selectedEntity) {
       const action: CommandAction = { action: 'list', entity: this.selectedEntity };
       this.selectedEntity = null;

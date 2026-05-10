@@ -7,7 +7,6 @@ import { Text } from "../model/Text";
 import { Point } from "../model/Point";
 import { Circle } from "../model/Circle";
 import { Ellipse } from "../model/Ellipse";
-import * as MathUtils from "./MathUtils";
 
 export interface BoundingBox {
     minX: number;

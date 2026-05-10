@@ -1,11 +1,12 @@
 import { ToolWindow } from "./ToolWindow"
 import files from "../files.json"
 import { DXFImporter } from "../core/io/dxfImport"
+import { App } from "../app"
 
 export class FileToolWindow {
   private container: HTMLElement;
 
-  constructor(private toolWindow: ToolWindow, private app: any) {
+  constructor(private toolWindow: ToolWindow, private app: App) {
     this.container = document.createElement('div');
     this.container.style.display = 'flex';
     this.container.style.flexDirection = 'column';

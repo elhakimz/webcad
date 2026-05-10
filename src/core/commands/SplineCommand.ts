@@ -8,7 +8,7 @@ export class SplineCommand implements Command {
   controlPoints: Point[] = [];
   degree = 3;
 
-  onPoint(x: number, y: number, id: string, _units: UnitsConfig): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
     this.controlPoints.push({ x, y });
     this.step++;
     

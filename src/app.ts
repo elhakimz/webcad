@@ -2,7 +2,7 @@
 import { Viewer } from "./render/Viewer"
 import { CommandManager } from "./core/engine/CommandManager"
 import { Document } from "./core/model/Document"
-import { CommandResponse, CommandAction } from "./core/commands/types"
+import { CommandResponse, CommandAction, HasSetEntity } from "./core/commands/types"
 import { Entity } from "./core/model/Entity"
 import { Line } from "./core/model/Line"
 import { Circle } from "./core/model/Circle"
@@ -338,7 +338,7 @@ export class App {
             this.selectedEntityIds.add(e.id);
             if (this.cmd.active) {
                 if ('setEntity' in this.cmd.active) {
-                    (this.cmd.active as any).setEntity(e);
+                    (this.cmd.active as unknown as HasSetEntity).setEntity(e);
                 }
                 const res = await this.cmd.inputString(e.id, this.doc.units);
                 if (res) result = res;
@@ -408,8 +408,8 @@ export class App {
             const isListPick = activeName === 'ListCommand';
 
             if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isDimRadiusPick || isDimAngularPick || isListPick)) {       
-                if ((isDimRadiusPick || isDimAngularPick || isListPick) && (this.cmd.active as any).setEntity) {
-                  (this.cmd.active as any).setEntity(entity);
+                if ((isDimRadiusPick || isDimAngularPick || isListPick) && 'setEntity' in this.cmd.active) {
+                  (this.cmd.active as unknown as HasSetEntity).setEntity(entity);
                 }
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);
                 if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet' || res.action === 'chamfer' || res.action === 'break' || res.action === 'lengthen')) {

@@ -1,5 +1,5 @@
 import { Command, PreviewObject, CommandResponse } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { Dimension } from "../model/Dimension"
 import { Entity } from "../model/Entity"
 import { Circle } from "../model/Circle"
@@ -28,23 +28,24 @@ export class DimRadiusCommand implements Command {
     return this.getPrompt();
   }
 
-  onPoint(x: number, y: number, id: string, _units: UnitsConfig, doc?: any): CommandResponse {
+  onPoint(x: number, y: number, id: string, _units: UnitsConfig, doc?: IDocument): CommandResponse {
     if (this.step === 1) {
       return this.finishCommand(x, y, id, doc);
     }
     return this.getPrompt();
   }
 
-  private finishCommand(x: number, y: number, id: string, doc?: any): CommandResponse {
+  private finishCommand(x: number, y: number, id: string, doc?: IDocument): CommandResponse {
     let cx = x;
     let cy = y;
     let tx = x;
     let ty = y;
 
     if (this.selectedEntity instanceof Circle || this.selectedEntity instanceof Arc) {
-      cx = (this.selectedEntity as any).cx;
-      cy = (this.selectedEntity as any).cy;
-      const r = (this.selectedEntity as any).r;
+      const entity = this.selectedEntity as Circle | Arc;
+      cx = entity.cx;
+      cy = entity.cy;
+      const r = entity.r;
       const dx = x - cx;
       const dy = y - cy;
       const dist = Math.sqrt(dx * dx + dy * dy);

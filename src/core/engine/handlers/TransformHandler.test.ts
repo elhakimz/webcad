@@ -26,11 +26,11 @@ describe('TransformHandler Trim Ellipse', () => {
         setBaseLine: vi.fn(),
         camera: { zoom: 1 },
         addEllipse: vi.fn(),
-      } as any,
+      } as unknown as AppContext['viewer'],
       selectedEntityIds: new Set(),
       addEntity: vi.fn((e) => doc.addEntity(e)),
       terminateActiveCommand: vi.fn(),
-    } as any
+    } as unknown as AppContext
 
     const action = {
       action: 'trim',
@@ -39,7 +39,7 @@ describe('TransformHandler Trim Ellipse', () => {
       pickPt: { x: 75, y: 0 } // Pick the right part of the ellipse
     }
 
-    const result = await handler.handle(action as any, context)
+    const result = await handler.handle(action as unknown as Parameters<TransformHandler['handle']>[0], context)
     expect(result).toBe('Entity trimmed.')
   })
 
@@ -49,7 +49,7 @@ describe('TransformHandler Trim Ellipse', () => {
     const ellipse = new Ellipse('E1', 0, 0, 100, 0, 0.5, 0, Math.PI / 2, true) 
     doc.addEntity(ellipse)
     
-    const line = new Line('L1', 0, 100, 100, 100) // Horizontal line at y=100
+    const line = new Line('L1', -50, -100, -50, 100) // Vertical line at x=-50
     doc.addEntity(line)
 
     const handler = new TransformHandler()
@@ -63,11 +63,11 @@ describe('TransformHandler Trim Ellipse', () => {
         setHelpers: vi.fn(),
         setBaseLine: vi.fn(),
         camera: { zoom: 1 },
-      } as any,
+      } as unknown as AppContext['viewer'],
       selectedEntityIds: new Set(),
       addEntity: vi.fn((e) => doc.addEntity(e)),
       terminateActiveCommand: vi.fn(),
-    } as any
+    } as unknown as AppContext
 
     const action = {
       action: 'extend',
@@ -76,7 +76,11 @@ describe('TransformHandler Trim Ellipse', () => {
       pickPt: { x: 0, y: 50 } // Pick near the end of the arc (0, 50 in local coordinates for 90 deg)
     }
 
-    const result = await handler.handle(action as any, context)
+    const result = await handler.handle(action as unknown as Parameters<TransformHandler['handle']>[0], context)
     expect(result).toBe('Ellipse extended.')
+    
+    // Verify the ellipse was extended to approx 120 degrees (2*Math.PI/3)
+    const extendedEllipse = doc.getEntity('E1') as Ellipse
+    expect(extendedEllipse.endAngle).toBeCloseTo(2 * Math.PI / 3, 2)
   })
 })

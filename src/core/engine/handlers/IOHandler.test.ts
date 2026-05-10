@@ -25,9 +25,9 @@ describe('IOHandler', () => {
     // Setup minimal AppContext
     context = {
       doc,
-      viewer: {} as any,
-      cmd: {} as any,
-      drafting: {} as any,
+      viewer: {} as unknown as AppContext['viewer'],
+      cmd: {} as unknown as AppContext['cmd'],
+      drafting: {} as unknown as AppContext['drafting'],
       selectedEntityIds: new Set(),
       addEntity: vi.fn(),
       syncFromDocument: vi.fn(),
@@ -53,7 +53,7 @@ describe('IOHandler', () => {
       filename: 'test.dxf'
     }
 
-    const result = await handler.handle(action as any, context)
+    const result = await handler.handle(action as unknown as Parameters<IOHandler['handle']>[0], context)
     console.log('LOAD Result:', result)
 
     expect(context.onLayersChange).toHaveBeenCalled()
@@ -67,7 +67,7 @@ describe('IOHandler', () => {
       action: 'new'
     }
 
-    const result = await handler.handle(action as any, context)
+    const result = await handler.handle(action as unknown as Parameters<IOHandler['handle']>[0], context)
     console.log('NEW Result:', result)
 
     expect(doc.layers.layers.has("TestLayer")).toBe(false)

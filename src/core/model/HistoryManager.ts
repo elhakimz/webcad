@@ -56,8 +56,7 @@ export class HistoryManager {
     this.currentTransaction.push({
       action: HistoryAction.TRANSFORM,
       entityId: entityBefore.id,
-      beforeData: JSON.stringify(entityBefore),
-      afterData: JSON.stringify(entityAfter)
+      entity: entityBefore.clone(entityBefore.id)
     })
   }
 
@@ -87,21 +86,16 @@ export class HistoryManager {
         }
       } else if (record.action === HistoryAction.TRANSFORM) {
         const entity = getEntity(record.entityId)
-        if (entity && record.beforeData) {
+        if (entity && record.entity) {
           // Store current state for redo before reverting
           redoTransaction.push({ 
               action: HistoryAction.TRANSFORM, 
               entityId: entity.id, 
-              beforeData: JSON.stringify(entity),
-              afterData: record.beforeData 
+              entity: entity.clone(entity.id)
           })
-          const data = JSON.parse(record.beforeData)
-          // Restore properties
-          Object.assign(entity, data)
           
-          // CRITICAL: Ensure we restore coordinates/properties that might be in subclasses
-          // Object.assign works for plain properties, but we might need more if Entity had complex state.
-          // For now, our Entities are mostly data.
+          removeEntity(record.entityId)
+          addEntity(record.entity.clone(record.entityId))
         }
       }
     }
@@ -134,15 +128,15 @@ export class HistoryManager {
           }
       } else if (record.action === HistoryAction.TRANSFORM) {
           const entity = getEntity(record.entityId)
-          if (entity && record.afterData) {
+          if (entity && record.entity) {
               undoTransaction.push({ 
                   action: HistoryAction.TRANSFORM, 
                   entityId: entity.id, 
-                  beforeData: JSON.stringify(entity),
-                  afterData: record.afterData 
+                  entity: entity.clone(entity.id)
               })
-              const data = JSON.parse(record.afterData)
-              Object.assign(entity, data)
+              
+              removeEntity(record.entityId)
+              addEntity(record.entity.clone(record.entityId))
           }
       }
     }

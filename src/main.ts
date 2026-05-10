@@ -30,7 +30,6 @@ app.doc.layers.createLayer("01", 3, "DASHDOT");
 const cmdLine = new CommandLine()
 cmdLine.setCommands(app.cmd.getAvailableCommands());
 app.setCommandLine((msg: string) => cmdLine.print(msg))
-let updateStatusBar: () => void;
 
 const ribbonContainer = new RibbonContainer();
 const layerRibbon = new LayerInfoRibbonBar();
@@ -74,7 +73,7 @@ const statusBarEl = document.getElementById('status-bar')!;
 statusBarEl.innerHTML = '';
 statusBarEl.appendChild(ribbonContainer.getElement());
 
-updateStatusBar = () => {
+function updateStatusBar() {
   layerRibbon.updateLayer(app.doc.layers.getCurrentLayer());
   draftingRibbon.updateStatus({
     snap: app.drafting.snapEnabled,
@@ -85,9 +84,9 @@ updateStatusBar = () => {
   draftingRibbon.updateSizes(app.drafting.snapSpacing, app.drafting.gridSpacing);
   unitsRibbon.updateUnits(app.doc.units);
   viewer.setAxesVisible(app.drafting.xyzEnabled);
-};
+}
 
-app.setStatusBar((layer) => {
+app.setStatusBar((_layer) => {
   updateStatusBar();
 });
 
@@ -169,7 +168,7 @@ const inquiryToolbar = new InquiryToolbar(async (cmd) => {
 }, dockingManager)
 
 const fileToolbar = new ToolWindow("file", "File Operations")
-const fileToolWindow = new FileToolWindow(fileToolbar, app)
+new FileToolWindow(fileToolbar, app)
 mainArea.insertBefore(fileToolbar.getElement(), toolWindowBar.getElement().nextSibling);
 toolWindowBar.addWindow("F", fileToolbar)
 

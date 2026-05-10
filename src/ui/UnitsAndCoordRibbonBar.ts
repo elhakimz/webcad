@@ -8,7 +8,6 @@ export class UnitsAndCoordRibbonBar extends RibbonBar {
 
   constructor(private onUnitsChange?: (units: 'decimal' | 'architectural' | 'metric') => void) {
     super("Units & Coords");
-    this.container.style.width = '340px';
 
     this.content.innerHTML = `
       <div class="ribbon-item" style="white-space: nowrap;">

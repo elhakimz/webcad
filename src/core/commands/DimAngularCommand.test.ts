@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { DimAngularCommand } from './DimAngularCommand'
 import { Line } from '../model/Line'
 import { Arc } from '../model/Arc'
-import { Circle } from '../model/Circle'
 import { Dimension } from '../model/Dimension'
+import { UnitsConfig } from '../model/Document'
 
 describe('DimAngularCommand', () => {
   let cmd: DimAngularCommand;
-  const units = { type: 'decimal', precision: 2, scale: 1 } as any;
+  const units: UnitsConfig = { type: 'decimal', precision: 2, scale: 1 };
 
   beforeEach(() => {
     cmd = new DimAngularCommand();

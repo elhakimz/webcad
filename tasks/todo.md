@@ -1,5 +1,20 @@
 # WebCAD Tasks
 
+## Current Task: Fix Insert.mirror() stub
+- [x] Update `Insert.ts` <!-- id: 820 -->
+- [x] Verify with tests <!-- id: 821 -->
+
+## Current Task: Fix HistoryManager.TRANSFORM using clones
+- [x] Update `HistoryManager.ts` <!-- id: 810 -->
+- [x] Add `HistoryManager.test.ts` <!-- id: 811 -->
+- [x] Verify with tests <!-- id: 812 -->
+
+## Current Task: Optimize Quadtree Removal
+- [x] Add `remove` method to `Quadtree.ts` <!-- id: 800 -->
+- [x] Update `removeEntity` in `Document.ts` <!-- id: 801 -->
+- [x] Add `Quadtree.test.ts` <!-- id: 802 -->
+- [x] Verify with tests <!-- id: 803 -->
+
 ## Current Task: Implement Units & Measurement Features
 - [x] Support unit suffixes in `CoordinateParser.ts` <!-- id: 610 -->
 - [x] Pass units to `CoordinateParser` in `CommandManager.ts` <!-- id: 611 -->
@@ -11,6 +26,12 @@
 - [x] Read XData in `dxfImport.ts` and use `PG` prefix if found <!-- id: 601 -->
 - [ ] Verify by creating, saving, and reloading a polygon <!-- id: 602 -->
 
+## Current Task: Fix Failing Tests for Baseline
+- [x] Fix failing tests <!-- id: 700 -->
+  - [x] Fix `DimRadiusCommand` tests <!-- id: 701 -->
+  - [x] Fix `Offset` tests <!-- id: 702 -->
+  - [x] Fix `TransformHandler` tests <!-- id: 703 -->
+  - [x] Verify all tests pass <!-- id: 704 -->
 
 ## Current Task: Create DataTable Component (Base)
 - [x] Create `src/ui/DataTable.ts` (Base class) <!-- id: 300 -->

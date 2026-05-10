@@ -58,28 +58,108 @@ import { BlockCommand } from "../commands/BlockCommand"
 import { InsertCommand } from "../commands/InsertCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { Entity } from "../model/Entity"
+
+type CommandFactory = (selection?: string[]) => Command | CommandResponse;
+
+const commandRegistry = new Map<string, CommandFactory>([
+  ["LINE", () => new LineCommand()],
+  ["CIRCLE", () => new CircleCommand()],
+  ["DONUT", () => new DonutCommand()],
+  ["ELLIPSE", () => new EllipseCommand()],
+  ["SPLINE", () => new SplineCommand()],
+  ["ID", () => new IdCommand()],
+  ["DIST", () => new DistCommand()],
+  ["AREA", () => new AreaCommand()],
+  ["LIST", () => new ListCommand()],
+  ["ANNOTATE", () => new NoteCommand()],
+  ["NOTE", () => new NoteCommand()],
+  ["ERASE", (selection) => {
+    if (selection && selection.length > 0) {
+      return { action: "delete", ids: [...selection] };
+    }
+    return new EraseCommand();
+  }],
+  ["E", (selection) => {
+    if (selection && selection.length > 0) {
+      return { action: "delete", ids: [...selection] };
+    }
+    return new EraseCommand();
+  }],
+  ["MOVE", (selection) => new MoveCommand(selection)],
+  ["COPY", (selection) => new CopyCommand(selection)],
+  ["ROTATE", (selection) => new RotateCommand(selection)],
+  ["SCALE", (selection) => new ScaleCommand(selection)],
+  ["MIRROR", (selection) => new MirrorCommand(selection)],
+  ["ZOOM", () => new ZoomCommand()],
+  ["Z", () => new ZoomCommand()],
+  ["PAN", () => new PanCommand()],
+  ["P", () => new PanCommand()],
+  ["TEST3D", () => new Test3DCommand()],
+  ["ARC", () => new ArcCommand()],
+  ["POINT", () => new PointCommand()],
+  ["PLINE", () => new PolylineCommand()],
+  ["POLYGON", () => new PolygonCommand()],
+  ["RECTANG", () => new RectangCommand()],
+  ["REC", () => new RectangCommand()],
+  ["RECTANGLE", () => new RectangCommand()],
+  ["TEXT", () => new TextCommand()],
+  ["MTEXT", () => new MTextCommand()],
+  ["SOLID", () => new SolidCommand()],
+  ["TRACE", () => new TraceCommand()],
+  ["HATCH", () => new HatchCommand()],
+  ["SKETCH", () => new SketchCommand()],
+  ["SHAPE", () => new ShapeCommand()],
+  ["LAYER", () => new LayerCommand()],
+  ["LA", () => new LayerCommand()],
+  ["LINETYPE", () => new LinetypeCommand()],
+  ["LTYPE", () => new LinetypeCommand()],
+  ["LT", () => new LinetypeCommand()],
+  ["SAVE", () => new SaveCommand()],
+  ["LOAD", () => new LoadCommand()],
+  ["NEW", () => new NewCommand()],
+  ["UNITS", () => new UnitsCommand()],
+  ["ORTHO", () => new OrthoCommand()],
+  ["GRID", () => new GridCommand()],
+  ["SNAP", () => new SnapCommand()],
+  ["ARRAY", (selection) => new ArrayCommand(selection)],
+  ["OFFSET", () => new OffsetCommand()],
+  ["FILLET", () => new FilletCommand()],
+  ["CHAMFER", () => new ChamferCommand()],
+  ["BREAK", () => new BreakCommand()],
+  ["JOIN", (selection) => {
+    if (selection && selection.length > 0) {
+      return { action: "join", ids: [...selection] };
+    }
+    return new JoinCommand();
+  }],
+  ["LENGTHEN", () => new LengthenCommand()],
+  ["DIMLINEAR", () => new DimLinearCommand()],
+  ["DIMALIGNED", () => new DimAlignedCommand()],
+  ["DIMRADIUS", () => new DimRadiusCommand()],
+  ["DIMDIAMETER", () => new DimDiameterCommand()],
+  ["DIMANGULAR", () => new DimAngularCommand()],
+  ["STRETCH", () => new StretchCommand()],
+  ["TRIM", (selection) => new TrimCommand(selection)],
+  ["EXTEND", (selection) => new ExtendCommand(selection)],
+  ["BLOCK", (selection) => new BlockCommand(selection)],
+  ["INSERT", () => new InsertCommand()],
+  ["REGEN", () => ({ action: "regen" })],
+  ["UNDO", () => ({ action: "undo" })],
+  ["U", () => ({ action: "undo" })],
+  ["REDO", () => ({ action: "redo" })],
+  ["R", () => ({ action: "redo" })],
+  ["DIMTOH", () => new DimTohCommand()],
+  ["DIMTAD", () => new DimTadCommand()],
+]);
 
 export class CommandManager {
   active: Command | null = null
   lastPoint: { x: number; y: number } | null = null
 
   getAvailableCommands(): string[] {
-    return [
-      "LINE", "CIRCLE", "DONUT", "ELLIPSE", "SPLINE", 
-      "ERASE", "E", "MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", 
-      "ZOOM", "Z", "PAN", "P", "TEST3D", "ARC", "POINT", "PLINE", 
-      "POLYGON", "RECTANG", "REC", "RECTANGLE", "TEXT", "SOLID", 
-      "TRACE", "HATCH", "SKETCH", "SHAPE", "LAYER", "LA", 
-      "LINETYPE", "LTYPE", "LT", "SAVE", "LOAD", "NEW", "UNITS", 
-      "ORTHO", "GRID", "SNAP", "ARRAY", "OFFSET", "FILLET", 
-      "CHAMFER", "BREAK", "JOIN", "LENGTHEN", "DIMLINEAR", 
-      "DIMALIGNED", "DIMRADIUS", "DIMDIAMETER", "DIMANGULAR", 
-      "BLOCK", "INSERT", "STRETCH", "DIMTOH", "DIMTAD",
-      "ID", "DIST", "AREA", "LIST", "ANNOTATE", "NOTE", "REGEN", 
-      "UNDO", "U", "REDO", "R"
-    ];
+    return Array.from(commandRegistry.keys());
   }
 
   execute(cmd:string, units: UnitsConfig, selection?: string[], entities?: Map<string, Entity>): CommandResponse {
@@ -89,261 +169,17 @@ export class CommandManager {
 
     let response: CommandResponse | undefined;
 
-    if(cmdName === "LINE"){
-      this.active = new LineCommand()
-      response = "LINE"
+    const factory = commandRegistry.get(cmdName);
+    if (!factory) {
+      return "Unknown command: " + cmdName;
     }
-    else if(cmdName === "CIRCLE"){
-      this.active = new CircleCommand()
-      response = "CIRCLE"
-    }
-    else if(cmdName === "DONUT"){
-      this.active = new DonutCommand()
-      response = "DONUT"
-    }
-    else if(cmdName === "ELLIPSE"){
-      this.active = new EllipseCommand()
-      response = "ELLIPSE"
-    }
-    else if(cmdName === "SPLINE"){
-      this.active = new SplineCommand()
-      response = "SPLINE"
-    }
-    else if(cmdName === "ID"){
-      this.active = new IdCommand()
-      response = "ID"
-    }
-    else if(cmdName === "DIST"){
-      this.active = new DistCommand()
-      response = "DIST"
-    }
-    else if(cmdName === "AREA"){
-      this.active = new AreaCommand()
-      response = "AREA"
-    }
-    else if(cmdName === "LIST"){
-      this.active = new ListCommand()
-      response = "LIST"
-    }
-    else if(cmdName === "ANNOTATE" || cmdName === "NOTE"){
-      this.active = new NoteCommand()
-      response = "ANNOTATE"
-    }
-    else if(cmdName === "ERASE" || cmdName === "E"){
 
-      if (selection && selection.length > 0) {
-        return { action: "delete", ids: [...selection] };
-      }
-      this.active = new EraseCommand()
-      response = "ERASE"
-    }
-    else if(cmdName === "MOVE"){
-      this.active = new MoveCommand(selection)
-      response = "MOVE"
-    }
-    else if(cmdName === "COPY"){
-      this.active = new CopyCommand(selection)
-      response = "COPY"
-    }
-    else if(cmdName === "ROTATE"){
-      const _targetEntities = selection ? selection.map(id => entities?.get(id)).filter(Boolean) : [];
-      this.active = new RotateCommand(selection)
-      response = "ROTATE"
-    }
-    else if(cmdName === "SCALE"){
-      this.active = new ScaleCommand(selection)
-      response = "SCALE"
-    }
-    else if(cmdName === "MIRROR"){
-      this.active = new MirrorCommand(selection)
-      response = "MIRROR"
-    }
-    else if(cmdName === "ZOOM" || cmdName === "Z"){
-      this.active = new ZoomCommand()
-      response = "ZOOM"
-    }
-    else if(cmdName === "PAN" || cmdName === "P"){
-      this.active = new PanCommand()
-      response = "PAN"
-    }
-    else if(cmdName === "TEST3D"){
-      this.active = new Test3DCommand()
-      response = "TEST3D"
-    }
-    else if(cmdName === "ARC"){
-      this.active = new ArcCommand()
-      response = "ARC"
-    }
-    else if(cmdName === "POINT"){
-      this.active = new PointCommand()
-      response = "POINT"
-    }
-    else if(cmdName === "PLINE"){
-      this.active = new PolylineCommand()
-      response = "PLINE"
-    }
-    else if(cmdName === "POLYGON"){
-      this.active = new PolygonCommand()
-      response = "POLYGON"
-    }
-    else if(cmdName === "RECTANG" || cmdName === "REC" || cmdName === "RECTANGLE"){
-      this.active = new RectangCommand()
-      response = "RECTANG"
-    }
-    else if(cmdName === "TEXT"){
-      this.active = new TextCommand()
-      response = "TEXT"
-    }
-    else if(cmdName === "MTEXT"){
-      this.active = new MTextCommand()
-      response = "MTEXT"
-    }
-    else if(cmdName === "SOLID"){
-      this.active = new SolidCommand()
-      response = "SOLID"
-    }
-    else if(cmdName === "TRACE"){
-      this.active = new TraceCommand()
-      response = "TRACE"
-    }
-    else if(cmdName === "HATCH"){
-      this.active = new HatchCommand()
-      response = "HATCH"
-    }
-    else if(cmdName === "SKETCH"){
-      this.active = new SketchCommand()
-      response = "SKETCH"
-    }
-    else if(cmdName === "SHAPE"){
-      this.active = new ShapeCommand()
-      response = "SHAPE"
-    }
-    else if(cmdName === "LAYER" || cmdName === "LA"){
-      this.active = new LayerCommand()
-      response = "LAYER"
-    }
-    else if(cmdName === "LINETYPE" || cmdName === "LTYPE" || cmdName === "LT"){
-      this.active = new LinetypeCommand()
-      response = "LINETYPE"
-    }
-    else if(cmdName === "SAVE"){
-      this.active = new SaveCommand()
-      response = "SAVE"
-    }
-    else if(cmdName === "LOAD"){
-      this.active = new LoadCommand()
-      response = "LOAD"
-    }
-    else if(cmdName === "NEW"){
-      this.active = new NewCommand()
-      response = "NEW"
-    }
-    else if(cmdName === "UNITS"){
-      this.active = new UnitsCommand()
-      response = "UNITS"
-    }
-    else if(cmdName === "ORTHO"){
-      this.active = new OrthoCommand()
-      response = "ORTHO"
-    }
-    else if(cmdName === "GRID"){
-      this.active = new GridCommand()
-      response = "GRID"
-    }
-    else if(cmdName === "SNAP"){
-      this.active = new SnapCommand()
-      response = "SNAP"
-    }
-    else if(cmdName === "DIMTOH"){
-      this.active = new DimTohCommand()
-      response = "DIMTOH"
-    }
-    else if(cmdName === "DIMTAD"){
-      this.active = new DimTadCommand()
-      response = "DIMTAD"
-    }
-    else if(cmdName === "ARRAY"){
-      this.active = new ArrayCommand(selection)
-      response = "ARRAY"
-    }
-    else if(cmdName === "OFFSET"){
-      this.active = new OffsetCommand()
-      response = "OFFSET"
-    }
-    else if(cmdName === "FILLET"){
-      this.active = new FilletCommand()
-      response = "FILLET"
-    }
-    else if(cmdName === "CHAMFER"){
-      this.active = new ChamferCommand()
-      response = "CHAMFER"
-    }
-    else if(cmdName === "BREAK"){
-      this.active = new BreakCommand()
-      response = "BREAK"
-    }
-    else if(cmdName === "JOIN"){
-      if (selection && selection.length > 0) {
-        return { action: "join", ids: [...selection] };
-      }
-      this.active = new JoinCommand()
-      response = "JOIN"
-    }
-    else if(cmdName === "LENGTHEN"){
-      this.active = new LengthenCommand()
-      response = "LENGTHEN"
-    }
-    else if(cmdName === "DIMLINEAR"){
-      this.active = new DimLinearCommand()
-      response = "DIMLINEAR"
-    }
-    else if(cmdName === "DIMALIGNED"){
-      this.active = new DimAlignedCommand()
-      response = "DIMALIGNED"
-    }
-    else if(cmdName === "DIMRADIUS"){
-      this.active = new DimRadiusCommand()
-      response = "DIMRADIUS"
-    }
-    else if(cmdName === "DIMDIAMETER"){
-      this.active = new DimDiameterCommand()
-      response = "DIMDIAMETER"
-    }
-    else if(cmdName === "DIMANGULAR"){
-      this.active = new DimAngularCommand()
-      response = "DIMANGULAR"
-    }
-    else if(cmdName === "STRETCH"){
-      this.active = new StretchCommand()
-      response = "STRETCH"
-    }
-    else if(cmdName === "TRIM"){
-      this.active = new TrimCommand(selection)
-      response = "TRIM"
-    }
-    else if(cmdName === "EXTEND"){
-      this.active = new ExtendCommand(selection)
-      response = "EXTEND"
-    }
-    else if(cmdName === "BLOCK"){
-      this.active = new BlockCommand(selection)
-      response = "BLOCK"
-    }
-    else if(cmdName === "INSERT"){
-      this.active = new InsertCommand()
-      response = "INSERT"
-    }
-    else if(cmdName === "REGEN"){
-      return { action: "regen" }
-    }
-    else if(cmdName === "UNDO" || cmdName === "U"){
-      return { action: "undo" }
-    }
-    else if(cmdName === "REDO" || cmdName === "R"){
-      return { action: "redo" }
-    }
-    else {
-      return "Unknown command: " + cmdName
+    const result = factory(selection);
+    if (result && typeof result === 'object' && 'onPoint' in result) {
+      this.active = result as Command;
+      response = cmdName;
+    } else {
+      return result as CommandResponse;
     }
 
     // Feed additional arguments if provided
@@ -357,7 +193,7 @@ export class CommandManager {
     return response;
   }
 
-  inputPoint(x:number,y:number, units: UnitsConfig, idGenerator?: (prefix: string) => string, doc?: any): CommandResponse | undefined {
+  inputPoint(x:number,y:number, units: UnitsConfig, idGenerator?: (prefix: string) => string, doc?: IDocument): CommandResponse | undefined {
     this.lastPoint = { x, y }
     if(this.active){
       const id = idGenerator ? idGenerator(this.getPrefix(this.active)) : `TMP_${Date.now()}`;
@@ -365,7 +201,7 @@ export class CommandManager {
     }
   }
 
-  inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }, doc?: any): CommandResponse | undefined {
+  inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
     const pt = CoordinateParser.parseCoordinate(text, units, this.lastPoint || undefined)
     if (pt) {
       return this.inputPoint(pt.x, pt.y, units, idGenerator, doc)

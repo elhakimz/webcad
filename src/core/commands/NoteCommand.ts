@@ -1,5 +1,5 @@
-import { Command, CommandResponse, CommandAction, PreviewObject } from "./types";
-import { UnitsConfig } from "../model/Document";
+import { Command, CommandResponse, PreviewObject } from "./types";
+import { UnitsConfig, IDocument } from "../model/Document";
 import { Note } from "../model/Note";
 import { Entity } from "../model/Entity";
 import { SelectionEngine } from "../engine/SelectionEngine";
@@ -18,7 +18,7 @@ export class NoteCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, _id: string, _units: UnitsConfig, doc?: any): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig, doc?: IDocument): CommandResponse {
     if (this.step === 0) {
       if (doc && doc.entities) {
         const entities = Array.from(doc.entities.values()) as Entity[];
@@ -46,7 +46,7 @@ export class NoteCommand implements Command {
       this.step = 3;
       return "Enter note text:";
     }
-    return undefined;
+    return "";
   }
 
   onInput(text: string, id: string, _units: UnitsConfig): CommandResponse | undefined {

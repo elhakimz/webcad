@@ -47,11 +47,7 @@ export class Insert extends Entity {
   }
 
   mirror(_p1: Point, _p2: Point) {
-      // Insertion point mirror is standard
-      // But full block mirroring requires scale inversion or rotation flip
-      // For now, mirror the insertion point.
-      this.x = this.x; // TODO: Implement full mirror math
-      this.y = this.y;
+      throw new Error("Mirror on Insert not yet supported");
   }
 
   getBoundingBox(): BoundingBox {

@@ -1,5 +1,5 @@
 import { Entity } from "../model/Entity";
-import { UnitsConfig } from "../model/Document";
+import { UnitsConfig, IDocument } from "../model/Document";
 
 export type CommandAction = {
   action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen' | 'create3d' | 'save' | 'load' | 'ortho' | 'orthoToggle' | 'grid' | 'gridToggle' | 'gridSet' | 'snap' | 'snapToggle' | 'snapSet' | 'array' | 'offset' | 'trim' | 'extend' | 'block' | 'insert' | 'blockList' | 'unitsSet' | 'fillet' | 'chamfer' | 'break' | 'join' | 'lengthen' | 'dimlinear' | 'dimaligned' | 'dimradius' | 'dimangular' | 'new' | 'listFiles' | 'stretch' | 'dimtoh' | 'dimtad' | 'dimtohToggle' | 'dimtadToggle' | 'id' | 'dist' | 'area' | 'list';
@@ -87,16 +87,21 @@ export type MovePreview = { type: 'move_preview', dx: number, dy: number };
 export type CopyPreview = { type: 'copy_preview', dx: number, dy: number };
 export type ScalePreview = { type: 'scale_preview', factor: number, baseX: number, baseY: number };
 export type SplinePreview = { type: 'spline_preview', controlPoints: { x: number, y: number }[], degree: number, knots: number[] };
+export type EntitiesPreview = { type: 'entities', entities: Entity[] };
 
-export type PreviewObject = Entity | ZoomWindowPreview | SelectionBoxPreview | XMarkerPreview | PLinePointsPreview | SolidPointsPreview | RotationPreview | PolylinePreview | MovePreview | CopyPreview | ScalePreview | SplinePreview;
+export type PreviewObject = Entity | ZoomWindowPreview | SelectionBoxPreview | XMarkerPreview | PLinePointsPreview | SolidPointsPreview | RotationPreview | PolylinePreview | MovePreview | CopyPreview | ScalePreview | SplinePreview | EntitiesPreview;
 
 export interface Command {
-  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: any): CommandResponse;
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse;
   onInput?(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }): CommandResponse | undefined;
   getPreview?(x: number, y: number, units: UnitsConfig): PreviewObject | null;
   getReferencePoints?(): { x: number, y: number }[];
   getPrompt?(): string;
   step?: number;
+}
+
+export interface HasSetEntity {
+  setEntity(entity: Entity): void;
 }
 
 export interface HasBasePoint {

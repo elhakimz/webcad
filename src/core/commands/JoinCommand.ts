@@ -1,4 +1,4 @@
-import { Command, CommandAction } from "./types"
+import { Command, CommandAction, CommandResponse } from "./types"
 import { UnitsConfig } from "../model/Document"
 
 export class JoinCommand implements Command {
@@ -12,7 +12,7 @@ export class JoinCommand implements Command {
     }
   }
 
-  onInput(text: string, id: string, _units: UnitsConfig, pickPt?: { x: number, y: number }): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     if (this.step === 0) {
       if (text) {
         this.ids = text.split(",").map(s => s.trim());

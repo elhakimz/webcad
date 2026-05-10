@@ -1,9 +1,8 @@
-import { Command, CommandResponse, PreviewObject } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { Command, CommandResponse, PreviewObject, SelectionBoxPreview } from "./types"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { Entity } from "../model/Entity"
 import { SelectionEngine } from "../engine/SelectionEngine"
 import { StretchEngine, BoundingBox } from "../engine/StretchEngine"
-import { Spline } from "../model/Spline";
 
 export class StretchCommand implements Command {
   step = 0
@@ -18,7 +17,7 @@ export class StretchCommand implements Command {
     return this.getPrompt();
   }
 
-  onPoint(x: number, y: number, _id: string, _units: UnitsConfig, doc?: any): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig, doc?: IDocument): CommandResponse {
     if (this.step === 0) {
       this.windowStart = { x, y };
       this.step = 1;
@@ -42,7 +41,10 @@ export class StretchCommand implements Command {
       }
 
       if (this.selectedEntities.length === 0) {
-        return { action: 'CANCEL', message: "No objects selected." };
+        this.step = 0;
+        this.windowStart = null;
+        this.windowEnd = null;
+        return "No objects selected. Specify first corner:";
       }
 
       this.step = 2;
@@ -90,7 +92,7 @@ export class StretchCommand implements Command {
         x2: x,
         y2: y,
         isCrossing: true
-      } as any;
+      } as SelectionBoxPreview;
     }
     if (this.step === 3 && this.basePoint && this.window) {
       const displacement = { x: x - this.basePoint.x, y: y - this.basePoint.y };
@@ -102,7 +104,7 @@ export class StretchCommand implements Command {
           previewEntities.push(clone);
         }
       }
-      return { type: 'entities', entities: previewEntities } as any;
+      return { type: 'entities', entities: previewEntities };
     }
     return null;
   }

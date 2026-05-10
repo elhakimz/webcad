@@ -10,7 +10,30 @@ export interface UnitsConfig {
   scale: number;
 }
 
-export class Document {
+export interface IDocument {
+  entities: Map<string, Entity>;
+  units: UnitsConfig;
+  dimtoh: boolean;
+  dimtad: boolean;
+  
+  clear(): void;
+  getNextId(prefix: string): string;
+  addEntity(entity: Entity): void;
+  removeEntity(id: string): void;
+  updateSpatialIndex(): void;
+  querySpatialIndex(range: BoundingBox): string[];
+  getEntity(id: string): Entity | undefined;
+  getAllEntities(): Entity[];
+  recordAdd(entity: Entity): void;
+  recordRemove(entity: Entity): void;
+  recordTransform(before: Entity, after: Entity): void;
+  undo(): void;
+  redo(): void;
+  canUndo(): boolean;
+  canRedo(): boolean;
+}
+
+export class Document implements IDocument {
   entities: Map<string, Entity> = new Map()
   history = new HistoryManager()
   layers = new LayerManager()
@@ -20,6 +43,7 @@ export class Document {
   dimtad: boolean = false;
   private spatialIndex: Quadtree
   private idCounters: Map<string, number> = new Map()
+  private removalsCount = 0
 
   constructor() {
     // Large bound for drafting space
@@ -46,10 +70,12 @@ export class Document {
 
   removeEntity(id: string) {
     this.entities.delete(id)
-    // For simplicity, we rebuild if many removals happen, 
-    // or just leave it for now. Quadtree implementation doesn't have individual remove yet.
-    // Actually, I should probably implement remove in Quadtree or rebuild it.
-    this.rebuildSpatialIndex()
+    this.spatialIndex.remove(id)
+    this.removalsCount++
+    
+    if (this.removalsCount >= 100) {
+      this.rebuildSpatialIndex()
+    }
   }
 
   private rebuildSpatialIndex() {
@@ -57,6 +83,7 @@ export class Document {
     for (const entity of this.entities.values()) {
       this.spatialIndex.insert({ id: entity.id, box: entity.getBoundingBox() })
     }
+    this.removalsCount = 0
   }
 
   updateSpatialIndex() {

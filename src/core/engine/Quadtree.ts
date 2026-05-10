@@ -104,6 +104,18 @@ export class Quadtree {
     );
   }
 
+  remove(id: string): boolean {
+    const idx = this.items.findIndex(i => i.id === id);
+    if (idx !== -1) {
+      this.items.splice(idx, 1);
+      return true;
+    }
+    if (this.children) {
+      return this.children.some(c => c.remove(id));
+    }
+    return false;
+  }
+
   clear() {
     this.items = [];
     if (this.children) {

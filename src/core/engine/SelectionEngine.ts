@@ -9,7 +9,7 @@ import { Solid } from "../model/Solid";
 import { Ellipse } from "../model/Ellipse";
 import { Dimension } from "../model/Dimension";
 import { Spline } from "../model/Spline";
-import { Document } from "../model/Document";
+import { IDocument } from "../model/Document";
 import * as MathUtils from "./MathUtils";
 import { bulgeToArc } from "./MathUtils";
 
@@ -33,7 +33,7 @@ export class SelectionEngine {
     return null;
   }
 
-  static getEntityAtSpatial(x: number, y: number, tolerance: number, doc: Document, selectableEntities?: Entity[]): Entity | null {
+  static getEntityAtSpatial(x: number, y: number, tolerance: number, doc: IDocument, selectableEntities?: Entity[]): Entity | null {
     const range = { minX: x - tolerance, minY: y - tolerance, maxX: x + tolerance, maxY: y + tolerance };
     const ids = doc.querySpatialIndex(range);
     
@@ -137,7 +137,7 @@ export class SelectionEngine {
     });
   }
 
-  static getEntitiesInWindowSpatial(x1: number, y1: number, x2: number, y2: number, doc: Document, selectableEntities?: Entity[]): Entity[] {
+  static getEntitiesInWindowSpatial(x1: number, y1: number, x2: number, y2: number, doc: IDocument, selectableEntities?: Entity[]): Entity[] {
     const minX = Math.min(x1, x2);
     const maxX = Math.max(x1, x2);
     const minY = Math.min(y1, y2);
@@ -174,7 +174,7 @@ export class SelectionEngine {
     });
   }
 
-  static getEntitiesInCrossingSpatial(x1: number, y1: number, x2: number, y2: number, doc: Document, selectableEntities?: Entity[]): Entity[] {
+  static getEntitiesInCrossingSpatial(x1: number, y1: number, x2: number, y2: number, doc: IDocument, selectableEntities?: Entity[]): Entity[] {
     const minX = Math.min(x1, x2);
     const maxX = Math.max(x1, x2);
     const minY = Math.min(y1, y2);

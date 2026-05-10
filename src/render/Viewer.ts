@@ -24,14 +24,14 @@ import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb, getLinet
 import { Spline } from "../core/model/Spline"
 import { Note } from "../core/model/Note"
 import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
-import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview } from "../core/commands/types"
+import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview, EntitiesPreview } from "../core/commands/types"
 
 export class Viewer {
   scene: THREE.Scene
   camera: THREE.OrthographicCamera
   renderer: THREE.WebGLRenderer
   canvas: HTMLCanvasElement
-  font: any = null
+  font: InstanceType<typeof Font> | null = null
 
   private isPanning = false
   private isLeftPanEnabled = false
@@ -272,6 +272,133 @@ export class Viewer {
     );
   }
 
+  private createPreviewObject(entity: PreviewObject, previewColor: number, units: UnitsConfig): THREE.Object3D | null {
+    let obj: THREE.Object3D | null = null;
+    if (entity instanceof Line) {
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(entity.x1, entity.y1, 0),
+        new THREE.Vector3(entity.x2, entity.y2, 0)
+      ]);
+      const mat = new THREE.LineBasicMaterial({ color: previewColor });
+      obj = new THREE.Line(geo, mat);
+    } else if (entity instanceof Circle) {
+      const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, 0, 2 * Math.PI, false, 0);
+      const points = curve.getPoints(50);
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const mat = new THREE.LineBasicMaterial({ color: previewColor });
+      obj = new THREE.LineLoop(geo, mat);
+    } else if (entity instanceof Arc) {
+      const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, entity.startAngle, entity.endAngle, !entity.ccw, 0);
+      const points = curve.getPoints(50);
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const mat = new THREE.LineBasicMaterial({ color: previewColor });
+      obj = new THREE.Line(geo, mat);
+    } else if (entity instanceof Point) {
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(entity.x, entity.y, 0)
+      ]);
+      const mat = new THREE.PointsMaterial({ color: previewColor, size: 5, sizeAttenuation: false });
+      obj = new THREE.Points(geo, mat);
+    } else if (entity instanceof Dimension) {
+      obj = this.createDimensionObject(entity, units, previewColor);
+    } else if ('type' in entity && entity.type === 'xmarker') {
+      const m = entity as XMarkerPreview;
+      const size = m.size || 10 / this.camera.zoom;
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(m.x - size, m.y - size, 0),
+        new THREE.Vector3(m.x + size, m.y + size, 0),
+        new THREE.Vector3(m.x - size, m.y + size, 0),
+        new THREE.Vector3(m.x + size, m.y - size, 0)
+      ]);
+      const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
+      obj = new THREE.LineSegments(geo, mat);
+    } else if ('type' in entity && entity.type === 'zoomwindow') {
+      const w = entity as ZoomWindowPreview;
+      const size = 10 / this.camera.zoom;
+      const group = new THREE.Group();
+      const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
+      const createX = (x: number, y: number) => {
+        const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(x - size, y - size, 0),
+          new THREE.Vector3(x + size, y + size, 0),
+          new THREE.Vector3(x - size, y + size, 0),
+          new THREE.Vector3(x + size, y - size, 0)
+        ]);
+        group.add(new THREE.LineSegments(geo, mat));
+      };
+      createX(w.x1, w.y1);
+      createX(w.x2, w.y2);
+      obj = group;
+    } else if ('type' in entity && entity.type === 'selection_box') {
+      const b = entity as SelectionBoxPreview;
+      const color = b.isCrossing ? 0x00FF00 : 0x0000FF; // Green for crossing, Blue for window
+      const mat = new THREE.LineDashedMaterial({
+          color: color,
+          linewidth: 1,
+          scale: 1,
+          dashSize: 3 / this.camera.zoom,
+          gapSize: 3 / this.camera.zoom,
+      });
+      const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(b.x1, b.y1, 0),
+          new THREE.Vector3(b.x2, b.y1, 0),
+          new THREE.Vector3(b.x2, b.y2, 0),
+          new THREE.Vector3(b.x1, b.y2, 0),
+          new THREE.Vector3(b.x1, b.y1, 0)
+      ]);
+      const line = new THREE.Line(geo, mat);
+      line.computeLineDistances();
+      obj = line;
+    } else if ('type' in entity && (entity.type === 'plinepoints' || entity.type === 'solidpoints')) {
+      const p = entity as PLinePointsPreview | SolidPointsPreview;
+      const size = 10 / this.camera.zoom;
+      const group = new THREE.Group();
+      const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
+      p.points.forEach(pt => {
+        const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(pt.x - size, pt.y - size, 0),
+          new THREE.Vector3(pt.x + size, pt.y + size, 0),
+          new THREE.Vector3(pt.x - size, pt.y + size, 0),
+          new THREE.Vector3(pt.x + size, pt.y - size, 0)
+        ]);
+        group.add(new THREE.LineSegments(geo, mat));
+      });
+      obj = group;
+    } else if (entity instanceof Polyline || ('type' in entity && entity.type === 'polyline_preview')) {
+        if (entity instanceof Polyline) {
+            obj = this.createPolylineObject(entity, previewColor);
+        } else {
+            const p = entity as PolylinePreview;
+            const pline = new Polyline('preview', p.vertices, p.closed);
+            obj = this.createPolylineObject(pline, previewColor);
+        }
+    } else if ('type' in entity && entity.type === 'rotation_preview') {
+      const { angle, baseX, baseY } = entity as RotationPreview;
+      const radius = 20 / this.camera.zoom;
+      const curve = new THREE.EllipseCurve(baseX, baseY, radius, radius, 0, angle, angle < 0, 0);
+      const points = curve.getPoints(20);
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
+      obj = new THREE.Line(geo, mat);
+    } else if (entity instanceof Text) {
+      obj = this.createTextObject(entity.text, entity.height, previewColor, "Arial");
+    } else if (entity instanceof Note) {
+      obj = this.createNoteObject(entity, previewColor);
+    } else if (entity instanceof Spline || ('type' in entity && entity.type === 'spline_preview')) {
+      const sp = (entity instanceof Spline) ? entity : (entity as SplinePreview);
+      const pts = tessellateSpline(sp.controlPoints, sp.degree, sp.knots);
+      const geom = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, 0)));
+      obj = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: previewColor }));
+    } else if (entity instanceof Solid) {
+      obj = this.createSolidObject(entity, previewColor);
+    } else if (entity instanceof Donut) {
+      obj = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, previewColor);
+    } else if (entity instanceof Ellipse) {
+      obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle || 0, entity.endAngle || Math.PI * 2, entity.ccw !== false, previewColor);
+    }
+    return obj;
+  }
+
   setPreview(entity: PreviewObject | null, units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 }) {
     if (this.previewObject) {
       this.scene.remove(this.previewObject);
@@ -292,128 +419,15 @@ export class Viewer {
 
     if (entity) {
       const previewColor = 0x888888; // Grey for preview
-      if (entity instanceof Line) {
-        const geo = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(entity.x1, entity.y1, 0),
-          new THREE.Vector3(entity.x2, entity.y2, 0)
-        ]);
-        const mat = new THREE.LineBasicMaterial({ color: previewColor });
-        this.previewObject = new THREE.Line(geo, mat);
-      } else if (entity instanceof Circle) {
-        const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, 0, 2 * Math.PI, false, 0);
-        const points = curve.getPoints(50);
-        const geo = new THREE.BufferGeometry().setFromPoints(points);
-        const mat = new THREE.LineBasicMaterial({ color: previewColor });
-        this.previewObject = new THREE.LineLoop(geo, mat);
-      } else if (entity instanceof Arc) {
-        const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, entity.startAngle, entity.endAngle, !entity.ccw, 0);
-        const points = curve.getPoints(50);
-        const geo = new THREE.BufferGeometry().setFromPoints(points);
-        const mat = new THREE.LineBasicMaterial({ color: previewColor });
-        this.previewObject = new THREE.Line(entity instanceof Line ? geo : geo, mat);
-        this.previewObject = new THREE.Line(geo, mat);
-      } else if (entity instanceof Point) {
-        const geo = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(entity.x, entity.y, 0)
-        ]);
-        const mat = new THREE.PointsMaterial({ color: previewColor, size: 5, sizeAttenuation: false });
-        this.previewObject = new THREE.Points(geo, mat);
-      } else if (entity instanceof Dimension) {
-        this.previewObject = this.createDimensionObject(entity, units, previewColor);
-      } else if ('type' in entity && entity.type === 'xmarker') {
-        const m = entity as XMarkerPreview;
-        const size = m.size || 10 / this.camera.zoom;
-        const geo = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(m.x - size, m.y - size, 0),
-          new THREE.Vector3(m.x + size, m.y + size, 0),
-          new THREE.Vector3(m.x - size, m.y + size, 0),
-          new THREE.Vector3(m.x + size, m.y - size, 0)
-        ]);
-        const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
-        this.previewObject = new THREE.LineSegments(geo, mat);
-      } else if ('type' in entity && entity.type === 'zoomwindow') {
-        const w = entity as ZoomWindowPreview;
-        const size = 10 / this.camera.zoom;
+      if ('type' in entity && entity.type === 'entities') {
         const group = new THREE.Group();
-        const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
-        const createX = (x: number, y: number) => {
-          const geo = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(x - size, y - size, 0),
-            new THREE.Vector3(x + size, y + size, 0),
-            new THREE.Vector3(x - size, y + size, 0),
-            new THREE.Vector3(x + size, y - size, 0)
-          ]);
-          group.add(new THREE.LineSegments(geo, mat));
-        };
-        createX(w.x1, w.y1);
-        createX(w.x2, w.y2);
+        for (const e of entity.entities) {
+          const obj = this.createPreviewObject(e, previewColor, units);
+          if (obj) group.add(obj);
+        }
         this.previewObject = group;
-      } else if ('type' in entity && entity.type === 'selection_box') {
-        const b = entity as SelectionBoxPreview;
-        const color = b.isCrossing ? 0x00FF00 : 0x0000FF; // Green for crossing, Blue for window
-        const mat = new THREE.LineDashedMaterial({
-            color: color,
-            linewidth: 1,
-            scale: 1,
-            dashSize: 3 / this.camera.zoom,
-            gapSize: 3 / this.camera.zoom,
-        });
-        const geo = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(b.x1, b.y1, 0),
-            new THREE.Vector3(b.x2, b.y1, 0),
-            new THREE.Vector3(b.x2, b.y2, 0),
-            new THREE.Vector3(b.x1, b.y2, 0),
-            new THREE.Vector3(b.x1, b.y1, 0)
-        ]);
-        const line = new THREE.Line(geo, mat);
-        line.computeLineDistances();
-        this.previewObject = line;
-      } else if ('type' in entity && (entity.type === 'plinepoints' || entity.type === 'solidpoints')) {
-        const p = entity as PLinePointsPreview | SolidPointsPreview;
-        const size = 10 / this.camera.zoom;
-        const group = new THREE.Group();
-        const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
-        p.points.forEach(pt => {
-          const geo = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(pt.x - size, pt.y - size, 0),
-            new THREE.Vector3(pt.x + size, pt.y + size, 0),
-            new THREE.Vector3(pt.x - size, pt.y + size, 0),
-            new THREE.Vector3(pt.x + size, pt.y - size, 0)
-          ]);
-          group.add(new THREE.LineSegments(geo, mat));
-        });
-        this.previewObject = group;
-      } else if (entity instanceof Polyline || ('type' in entity && entity.type === 'polyline_preview')) {
-          if (entity instanceof Polyline) {
-              this.previewObject = this.createPolylineObject(entity, previewColor);
-          } else {
-              const p = entity as PolylinePreview;
-              const pline = new Polyline('preview', p.vertices, p.closed);
-              this.previewObject = this.createPolylineObject(pline, previewColor);
-          }
-      } else if ('type' in entity && entity.type === 'rotation_preview') {
-        const { angle, baseX, baseY } = entity as RotationPreview;
-        const radius = 20 / this.camera.zoom;
-        const curve = new THREE.EllipseCurve(baseX, baseY, radius, radius, 0, angle, angle < 0, 0);
-        const points = curve.getPoints(20);
-        const geo = new THREE.BufferGeometry().setFromPoints(points);
-        const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
-        this.previewObject = new THREE.Line(geo, mat);
-      } else if (entity instanceof Text) {
-        this.previewObject = this.createTextObject(entity.text, entity.height, previewColor, "Arial");
-      } else if (entity instanceof Note) {
-        this.previewObject = this.createNoteObject(entity, previewColor);
-      } else if (entity instanceof Spline || ('type' in entity && entity.type === 'spline_preview')) {
-        const sp = (entity instanceof Spline) ? entity : (entity as SplinePreview);
-        const pts = tessellateSpline(sp.controlPoints, sp.degree, sp.knots);
-        const geom = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, 0)));
-        this.previewObject = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: previewColor }));
-      } else if (entity instanceof Solid) {
-        this.previewObject = this.createSolidObject(entity, previewColor);
-      } else if (entity instanceof Donut) {
-        this.previewObject = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, previewColor);
-      } else if (entity instanceof Ellipse) {
-        this.previewObject = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle || 0, entity.endAngle || Math.PI * 2, entity.ccw !== false, previewColor);
+      } else {
+        this.previewObject = this.createPreviewObject(entity, previewColor, units);
       }
 
       if (this.previewObject) {
@@ -1240,17 +1254,12 @@ export class Viewer {
     if (entity.type === 'RADIUS') {
       const p1 = { x: entity.x1, y: entity.y1 }; // Center
       const p2 = { x: entity.x2, y: entity.y2 }; // Boundary point
-      const click = entity.dimLineLocation || p2;
       
       const r = entity.computeValue();
       const dx = p2.x - p1.x;
       const dy = p2.y - p1.y;
       const ux = r > 1e-6 ? dx / r : 1;
       const uy = r > 1e-6 ? dy / r : 0;
-      
-      const clickDx = click.x - p1.x;
-      const clickDy = click.y - p1.y;
-      const clickDist = Math.sqrt(clickDx * clickDx + clickDy * clickDy);
       
       // Line from center to boundary (no extra extension beyond arrow)
       const text = "R" + FormatUtils.formatValue(r, units);
@@ -1653,21 +1662,7 @@ export class Viewer {
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ext2Points), extMat));
 
     let value = entity.computeValue();
-    let text: string;
-    const entityType = (entity as any).type;
-    if (entityType === 'RADIUS') {
-      text = "R" + FormatUtils.formatValue(value, units);
-    } else if (entityType === 'ANGULAR' && entity.properties && entity.properties.vertex) {
-      const vertex = entity.properties.vertex as { x: number, y: number };
-      const angle1 = Math.atan2(entity.y1 - vertex.y, entity.x1 - vertex.x);
-      const angle2 = Math.atan2(entity.y2 - vertex.y, entity.x2 - vertex.x);
-      let angleDiff = Math.abs(angle2 - angle1) * (180 / Math.PI);
-      if (angleDiff > 180) angleDiff = 360 - angleDiff;
-      value = angleDiff;
-      text = angleDiff.toFixed(style.precision) + "°";
-    } else {
-      text = FormatUtils.formatValue(value, units);
-    }
+    const text = FormatUtils.formatValue(value, units);
 
     const textMesh = this.createTextObject(text, style.textHeight, colorIndex, "osifont");
     const mesh = textMesh.children[0] as THREE.Mesh;

@@ -259,7 +259,7 @@ export class MText extends Entity {
     // Re-layout would be needed here too
   }
 
-  mirror(p1: { x: number; y: number }, p2: { x: number; y: number }) {
+  mirror(_p1: { x: number; y: number }, _p2: { x: number; y: number }) {
     // Mirroring text usually keeps it readable but flips insertion point
     // For now, minimal implementation
   }

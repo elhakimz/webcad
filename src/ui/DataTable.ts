@@ -2,7 +2,7 @@ export class DataTable {
   protected container: HTMLElement;
   protected tableEl: HTMLTableElement;
   protected headers: string[] = [];
-  protected rows: any[][] = [];
+  protected rows: (string | number | HTMLElement)[][] = [];
   protected selectedRowIndex: number = -1;
   protected onSelectCallback: ((index: number) => void) | null = null;
   protected columnWidths: number[] = [];
@@ -18,7 +18,7 @@ export class DataTable {
     this.parent.appendChild(this.container);
   }
 
-  public setData(headers: string[], rows: any[][]) {
+  public setData(headers: string[], rows: (string | number | HTMLElement)[][]) {
     this.headers = headers;
     this.rows = rows;
     this.render();
@@ -66,7 +66,7 @@ export class DataTable {
         if (cell instanceof HTMLElement) {
           td.appendChild(cell);
         } else {
-          td.textContent = cell;
+          td.textContent = String(cell);
         }
         tr.appendChild(td);
       });

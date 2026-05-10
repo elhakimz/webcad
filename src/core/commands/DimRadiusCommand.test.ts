@@ -23,7 +23,11 @@ describe('DimRadiusCommand', () => {
 
     // Step 0: Select circle
     command.setEntity(circle)
-    const result = command.onInput('C1', 'DIM1', units, { x: 50, y: 0 })
+    const prompt = command.onInput('C1', 'DIM1', units, { x: 50, y: 0 })
+    expect(prompt).toBe("Specify dimension line location:")
+    
+    // Step 1: Specify location
+    const result = command.onPoint(50, 0, 'DIM1', units)
     
     expect(result).toBeInstanceOf(Dimension)
     const dim = result as Dimension
@@ -42,6 +46,10 @@ describe('DimRadiusCommand', () => {
     
     // Step 0: Select circle
     command.setEntity(circle)
+    const prompt = command.onInput('C1', 'DIM1', units, { x: 35, y: 10 })
+    expect(prompt).toBe("Specify dimension line location:")
+    
+    // Step 1: Specify location
     const result = command.onPoint(35, 10, 'DIM1', units)
     
     expect(result).toBeInstanceOf(Dimension)

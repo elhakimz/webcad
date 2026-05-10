@@ -12,7 +12,6 @@ export class HatchCommand implements Command {
 
   onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
-    console.log(`[HatchCommand] onInput: val="${val}", step=${this.step}`);
 
     if (this.step === 0) {
       if (val === "P" || val === "PATTERN") {

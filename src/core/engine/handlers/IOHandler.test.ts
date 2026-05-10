@@ -25,7 +25,15 @@ describe('IOHandler', () => {
     // Setup minimal AppContext
     context = {
       doc,
-      viewer: {} as unknown as AppContext['viewer'],
+      viewer: {
+        camera: {
+          zoom: 1,
+          position: { set: vi.fn() },
+          updateProjectionMatrix: vi.fn()
+        },
+        zoomAll: vi.fn(),
+        render: vi.fn()
+      } as unknown as AppContext['viewer'],
       cmd: {} as unknown as AppContext['cmd'],
       drafting: {} as unknown as AppContext['drafting'],
       selectedEntityIds: new Set(),
@@ -47,7 +55,10 @@ describe('IOHandler', () => {
     })
   })
 
-  it('should call onLayersChange when loading a drawing', async () => {
+  it('should clear layers and call onLayersChange when loading a drawing', async () => {
+    doc.layers.createLayer("TestLayer");
+    expect(doc.layers.layers.has("TestLayer")).toBe(true);
+
     const action = {
       action: 'load',
       filename: 'test.dxf'
@@ -56,6 +67,8 @@ describe('IOHandler', () => {
     const result = await handler.handle(action as unknown as Parameters<IOHandler['handle']>[0], context)
     console.log('LOAD Result:', result)
 
+    expect(doc.layers.layers.has("TestLayer")).toBe(false);
+    expect(doc.layers.layers.has("0")).toBe(true);
     expect(context.onLayersChange).toHaveBeenCalled()
   })
 

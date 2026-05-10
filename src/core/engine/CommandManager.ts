@@ -58,7 +58,7 @@ import { BlockCommand } from "../commands/BlockCommand"
 import { InsertCommand } from "../commands/InsertCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
-import { UnitsConfig, IDocument } from "../model/Document"
+import { UnitsConfig, Document } from "../model/Document"
 import { Entity } from "../model/Entity"
 
 type CommandFactory = (selection?: string[]) => Command | CommandResponse;
@@ -193,7 +193,7 @@ export class CommandManager {
     return response;
   }
 
-  inputPoint(x:number,y:number, units: UnitsConfig, idGenerator?: (prefix: string) => string, doc?: IDocument): CommandResponse | undefined {
+  inputPoint(x:number,y:number, units: UnitsConfig, idGenerator?: (prefix: string) => string, doc?: Document): CommandResponse | undefined {
     this.lastPoint = { x, y }
     if(this.active){
       const id = idGenerator ? idGenerator(this.getPrefix(this.active)) : `TMP_${Date.now()}`;
@@ -201,7 +201,7 @@ export class CommandManager {
     }
   }
 
-  inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
+  inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }, doc?: Document): CommandResponse | undefined {
     const pt = CoordinateParser.parseCoordinate(text, units, this.lastPoint || undefined)
     if (pt) {
       return this.inputPoint(pt.x, pt.y, units, idGenerator, doc)

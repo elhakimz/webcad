@@ -19,7 +19,6 @@ export class TransformHandler implements ActionHandler {
     const { doc, viewer, addEntity } = context;
 
     if (action.action === 'fillet' && action.id1 && action.id2 && action.radius !== undefined && action.pick1 && action.pick2) {
-      console.log('FILLET handler - radius:', action.radius);
       const e1 = doc.getEntity(action.id1);
       const e2 = doc.getEntity(action.id2);
 
@@ -29,7 +28,6 @@ export class TransformHandler implements ActionHandler {
             {x: e2.x1, y: e2.y1}, {x: e2.x2, y: e2.y2},
             action.radius!, action.pick1!, action.pick2!
         );
-        console.log('FILLET math result:', res);
 
         if (res) {
             const before1 = e1.clone(e1.id);
@@ -158,9 +156,7 @@ export class TransformHandler implements ActionHandler {
     if (action.action === 'join' && action.ids) {
       const entities = action.ids.map(id => doc.getEntity(id)).filter(e => e instanceof Line || e instanceof ArcEntity) as (Line | ArcEntity)[];
       
-      console.log('[JOIN] entities:', entities.map(e => e.id));
       const sorted = MathUtils.sortConnected(entities);
-      console.log('[JOIN] sorted:', sorted ? sorted.map(e => e.id) : 'null');
       if (sorted) {
         const vertices = [];
         for (const e of sorted) {
@@ -724,16 +720,7 @@ export class TransformHandler implements ActionHandler {
     }
 
     if (action.action === 'trim' && action.id && action.boundaryIds && action.pickPt) {
-        console.log("[TRIM DEBUG] === TRIM START ===");
-        console.log("[TRIM DEBUG] Target ID:", action.id);
         const originalTarget = doc.getEntity(action.id);
-        console.log("[TRIM DEBUG] Target entity:", originalTarget?.constructor.name, originalTarget?.id);
-        console.log("[TRIM DEBUG] Boundary IDs:", action.boundaryIds);
-        console.log("[TRIM DEBUG] Pick point:", action.pickPt);
-        console.log("[TRIM DEBUG] Boundary entities:", action.boundaryIds.map(id => {
-            const e = doc.getEntity(id);
-            return e ? `${e.constructor.name}:${e.id}` : `NOT FOUND:${id}`;
-        }));
         if (!originalTarget) return undefined;
         
         const targets: Entity[] = [];
@@ -760,9 +747,6 @@ export class TransformHandler implements ActionHandler {
         let trimmedAnything = false;
         const boundaries = action.boundaryIds.map(bid => doc.getEntity(bid)).filter(Boolean) as Entity[];
         
-        console.log("[TRIM DEBUG] targets count:", targets.length);
-        console.log("[TRIM DEBUG] targets:", targets.map(t => t.constructor.name));
-
         for (const t of targets) {
             if (originalTarget instanceof Polyline) {
                 let dist = Infinity;
@@ -781,7 +765,6 @@ export class TransformHandler implements ActionHandler {
                 if (!uniqueIntersections.some(up => MathUtils.distancePointToPoint(p.x, p.y, up.x, up.y) < 1e-4)) uniqueIntersections.push(p);
             });
 
-            console.log("[TRIM DEBUG] Target:", t.constructor.name, "Intersections found:", uniqueIntersections.length);
             if (uniqueIntersections.length > 0) {
                 if (t instanceof Line) {
                     const pts = [{ x: t.x1, y: t.y1 }, ...uniqueIntersections, { x: t.x2, y: t.y2 }];
@@ -931,7 +914,6 @@ export class TransformHandler implements ActionHandler {
             if (trimmedAnything) break;
         }
 
-        console.log("[TRIM DEBUG] trimmedAnything:", trimmedAnything);
         if (trimmedAnything) { this.cleanup(context); return "Entity trimmed."; }
     }
 

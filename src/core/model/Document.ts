@@ -114,14 +114,6 @@ export class Document implements IDocument {
     this.history.recordTransform(before, after);
   }
 
-  recordModify(_entity: Entity, _oldData: Record<string, unknown>) {
-    // This is still a bit of a hybrid, but let's at least make it do something if needed
-    // For now, recordTransform is the preferred way.
-  }
-
-  recordBatch(_actions: unknown[]) {
-  }
-
   undo() {
     return this.history.undo(
       (id) => this.getEntity(id),

@@ -20,10 +20,9 @@ export class NoteCommand implements Command {
 
   onPoint(x: number, y: number, _id: string, _units: UnitsConfig, doc?: IDocument): CommandResponse {
     if (this.step === 0) {
-      if (doc && doc.entities) {
-        const entities = Array.from(doc.entities.values()) as Entity[];
+      if (doc) {
         const tolerance = 5; // Default tolerance
-        const entity = SelectionEngine.getEntityAt(x, y, tolerance, entities);
+        const entity = SelectionEngine.getEntityAtSpatial(x, y, tolerance, doc);
         if (entity) {
           this.targetEntityId = entity.id;
           this.anchorPoint = { x, y };

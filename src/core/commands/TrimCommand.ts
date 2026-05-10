@@ -14,18 +14,15 @@ export class TrimCommand implements Command {
 
   onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
-    console.log("[TRIM CMD] onInput called with text:", text, "step:", this.step);
 
     if (this.step === 0) {
       if (val === "") {
         if (this.boundaryIds.length === 0) return "No boundaries selected. Select cutting edges:";
         this.step = 1;
-        console.log("[TRIM CMD] Now at step 1, boundaries:", this.boundaryIds);
         return "Select object to trim:";
       }
       // Boundary IDs are passed via onInput from App.ts click
       this.boundaryIds.push(val);
-      console.log("[TRIM CMD] Added boundary:", val);
       return "Select cutting edges:";
     }
 
@@ -38,7 +35,6 @@ export class TrimCommand implements Command {
       // User typed an ID to trim?
       // Typically TRIM is done by picking a segment. 
       // But we can support ID as well.
-      console.log("[TRIM CMD] Returning TRIM action with id:", val, "boundaries:", this.boundaryIds);
       return { action: "trim", boundaryIds: [...this.boundaryIds], id: val } as CommandResponse;
     }
   }

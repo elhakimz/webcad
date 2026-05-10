@@ -1,5 +1,29 @@
 # WebCAD Tasks
 
+## Current Task: Fix LOAD command state reset and view centering
+- [x] Update `IOHandler.ts` to reset state and center view <!-- id: 870 -->
+- [x] Verify with tests <!-- id: 871 -->
+
+## Current Task: Remove legacy selection methods
+- [x] Update `NoteCommand.ts` <!-- id: 860 -->
+- [x] Mark legacy methods as `@deprecated` in `SelectionEngine.ts` <!-- id: 862 -->
+- [x] Verify with tests <!-- id: 863 -->
+
+## Current Task: Remove dead API surface in Document
+- [x] Remove `recordModify` and `recordBatch` from `Document.ts` <!-- id: 850 -->
+- [x] Verify with tests <!-- id: 851 -->
+
+## Current Task: Fix doc type in CommandManager
+- [x] Update `CommandManager.ts` <!-- id: 840 -->
+- [x] Verify with tests <!-- id: 841 -->
+
+## Current Task: Remove debug console.log calls
+- [x] Remove `console.log` from `SelectionEngine.ts` <!-- id: 830 -->
+- [x] Remove `console.log` from `TransformHandler.ts` <!-- id: 831 -->
+- [x] Remove `console.log` from `TrimCommand.ts` <!-- id: 832 -->
+- [x] Remove `console.log` from `HatchCommand.ts` <!-- id: 833 -->
+- [x] Verify with tests <!-- id: 834 -->
+
 ## Current Task: Fix Insert.mirror() stub
 - [x] Update `Insert.ts` <!-- id: 820 -->
 - [x] Verify with tests <!-- id: 821 -->

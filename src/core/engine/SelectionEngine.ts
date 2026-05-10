@@ -14,6 +14,9 @@ import * as MathUtils from "./MathUtils";
 import { bulgeToArc } from "./MathUtils";
 
 export class SelectionEngine {
+  /**
+   * @deprecated Use getEntityAtSpatial instead. This is O(n) and slow for large drawings.
+   */
   static getEntityAt(x: number, y: number, tolerance: number, entities: Entity[]): Entity | null {
     for (let i = entities.length - 1; i >= 0; i--) {
       const entity = entities[i];
@@ -87,14 +90,10 @@ export class SelectionEngine {
     if (entity instanceof Text) return true;
     if (entity instanceof Solid) return this.isPointInPolygon(px, py, entity.vertices);
     if (entity instanceof Ellipse) {
-      console.log("[SELECTION] Checking Ellipse:", entity.id);
       const majorR = Math.sqrt(entity.majorX * entity.majorX + entity.majorY * entity.majorY);
       const _minorR = majorR * entity.ratio;
       const dist = MathUtils.distancePointToEllipse(px, py, entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle, entity.endAngle, entity.ccw);
-      console.log("[SELECTION] Ellipse distance:", dist, "tolerance:", tolerance);
-      const result = dist <= tolerance;
-      console.log("[SELECTION] Ellipse near:", result);
-      return result;
+      return dist <= tolerance;
     }
     if (entity instanceof Dimension) {
       if (entity.type === 'RADIUS') {
@@ -125,6 +124,9 @@ export class SelectionEngine {
     return inside;
   }
 
+  /**
+   * @deprecated Use getEntitiesInWindowSpatial instead. This is O(n) and slow for large drawings.
+   */
   static getEntitiesInWindow(x1: number, y1: number, x2: number, y2: number, entities: Entity[]): Entity[] {
     const minX = Math.min(x1, x2);
     const maxX = Math.max(x1, x2);
@@ -160,6 +162,9 @@ export class SelectionEngine {
     return result;
   }
 
+  /**
+   * @deprecated Use getEntitiesInCrossingSpatial instead. This is O(n) and slow for large drawings.
+   */
   static getEntitiesInCrossing(x1: number, y1: number, x2: number, y2: number, entities: Entity[]): Entity[] {
     const minX = Math.min(x1, x2);
     const maxX = Math.max(x1, x2);

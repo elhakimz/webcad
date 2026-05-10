@@ -9,7 +9,7 @@ export class IOHandler implements ActionHandler {
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, syncFromDocument, terminateActiveCommand, onLayersChange } = context;
+    const { doc, viewer, syncFromDocument, terminateActiveCommand, onLayersChange } = context;
 
     if (action.action === 'new') {
       doc.entities.clear();
@@ -69,8 +69,12 @@ export class IOHandler implements ActionHandler {
           const dxfText = await response.text();
           
           // Clear current document before loading
-          doc.entities.clear();
-          doc.history.clear();
+          doc.clear();
+          
+          // Clean all layer records
+          doc.layers.layers.clear();
+          doc.layers.createLayer("0", 7, "CONTINUOUS");
+          doc.layers.currentLayerName = "0";
           
           const importer = new DXFImporter();
           importer.import(dxfText, doc);
@@ -78,6 +82,18 @@ export class IOHandler implements ActionHandler {
           syncFromDocument();
           terminateActiveCommand();
           onLayersChange();
+          
+          // Pan view to the element position, default zoom
+          const entities = Array.from(doc.entities.values());
+          if (entities.length > 0) {
+            viewer.zoomAll(entities);
+          } else {
+            viewer.camera.zoom = 1;
+            viewer.camera.position.set(viewer.camera.right, viewer.camera.top, 500);
+            viewer.camera.updateProjectionMatrix();
+          }
+          viewer.render();
+          
           return `Drawing loaded from files/${action.filename}`;
         } else {
           return `File not found: ${action.filename}`;

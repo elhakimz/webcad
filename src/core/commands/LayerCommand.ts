@@ -25,10 +25,11 @@ export class LayerCommand implements Command {
       if (val === "U" || val === "UNLOCK") { this.step = 1; this.option = "U"; return { type: 'prompt', text: "Layer(s) to UNLOCK:" }; }
       if (val === "C" || val === "COLOR") { this.step = 1; this.option = "C"; return { type: 'prompt', text: "Color (1-7):" }; }
       if (val === "LT" || val === "LTYPE") { this.step = 1; this.option = "LT"; return { type: 'prompt', text: "Linetype name:" }; }
+      if (val === "LW" || val === "LINEWEIGHT") { this.step = 1; this.option = "LW"; return { type: 'prompt', text: "Lineweight (mm):" }; }
       if (val === "D" || val === "DELETE") { this.step = 1; this.option = "D"; return { type: 'prompt', text: "Layer to delete:" }; }
       if (val === "") return { type: 'action', action: "finish" };
       
-      return { type: 'prompt', text: "Invalid option. Enter option [?/N/S/ON/OFF/F/T/L/U/C/LT/D]:" };
+      return { type: 'prompt', text: "Invalid option. Enter option [?/N/S/ON/OFF/F/T/L/U/C/LT/LW/D]:" };
     }
 
     if (this.step === 1) {
@@ -57,20 +58,29 @@ export class LayerCommand implements Command {
           this.step = 2;
           return { type: 'prompt', text: "Layer name(s) for linetype " + val + ":" };
       }
+
+      if (opt === "LW") {
+          this.option = val; // Store lineweight
+          this.step = 2;
+          return { type: 'prompt', text: "Layer name(s) for lineweight " + val + ":" };
+      }
     }
 
     if (this.step === 2) {
         const value = this.option;
-        const isColor = !isNaN(parseInt(value));
+        const isColor = !isNaN(parseInt(value)) && !value.includes('.');
+        const isLineweight = !isColor && !isNaN(parseFloat(value));
         this.step = 0;
         this.option = "";
+        
         if (isColor) return { type: 'action', action: "layerColor", color: parseInt(value), names: val };
+        if (isLineweight) return { type: 'action', action: "layerLineweight", lineweight: parseFloat(value), names: val };
         return { type: 'action', action: "layerLinetype", linetype: value, names: val };
     }
   }
 
   getPrompt() {
-    if (this.step === 0) return "Layer option [?/N/S/ON/OFF/F/T/L/U/C/LT/D]:";
+    if (this.step === 0) return "Layer option [?/N/S/ON/OFF/F/T/L/U/C/LT/LW/D]:";
     if (this.option === "N") return "New layer name:";
     if (this.option === "S") return "Current layer name:";
     return "";

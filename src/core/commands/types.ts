@@ -2,7 +2,7 @@ import { Entity } from "../model/Entity";
 import { UnitsConfig, IDocument } from "../model/Document";
 
 export type CommandAction = {
-  action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen' | 'create3d' | 'save' | 'load' | 'ortho' | 'orthoToggle' | 'grid' | 'gridToggle' | 'gridSet' | 'snap' | 'snapToggle' | 'snapSet' | 'array' | 'offset' | 'trim' | 'extend' | 'block' | 'insert' | 'blockList' | 'unitsSet' | 'fillet' | 'chamfer' | 'break' | 'join' | 'lengthen' | 'dimlinear' | 'dimaligned' | 'dimradius' | 'dimangular' | 'new' | 'listFiles' | 'stretch' | 'dimtoh' | 'dimtad' | 'dimtohToggle' | 'dimtadToggle' | 'id' | 'dist' | 'area' | 'list';
+  action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerLineweight' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen' | 'create3d' | 'save' | 'load' | 'ortho' | 'orthoToggle' | 'grid' | 'gridToggle' | 'gridSet' | 'snap' | 'snapToggle' | 'snapSet' | 'array' | 'offset' | 'trim' | 'extend' | 'block' | 'insert' | 'blockList' | 'unitsSet' | 'fillet' | 'chamfer' | 'break' | 'join' | 'lengthen' | 'dimlinear' | 'dimaligned' | 'dimradius' | 'dimangular' | 'new' | 'listFiles' | 'stretch' | 'dimtoh' | 'dimtad' | 'dimtohToggle' | 'dimtadToggle' | 'id' | 'dist' | 'area' | 'list' | 'plot' | 'plot_window' | 'showPlotDialog';
 
   id?: string;
   ids?: string[];
@@ -54,6 +54,7 @@ export type CommandAction = {
   toX?: number;
   toY?: number;
   width?: number;
+  lineweight?: number;
   boundaryId?: string;
   pattern?: string;
   patternScale?: number;
@@ -72,6 +73,8 @@ export type CommandAction = {
     gap?: number;
     precision?: number;
   };
+  plotSettings?: PlotSettings;
+  plotAreaWindow?: { x1: number; y1: number; x2: number; y2: number };
 };
 
 export type TaggedPrompt = { type: 'prompt'; text: string };
@@ -129,3 +132,83 @@ export interface HasFinishSketch {
 export interface HasSelectedIds {
   selectedIds: string[];
 }
+
+// ── Plot types ────────────────────────────────────────────────
+
+export type PlotAreaType = 'EXTENTS' | 'DISPLAY' | 'WINDOW';
+
+export type PlotColorMode = 'as_displayed' | 'monochrome' | 'grayscale';
+
+export type PlotOutputFormat = 'svg' | 'pdf' | 'png' | 'print';
+
+export interface PaperSize {
+  label: string;
+  width: number;   // mm
+  height: number;  // mm
+}
+
+export const PAPER_SIZES: Record<string, PaperSize> = {
+  A4:   { label: 'A4',      width: 297,  height: 210  },
+  A3:   { label: 'A3',      width: 420,  height: 297  },
+  A2:   { label: 'A2',      width: 594,  height: 420  },
+  A1:   { label: 'A1',      width: 841,  height: 594  },
+  A0:   { label: 'A0',      width: 1189, height: 841  },
+  LTR:  { label: 'Letter',  width: 279,  height: 216  },
+  TBLD: { label: 'Tabloid', width: 432,  height: 279  },
+};
+
+export interface PlotScale {
+  label: string;
+  drawUnit: number;   // drawing units per paperMM
+  paperMM: number;    // paper mm
+  isFit: boolean;
+}
+
+export const PLOT_SCALES: PlotScale[] = [
+  { label: 'Fit',    drawUnit: 1,    paperMM: 1, isFit: true  },
+  { label: '1:1',    drawUnit: 1,    paperMM: 1, isFit: false },
+  { label: '1:2',    drawUnit: 2,    paperMM: 1, isFit: false },
+  { label: '1:5',    drawUnit: 5,    paperMM: 1, isFit: false },
+  { label: '1:10',   drawUnit: 10,   paperMM: 1, isFit: false },
+  { label: '1:20',   drawUnit: 20,   paperMM: 1, isFit: false },
+  { label: '1:50',   drawUnit: 50,   paperMM: 1, isFit: false },
+  { label: '1:100',  drawUnit: 100,  paperMM: 1, isFit: false },
+  { label: '1:200',  drawUnit: 200,  paperMM: 1, isFit: false },
+  { label: '1:500',  drawUnit: 500,  paperMM: 1, isFit: false },
+  { label: '1:1000', drawUnit: 1000, paperMM: 1, isFit: false },
+];
+
+export interface PlotLayerOverride {
+  visible: boolean;
+  color?: number;         // ACI color override, undefined = use layer color
+  lineweight?: number;    // mm override, undefined = use default
+}
+
+export interface PlotSettings {
+  paperSizeKey: string;               // key into PAPER_SIZES
+  orientation: 'landscape' | 'portrait';
+  areaType: PlotAreaType;
+  areaWindow?: { x1: number; y1: number; x2: number; y2: number };
+  scale: PlotScale;
+  centered: boolean;
+  offsetX: number;        // mm, used only when centered = false
+  offsetY: number;        // mm, used only when centered = false
+  colorMode: PlotColorMode;
+  outputFormat: PlotOutputFormat;
+  dpi: number;            // for PNG output
+  layerOverrides: Record<string, PlotLayerOverride>;
+}
+
+export const DEFAULT_PLOT_SETTINGS: PlotSettings = {
+  paperSizeKey: 'A4',
+  orientation: 'landscape',
+  areaType: 'EXTENTS',
+  scale: PLOT_SCALES[0],  // Fit
+  centered: true,
+  offsetX: 10,
+  offsetY: 10,
+  colorMode: 'as_displayed',
+  outputFormat: 'svg',
+  dpi: 300,
+  layerOverrides: {},
+};

@@ -71,13 +71,15 @@ export class DXFImporter {
               let name = "0";
               let color = 7;
               let linetype = "CONTINUOUS";
+              let lineWeight = -1;
               while (i < groups.length && groups[i].code !== 0) {
                 if (groups[i].code === 2) name = groups[i].value;
                 if (groups[i].code === 62) color = Math.abs(parseInt(groups[i].value));
                 if (groups[i].code === 6) linetype = groups[i].value.toUpperCase();
+                if (groups[i].code === 370) lineWeight = parseInt(groups[i].value) / 100;
                 i++;
               }
-              doc.layers.createLayer(name, color, linetype);
+              doc.layers.createLayer(name, color, linetype, lineWeight);
             } else {
               i++;
             }

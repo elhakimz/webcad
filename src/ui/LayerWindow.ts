@@ -54,6 +54,16 @@ export class LayerWindow {
       });
     });
 
+    this.table.onLineweightRightClick((layerName, x, y) => {
+      const val = prompt("Enter lineweight in mm (e.g. 0.5) or 'Default':");
+      if (val !== null) {
+        const lw = val.toLowerCase() === 'default' ? '-1' : val;
+        if (this.onCommand) {
+          this.onCommand(`LAYER LW ${lw} ${layerName}`);
+        }
+      }
+    });
+
     this.table.onVisibilityToggle((layerName) => {
       const layer = this.layerManager.getLayer(layerName);
       if (layer && this.onVisibilityChange) {
@@ -188,7 +198,8 @@ export class LayerWindow {
       visible: l.isVisible,
       frozen: l.isFrozen,
       color: l.color,
-      linetype: l.linetype
+      linetype: l.linetype,
+      lineweight: l.lineWeight
     })));
     
     const currentIndex = layers.findIndex(l => l.name === this.layerManager.currentLayerName);

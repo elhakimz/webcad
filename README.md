@@ -46,6 +46,7 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **BLOCK / INSERT:** Symbol management with block definitions and efficient viewport instantiation.
 -   **ERASE / MOVE / COPY / STRETCH / ROTATE / SCALE / MIRROR:** Full suite of precise modification tools with crossing-window support.
 -   **DIMENSIONING:** Professional engineering annotations including `DIMLINEAR`, `DIMALIGNED`, `DIMRADIUS` (with automatic one-click placement), and `DIMANGULAR`. Now features crisp high-resolution text rendering and automatic dimension line breaking for centered text.
+-   **PLOT:** Plot to SVG or PDF. Features a professional text-to-path outlining solution using `opentype.js` to ensure fonts look identical on all devices without requiring font embedding.
 -   **ZOOM:** `Zoom Window`, `Zoom All`, and factor-based zooming.
 -   **NEW:** Workspace reset with safety confirmation prompt.
 
@@ -98,6 +99,7 @@ npm run lint
 -   **`src/ui/`**: DOS-style screens and components (`MainMenuScreen`, `CommandLine`, `StatusBar`).
 
 ## 📍 Roadmap Priorities
+-   [x] **Plotting:** Added `PLOT` command with support for SVG and high-quality vector PDF export (using text outlining via `opentype.js`).
 -   [x] **Engineering Annotation:** Professional `DIMANGULAR` with one-click selection and standardized DXF R12 persistence for all dimension types.
 -   [x] **Precision & Data Integrity:**
     -   **Strict Layer Isolation:** Selection engine now respects the current active layer for both commands and direct editing.

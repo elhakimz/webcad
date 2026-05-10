@@ -49,6 +49,7 @@ import { ExtendHandler } from "./core/engine/handlers/transform/ExtendHandler"
 import { ViewHandler } from "./core/engine/handlers/ViewHandler"
 import { SystemHandler } from "./core/engine/handlers/SystemHandler"
 import { IOHandler } from "./core/engine/handlers/IOHandler"
+import { PlotHandler } from "./core/engine/handlers/PlotHandler"
 import { DraftingHandler } from "./core/engine/handlers/DraftingHandler"
 import { BlockHandler } from "./core/engine/handlers/BlockHandler"
 import { InquiryHandler } from "./core/engine/handlers/InquiryHandler"
@@ -144,6 +145,7 @@ export class App {
     this.dispatcher.registerHandler(new ViewHandler());
     this.dispatcher.registerHandler(new SystemHandler());
     this.dispatcher.registerHandler(new IOHandler());
+    this.dispatcher.registerHandler(new PlotHandler());
     this.dispatcher.registerHandler(new DraftingHandler());
     this.dispatcher.registerHandler(new BlockHandler());
     this.dispatcher.registerHandler(new InquiryHandler());

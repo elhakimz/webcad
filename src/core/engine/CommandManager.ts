@@ -56,6 +56,7 @@ import { TrimCommand } from "../commands/TrimCommand"
 import { ExtendCommand } from "../commands/ExtendCommand"
 import { BlockCommand } from "../commands/BlockCommand"
 import { InsertCommand } from "../commands/InsertCommand"
+import { PlotCommand } from "../commands/PlotCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 import { UnitsConfig, Document } from "../model/Document"
@@ -119,6 +120,9 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["SAVE", () => new SaveCommand()],
   ["LOAD", () => new LoadCommand()],
   ["NEW", () => new NewCommand()],
+  ["PLOT",    () => new PlotCommand()],
+  ["PRINT",   () => new PlotCommand()],   // alias
+  ["EXPORT",  () => new PlotCommand()],   // alias
   ["UNITS", () => new UnitsCommand()],
   ["ORTHO", () => new OrthoCommand()],
   ["GRID", () => new GridCommand()],

@@ -7,7 +7,7 @@ export class LayerHandler implements ActionHandler {
     const layerActions = [
       'layerList', 'layerNew', 'layerSetCurrent', 'layerOn', 'layerOff',
       'layerFreeze', 'layerThaw', 'layerLock', 'layerUnlock', 'layerColor',
-      'layerLinetype', 'layerDelete', 'linetypeList', 'linetypeSet'
+      'layerLinetype', 'layerLineweight', 'layerDelete', 'linetypeList', 'linetypeSet'
     ];
     return layerActions.includes(action.action);
   }
@@ -23,7 +23,8 @@ export class LayerHandler implements ActionHandler {
         const frozen = layer.isFrozen ? " Frozen" : "";
         const locked = layer.isLocked ? " Locked" : "";
         const visible = !layer.isVisible ? " Hidden" : "";
-        output += `  ${layer.name} Color:${layer.color} ${layer.linetype}${current}${frozen}${locked}${visible}\n`;
+        const lw = layer.lineWeight && layer.lineWeight > 0 ? `${layer.lineWeight}mm` : "Default";
+        output += `  ${layer.name} Color:${layer.color} ${layer.linetype} LW:${lw}${current}${frozen}${locked}${visible}\n`;
       }
       cmd.clearActive();
       return output;
@@ -115,6 +116,19 @@ export class LayerHandler implements ActionHandler {
       onStatusBarUpdate(doc.layers.getCurrentLayer());
       context.onLayersChange();
       return `Layer linetype set to ${linetype}.`;
+    }
+
+    if (action.action === 'layerLineweight') {
+      const lineweight = action.lineweight as number;
+      const names = (action.names as string).split(/[,\s]+/);
+      for (const name of names) {
+        const layer = doc.layers.getLayer(name);
+        if (layer) layer.lineWeight = lineweight;
+      }
+      syncFromDocument();
+      onStatusBarUpdate(doc.layers.getCurrentLayer());
+      context.onLayersChange();
+      return `Layer lineweight set to ${lineweight}mm.`;
     }
 
     if (action.action === 'layerDelete') {

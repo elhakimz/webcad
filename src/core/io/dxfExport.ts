@@ -38,6 +38,10 @@ export class DXFExporter {
     dxf += "  0\nTABLE\n  2\nLAYER\n 70\n" + layers.length + "\n";
     for (const layer of layers) {
       dxf += "  0\nLAYER\n  2\n" + layer.name.toUpperCase() + "\n 70\n0\n 62\n" + (layer.color || 7) + "\n  6\n" + (layer.linetype || "CONTINUOUS").toUpperCase() + "\n";
+      if (layer.lineWeight !== undefined && layer.lineWeight > 0) {
+        const lwVal = Math.round(layer.lineWeight * 100);
+        dxf += "370\n" + lwVal + "\n";
+      }
     }
     dxf += "  0\nENDTAB\n";
 

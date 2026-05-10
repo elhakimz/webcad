@@ -4,11 +4,12 @@ import { aciToRgb } from "../core/engine/MathUtils";
 export class LayerDataTable extends DataTable {
   constructor(parent: HTMLElement) {
     super(parent);
-    this.headers = ['Name', 'Color', 'Ltype', 'On', 'Freeze'];
+    this.headers = ['Name', 'Color', 'Ltype', 'LWeight', 'On', 'Freeze'];
   }
 
   protected onColorRightClickCallback: ((layerName: string, x: number, y: number) => void) | null = null;
   protected onLtypeRightClickCallback: ((layerName: string, x: number, y: number) => void) | null = null;
+  protected onLineweightRightClickCallback: ((layerName: string, x: number, y: number) => void) | null = null;
   protected onVisibilityToggleCallback: ((layerName: string) => void) | null = null;
   protected onFreezeToggleCallback: ((layerName: string) => void) | null = null;
 
@@ -20,6 +21,10 @@ export class LayerDataTable extends DataTable {
     this.onLtypeRightClickCallback = callback;
   }
 
+  public onLineweightRightClick(callback: (layerName: string, x: number, y: number) => void) {
+    this.onLineweightRightClickCallback = callback;
+  }
+
   public onVisibilityToggle(callback: (layerName: string) => void) {
     this.onVisibilityToggleCallback = callback;
   }
@@ -28,7 +33,7 @@ export class LayerDataTable extends DataTable {
     this.onFreezeToggleCallback = callback;
   }
 
-  public setLayers(layers: Array<{ name: string, visible: boolean, frozen: boolean, color: number, linetype: string }>) {
+  public setLayers(layers: Array<{ name: string, visible: boolean, frozen: boolean, color: number, linetype: string, lineweight: number }>) {
     const rows = layers.map(layer => {
       // Color Swatch
       const colorSwatch = document.createElement('div');
@@ -91,11 +96,20 @@ export class LayerDataTable extends DataTable {
         }
       });
 
-      return [layer.name, colorSwatch, ltypeSpan, visIcon, freezeIcon];
+      const lwSpan = document.createElement('span');
+      lwSpan.textContent = layer.lineweight && layer.lineweight > 0 ? `${layer.lineweight}mm` : "Default";
+      lwSpan.style.cursor = 'pointer';
+      lwSpan.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.onLineweightRightClickCallback) {
+          this.onLineweightRightClickCallback(layer.name, e.clientX, e.clientY);
+        }
+      });
+
+      return [layer.name, colorSwatch, ltypeSpan, lwSpan, visIcon, freezeIcon];
     });
 
     this.setData(this.headers, rows);
   }
-
-
 }

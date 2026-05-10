@@ -15,6 +15,8 @@ export interface IDocument {
   units: UnitsConfig;
   dimtoh: boolean;
   dimtad: boolean;
+  layers: LayerManager;
+  blocks: BlockManager;
   
   clear(): void;
   getNextId(prefix: string): string;

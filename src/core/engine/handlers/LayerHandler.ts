@@ -34,6 +34,11 @@ export class LayerHandler implements ActionHandler {
       const exists = !!doc.layers.getLayer(name);
       const layer = doc.layers.createLayer(name);
       doc.layers.setCurrentLayer(name);
+      
+      context.selectedEntityIds.clear();
+      context.viewer.clearHighlight();
+      context.viewer.render();
+
       onStatusBarUpdate(layer);
       context.onLayersChange();
       return exists 
@@ -45,6 +50,10 @@ export class LayerHandler implements ActionHandler {
       const name = action.name as string;
       const layer = doc.layers.setCurrentLayer(name);
       if (layer) {
+        context.selectedEntityIds.clear();
+        context.viewer.clearHighlight();
+        context.viewer.render();
+
         onStatusBarUpdate(layer);
         context.onLayersChange();
         return `Layer "${name}" is now current.`;

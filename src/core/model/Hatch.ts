@@ -1,5 +1,5 @@
 import { Entity, BoundingBox } from "./Entity"
-import { rotatePoint, reflectPointAcrossLine } from "../engine/MathUtils"
+import { rotatePoint, reflectPointAcrossLine, isPointInPolygon } from "../engine/MathUtils"
 import { getPattern } from "../io/Patterns"
 import type { LineFamily } from "../engine/PATConverter"
 
@@ -76,6 +76,10 @@ export class Hatch extends Entity {
       maxY = Math.max(maxY, v.y);
     });
     return { minX, minY, maxX, maxY };
+  }
+
+  hitTest(px: number, py: number, tolerance: number): boolean {
+    return isPointInPolygon({ x: px, y: py }, this.boundaryVertices);
   }
 
   clone(newId: string): Hatch {

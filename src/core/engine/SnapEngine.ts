@@ -101,7 +101,7 @@ export class SnapEngine {
       snaps.push({ x: entity.cx + entity.r * Math.cos(midAngle), y: entity.cy + entity.r * Math.sin(midAngle), type: SnapType.MIDPOINT });
     } 
     else if (entity instanceof Polyline) {
-      const center = entity.properties.center as { x: number, y: number } | undefined;
+      const center = entity.center;
       if (center) {
         snaps.push({ x: center.x, y: center.y, type: SnapType.CENTER });
       }

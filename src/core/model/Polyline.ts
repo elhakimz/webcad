@@ -11,6 +11,7 @@ export interface PolylineVertex {
 export class Polyline extends Entity {
   vertices: PolylineVertex[];
   closed: boolean;
+  center?: { x: number; y: number };
 
   constructor(id: string, vertices: PolylineVertex[], closed: boolean = false) {
     super(id);
@@ -23,10 +24,9 @@ export class Polyline extends Entity {
       v.x += dx;
       v.y += dy;
     });
-    const center = this.properties.center as { x: number, y: number } | undefined;
-    if (center) {
-      center.x += dx;
-      center.y += dy;
+    if (this.center) {
+      this.center.x += dx;
+      this.center.y += dy;
     }
   }
 
@@ -36,11 +36,10 @@ export class Polyline extends Entity {
       v.x = p.x;
       v.y = p.y;
     });
-    const center = this.properties.center as { x: number, y: number } | undefined;
-    if (center) {
-      const p = rotatePoint(center.x, center.y, baseX, baseY, angleRad);
-      center.x = p.x;
-      center.y = p.y;
+    if (this.center) {
+      const p = rotatePoint(this.center.x, this.center.y, baseX, baseY, angleRad);
+      this.center.x = p.x;
+      this.center.y = p.y;
     }
   }
 
@@ -49,10 +48,9 @@ export class Polyline extends Entity {
       v.x = baseX + (v.x - baseX) * factor;
       v.y = baseY + (v.y - baseY) * factor;
     });
-    const center = this.properties.center as { x: number, y: number } | undefined;
-    if (center) {
-      center.x = baseX + (center.x - baseX) * factor;
-      center.y = baseY + (center.y - baseY) * factor;
+    if (this.center) {
+      this.center.x = baseX + (this.center.x - baseX) * factor;
+      this.center.y = baseY + (this.center.y - baseY) * factor;
     }
   }
 
@@ -63,11 +61,10 @@ export class Polyline extends Entity {
       v.y = reflected.y;
       v.bulge = -v.bulge;
     });
-    const center = this.properties.center as { x: number, y: number } | undefined;
-    if (center) {
-      const reflected = reflectPointAcrossLine(center, p1, p2);
-      center.x = reflected.x;
-      center.y = reflected.y;
+    if (this.center) {
+      const reflected = reflectPointAcrossLine(this.center, p1, p2);
+      this.center.x = reflected.x;
+      this.center.y = reflected.y;
     }
   }
 
@@ -90,6 +87,9 @@ export class Polyline extends Entity {
     const copy = new Polyline(newId, this.vertices.map(v => ({ ...v })), this.closed);
     copy.layer = this.layer;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
+    if (this.center) {
+      copy.center = { ...this.center };
+    }
     return copy;
   }
 }

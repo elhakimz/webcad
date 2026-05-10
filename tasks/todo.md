@@ -1,5 +1,18 @@
 # WebCAD Tasks
 
+## Current Task: Refactor CommandResponse to Tagged Union
+- [ ] Define tagged union in `types.ts` <!-- id: 920 -->
+- [ ] Update `CommandManager.ts` <!-- id: 921 -->
+- [ ] Update `app.ts` (`handleResult`) <!-- id: 922 -->
+- [ ] Update all commands and handlers (HUGE) <!-- id: 923 -->
+- [ ] Verify with tests <!-- id: 924 -->
+
+## Current Task: Use Typed Center Field in Polyline
+- [x] Add `center` field to `Polyline.ts` <!-- id: 910 -->
+- [x] Update `SnapEngine.ts` to use `Polyline.center` <!-- id: 911 -->
+- [x] Update `SnapEngine.test.ts` to use `Polyline.center` <!-- id: 912 -->
+- [x] Verify with tests <!-- id: 913 -->
+
 ## Current Task: Implement Text and MText Hit Test
 - [x] Add `hitTest` method to `Text.ts` <!-- id: 900 -->
 - [x] Fix `getBoundingBox()` in `MText.ts` <!-- id: 903 -->

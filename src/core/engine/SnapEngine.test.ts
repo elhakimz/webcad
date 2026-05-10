@@ -10,7 +10,7 @@ describe('SnapEngine', () => {
       { x: 10, y: 10, bulge: 0 },
       { x: 0, y: 10, bulge: 0 }
     ], true)
-    poly.properties.center = { x: 5, y: 5 }
+    poly.center = { x: 5, y: 5 }
 
     const snap = SnapEngine.getSnapPoint(4.8, 4.8, [poly], 1.0)
     expect(snap).not.toBeNull()
@@ -26,7 +26,7 @@ describe('SnapEngine', () => {
       { x: 10, y: 10, bulge: 0 },
       { x: 0, y: 10, bulge: 0 }
     ], true)
-    poly.properties.center = { x: 5, y: 5 }
+    poly.center = { x: 5, y: 5 }
 
     poly.move(10, 10)
 

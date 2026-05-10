@@ -5,6 +5,7 @@ import { Document } from "./core/model/Document"
 import { CommandResponse, CommandAction, HasSetEntity } from "./core/commands/types"
 import { Entity } from "./core/model/Entity"
 import { Line } from "./core/model/Line"
+import { Solid3D } from "./core/model/Solid3D"
 import { Circle } from "./core/model/Circle"
 import { Arc } from "./core/model/Arc"
 import { Point } from "./core/model/Point"
@@ -64,7 +65,7 @@ export class App {
   drafting: DraftingState
   selectedEntityIds: Set<string> = new Set()
   private selectionStartPoint: { x: number, y: number } | null = null
-  private lastWorldPt: { x: number, y: number } | null = null;
+  private lastWorldPt: { x: number, y: number, z?: number } | null = null;
   private commandLinePrint: ((msg: string) => void) | null = null
   private currentControls: any[] | null | undefined = null;
   private statusBarUpdate: ((layer: Layer) => void) | null = null
@@ -72,6 +73,7 @@ export class App {
   private promptUpdate: (() => void) | null = null;
   private dispatcher: ResultDispatcher;
   private lastMode3d: boolean = false;
+  currentZ: number = 0;
 
   setPromptUpdate(updateFn: () => void) {
     this.promptUpdate = updateFn;
@@ -343,10 +345,11 @@ export class App {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
     const { x, y, snap } = snapped;
-    this.lastWorldPt = { x, y };
+    this.lastWorldPt = { x, y, z: this.currentZ };
 
-    this.viewer.setCursor(x, y);
+    this.viewer.setCursor(x, y, this.currentZ);
     this.viewer.setSnapMarker(snap);
+    this.viewer.setZPreviewLine(x, y, this.currentZ);
 
     // Check for hover over selectable objects
     const selectableEntities = this.getSelectableEntities();
@@ -577,11 +580,12 @@ export class App {
         }
     }
 
-    const result = this.cmd.inputPoint(x, y, this.doc.units, (p) => this.doc.getNextId(p), this.doc)
+    const result = this.cmd.inputPoint(x, y, this.doc.units, (p) => this.doc.getNextId(p), this.doc, this.currentZ)
     return await this.handleResult(result)
   }
 
-  private async handleResult(result: CommandResponse | undefined): Promise<CommandResponse | undefined> {
+  private async handleResult(result: CommandResponse | Promise<CommandResponse> | undefined): Promise<CommandResponse | undefined> {
+    result = await result;
     if (result && typeof result === 'object') {
       // Handle tagged responses
       if ('type' in result) {
@@ -600,7 +604,7 @@ export class App {
       let entity: Entity | undefined;
       let isCloseAction = false;
       
-      if (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof MText || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape || result instanceof Spline || result instanceof Note) {
+      if (result && (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof MText || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape || result instanceof Spline || result instanceof Note || result.constructor.name === "Solid3D" || result instanceof Solid3D)) {
         entity = result as Entity;
       } else if (result && typeof result === 'object' && 'action' in result && result.action === 'close') {
         if (result.entity) {
@@ -660,6 +664,10 @@ export class App {
         if (entity instanceof Polyline) {
           const last = entity.vertices[entity.vertices.length - 1];
           return `${FormatUtils.formatPoint(last.x, last.y, this.doc.units, "P" + entity.vertices.length)}\nPolyline segment added.`;
+        }
+
+        if (entity.constructor.name === "Solid3D" || entity instanceof Solid3D) {
+          return `3D Solid created.`;
         }
 
         return entity;
@@ -744,6 +752,8 @@ export class App {
       this.viewer.addMText(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Solid) {
       this.viewer.addSolid(entity, layer, layerColor, isVisible);
+    } else if (entity.constructor.name === "Solid3D" || entity instanceof Solid3D) {
+      this.viewer.addSolid3D(entity as Solid3D, layer, layerColor, isVisible);
     } else if (entity instanceof Donut) {
       this.viewer.addDonut(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Spline) {

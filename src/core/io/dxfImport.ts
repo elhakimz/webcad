@@ -16,6 +16,7 @@ import { Dimension } from "../model/Dimension";
 import { Donut } from "../model/Donut";
 import { Spline } from "../model/Spline";
 import { Note } from "../model/Note";
+import { Solid3D } from "../model/Solid3D";
 
 interface DXFGroup {
   code: number;
@@ -179,6 +180,32 @@ export class DXFImporter {
           } else {
             entity = new Line(doc.getNextId("L"), vertices[0].x, vertices[0].y, vertices[2].x, vertices[2].y);
           }
+        } else if (type === "3DFACE") {
+          const vertices = [];
+          if (props[10] !== undefined) vertices.push({ x: parseFloat(props[10]), y: parseFloat(props[20]), z: parseFloat(props[30] || "0") });
+          if (props[11] !== undefined) vertices.push({ x: parseFloat(props[11]), y: parseFloat(props[21]), z: parseFloat(props[31] || "0") });
+          if (props[12] !== undefined) vertices.push({ x: parseFloat(props[12]), y: parseFloat(props[22]), z: parseFloat(props[32] || "0") });
+          if (props[13] !== undefined) vertices.push({ x: parseFloat(props[13]), y: parseFloat(props[23]), z: parseFloat(props[33] || "0") });
+          
+          const positions = [];
+          const indices = [];
+          
+          for (let k = 0; k < vertices.length; k++) {
+            positions.push(vertices[k].x, vertices[k].y, vertices[k].z);
+          }
+          
+          if (vertices.length === 3) {
+            indices.push(0, 1, 2);
+          } else if (vertices.length === 4) {
+            // Check if 3rd and 4th point are same
+            if (vertices[2].x === vertices[3].x && vertices[2].y === vertices[3].y && vertices[2].z === vertices[3].z) {
+              indices.push(0, 1, 2);
+            } else {
+              indices.push(0, 1, 2, 0, 2, 3);
+            }
+          }
+          
+          entity = new Solid3D(doc.getNextId("S3D"), positions, indices);
         } else if (type === "SHAPE") {
           entity = new Shape(doc.getNextId("SH"), props[2], parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40] || "1.0"), parseFloat(props[50] || "0"), []);
         } else if (type === "HATCH") {

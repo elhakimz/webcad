@@ -6,6 +6,7 @@ import { LayerInfoRibbonBar } from "./ui/LayerInfoRibbonBar"
 import { DraftingAidsRibbonBar } from "./ui/DraftingAidsRibbonBar"
 import { UnitsAndCoordRibbonBar } from "./ui/UnitsAndCoordRibbonBar"
 import { DisplayRibbonBar } from "./ui/DisplayRibbonBar"
+import { DazViewControl } from "./ui/DazViewControl"
 import { Menu } from "./ui/Menu"
 import { MainMenuScreen } from "./ui/MainMenuScreen"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
@@ -62,6 +63,10 @@ const displayRibbon = new DisplayRibbonBar(async (action) => {
   } else if (action === 'ZOOM_WINDOW') {
     await app.execute('ZOOM');
     await app.inputText('WINDOW');
+  } else if (action === 'AUTOPAN_ON') {
+    isAutoPanEnabled = true;
+  } else if (action === 'AUTOPAN_OFF') {
+    isAutoPanEnabled = false;
   }
 });
 
@@ -69,6 +74,12 @@ ribbonContainer.addBar(layerRibbon);
 ribbonContainer.addBar(draftingRibbon);
 ribbonContainer.addBar(unitsRibbon);
 ribbonContainer.addBar(displayRibbon);
+
+const dazControl = new DazViewControl(viewer, app);
+const vpContainer = document.getElementById('viewport-container');
+if (vpContainer) {
+  vpContainer.appendChild(dazControl.getElement());
+}
 
 const statusBarEl = document.getElementById('status-bar')!;
 statusBarEl.innerHTML = '';
@@ -267,12 +278,76 @@ function updatePrompt() {
 app.setPromptUpdate(() => updatePrompt());
 
 // Update coordinate display on mouse move
+let autoPanInterval: any = null;
+let panX = 0;
+let panY = 0;
+let isAutoPanEnabled = false;
+
 window.addEventListener("mousemove", (e) => {
-  lastMouseX = e.clientX
-  lastMouseY = e.clientY
-  const worldPt = viewer.screenToWorld(e.clientX, e.clientY)
-  unitsRibbon.updateCoordinates(worldPt.x, worldPt.y, app.doc.units)
-  app.move(e.clientX, e.clientY)
+  const dx = e.clientX - lastMouseX;
+  const dy = e.clientY - lastMouseY;
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+
+  if (e.shiftKey && (e.buttons & 2)) {
+    viewer.orbit(dx, dy);
+    return;
+  }
+
+  if (e.altKey) {
+    // Change Z based on mouse Y delta
+    // Moving UP (negative dy) increases Z
+    app.currentZ -= dy * 0.5;
+  }
+
+  const rect = viewer.canvas.getBoundingClientRect();
+  const margin = 30; // 30px margin for auto-pan
+  
+  panX = 0;
+  panY = 0;
+  
+  const isInsideCanvas = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+
+  if (e.clientX < rect.left + margin) panX = -1;
+  if (e.clientX > rect.right - margin) panX = 1;
+  if (e.clientY < rect.top + margin) panY = 1; // Y is inverted in screen
+  if (e.clientY > rect.bottom - margin) panY = -1;
+
+  // If auto-pan is enabled and we are at the edge, start auto-panning
+  if (isAutoPanEnabled && isInsideCanvas && (panX !== 0 || panY !== 0)) {
+    if (!autoPanInterval) {
+      autoPanInterval = setInterval(() => {
+        const panSpeed = 15 / viewer.camera.zoom;
+        viewer.camera.position.x += panX * panSpeed;
+        viewer.camera.position.y += panY * panSpeed;
+        viewer.target.x += panX * panSpeed;
+        viewer.target.y += panY * panSpeed;
+        viewer.scheduleRender();
+        
+        // Update coordinates and cursor position based on CURRENT mouse pos
+        const rect = viewer.canvas.getBoundingClientRect();
+        const clampedX = Math.max(rect.left, Math.min(rect.right, lastMouseX));
+        const clampedY = Math.max(rect.top, lastMouseY); 
+        
+        const worldPt = viewer.screenToWorld(clampedX, clampedY);
+        unitsRibbon.updateCoordinates(worldPt.x, worldPt.y, app.doc.units, app.currentZ);
+        app.move(clampedX, clampedY);
+        updatePrompt();
+      }, 50);
+    }
+  } else {
+    if (autoPanInterval) {
+      clearInterval(autoPanInterval);
+      autoPanInterval = null;
+    }
+  }
+
+  const clampedX = Math.max(rect.left, Math.min(rect.right, e.clientX));
+  const clampedY = Math.max(rect.top, e.clientY); 
+
+  const worldPt = viewer.screenToWorld(clampedX, clampedY)
+  unitsRibbon.updateCoordinates(worldPt.x, worldPt.y, app.doc.units, app.currentZ)
+  app.move(clampedX, clampedY)
   if (app.cmd.active) {
     updatePrompt()
   }
@@ -419,23 +494,51 @@ cmdLine.onCommand(async (val) => {
   updatePrompt()
 })
 
-// simple click input
-canvas.addEventListener("pointerdown", (e) => {
-  app.pointerDown(e.clientX, e.clientY);
-  // Check if pan was just ended by this click
-  if (viewer.wasPanEnded()) {
-    cmdLine.print("PAN ended.")
-    updatePrompt()
-    viewer.clearPanEndedFlag()
+function getClampedCoordinates(e: PointerEvent) {
+  const rect = canvas.getBoundingClientRect();
+  const clampedX = Math.max(rect.left, Math.min(rect.right, e.clientX));
+  const clampedY = Math.max(rect.top, Math.min(rect.bottom, e.clientY));
+  return { clampedX, clampedY };
+}
+
+window.addEventListener('contextmenu', (e) => {
+  if (e.shiftKey && e.target === canvas) {
+    e.preventDefault();
   }
 });
 
-canvas.addEventListener("pointerup", async (e) => {
-  const res = await app.pointerUp(e.clientX, e.clientY, e.shiftKey);
-  if (typeof res === 'string' && res) {
-    cmdLine.print(res);
+// Support clicking on command bar to define points when a command is active
+window.addEventListener("pointerdown", (e) => {
+  const target = e.target as HTMLElement;
+  const isCanvas = target === canvas;
+  const isCmdArea = document.getElementById('command-area')?.contains(target);
+  
+  if (isCanvas || (isCmdArea && app.cmd.active && target.tagName !== 'INPUT' && !target.classList.contains('control-btn'))) {
+    const { clampedX, clampedY } = getClampedCoordinates(e);
+    app.pointerDown(clampedX, clampedY);
+    
+    // Check if pan was just ended by this click
+    if (viewer.wasPanEnded()) {
+      cmdLine.print("PAN ended.")
+      updatePrompt()
+      viewer.clearPanEndedFlag()
+    }
   }
-  // Force preview update (X markers, rubber-band) after click
-  app.move(e.clientX, e.clientY);
-  updatePrompt();
+});
+
+window.addEventListener("pointerup", async (e) => {
+  const target = e.target as HTMLElement;
+  const isCanvas = target === canvas;
+  const isCmdArea = document.getElementById('command-area')?.contains(target);
+  
+  if (isCanvas || (isCmdArea && app.cmd.active && target.tagName !== 'INPUT' && !target.classList.contains('control-btn'))) {
+    const { clampedX, clampedY } = getClampedCoordinates(e);
+    const res = await app.pointerUp(clampedX, clampedY, e.shiftKey);
+    if (typeof res === 'string' && res) {
+      cmdLine.print(res);
+    }
+    // Force preview update (X markers, rubber-band) after click
+    app.move(clampedX, clampedY);
+    updatePrompt();
+  }
 });

@@ -32,8 +32,24 @@ export class OCCWorkerClient {
     return this.send('init', {});
   }
 
-  createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number): Promise<{ positions: number[], indices: number[] }> {
-    return this.send('createBox', { x, y, z, dx, dy, dz });
+  createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number, deflection?: number): Promise<{ positions: number[], indices: number[] }> {
+    return this.send('createBox', { x, y, z, dx, dy, dz, deflection });
+  }
+
+  createCylinder(x: number, y: number, z: number, r: number, h: number, deflection?: number): Promise<{ positions: number[], indices: number[] }> {
+    return this.send('createCylinder', { x, y, z, r, h, deflection });
+  }
+
+  createSphere(x: number, y: number, z: number, r: number, deflection?: number): Promise<{ positions: number[], indices: number[] }> {
+    return this.send('createSphere', { x, y, z, r, deflection });
+  }
+
+  createCone(x: number, y: number, z: number, r: number, h: number, deflection?: number): Promise<{ positions: number[], indices: number[] }> {
+    return this.send('createCone', { x, y, z, r, h, deflection });
+  }
+
+  createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number): Promise<{ positions: number[], indices: number[] }> {
+    return this.send('createTorus', { x, y, z, r1, r2, deflection });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

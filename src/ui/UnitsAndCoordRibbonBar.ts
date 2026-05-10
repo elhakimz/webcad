@@ -34,8 +34,8 @@ export class UnitsAndCoordRibbonBar extends RibbonBar {
     });
   }
 
-  public updateCoordinates(x: number, y: number, units: UnitsConfig) {
-    this.coordsEl.textContent = `${FormatUtils.formatValue(x, units)}, ${FormatUtils.formatValue(y, units)}`;
+  public updateCoordinates(x: number, y: number, units: UnitsConfig, z: number = 0) {
+    this.coordsEl.textContent = `${FormatUtils.formatValue(x, units)}, ${FormatUtils.formatValue(y, units)}, ${FormatUtils.formatValue(z, units)}`;
   }
 
   public updateUnits(units: UnitsConfig) {

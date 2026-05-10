@@ -1,0 +1,84 @@
+import { Entity, BoundingBox } from "./Entity";
+
+export class Solid3D extends Entity {
+  positions: number[];
+  indices: number[];
+
+  constructor(id: string, positions: number[], indices: number[]) {
+    super(id);
+    this.positions = positions;
+    this.indices = indices;
+  }
+
+  move(dx: number, dy: number) {
+    for (let i = 0; i < this.positions.length; i += 3) {
+      this.positions[i] += dx;
+      this.positions[i + 1] += dy;
+    }
+  }
+
+  rotate(baseX: number, baseY: number, angleRad: number) {
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+    for (let i = 0; i < this.positions.length; i += 3) {
+      const x = this.positions[i] - baseX;
+      const y = this.positions[i + 1] - baseY;
+      this.positions[i] = baseX + (x * cos - y * sin);
+      this.positions[i + 1] = baseY + (x * sin + y * cos);
+    }
+  }
+
+  scale(baseX: number, baseY: number, factor: number) {
+    for (let i = 0; i < this.positions.length; i += 3) {
+      this.positions[i] = baseX + (this.positions[i] - baseX) * factor;
+      this.positions[i + 1] = baseY + (this.positions[i + 1] - baseY) * factor;
+      this.positions[i + 2] *= factor; // Scale Z as well
+    }
+  }
+
+  mirror(p1: { x: number; y: number }, p2: { x: number; y: number }) {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return;
+    const ux = dx / len;
+    const uy = dy / len;
+
+    for (let i = 0; i < this.positions.length; i += 3) {
+      const x = this.positions[i] - p1.x;
+      const y = this.positions[i + 1] - p1.y;
+      // Project onto line
+      const dot = x * ux + y * uy;
+      const projX = dot * ux;
+      const projY = dot * uy;
+      // Reflect
+      this.positions[i] = p1.x + (2 * projX - x);
+      this.positions[i + 1] = p1.y + (2 * projY - y);
+    }
+  }
+
+  getBoundingBox(): BoundingBox {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (let i = 0; i < this.positions.length; i += 3) {
+      const x = this.positions[i];
+      const y = this.positions[i + 1];
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+
+    return { minX, minY, maxX, maxY };
+  }
+
+  clone(newId: string): Solid3D {
+    const copy = new Solid3D(newId, [...this.positions], [...this.indices]);
+    copy.layer = this.layer;
+    copy.properties = JSON.parse(JSON.stringify(this.properties));
+    return copy;
+  }
+}

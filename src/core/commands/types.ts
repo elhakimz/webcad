@@ -99,8 +99,8 @@ export type EntitiesPreview = { type: 'entities', entities: Entity[] };
 export type PreviewObject = Entity | ZoomWindowPreview | SelectionBoxPreview | XMarkerPreview | PLinePointsPreview | SolidPointsPreview | RotationPreview | PolylinePreview | MovePreview | CopyPreview | ScalePreview | SplinePreview | EntitiesPreview;
 
 export interface Command {
-  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse;
-  onInput?(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }): CommandResponse | undefined;
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument, z?: number): CommandResponse | Promise<CommandResponse>;
+  onInput?(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | Promise<CommandResponse> | undefined;
   getPreview?(x: number, y: number, units: UnitsConfig): PreviewObject | null;
   getReferencePoints?(): { x: number, y: number }[];
   getPrompt?(): string;

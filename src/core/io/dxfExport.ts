@@ -17,6 +17,7 @@ import { Insert } from "../model/Insert";
 import { Dimension } from "../model/Dimension";
 import { Spline } from "../model/Spline";
 import { Note } from "../model/Note";
+import { Solid3D } from "../model/Solid3D";
 
 export class DXFExporter {
   export(doc: Document): string {
@@ -253,6 +254,30 @@ export class DXFExporter {
       s += " 40\n" + e.height + "\n";
       if (e.targetEntityId) {
         s += "  2\n" + e.targetEntityId + "\n";
+      }
+    } else if (e instanceof Solid3D) {
+      for (let i = 0; i < e.indices.length; i += 3) {
+        const i1 = e.indices[i];
+        const i2 = e.indices[i + 1];
+        const i3 = e.indices[i + 2];
+        
+        const x1 = e.positions[i1 * 3];
+        const y1 = e.positions[i1 * 3 + 1];
+        const z1 = e.positions[i1 * 3 + 2];
+        
+        const x2 = e.positions[i2 * 3];
+        const y2 = e.positions[i2 * 3 + 1];
+        const z2 = e.positions[i2 * 3 + 2];
+        
+        const x3 = e.positions[i3 * 3];
+        const y3 = e.positions[i3 * 3 + 1];
+        const z3 = e.positions[i3 * 3 + 2];
+        
+        s += "  0\n3DFACE\n  8\n" + layer + "\n";
+        s += " 10\n" + x1 + "\n 20\n" + y1 + "\n 30\n" + z1 + "\n";
+        s += " 11\n" + x2 + "\n 21\n" + y2 + "\n 31\n" + z2 + "\n";
+        s += " 12\n" + x3 + "\n 22\n" + y3 + "\n 32\n" + z3 + "\n";
+        s += " 13\n" + x3 + "\n 23\n" + y3 + "\n 33\n" + z3 + "\n";
       }
     }
 

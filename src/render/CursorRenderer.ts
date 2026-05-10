@@ -61,8 +61,8 @@ export class CursorRenderer {
     this.scene.add(new THREE.Line(oVGeo, oMat));
   }
 
-  setCursor(x: number, y: number) {
-    this.cursorGroup.position.set(x, y, 0);
+  setCursor(x: number, y: number, z: number = 0) {
+    this.cursorGroup.position.set(x, y, z);
 
     while (this.pickboxGroup.children.length > 0) {
       const obj = this.pickboxGroup.children[0];

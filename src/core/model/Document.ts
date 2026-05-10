@@ -15,6 +15,7 @@ export interface IDocument {
   units: UnitsConfig;
   dimtoh: boolean;
   dimtad: boolean;
+  facetres: number;
   layers: LayerManager;
   blocks: BlockManager;
   
@@ -43,6 +44,7 @@ export class Document implements IDocument {
   units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 }
   dimtoh: boolean = false;
   dimtad: boolean = false;
+  facetres: number = 0.5;
   private spatialIndex: Quadtree
   private idCounters: Map<string, number> = new Map()
   private removalsCount = 0

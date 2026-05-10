@@ -42,8 +42,68 @@ export class OpenCascadeService {
    * Creates a basic 3D box shape.
    * Returns a Promise that resolves to THREE.BufferGeometry.
    */
-  async createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.createBox(x, y, z, dx, dy, dz);
+  async createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createBox(x, y, z, dx, dy, dz, deflection);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    return geometry;
+  }
+
+  /**
+   * Creates a basic 3D cylinder shape.
+   * Returns a Promise that resolves to THREE.BufferGeometry.
+   */
+  async createCylinder(x: number, y: number, z: number, r: number, h: number, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createCylinder(x, y, z, r, h, deflection);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    return geometry;
+  }
+
+  /**
+   * Creates a basic 3D sphere shape.
+   * Returns a Promise that resolves to THREE.BufferGeometry.
+   */
+  async createSphere(x: number, y: number, z: number, r: number, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createSphere(x, y, z, r, deflection);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    return geometry;
+  }
+
+  /**
+   * Creates a basic 3D cone shape.
+   * Returns a Promise that resolves to THREE.BufferGeometry.
+   */
+  async createCone(x: number, y: number, z: number, r: number, h: number, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createCone(x, y, z, r, h, deflection);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    return geometry;
+  }
+
+  /**
+   * Creates a basic 3D torus shape.
+   * Returns a Promise that resolves to THREE.BufferGeometry.
+   */
+  async createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createTorus(x, y, z, r1, r2, deflection);
     
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));

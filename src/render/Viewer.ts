@@ -5,6 +5,7 @@ import { Entity } from "../core/model/Entity"
 import { UnitsConfig } from "../core/model/Document"
 import { FormatUtils } from "../core/engine/FormatUtils"
 import { Line } from "../core/model/Line"
+import { Solid3D } from "../core/model/Solid3D"
 import { Circle } from "../core/model/Circle"
 import { Arc } from "../core/model/Arc"
 import { Point } from "../core/model/Point"
@@ -51,6 +52,8 @@ export class Viewer {
   private textQueue: Text[] = []
   private noteQueue: Note[] = []
   private selectionBox: THREE.Line | null = null
+  private shadingMode: 'WIREFRAME' | 'PHONG' = 'WIREFRAME';
+  public target: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
 
   constructor(canvas:HTMLCanvasElement){
     this.canvas = canvas
@@ -58,6 +61,13 @@ export class Viewer {
     this.scene.add(this.helperGroup);
     this.scene.add(this.boundaryGroup);
     this.scene.add(this.baseLineGroup);
+
+    // Add lights for shading
+    const ambientLight = new THREE.AmbientLight(0x666666);
+    this.scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(1, 1, 1).normalize();
+    this.scene.add(directionalLight);
 
     this.gridRenderer = new GridRenderer(this.scene);
     
@@ -88,13 +98,42 @@ export class Viewer {
   }
 
 
-  setCursor(x: number, y: number) {
-    this.cursorRenderer.setCursor(x, y);
+  setCursor(x: number, y: number, z: number = 0) {
+    this.cursorRenderer.setCursor(x, y, z);
     this.scheduleRender();
   }
 
   setCursorHover(isHovering: boolean) {
     this.cursorRenderer.setCursorHover(isHovering);
+    this.scheduleRender();
+  }
+
+  private zPreviewLine: THREE.Line | null = null;
+
+  setZPreviewLine(x: number, y: number, z: number) {
+    if (z === 0) {
+      if (this.zPreviewLine) {
+        this.zPreviewLine.visible = false;
+        this.scheduleRender();
+      }
+      return;
+    }
+
+    const points = [
+      new THREE.Vector3(x, y, 0),
+      new THREE.Vector3(x, y, z)
+    ];
+
+    if (!this.zPreviewLine) {
+      const material = new THREE.LineBasicMaterial({ color: 0x00ffff, depthTest: false, depthWrite: false });
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      this.zPreviewLine = new THREE.Line(geometry, material);
+      this.zPreviewLine.renderOrder = 1000;
+      this.scene.add(this.zPreviewLine);
+    } else {
+      this.zPreviewLine.geometry.setFromPoints(points);
+      this.zPreviewLine.visible = true;
+    }
     this.scheduleRender();
   }
 
@@ -121,6 +160,162 @@ export class Viewer {
       this.camera.position.set(0, 0, 500);
       this.camera.lookAt(0, 0, 0);
     }
+    this.camera.updateProjectionMatrix();
+    this.scheduleRender();
+  }
+
+  setCameraView(view: string) {
+    const size = (this.camera.top - this.camera.bottom) / 2 || 500;
+    
+    switch (view) {
+      case 'TOP':
+        this.camera.up.set(0, 1, 0);
+        this.camera.position.set(0, 0, size * 2);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'BOTTOM':
+        this.camera.up.set(0, -1, 0);
+        this.camera.position.set(0, 0, -size * 2);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'FRONT':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(0, -size * 2, 0);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'BACK':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(0, size * 2, 0);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'LEFT':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(-size * 2, 0, 0);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'RIGHT':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(size * 2, 0, 0);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'PERSPECTIVE':
+      case 'ISOMETRIC':
+      case 'ISO':
+      case 'PERSPECTIVE_FRONT':
+      case 'PERSPECTIVE_TOP':
+      case 'PERSPECTIVE_BOTTOM':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(size, -size, size);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'PERSPECTIVE_LEFT':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(-size, -size, size);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'PERSPECTIVE_BACK':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(-size, size, size);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'PERSPECTIVE_RIGHT':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(size, size, size);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'FRONT_TOP':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(0, -size, size);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'FRONT_BOTTOM':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(0, -size, -size);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'FRONT_LEFT':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(-size, -size, 0);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'FRONT_RIGHT':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(size, -size, 0);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'BACK_TOP':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(0, size, size);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'BACK_BOTTOM':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(0, size, -size);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'BACK_LEFT':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(-size, size, 0);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'BACK_RIGHT':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(size, size, 0);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'TOP_LEFT':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(-size, 0, size);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      case 'TOP_RIGHT':
+        this.camera.up.set(0, 0, 1);
+        this.camera.position.set(size, 0, size);
+        this.camera.lookAt(0, 0, 0);
+        break;
+      default:
+        console.warn(`Unknown view: ${view}`);
+        return;
+    }
+    
+    this.camera.updateProjectionMatrix();
+    this.scheduleRender();
+  }
+
+  setShadingMode(mode: 'WIREFRAME' | 'PHONG') {
+    this.shadingMode = mode;
+    this.scene.traverse((obj) => {
+      if (obj instanceof THREE.Mesh && obj.userData.type === 'Solid3D') {
+        const color = (obj.material as any).color;
+        if (mode === 'WIREFRAME') {
+          obj.material = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, wireframe: true });
+        } else {
+          obj.material = new THREE.MeshPhongMaterial({ color, side: THREE.DoubleSide, wireframe: false });
+        }
+      }
+    });
+    this.scheduleRender();
+  }
+
+  orbit(deltaX: number, deltaY: number) {
+    const relPos = this.camera.position.clone().sub(this.target);
+    const radius = relPos.length();
+    let theta = Math.atan2(relPos.y, relPos.x);
+    let phi = Math.acos(relPos.z / radius);
+    
+    theta -= deltaX * 0.01;
+    phi -= deltaY * 0.01;
+    
+    phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi));
+    
+    relPos.x = radius * Math.sin(phi) * Math.cos(theta);
+    relPos.y = radius * Math.sin(phi) * Math.sin(theta);
+    relPos.z = radius * Math.cos(phi);
+    
+    this.camera.position.copy(this.target).add(relPos);
+    
+    this.camera.up.set(0, 0, 1);
+    this.camera.lookAt(this.target);
     this.camera.updateProjectionMatrix();
     this.scheduleRender();
   }
@@ -709,6 +904,28 @@ export class Viewer {
     }
     lines.visible = isVisible;
     this.scene.add(lines);
+  }
+
+  addSolid3D(entity: Solid3D, layer?: string, color?: number, isVisible = true) {
+    const obj = this.createSolid3DObject(entity, color || 7);
+    if (entity.id) obj.name = entity.id;
+    if (layer) obj.userData = { ...obj.userData, layer };
+    obj.visible = isVisible;
+    this.scene.add(obj);
+  }
+
+  private createSolid3DObject(entity: Solid3D, colorIndex: number): THREE.Object3D {
+    const color = aciToRgb(colorIndex);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(entity.positions, 3));
+    geometry.setIndex(entity.indices);
+    geometry.computeVertexNormals();
+    const material = this.shadingMode === 'WIREFRAME' 
+      ? new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, wireframe: true })
+      : new THREE.MeshPhongMaterial({ color, side: THREE.DoubleSide, wireframe: false });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData = { type: 'Solid3D' };
+    return mesh;
   }
 
   addPolyline(entity: Polyline, layer?: string, color?: number, isVisible = true, linetype?: string) {

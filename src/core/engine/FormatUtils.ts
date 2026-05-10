@@ -16,8 +16,8 @@ export class FormatUtils {
     return val.toFixed(units.precision);
   }
 
-  static formatPoint(x: number, y: number, units: UnitsConfig, label: string = "P"): string {
-    return `${label}[X:${this.formatValue(x, units)}, Y:${this.formatValue(y, units)}, Z:0.00]`;
+  static formatPoint(x: number, y: number, units: UnitsConfig, label: string = "P", z: number = 0): string {
+    return `${label}[X:${this.formatValue(x, units)}, Y:${this.formatValue(y, units)}, Z:${this.formatValue(z, units)}]`;
   }
 
   static formatRadius(r: number, units: UnitsConfig): string {

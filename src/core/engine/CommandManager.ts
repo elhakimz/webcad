@@ -18,6 +18,12 @@ import { PointCommand } from "../commands/PointCommand"
 import { PolylineCommand } from "../commands/PolylineCommand"
 import { PolygonCommand } from "../commands/PolygonCommand"
 import { RectangCommand } from "../commands/RectangCommand"
+import { BoxCommand } from "../commands/BoxCommand"
+import { CylinderCommand } from "../commands/CylinderCommand"
+import { SphereCommand } from "../commands/SphereCommand"
+import { FacetresCommand } from "../commands/FacetresCommand"
+import { ConeCommand } from "../commands/ConeCommand"
+import { TorusCommand } from "../commands/TorusCommand"
 import { TextCommand } from "../commands/TextCommand"
 import { MTextCommand } from "../commands/MTextCommand"
 import { TraceCommand } from "../commands/TraceCommand"
@@ -70,6 +76,12 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["DONUT", () => new DonutCommand()],
   ["ELLIPSE", () => new EllipseCommand()],
   ["SPLINE", () => new SplineCommand()],
+  ["BOX", () => new BoxCommand()],
+  ["CYLINDER", () => new CylinderCommand()],
+  ["SPHERE", () => new SphereCommand()],
+  ["CONE", () => new ConeCommand()],
+  ["TORUS", () => new TorusCommand()],
+  ["FACETRES", () => new FacetresCommand()],
   ["ID", () => new IdCommand()],
   ["DIST", () => new DistCommand()],
   ["AREA", () => new AreaCommand()],
@@ -160,18 +172,18 @@ const commandRegistry = new Map<string, CommandFactory>([
 
 export class CommandManager {
   active: Command | null = null
-  lastPoint: { x: number; y: number } | null = null
+  lastPoint: { x: number; y: number; z?: number } | null = null
 
   getAvailableCommands(): string[] {
     return Array.from(commandRegistry.keys());
   }
 
-  execute(cmd:string, units: UnitsConfig, selection?: string[], entities?: Map<string, Entity>): CommandResponse {
+  execute(cmd:string, units: UnitsConfig, selection?: string[], entities?: Map<string, Entity>): CommandResponse | Promise<CommandResponse> {
     const parts = cmd.trim().split(/\s+/);
     const cmdName = parts[0].toUpperCase();
     const args = parts.slice(1);
 
-    let response: CommandResponse | undefined;
+    let response: CommandResponse | Promise<CommandResponse> | undefined;
 
     const factory = commandRegistry.get(cmdName);
     if (!factory) {
@@ -194,26 +206,26 @@ export class CommandManager {
       }
     }
 
-    return response;
+    return response || "";
   }
 
-  inputPoint(x:number,y:number, units: UnitsConfig, idGenerator?: (prefix: string) => string, doc?: Document): CommandResponse | undefined {
-    this.lastPoint = { x, y }
+  inputPoint(x:number,y:number, units: UnitsConfig, idGenerator?: (prefix: string) => string, doc?: Document, z?: number): CommandResponse | Promise<CommandResponse> | undefined {
+    this.lastPoint = { x, y, z }
     if(this.active){
       const id = idGenerator ? idGenerator(this.getPrefix(this.active)) : `TMP_${Date.now()}`;
-      return this.active.onPoint(x,y, id, units, doc)
+      return this.active.onPoint(x,y, id, units, doc, z)
     }
   }
 
-  inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }, doc?: Document): CommandResponse | undefined {
+  inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }, doc?: Document): CommandResponse | Promise<CommandResponse> | undefined {
     const pt = CoordinateParser.parseCoordinate(text, units, this.lastPoint || undefined)
     if (pt) {
-      return this.inputPoint(pt.x, pt.y, units, idGenerator, doc)
+      return this.inputPoint(pt.x, pt.y, units, idGenerator, doc, pt.z)
     }
 
     if(this.active && this.active.onInput){
       const id = idGenerator ? idGenerator(this.getPrefix(this.active)) : `TMP_${Date.now()}`;
-      return this.active.onInput(text, id, units, pickPt)
+      return this.active.onInput(text, id, units, pickPt, doc)
     }
   }
 

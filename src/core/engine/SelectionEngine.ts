@@ -62,6 +62,9 @@ export class SelectionEngine {
   }
 
   private static isPointNearEntity(px: number, py: number, entity: Entity, tolerance: number): boolean {
+    if (entity.hitTest) {
+      return entity.hitTest(px, py, tolerance);
+    }
     if (entity instanceof Line) {
       return MathUtils.distancePointToLineSegment(px, py, entity.x1, entity.y1, entity.x2, entity.y2) <= tolerance;
     }
@@ -100,7 +103,32 @@ export class SelectionEngine {
         // Radius line from center (x1,y1) to edge (x2,y2)
         return MathUtils.distancePointToLineSegment(px, py, entity.x1, entity.y1, entity.x2, entity.y2) <= tolerance;
       }
-      return true;
+      const dx = entity.x2 - entity.x1;
+      const dy = entity.y2 - entity.y1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1e-6) return false;
+
+      const ux = dx / len;
+      const uy = dy / len;
+      const nx = -uy;
+      const ny = ux;
+
+      let D = entity.offset;
+      if (entity.dimLineLocation) {
+        D = (entity.dimLineLocation.x - entity.x1) * nx + (entity.dimLineLocation.y - entity.y1) * ny;
+      }
+
+      const p1_shifted = { x: entity.x1 + nx * D, y: entity.y1 + ny * D };
+      const p2_shifted = { x: entity.x2 + nx * D, y: entity.y2 + ny * D };
+
+      // Check distance to dimension line
+      if (MathUtils.distancePointToLineSegment(px, py, p1_shifted.x, p1_shifted.y, p2_shifted.x, p2_shifted.y) <= tolerance) return true;
+
+      // Check distance to extension lines
+      if (MathUtils.distancePointToLineSegment(px, py, entity.x1, entity.y1, p1_shifted.x, p1_shifted.y) <= tolerance) return true;
+      if (MathUtils.distancePointToLineSegment(px, py, entity.x2, entity.y2, p2_shifted.x, p2_shifted.y) <= tolerance) return true;
+
+      return false;
     }
     if (entity instanceof Spline) {
       for (let i = 0; i < entity.sampledPoints.length - 1; i++) {

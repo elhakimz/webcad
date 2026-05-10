@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { TransformHandler } from './TransformHandler'
+import { OffsetHandler } from './transform/OffsetHandler'
 import { Document } from '../../model/Document'
 import { Polyline } from '../../model/Polyline'
 import { AppContext } from './types'
@@ -14,7 +14,7 @@ describe('TransformHandler Offset Polyline', () => {
     ], false) // Open polyline
     doc.addEntity(polyline)
 
-    const handler = new TransformHandler()
+    const handler = new OffsetHandler()
     const context: AppContext = {
       doc,
       viewer: {
@@ -38,7 +38,7 @@ describe('TransformHandler Offset Polyline', () => {
       sidePt: { x: 5, y: 5 } // Inside the L
     }
 
-    const result = await handler.handle(action as unknown as Parameters<TransformHandler['handle']>[0], context)
+    const result = await handler.handle(action as unknown as Parameters<OffsetHandler['handle']>[0], context)
     expect(result).toBe('Entity offset created.')
 
     expect(context.addEntity).toHaveBeenCalled()
@@ -64,7 +64,7 @@ describe('TransformHandler Offset Polyline', () => {
     ], false)
     doc.addEntity(polyline)
 
-    const handler = new TransformHandler()
+    const handler = new OffsetHandler()
     const context: AppContext = {
       doc,
       viewer: {
@@ -88,7 +88,7 @@ describe('TransformHandler Offset Polyline', () => {
       sidePt: { x: 15, y: 5 } // To the right of the line segment, triggering outwards offset
     }
 
-    const result = await handler.handle(action as unknown as Parameters<TransformHandler['handle']>[0], context)
+    const result = await handler.handle(action as unknown as Parameters<OffsetHandler['handle']>[0], context)
     expect(result).toBe('Entity offset created.')
 
     expect(context.addEntity).toHaveBeenCalled()

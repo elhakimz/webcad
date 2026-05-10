@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { TransformHandler } from './TransformHandler'
+import { TrimHandler } from './transform/TrimHandler'
+import { ExtendHandler } from './transform/ExtendHandler'
 import { Document } from '../../model/Document'
 import { Ellipse } from '../../model/Ellipse'
 import { Line } from '../../model/Line'
@@ -14,7 +15,7 @@ describe('TransformHandler Trim Ellipse', () => {
     const line = new Line('L1', 50, -100, 50, 100) // Vertical line at x=50
     doc.addEntity(line)
 
-    const handler = new TransformHandler()
+    const handler = new TrimHandler()
     const context: AppContext = {
       doc,
       viewer: {
@@ -39,7 +40,7 @@ describe('TransformHandler Trim Ellipse', () => {
       pickPt: { x: 75, y: 0 } // Pick the right part of the ellipse
     }
 
-    const result = await handler.handle(action as unknown as Parameters<TransformHandler['handle']>[0], context)
+    const result = await handler.handle(action as unknown as Parameters<TrimHandler['handle']>[0], context)
     expect(result).toBe('Entity trimmed.')
   })
 
@@ -52,7 +53,7 @@ describe('TransformHandler Trim Ellipse', () => {
     const line = new Line('L1', -50, -100, -50, 100) // Vertical line at x=-50
     doc.addEntity(line)
 
-    const handler = new TransformHandler()
+    const handler = new ExtendHandler()
     const context: AppContext = {
       doc,
       viewer: {
@@ -76,7 +77,7 @@ describe('TransformHandler Trim Ellipse', () => {
       pickPt: { x: 0, y: 50 } // Pick near the end of the arc (0, 50 in local coordinates for 90 deg)
     }
 
-    const result = await handler.handle(action as unknown as Parameters<TransformHandler['handle']>[0], context)
+    const result = await handler.handle(action as unknown as Parameters<ExtendHandler['handle']>[0], context)
     expect(result).toBe('Ellipse extended.')
     
     // Verify the ellipse was extended to approx 120 degrees (2*Math.PI/3)

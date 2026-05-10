@@ -25,6 +25,8 @@ import { Spline } from "../core/model/Spline"
 import { Note } from "../core/model/Note"
 import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
 import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview, EntitiesPreview } from "../core/commands/types"
+import { GridRenderer } from "./GridRenderer"
+import { CursorRenderer } from "./CursorRenderer"
 
 export class Viewer {
   scene: THREE.Scene
@@ -44,11 +46,8 @@ export class Viewer {
   private helperGroup: THREE.Group = new THREE.Group()
   private boundaryGroup: THREE.Group = new THREE.Group()
   private baseLineGroup: THREE.Group = new THREE.Group()
-  private cursorGroup: THREE.Group = new THREE.Group()
-  private snapMarkerGroup: THREE.Group = new THREE.Group()
-  private activePointMarkerGroup: THREE.Group = new THREE.Group()
-  private gridGroup: THREE.Group = new THREE.Group()
-  private axesGroup: THREE.Group = new THREE.Group()
+  private gridRenderer: GridRenderer;
+  private cursorRenderer: CursorRenderer;
   private textQueue: Text[] = []
   private noteQueue: Note[] = []
   private selectionBox: THREE.Line | null = null
@@ -59,62 +58,20 @@ export class Viewer {
     this.scene.add(this.helperGroup);
     this.scene.add(this.boundaryGroup);
     this.scene.add(this.baseLineGroup);
-    this.scene.add(this.cursorGroup);
-    this.scene.add(this.snapMarkerGroup);
-    this.scene.add(this.activePointMarkerGroup);
-    this.scene.add(this.gridGroup);
-    this.scene.add(this.axesGroup);
 
-    // Create XYZ axes gizmo at 0,0
-    const hex = 0x888888;
-    const origin = new THREE.Vector3(0, 0, 0);
+    this.gridRenderer = new GridRenderer(this.scene);
     
-    // Dot at origin
-    const dotGeo = new THREE.BufferGeometry().setFromPoints([origin]);
-    const dotMat = new THREE.PointsMaterial({ color: hex, size: 6, sizeAttenuation: false });
-    const dot = new THREE.Points(dotGeo, dotMat);
-    this.axesGroup.add(dot);
-
-    // Arrows
-    const arrowX = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), origin, 50, hex, 10, 5);
-    const arrowY = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), origin, 50, hex, 10, 5);
-    this.axesGroup.add(arrowX, arrowY);
-
-    // Labels
-    const createLabel = (text: string, pos: THREE.Vector3) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 32;
-      canvas.height = 32;
-      const ctx = canvas.getContext('2d')!;
-      ctx.font = '24px Arial';
-      ctx.fillStyle = '#888888';
-      ctx.fillText(text, 8, 24);
-      const texture = new THREE.CanvasTexture(canvas);
-      const mat = new THREE.SpriteMaterial({ map: texture });
-      const sprite = new THREE.Sprite(mat);
-      sprite.position.copy(pos);
-      sprite.scale.set(15, 15, 1);
-      return sprite;
-    };
-    
-    const labelX = createLabel('X', new THREE.Vector3(65, 0, 0));
-    const labelY = createLabel('Y', new THREE.Vector3(0, 65, 0));
-    this.axesGroup.add(labelX, labelY);
-    
-    this.cursorGroup.renderOrder = 999; // Render on top
-    this.snapMarkerGroup.renderOrder = 1000; // Render snap on top of cursor
-    this.activePointMarkerGroup.renderOrder = 1001; // Active point marker on very top
-
     // Setup Orthographic Camera with dummy bounds, resize() will set them correctly
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1000)
     
+    this.cursorRenderer = new CursorRenderer(this.scene, this.camera);
+
     this.renderer = new THREE.WebGLRenderer({canvas})
     
     this.resize()
     this.camera.position.set(this.camera.right, this.camera.top, 500) 
 
     this.setupEvents()
-    this.initCursor()
     this.loadFont()
   }
 
@@ -131,114 +88,28 @@ export class Viewer {
   }
 
 
-  private initCursor() {
-    const cursorColor = 0x555555; // Brighter grey for the full-screen crosshair
-    const size = 1000000; // Large enough to cover the drawing plane
-
-    const hGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-size, 0, 0),
-      new THREE.Vector3(size, 0, 0)
-    ]);
-    const vGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, -size, 0),
-      new THREE.Vector3(0, size, 0)
-    ]);
-
-    const mat = new THREE.LineBasicMaterial({ color: cursorColor });
-    this.cursorGroup.add(new THREE.Line(hGeo, mat));
-    this.cursorGroup.add(new THREE.Line(vGeo, mat));
-
-    // Add static origin axes
-    const originColor = 0x222222;
-    const oHGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-size, 0, 0),
-      new THREE.Vector3(size, 0, 0)
-    ]);
-    const oVGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, -size, 0),
-      new THREE.Vector3(0, size, 0)
-    ]);
-    const oMat = new THREE.LineBasicMaterial({ color: originColor });
-    this.scene.add(new THREE.Line(oHGeo, oMat));
-    this.scene.add(new THREE.Line(oVGeo, oMat));
+  setCursor(x: number, y: number) {
+    this.cursorRenderer.setCursor(x, y);
+    this.render();
   }
 
-  setCursor(x: number, y: number) {
-    this.cursorGroup.position.set(x, y, 0);
+  setCursorHover(isHovering: boolean) {
+    this.cursorRenderer.setCursorHover(isHovering);
     this.render();
   }
 
   setActivePointMarker(x: number | null, y: number | null) {
-    while (this.activePointMarkerGroup.children.length > 0) {
-      const obj = this.activePointMarkerGroup.children[0];
-      this.activePointMarkerGroup.remove(obj);
-      if (obj instanceof THREE.LineSegments) {
-        obj.geometry.dispose();
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach(m => m.dispose());
-        } else {
-          obj.material.dispose();
-        }
-      }
-    }
-
-    if (x !== null && y !== null) {
-      const size = 10 / this.camera.zoom;
-      const positions = new Float32Array([
-        -size, -size, 0,
-         size,  size, 0,
-        -size,  size, 0,
-         size, -size, 0
-      ]);
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
-      const marker = new THREE.LineSegments(geo, mat);
-      marker.position.set(x, y, 0.1);
-      this.activePointMarkerGroup.add(marker);
-    }
+    this.cursorRenderer.setActivePointMarker(x, y);
     this.render();
   }
 
   setAxesVisible(visible: boolean) {
-    this.axesGroup.visible = visible;
+    this.gridRenderer.setAxesVisible(visible);
     this.render();
   }
 
   updateGrid(spacing: number, enabled: boolean) {
-    this.gridGroup.visible = enabled;
-    
-    // Clear old grid
-    while (this.gridGroup.children.length > 0) {
-      const obj = this.gridGroup.children[0];
-      this.gridGroup.remove(obj);
-      if (obj instanceof THREE.Points) {
-        obj.geometry.dispose();
-        (obj.material as THREE.Material).dispose();
-      }
-    }
-
-    if (!enabled) return;
-
-    // Create a large grid around the current view
-    const count = 100; // 100x100 grid of dots
-    const positions = [];
-    
-    // Align grid to the camera center
-    const cx = Math.round(this.camera.position.x / spacing) * spacing;
-    const cy = Math.round(this.camera.position.y / spacing) * spacing;
-
-    for (let i = -count; i <= count; i++) {
-        for (let j = -count; j <= count; j++) {
-            positions.push(cx + i * spacing, cy + j * spacing, -0.5);
-        }
-    }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const mat = new THREE.PointsMaterial({ color: 0x444444, size: 1, sizeAttenuation: false });
-    const grid = new THREE.Points(geo, mat);
-    this.gridGroup.add(grid);
+    this.gridRenderer.updateGrid(spacing, enabled, this.camera.position);
     this.render();
   }
 
@@ -2151,72 +2022,7 @@ export class Viewer {
   }
 
   setSnapMarker(snap: SnapPoint | null) {
-    while (this.snapMarkerGroup.children.length > 0) {
-      const obj = this.snapMarkerGroup.children[0];
-      this.snapMarkerGroup.remove(obj);
-      if (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points) {
-        obj.geometry.dispose();
-        (obj.material as THREE.Material).dispose();
-      }
-    }
-
-    if (snap) {
-      const color = 0xffff00; 
-      const size = 6 / this.camera.zoom;
-      let geo: THREE.BufferGeometry | null = null;
-      const mat = new THREE.LineBasicMaterial({ color });
-      let mesh: THREE.Object3D | null = null;
-
-      switch (snap.type) {
-        case SnapType.ENDPOINT:
-          geo = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(-size, -size, 0),
-            new THREE.Vector3(size, -size, 0),
-            new THREE.Vector3(size, size, 0),
-            new THREE.Vector3(-size, size, 0),
-            new THREE.Vector3(-size, -size, 0)
-          ]);
-          mesh = new THREE.Line(geo, mat);
-          break;
-        case SnapType.MIDPOINT:
-          geo = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(0, size, 0),
-            new THREE.Vector3(-size, -size, 0),
-            new THREE.Vector3(size, -size, 0),
-            new THREE.Vector3(0, size, 0)
-          ]);
-          mesh = new THREE.Line(geo, mat);
-          break;
-        case SnapType.CENTER:
-          const curve = new THREE.EllipseCurve(0, 0, size, size, 0, 2 * Math.PI, false, 0);
-          const points = curve.getPoints(16);
-          geo = new THREE.BufferGeometry().setFromPoints(points);
-          mesh = new THREE.LineLoop(geo, mat);
-          break;
-        case SnapType.INTERSECTION:
-          geo = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(-size, -size, 0),
-            new THREE.Vector3(size, size, 0),
-            new THREE.Vector3(-size, size, 0),
-            new THREE.Vector3(size, -size, 0)
-          ]);
-          mesh = new THREE.LineSegments(geo, mat);
-          break;
-        case SnapType.PERPENDICULAR:
-          geo = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(0, size, 0),
-            new THREE.Vector3(0, 0, 0),
-            new THREE.Vector3(size, 0, 0)
-          ]);
-          mesh = new THREE.Line(geo, mat);
-          break;
-      }
-
-      if (mesh) {
-        mesh.position.set(snap.x, snap.y, 0);
-        this.snapMarkerGroup.add(mesh);
-      }
-    }
+    this.cursorRenderer.setSnapMarker(snap);
     this.render();
   }
 
@@ -2360,10 +2166,7 @@ export class Viewer {
   }
 
   render(){
-    if (this.axesGroup && this.axesGroup.visible) {
-      const scale = 1 / this.camera.zoom;
-      this.axesGroup.scale.set(scale, scale, 1);
-    }
+    this.gridRenderer.updateAxesScale(1 / this.camera.zoom);
     this.renderer.render(this.scene,this.camera)
   }
 }

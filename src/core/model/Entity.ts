@@ -1,4 +1,6 @@
 
+import { SnapPoint } from "../engine/SnapEngine";
+
 export interface BoundingBox {
   minX: number;
   minY: number;
@@ -22,4 +24,7 @@ export abstract class Entity {
   abstract mirror(p1: { x: number; y: number }, p2: { x: number; y: number }): void;
   abstract getBoundingBox(): BoundingBox;
   abstract clone(newId: string): Entity;
+
+  hitTest?(px: number, py: number, tolerance: number): boolean;
+  getSnapPoints?(): SnapPoint[];
 }

@@ -98,10 +98,18 @@ export class Dimension extends Entity {
   }
 
   getBoundingBox(): BoundingBox {
-    const minX = Math.min(this.x1, this.x2) - this.offset - 10;
-    const minY = Math.min(this.y1, this.y2) - this.offset - 10;
-    const maxX = Math.max(this.x1, this.x2) + this.offset + 10;
-    const maxY = Math.max(this.y1, this.y2) + this.offset + 10;
+    let minX = Math.min(this.x1, this.x2) - Math.abs(this.offset) - 10;
+    let minY = Math.min(this.y1, this.y2) - Math.abs(this.offset) - 10;
+    let maxX = Math.max(this.x1, this.x2) + Math.abs(this.offset) + 10;
+    let maxY = Math.max(this.y1, this.y2) + Math.abs(this.offset) + 10;
+
+    if (this.dimLineLocation) {
+      minX = Math.min(minX, this.dimLineLocation.x - 10);
+      minY = Math.min(minY, this.dimLineLocation.y - 10);
+      maxX = Math.max(maxX, this.dimLineLocation.x + 10);
+      maxY = Math.max(maxY, this.dimLineLocation.y + 10);
+    }
+
     return { minX, minY, maxX, maxY };
   }
 

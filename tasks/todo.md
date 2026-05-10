@@ -1,8 +1,16 @@
 # WebCAD Tasks
 
-## Current Task: Fix LOAD command state reset and view centering
-- [x] Update `IOHandler.ts` to reset state and center view <!-- id: 870 -->
-- [x] Verify with tests <!-- id: 871 -->
+## Current Task: Refactor TransformHandler.ts (Phase 1: FilletHandler)
+- [x] Create `src/core/engine/handlers/transform/` directory <!-- id: 890 -->
+- [x] Create `FilletHandler.ts` <!-- id: 891 -->
+- [x] Update `TransformHandler.ts` to remove fillet <!-- id: 892 -->
+- [x] Update `app.ts` to register `FilletHandler` <!-- id: 893 -->
+- [x] Verify with tests <!-- id: 894 -->
+
+## Current Task: Refactor Viewer.ts (Phase 1: GridRenderer)
+- [x] Create `GridRenderer.ts` <!-- id: 880 -->
+- [x] Update `Viewer.ts` to use `GridRenderer` <!-- id: 881 -->
+- [x] Verify with tests <!-- id: 882 -->
 
 ## Current Task: Remove legacy selection methods
 - [x] Update `NoteCommand.ts` <!-- id: 860 -->

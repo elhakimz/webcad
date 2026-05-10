@@ -29,7 +29,21 @@ import * as THREE from "three"
 import { Layer } from "./core/model/Layer"
 import { ResultDispatcher } from "./core/engine/handlers/ResultDispatcher"
 import { LayerHandler } from "./core/engine/handlers/LayerHandler"
-import { TransformHandler } from "./core/engine/handlers/TransformHandler"
+import { ArrayHandler } from "./core/engine/handlers/transform/ArrayHandler"
+import { FilletHandler } from "./core/engine/handlers/transform/FilletHandler"
+import { ChamferHandler } from "./core/engine/handlers/transform/ChamferHandler"
+import { BreakHandler } from "./core/engine/handlers/transform/BreakHandler"
+import { CopyHandler } from "./core/engine/handlers/transform/CopyHandler"
+import { JoinHandler } from "./core/engine/handlers/transform/JoinHandler"
+import { LengthenHandler } from "./core/engine/handlers/transform/LengthenHandler"
+import { MirrorHandler } from "./core/engine/handlers/transform/MirrorHandler"
+import { MoveHandler } from "./core/engine/handlers/transform/MoveHandler"
+import { OffsetHandler } from "./core/engine/handlers/transform/OffsetHandler"
+import { RotateHandler } from "./core/engine/handlers/transform/RotateHandler"
+import { ScaleHandler } from "./core/engine/handlers/transform/ScaleHandler"
+import { StretchHandler } from "./core/engine/handlers/transform/StretchHandler"
+import { TrimHandler } from "./core/engine/handlers/transform/TrimHandler"
+import { ExtendHandler } from "./core/engine/handlers/transform/ExtendHandler"
 import { ViewHandler } from "./core/engine/handlers/ViewHandler"
 import { SystemHandler } from "./core/engine/handlers/SystemHandler"
 import { IOHandler } from "./core/engine/handlers/IOHandler"
@@ -78,7 +92,21 @@ export class App {
 
     this.dispatcher = new ResultDispatcher();
     this.dispatcher.registerHandler(new LayerHandler());
-    this.dispatcher.registerHandler(new TransformHandler());
+    this.dispatcher.registerHandler(new ArrayHandler());
+    this.dispatcher.registerHandler(new FilletHandler());
+    this.dispatcher.registerHandler(new ChamferHandler());
+    this.dispatcher.registerHandler(new BreakHandler());
+    this.dispatcher.registerHandler(new CopyHandler());
+    this.dispatcher.registerHandler(new JoinHandler());
+    this.dispatcher.registerHandler(new LengthenHandler());
+    this.dispatcher.registerHandler(new MirrorHandler());
+    this.dispatcher.registerHandler(new MoveHandler());
+    this.dispatcher.registerHandler(new OffsetHandler());
+    this.dispatcher.registerHandler(new RotateHandler());
+    this.dispatcher.registerHandler(new ScaleHandler());
+    this.dispatcher.registerHandler(new StretchHandler());
+    this.dispatcher.registerHandler(new TrimHandler());
+    this.dispatcher.registerHandler(new ExtendHandler());
     this.dispatcher.registerHandler(new ViewHandler());
     this.dispatcher.registerHandler(new SystemHandler());
     this.dispatcher.registerHandler(new IOHandler());
@@ -232,6 +260,13 @@ export class App {
 
     this.viewer.setCursor(x, y);
     this.viewer.setSnapMarker(snap);
+
+    // Check for hover over selectable objects on current layer
+    const currentLayerName = this.doc.layers.currentLayerName;
+    const selectableEntities = this.doc.getAllEntities().filter(e => e.layer === currentLayerName);
+    const tolerance = 10 / this.viewer.camera.zoom;
+    const hoveredEntity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
+    this.viewer.setCursorHover(!!hoveredEntity);
 
     if (this.cmd.active) {
         this.viewer.setActivePointMarker(x, y);

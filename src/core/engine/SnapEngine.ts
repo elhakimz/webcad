@@ -71,6 +71,9 @@ export class SnapEngine {
   }
 
   private static getEntitySnaps(entity: Entity): SnapPoint[] {
+    if (entity.getSnapPoints) {
+      return entity.getSnapPoints();
+    }
     const snaps: SnapPoint[] = [];
 
     if (entity instanceof Line) {

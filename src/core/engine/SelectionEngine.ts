@@ -90,7 +90,6 @@ export class SelectionEngine {
       }
       return false;
     }
-    if (entity instanceof Text) return true;
     if (entity instanceof Solid) return this.isPointInPolygon(px, py, entity.vertices);
     if (entity instanceof Ellipse) {
       const majorR = Math.sqrt(entity.majorX * entity.majorX + entity.majorY * entity.majorY);

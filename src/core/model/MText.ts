@@ -267,10 +267,25 @@ export class MText extends Entity {
   getBoundingBox(): BoundingBox {
     return {
       minX: this.bounds.x,
-      minY: this.bounds.y - this.bounds.height,
+      minY: this.bounds.y,
       maxX: this.bounds.x + this.bounds.width,
-      maxY: this.bounds.y
+      maxY: this.bounds.y + this.bounds.height
     };
+  }
+
+  hitTest(px: number, py: number, tolerance: number): boolean {
+    const dx = px - this.insertionPoint.x;
+    const dy = py - this.insertionPoint.y;
+    const rad = -this.rotation;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const localX = dx * cos - dy * sin;
+    const localY = dx * sin + dy * cos;
+
+    const localOrigin = this.computeBoxOrigin({x: 0, y: 0}, this.width, this.height, this.attachmentPoint);
+    
+    return localX >= localOrigin.x - tolerance && localX <= localOrigin.x + this.width + tolerance &&
+           localY >= localOrigin.y - this.height - tolerance && localY <= localOrigin.y + tolerance;
   }
 
   clone(newId: string): MText {

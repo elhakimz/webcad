@@ -1,5 +1,12 @@
 # WebCAD Tasks
 
+## Current Task: Implement Text and MText Hit Test
+- [x] Add `hitTest` method to `Text.ts` <!-- id: 900 -->
+- [x] Fix `getBoundingBox()` in `MText.ts` <!-- id: 903 -->
+- [x] Add `hitTest` method to `MText.ts` <!-- id: 904 -->
+- [x] Remove `if (entity instanceof Text) return true;` from `SelectionEngine.ts` <!-- id: 901 -->
+- [x] Verify with tests <!-- id: 902 -->
+
 ## Current Task: Refactor TransformHandler.ts (Phase 1: FilletHandler)
 - [x] Create `src/core/engine/handlers/transform/` directory <!-- id: 890 -->
 - [x] Create `FilletHandler.ts` <!-- id: 891 -->

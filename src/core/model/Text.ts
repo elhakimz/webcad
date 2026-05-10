@@ -54,6 +54,21 @@ export class Text extends Entity {
     };
   }
 
+  hitTest(px: number, py: number, tolerance: number): boolean {
+    const dx = px - this.x;
+    const dy = py - this.y;
+    const rad = -this.rotation * (Math.PI / 180);
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const localX = dx * cos - dy * sin;
+    const localY = dx * sin + dy * cos;
+
+    const width = this.text.length * this.height * 0.6;
+    
+    return localX >= -tolerance && localX <= width + tolerance &&
+           localY >= -tolerance && localY <= this.height + tolerance;
+  }
+
   clone(newId: string): Text {
     const copy = new Text(newId, this.x, this.y, this.height, this.rotation, this.text);
     copy.layer = this.layer;

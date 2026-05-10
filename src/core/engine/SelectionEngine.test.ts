@@ -5,6 +5,7 @@ import { Line } from '../model/Line'
 import { Circle } from '../model/Circle'
 import { Polyline } from '../model/Polyline'
 import { Dimension } from '../model/Dimension'
+import { Note } from '../model/Note'
 
 describe('SelectionEngine', () => {
   it('should select a line within tolerance', () => {
@@ -65,5 +66,27 @@ describe('SelectionEngine', () => {
     
     // Far from the radius line
     expect(SelectionEngine.getEntityAt(25, 10, 5, entities)).toBeNull();
+  });
+
+  it('should select a note within tolerance', () => {
+    const note = new Note('N1', 'target', { x: 0, y: 0 }, { x: 100, y: 0 }, 'Test Note', 2.5);
+    const entities = [note];
+    
+    // Near the leader line (0,0 to 100,0)
+    expect(SelectionEngine.getEntityAt(50, 0, 5, entities)).toBe(note);
+    expect(SelectionEngine.getEntityAt(50, 3, 5, entities)).toBe(note);
+    
+    // Near the anchor point
+    expect(SelectionEngine.getEntityAt(0, 0, 5, entities)).toBe(note);
+    
+    // Near the bend point
+    expect(SelectionEngine.getEntityAt(100, 0, 5, entities)).toBe(note);
+    
+    // Near the text area (approx x: 114 to 127)
+    expect(SelectionEngine.getEntityAt(120, 1, 5, entities)).toBe(note);
+    
+    // Far from the note
+    expect(SelectionEngine.getEntityAt(50, 10, 5, entities)).toBeNull();
+    expect(SelectionEngine.getEntityAt(140, 0, 5, entities)).toBeNull();
   });
 });

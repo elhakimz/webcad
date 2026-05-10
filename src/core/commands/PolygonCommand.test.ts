@@ -139,6 +139,6 @@ describe('PolygonCommand', () => {
     cmd.onInput('I', 'DUMMY', units)
     // Step 3: Radius
     const info = cmd.getDynamicInput(200, 100, units)
-    expect(info).toEqual(["Radius of polygon:", "D:100.00"])
+    expect(info).toEqual(["Radius of polygon:", "D:Distance: 100.00"])
   })
 })

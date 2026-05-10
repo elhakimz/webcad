@@ -39,6 +39,7 @@ const draftingRibbon = new DraftingAidsRibbonBar(
     if (type === 'grid') app.drafting.toggleGrid();
     if (type === 'ortho') app.drafting.toggleOrtho();
     if (type === 'xyz') app.drafting.toggleXyz();
+    if (type === 'mode') app.drafting.toggleMode3d();
   },
   (type, value) => {
     if (type === 'snap') app.drafting.setSnapSpacing(value);
@@ -79,7 +80,8 @@ function updateStatusBar() {
     snap: app.drafting.snapEnabled,
     grid: app.drafting.gridEnabled,
     ortho: app.drafting.orthoEnabled,
-    xyz: app.drafting.xyzEnabled
+    xyz: app.drafting.xyzEnabled,
+    mode3d: app.drafting.mode3d
   });
   draftingRibbon.updateSizes(app.drafting.snapSpacing, app.drafting.gridSpacing);
   unitsRibbon.updateUnits(app.doc.units);
@@ -429,7 +431,7 @@ canvas.addEventListener("pointerdown", (e) => {
 });
 
 canvas.addEventListener("pointerup", async (e) => {
-  const res = await app.pointerUp(e.clientX, e.clientY);
+  const res = await app.pointerUp(e.clientX, e.clientY, e.shiftKey);
   if (typeof res === 'string' && res) {
     cmdLine.print(res);
   }

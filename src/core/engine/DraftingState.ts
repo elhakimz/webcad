@@ -5,6 +5,7 @@ export class DraftingState {
   snapEnabled: boolean = false;
   snapSpacing: number = 5;
   xyzEnabled: boolean = true;
+  mode3d: boolean = false;
 
   private listeners: (() => void)[] = [];
 
@@ -33,6 +34,11 @@ export class DraftingState {
 
   toggleXyz() {
     this.xyzEnabled = !this.xyzEnabled;
+    this.notify();
+  }
+
+  toggleMode3d() {
+    this.mode3d = !this.mode3d;
     this.notify();
   }
 

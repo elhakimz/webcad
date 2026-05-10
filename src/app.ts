@@ -71,6 +71,7 @@ export class App {
   private layersWindowUpdate: (() => void) | null = null
   private promptUpdate: (() => void) | null = null;
   private dispatcher: ResultDispatcher;
+  private lastMode3d: boolean = false;
 
   setPromptUpdate(updateFn: () => void) {
     this.promptUpdate = updateFn;
@@ -157,6 +158,12 @@ export class App {
         spacing = spacing * 25.4;
       }
       this.viewer.updateGrid(spacing, this.drafting.gridEnabled);
+      
+      if (this.drafting.mode3d !== this.lastMode3d) {
+        this.viewer.set3DMode(this.drafting.mode3d);
+        this.lastMode3d = this.drafting.mode3d;
+      }
+
       if (this.statusBarUpdate) {
           this.statusBarUpdate(this.doc.layers.getCurrentLayer());
       }
@@ -233,6 +240,39 @@ export class App {
     return editCommands.includes(cmdName);
   }
 
+  private isInSelectionStep(): boolean {
+    const activeName = this.cmd.active?.constructor.name;
+    const isEditCommand = this.isEditCommand(activeName);
+    return !this.cmd.active || 
+        (activeName === 'ListCommand') ||
+        (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
+        (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
+        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
+        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1 || this.cmd.active.step === 2) && activeName === 'BreakCommand') ||
+        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand') ||
+        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'LengthenCommand');
+  }
+
+  private getSelectableEntities(): Entity[] {
+    return this.doc.getAllEntities().filter(e => {
+      const layer = this.doc.layers.getLayer(e.layer);
+      if (!layer) return true;
+      if (!layer.isVisible) return false;
+      if (layer.isFrozen) return false;
+      return true;
+    });
+  }
+
+  private getEditableEntities(entities: Entity[]): Entity[] {
+    return entities.filter(e => {
+      const layer = this.doc.layers.getLayer(e.layer);
+      return !layer?.isLocked;
+    });
+  }
+
   async execute(cmd:string){
     if (cmd === 'PAN' || cmd === 'P') {
       this.viewer.setLeftPanEnabled(true);
@@ -243,10 +283,12 @@ export class App {
     let selection = Array.from(this.selectedEntityIds);
 
     if (isEdit) {
-      const currentLayer = this.doc.layers.currentLayerName;
       selection = selection.filter(id => {
         const entity = this.doc.getEntity(id);
-        return entity && entity.layer === currentLayer;
+        if (!entity) return false;
+        const layer = this.doc.layers.getLayer(entity.layer);
+        if (!layer) return true;
+        return layer.isVisible && !layer.isFrozen && !layer.isLocked;
       });
     }
 
@@ -268,10 +310,12 @@ export class App {
       
       // Step 0: Initial selection for commands like ERASE, MOVE, ARRAY, etc.
       if (isEditCommand && this.cmd.active && this.cmd.active.step === 0) {
-        const currentLayer = this.doc.layers.currentLayerName;
         const ids = Array.from(this.selectedEntityIds).filter(id => {
           const entity = this.doc.getEntity(id);
-          return entity && entity.layer === currentLayer;
+          if (!entity) return false;
+          const layer = this.doc.layers.getLayer(entity.layer);
+          if (!layer) return true;
+          return layer.isVisible && !layer.isFrozen && !layer.isLocked;
         });
         const cmdName = activeName?.replace('Command', '').toUpperCase();
         if (cmdName && ids.length > 0) {
@@ -304,9 +348,8 @@ export class App {
     this.viewer.setCursor(x, y);
     this.viewer.setSnapMarker(snap);
 
-    // Check for hover over selectable objects on current layer
-    const currentLayerName = this.doc.layers.currentLayerName;
-    const selectableEntities = this.doc.getAllEntities().filter(e => e.layer === currentLayerName);
+    // Check for hover over selectable objects
+    const selectableEntities = this.getSelectableEntities();
     const tolerance = 10 / this.viewer.camera.zoom;
     const hoveredEntity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
     this.viewer.setCursorHover(!!hoveredEntity);
@@ -402,7 +445,7 @@ export class App {
     this.selectionStartPoint = worldPt;
   }
 
-  async pointerUp(screenX: number, screenY: number): Promise<CommandResponse | undefined> {
+  async pointerUp(screenX: number, screenY: number, isShift = false): Promise<CommandResponse | undefined> {
     const sketchCmd = this.cmd.active as unknown as HasFinishSketch;
     if (sketchCmd && typeof sketchCmd.finishSketch === 'function') {
       const id = this.doc.getNextId("SK");
@@ -417,29 +460,18 @@ export class App {
     const dy = Math.abs(worldPt.y - this.selectionStartPoint.y);
     const tolerance = 5 / this.viewer.camera.zoom;
 
-    const activeName = this.cmd.active?.constructor.name;
-    const isEditCommand = this.isEditCommand(activeName);
-    const isSelectionStep = !this.cmd.active || 
-        (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
-        (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
-        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1 || this.cmd.active.step === 2) && activeName === 'BreakCommand') ||
-        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand');
+    const isSelectionStep = this.isInSelectionStep();
 
     let result: CommandResponse | undefined;
 
     if (dx < tolerance && dy < tolerance) {
         // Single click
-        result = await this.click(screenX, screenY);
+        result = await this.click(screenX, screenY, isShift);
     } else if (isSelectionStep) {
         // Box selection only allowed during selection steps
         const isCrossing = worldPt.x < this.selectionStartPoint.x;
         let found: Entity[] = [];
-        const currentLayer = this.doc.layers.currentLayerName;
-        const selectableEntities = this.doc.getAllEntities().filter(e => e.layer === currentLayer);
+        const selectableEntities = this.getSelectableEntities();
 
         if (isCrossing) {
             found = SelectionEngine.getEntitiesInCrossingSpatial(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, this.doc, selectableEntities);
@@ -467,7 +499,7 @@ export class App {
     return result;
   }
 
-  async click(screenX:number, screenY:number){
+  async click(screenX:number, screenY:number, isShift = false){
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
     const { x, y } = snapped;
@@ -475,22 +507,11 @@ export class App {
     // Handle initial selection step for edit commands if clicking an entity
     const activeName = this.cmd.active?.constructor.name;
     const isEditCommand = this.isEditCommand(activeName);
-    const isSelectionStep = !this.cmd.active || 
-        (activeName === 'ListCommand') ||
-        (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
-        (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
-        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1 || this.cmd.active.step === 2) && activeName === 'BreakCommand') ||
-        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand') ||
-        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'LengthenCommand');
+    const isSelectionStep = this.isInSelectionStep();
     let tolerance = 5 / this.viewer.camera.zoom;
     
     if (isSelectionStep) {
-        const currentLayer = this.doc.layers.currentLayerName;
-        const selectableEntities = this.doc.getAllEntities().filter(e => e.layer === currentLayer);
+        const selectableEntities = this.getSelectableEntities();
 
         // Check if clicking near an Ellipse - use larger tolerance for better selection
         const entityType = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, 200 / this.viewer.camera.zoom, this.doc, selectableEntities)?.constructor.name;
@@ -501,16 +522,20 @@ export class App {
         // Use original raw coordinate for single-click object selection (snapping is for geometry points)
         const entity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
         if (entity) {
-            if (this.selectedEntityIds.has(entity.id)) {
-                this.selectedEntityIds.delete(entity.id);
+            if (isShift) {
+                if (this.selectedEntityIds.has(entity.id)) {
+                    this.selectedEntityIds.delete(entity.id);
+                } else {
+                    this.selectedEntityIds.add(entity.id);
+                }
             } else {
+                this.selectedEntityIds.clear();
                 this.selectedEntityIds.add(entity.id);
             }
 
             this.reportSelectionDimensions();
 
             // For commands that pick a target for immediate action (Trim, Extend, Offset at Step 1, Fillet at Step 0/1, Lengthen at Step 2)       
-            const activeName = this.cmd.active?.constructor.name;
             const isImmediatePick = (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && this.cmd.active?.step === 1;
             const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
             const isChamferPick = activeName === 'ChamferCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
@@ -531,8 +556,7 @@ export class App {
                 return await this.handleResult(res);
             }
             return;
-        }
- else if (!this.cmd.active) {
+        } else if (!isShift) {
             this.selectedEntityIds.clear();
         }
 
@@ -540,7 +564,10 @@ export class App {
         if (this.cmd.active && this.cmd.active.step === 0 && isEditCommand && this.selectedEntityIds.size > 0) {
             const ids = Array.from(this.selectedEntityIds).filter(id => {
                 const e = this.doc.getEntity(id);
-                return e && e.layer === currentLayer;
+                if (!e) return false;
+                const layer = this.doc.layers.getLayer(e.layer);
+                if (!layer) return true;
+                return layer.isVisible && !layer.isFrozen && !layer.isLocked;
             });
             const cmdName = activeName?.replace('Command', '').toUpperCase();
             if (cmdName && ids.length > 0) {

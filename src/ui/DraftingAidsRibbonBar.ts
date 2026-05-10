@@ -6,11 +6,12 @@ export class DraftingAidsRibbonBar extends RibbonBar {
   private gridEl: HTMLElement;
   private orthoEl: HTMLElement;
   private xyzEl: HTMLElement;
+  private modeEl!: HTMLElement;
   private snapInput!: HTMLInputElement;
   private gridInput!: HTMLInputElement;
 
   constructor(
-    private onToggle: (type: 'snap' | 'grid' | 'ortho' | 'xyz') => void,
+    private onToggle: (type: 'snap' | 'grid' | 'ortho' | 'xyz' | 'mode') => void,
     private onSizeChange?: (type: 'snap' | 'grid', value: number) => void,
     initialSnap: number = 5,
     initialGrid: number = 10
@@ -28,12 +29,14 @@ export class DraftingAidsRibbonBar extends RibbonBar {
       </div>
       <div class="ribbon-item toggle" id="ribbon-ortho">ORTHO</div>
       <div class="ribbon-item toggle" id="ribbon-xyz">XYZ</div>
+      <div class="ribbon-item toggle" id="ribbon-mode">2D/3D</div>
     `;
 
     this.snapEl = this.content.querySelector('#ribbon-snap')!;
     this.gridEl = this.content.querySelector('#ribbon-grid')!;
     this.orthoEl = this.content.querySelector('#ribbon-ortho')!;
     this.xyzEl = this.content.querySelector('#ribbon-xyz')!;
+    this.modeEl = this.content.querySelector('#ribbon-mode')!;
     this.snapInput = this.content.querySelector('#ribbon-snap-size')! as HTMLInputElement;
     this.gridInput = this.content.querySelector('#ribbon-grid-size')! as HTMLInputElement;
 
@@ -41,6 +44,7 @@ export class DraftingAidsRibbonBar extends RibbonBar {
     this.gridEl.addEventListener('click', () => this.onToggle('grid'));
     this.orthoEl.addEventListener('click', () => this.onToggle('ortho'));
     this.xyzEl.addEventListener('click', () => this.onToggle('xyz'));
+    this.modeEl.addEventListener('click', () => this.onToggle('mode'));
 
     this.snapInput.addEventListener('change', () => {
       const val = parseFloat(this.snapInput.value);
@@ -62,6 +66,7 @@ export class DraftingAidsRibbonBar extends RibbonBar {
     this.updateTag(this.gridEl, status.grid);
     this.updateTag(this.orthoEl, status.ortho);
     this.updateTag(this.xyzEl, status.xyz);
+    this.updateTag(this.modeEl, status.mode3d);
   }
 
   public updateSizes(snap: number, grid: number) {

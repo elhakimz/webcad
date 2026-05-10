@@ -1,0 +1,48 @@
+export class OCCWorkerClient {
+  private worker: Worker;
+  private messageId = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private resolvers = new Map<number, (value: any) => void>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private rejecters = new Map<number, (reason: any) => void>();
+
+  constructor() {
+    // Vite specific way to load worker
+    this.worker = new Worker(new URL('./OCCWorker.ts', import.meta.url), { type: 'module' });
+    
+    this.worker.onmessage = (e) => {
+      const { id, success, payload, error } = e.data;
+      const resolver = this.resolvers.get(id);
+      const rejecter = this.rejecters.get(id);
+      
+      if (resolver && rejecter) {
+        this.resolvers.delete(id);
+        this.rejecters.delete(id);
+        
+        if (success) {
+          resolver(payload);
+        } else {
+          rejecter(new Error(error || 'Unknown error'));
+        }
+      }
+    };
+  }
+
+  init(): Promise<void> {
+    return this.send('init', {});
+  }
+
+  createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number): Promise<{ positions: number[], indices: number[] }> {
+    return this.send('createBox', { x, y, z, dx, dy, dz });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private send(type: string, payload: any): Promise<any> {
+    const id = this.messageId++;
+    return new Promise((resolve, reject) => {
+      this.resolvers.set(id, resolve);
+      this.rejecters.set(id, reject);
+      this.worker.postMessage({ type, payload, id });
+    });
+  }
+}

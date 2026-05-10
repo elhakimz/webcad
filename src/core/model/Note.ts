@@ -1,5 +1,5 @@
 import { Entity, BoundingBox } from "./Entity";
-import { rotatePoint, reflectPointAcrossLine } from "../engine/MathUtils";
+import { rotatePoint, reflectPointAcrossLine, distancePointToLineSegment, distancePointToPoint } from "../engine/MathUtils";
 
 export class Note extends Entity {
   targetEntityId: string | null;
@@ -55,6 +55,68 @@ export class Note extends Entity {
       maxX: Math.max(this.anchorPoint.x, this.bendPoint.x),
       maxY: Math.max(this.anchorPoint.y, this.bendPoint.y)
     };
+  }
+
+  hitTest(px: number, py: number, tolerance: number): boolean {
+    const p1 = this.anchorPoint;
+    const p2 = this.bendPoint;
+
+    if (this.targetEntityId !== null) {
+      // Leader line
+      if (distancePointToLineSegment(px, py, p1.x, p1.y, p2.x, p2.y) <= tolerance) {
+        return true;
+      }
+      
+      // Shelf line (approximate length)
+      const shelfDir = p2.x >= p1.x ? 1 : -1;
+      const shelfLength = this.height * 4; // Approximation
+      const shelfEnd = { x: p2.x + shelfDir * shelfLength, y: p2.y };
+      if (distancePointToLineSegment(px, py, p2.x, p2.y, shelfEnd.x, shelfEnd.y) <= tolerance) {
+        return true;
+      }
+    } else {
+      // Free point - vertical line at p2
+      const sepHeight = this.height;
+      if (distancePointToLineSegment(px, py, p2.x, p2.y - this.height, p2.x, p2.y + sepHeight) <= tolerance) {
+        return true;
+      }
+    }
+
+    // Check if point is inside text rectangle
+    const textWidthApprox = this.text.length * this.height * 0.6;
+    const textGap = 0.1;
+    let textMinX = 0;
+    let textMaxX = 0;
+    let textMinY = p2.y;
+    let textMaxY = p2.y + this.height;
+
+    if (this.targetEntityId !== null) {
+      const shelfDir = p2.x >= p1.x ? 1 : -1;
+      const shelfLength = Math.max(textWidthApprox, this.height * 2) + 0.5; // From Viewer.ts
+      const shelfEnd = { x: p2.x + shelfDir * shelfLength, y: p2.y };
+      
+      if (shelfDir > 0) {
+        textMinX = shelfEnd.x + textGap;
+        textMaxX = textMinX + textWidthApprox;
+      } else {
+        textMaxX = shelfEnd.x - textGap;
+        textMinX = textMaxX - textWidthApprox;
+      }
+    } else {
+      textMinX = p2.x + textGap;
+      textMaxX = textMinX + textWidthApprox;
+    }
+
+    if (px >= textMinX - tolerance && px <= textMaxX + tolerance &&
+        py >= textMinY - tolerance && py <= textMaxY + tolerance) {
+      return true;
+    }
+
+    // Also check if point is near anchor or bend points directly
+    if (distancePointToPoint(px, py, p1.x, p1.y) <= tolerance) return true;
+    if (distancePointToPoint(px, py, p2.x, p2.y) <= tolerance) return true;
+
+    return false;
   }
 
   clone(newId: string): Note {

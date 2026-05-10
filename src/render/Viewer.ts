@@ -83,34 +83,51 @@ export class Viewer {
       this.textQueue = [];
       this.noteQueue.forEach(entity => this.addNote(entity));
       this.noteQueue = [];
-      this.render();
+      this.scheduleRender();
     });
   }
 
 
   setCursor(x: number, y: number) {
     this.cursorRenderer.setCursor(x, y);
-    this.render();
+    this.scheduleRender();
   }
 
   setCursorHover(isHovering: boolean) {
     this.cursorRenderer.setCursorHover(isHovering);
-    this.render();
+    this.scheduleRender();
   }
 
   setActivePointMarker(x: number | null, y: number | null) {
     this.cursorRenderer.setActivePointMarker(x, y);
-    this.render();
+    this.scheduleRender();
   }
 
   setAxesVisible(visible: boolean) {
     this.gridRenderer.setAxesVisible(visible);
-    this.render();
+    this.scheduleRender();
+  }
+
+  set3DMode(enabled: boolean) {
+    if (enabled) {
+      // Switch to Isometric view
+      const size = (this.camera.top - this.camera.bottom) / 2;
+      this.camera.up.set(0, 0, 1); // Z up for 3D
+      this.camera.position.set(size, -size, size);
+      this.camera.lookAt(0, 0, 0);
+    } else {
+      // Switch to Top view
+      this.camera.up.set(0, 1, 0); // Y up for 2D
+      this.camera.position.set(0, 0, 500);
+      this.camera.lookAt(0, 0, 0);
+    }
+    this.camera.updateProjectionMatrix();
+    this.scheduleRender();
   }
 
   updateGrid(spacing: number, enabled: boolean) {
     this.gridRenderer.updateGrid(spacing, enabled, this.camera.position);
-    this.render();
+    this.scheduleRender();
   }
 
   resize() {
@@ -129,7 +146,7 @@ export class Viewer {
     this.camera.bottom = -h / 2;
     
     this.camera.updateProjectionMatrix();
-    this.render();
+    this.scheduleRender();
   }
 
   private getNormalizedDeviceCoordinates(clientX: number, clientY: number): THREE.Vector2 {
@@ -306,7 +323,7 @@ export class Viewer {
       }
     }
 
-    this.render();
+    this.scheduleRender();
   }
 
   private createTextObject(text: string, textHeight: number, colorIndex: number, fontName = "Arial"): THREE.Object3D {
@@ -533,7 +550,7 @@ export class Viewer {
       });
     }
 
-    this.render();
+    this.scheduleRender();
   }
 
   addBoundaryMarker(x: number, y: number) {
@@ -549,7 +566,7 @@ export class Viewer {
     const mat = new THREE.LineBasicMaterial({ color: 0x00ffff });
     const marker = new THREE.LineSegments(geo, mat);
     this.boundaryGroup.add(marker);
-    this.render();
+    this.scheduleRender();
   }
 
   clearBoundaryMarkers() {
@@ -561,7 +578,7 @@ export class Viewer {
         (obj.material as THREE.Material).dispose();
       }
     }
-    this.render();
+    this.scheduleRender();
   }
 
   setBaseLine(p1: { x: number; y: number } | null, p2: { x: number; y: number } | null) {
@@ -583,7 +600,7 @@ export class Viewer {
       this.baseLineGroup.add(line);
     }
 
-    this.render();
+    this.scheduleRender();
   }
 
   private setupEvents() {
@@ -592,7 +609,7 @@ export class Viewer {
       const zoomAmount = e.deltaY > 0 ? 0.9 : 1.1
       this.camera.zoom *= zoomAmount
       this.camera.updateProjectionMatrix()
-      this.render()
+      this.scheduleRender()
     }, { passive: false })
 
     this.canvas.addEventListener('pointerdown', (e) => {
@@ -622,7 +639,7 @@ export class Viewer {
         this.camera.position.x -= dx / this.camera.zoom
         this.camera.position.y += dy / this.camera.zoom
         this.lastPanPos.set(e.clientX, e.clientY)
-        this.render()
+        this.scheduleRender()
       }
     })
 
@@ -2163,6 +2180,18 @@ export class Viewer {
     }
 
     return group;
+  }
+
+  private renderRequested = false;
+
+  scheduleRender() {
+    if (!this.renderRequested) {
+      this.renderRequested = true;
+      requestAnimationFrame(() => {
+        this.renderRequested = false;
+        this.render();
+      });
+    }
   }
 
   render(){

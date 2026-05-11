@@ -25,6 +25,7 @@ import { Spline } from "./core/model/Spline"
 import { Note } from "./core/model/Note"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
+import { Selection3DEngine } from "./core/engine/Selection3DEngine"
 import { SnapEngine, SnapPoint } from "./core/engine/SnapEngine"
 import * as THREE from "three"
 
@@ -64,7 +65,9 @@ export class App {
   doc: Document
   drafting: DraftingState
   selectedEntityIds: Set<string> = new Set()
-  private selectionStartPoint: { x: number, y: number } | null = null
+  private selectionStartPoint: { x: number, y: number, screenX?: number, screenY?: number } | null = null;
+  private selectionBoxEl: HTMLDivElement | null = null;
+  private selectionMode: 'OBJECT' | 'SURFACE' = 'OBJECT';
   private lastWorldPt: { x: number, y: number, z?: number } | null = null;
   private commandLinePrint: ((msg: string) => void) | null = null
   private currentControls: any[] | null | undefined = null;
@@ -214,7 +217,8 @@ export class App {
     if (this.selectedEntityIds.size === 0) return;
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    let count = 0;
+    let count2D = 0;
+    let count3D = 0;
 
     this.selectedEntityIds.forEach(id => {
       const entity = this.doc.getEntity(id);
@@ -224,14 +228,25 @@ export class App {
         minY = Math.min(minY, box.minY);
         maxX = Math.max(maxX, box.maxX);
         maxY = Math.max(maxY, box.maxY);
-        count++;
+        
+        if (entity instanceof Solid3D) {
+          count3D++;
+        } else {
+          count2D++;
+        }
       }
     });
 
-    if (count > 0 && this.commandLinePrint) {
+    const totalCount = count2D + count3D;
+    if (totalCount > 0 && this.commandLinePrint) {
       const width = maxX - minX;
       const height = maxY - minY;
-      this.commandLinePrint(`[Selection] ${count} objects. Width: ${width.toFixed(2)}, Height: ${height.toFixed(2)}`);
+      
+      const parts = [];
+      if (count2D > 0) parts.push(`${count2D} object${count2D > 1 ? 's' : ''}`);
+      if (count3D > 0) parts.push(`${count3D} solid${count3D > 1 ? 's' : ''}`);
+      
+      this.commandLinePrint(`[Selection] ${parts.join(', ')}. Width: ${width.toFixed(2)}, Height: ${height.toFixed(2)}`);
     }
   }
 
@@ -250,7 +265,9 @@ export class App {
         (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
         (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
+        (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'ExtrudeCommand' || activeName === 'RevolveCommand')) ||
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
+
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1 || this.cmd.active.step === 2) && activeName === 'BreakCommand') ||
@@ -266,6 +283,10 @@ export class App {
       if (layer.isFrozen) return false;
       return true;
     });
+  }
+
+  private getSolid3DSelectables(): Solid3D[] {
+    return this.getSelectableEntities().filter(e => e instanceof Solid3D) as Solid3D[];
   }
 
   private getEditableEntities(entities: Entity[]): Entity[] {
@@ -343,22 +364,57 @@ export class App {
 
   move(screenX: number, screenY: number) {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
+    const actualPt = this.viewer.screenToWorldActual(screenX, screenY);
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
     const { x, y, snap } = snapped;
     this.lastWorldPt = { x, y, z: this.currentZ };
 
-    this.viewer.setCursor(x, y, this.currentZ);
+    // Determine actual world position of the snapped point
+    let worldX = actualPt.x;
+    let worldY = actualPt.y;
+    let worldZ = actualPt.z;
+    
+    const pos = this.viewer.camera.position;
+    const absX = Math.abs(pos.x);
+    const absY = Math.abs(pos.y);
+    const absZ = Math.abs(pos.z);
+    
+    if (absZ > absX && absZ > absY) {
+      // TOP or BOTTOM view
+      worldX = x;
+      worldY = y;
+    } else if (absY > absX && absY > absZ) {
+      // FRONT or BACK view
+      worldX = x;
+      worldZ = y; // mapped Y is world Z
+    } else if (absX > absY && absX > absZ) {
+      // LEFT or RIGHT view
+      worldY = x; // mapped X is world Y
+      worldZ = y; // mapped Y is world Z
+    }
+
+    this.viewer.setCursor(worldX, worldY, worldZ, this.viewer.camera.quaternion);
     this.viewer.setSnapMarker(snap);
     this.viewer.setZPreviewLine(x, y, this.currentZ);
 
     // Check for hover over selectable objects
     const selectableEntities = this.getSelectableEntities();
     const tolerance = 10 / this.viewer.camera.zoom;
-    const hoveredEntity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
+    let hoveredEntity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
+    if (hoveredEntity === null) {
+        const ndc = this.viewer.getNormalizedDeviceCoordinates(screenX, screenY);
+        hoveredEntity = Selection3DEngine.getHoveredSolid3D(
+            ndc,
+            this.viewer.camera,
+            this.viewer.scene,
+            this.doc,
+            this.getSolid3DSelectables()
+        );
+    }
     this.viewer.setCursorHover(!!hoveredEntity);
 
     if (this.cmd.active) {
-        this.viewer.setActivePointMarker(x, y);
+        this.viewer.setActivePointMarker(worldX, worldY, worldZ, this.viewer.camera.quaternion);
     } else {
         this.viewer.setActivePointMarker(null, null);
     }
@@ -369,7 +425,37 @@ export class App {
     }
 
     if (this.selectionStartPoint) {
-        this.viewer.setSelectionBox(this.selectionStartPoint, worldPt); // Box selection uses raw mouse
+        if (!this.selectionBoxEl) {
+            this.selectionBoxEl = document.createElement('div');
+            this.selectionBoxEl.style.position = 'absolute';
+            this.selectionBoxEl.style.pointerEvents = 'none';
+            this.selectionBoxEl.style.zIndex = '1000'; // Ensure it's on top
+            document.body.appendChild(this.selectionBoxEl);
+        }
+        
+        const x1 = this.selectionStartPoint.screenX !== undefined ? this.selectionStartPoint.screenX : screenX;
+        const y1 = this.selectionStartPoint.screenY !== undefined ? this.selectionStartPoint.screenY : screenY;
+        const x2 = screenX;
+        const y2 = screenY;
+        
+        const minX = Math.min(x1, x2);
+        const maxX = Math.max(x1, x2);
+        const minY = Math.min(y1, y2);
+        const maxY = Math.max(y1, y2);
+        
+        this.selectionBoxEl.style.left = `${minX}px`;
+        this.selectionBoxEl.style.top = `${minY}px`;
+        this.selectionBoxEl.style.width = `${maxX - minX}px`;
+        this.selectionBoxEl.style.height = `${maxY - minY}px`;
+        
+        const isCrossing = worldPt.x < this.selectionStartPoint.x;
+        if (isCrossing) {
+            this.selectionBoxEl.style.border = '1px dashed #55ff55';
+            this.selectionBoxEl.style.backgroundColor = 'rgba(0, 255, 0, 0.15)';
+        } else {
+            this.selectionBoxEl.style.border = '1px solid #5555ff';
+            this.selectionBoxEl.style.backgroundColor = 'rgba(0, 0, 255, 0.15)';
+        }
     }
 
     if (this.cmd.active && this.cmd.active.getPreview) {
@@ -402,7 +488,11 @@ export class App {
       if (lines) {
         const options = this.cmd.active.getOptions ? this.cmd.active.getOptions(this.doc.units) : [];
         const cmdName = this.cmd.active.constructor.name;
-        const showInput = !['LineCommand', 'CircleCommand', 'ArcCommand', 'EllipseCommand', 'HatchCommand', 'RectangCommand'].includes(cmdName);
+        const lastLine = lines[lines.length - 1];
+        const needsInput = !!(lastLine && lastLine.includes("(enter value)"));
+        const isSolidCmd = ['BoxCommand', 'CylinderCommand', 'ConeCommand', 'SphereCommand'].includes(cmdName);
+        
+        const showInput = isSolidCmd ? needsInput : !['LineCommand', 'CircleCommand', 'ArcCommand', 'EllipseCommand', 'HatchCommand', 'RectangCommand'].includes(cmdName);
         
         let controls: any[] | undefined = undefined;
         if (cmdName === 'HatchCommand') {
@@ -445,7 +535,7 @@ export class App {
       return;
     }
 
-    this.selectionStartPoint = worldPt;
+    this.selectionStartPoint = { x: worldPt.x, y: worldPt.y, screenX, screenY };
   }
 
   async pointerUp(screenX: number, screenY: number, isShift = false): Promise<CommandResponse | undefined> {
@@ -476,11 +566,21 @@ export class App {
         let found: Entity[] = [];
         const selectableEntities = this.getSelectableEntities();
 
+        let entities2D: Entity[] = [];
+        let entities3D: Entity[] = [];
+        const screenX1 = this.selectionStartPoint.screenX !== undefined ? this.selectionStartPoint.screenX : screenX;
+        const screenY1 = this.selectionStartPoint.screenY !== undefined ? this.selectionStartPoint.screenY : screenY;
+        const ndc1 = this.viewer.getNormalizedDeviceCoordinates(screenX1, screenY1);
+        const ndc2 = this.viewer.getNormalizedDeviceCoordinates(screenX, screenY);
+
         if (isCrossing) {
-            found = SelectionEngine.getEntitiesInCrossingSpatial(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, this.doc, selectableEntities);
+            entities2D = SelectionEngine.getEntitiesInCrossingSpatial(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, this.doc, selectableEntities);
+            entities3D = Selection3DEngine.getSolid3DsInCrossing(ndc1, ndc2, this.viewer.camera, this.getSolid3DSelectables());
         } else {
-            found = SelectionEngine.getEntitiesInWindowSpatial(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, this.doc, selectableEntities);
+            entities2D = SelectionEngine.getEntitiesInWindowSpatial(this.selectionStartPoint.x, this.selectionStartPoint.y, worldPt.x, worldPt.y, this.doc, selectableEntities);
+            entities3D = Selection3DEngine.getSolid3DsInWindow(ndc1, ndc2, this.viewer.camera, this.getSolid3DSelectables());
         }
+        found = [...entities2D, ...entities3D].filter((e, i, arr) => arr.findIndex(x => x.id === e.id) === i);
         
         for (const e of found) {
             this.selectedEntityIds.add(e.id);
@@ -496,7 +596,10 @@ export class App {
     }
 
     this.selectionStartPoint = null;
-    this.viewer.setSelectionBox(null);
+    if (this.selectionBoxEl) {
+        document.body.removeChild(this.selectionBoxEl);
+        this.selectionBoxEl = null;
+    }
     this.viewer.setHighlight(Array.from(this.selectedEntityIds));
     
     return result;
@@ -522,18 +625,48 @@ export class App {
             tolerance = 200 / this.viewer.camera.zoom;
         }
 
-        // Use original raw coordinate for single-click object selection (snapping is for geometry points)
-        const entity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
+        let entity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
+        if (entity === null) {
+            const ndc = this.viewer.getNormalizedDeviceCoordinates(screenX, screenY);
+            const solid3D = Selection3DEngine.getSolid3DAtCycling(
+                ndc,
+                worldPt.x, worldPt.y,
+                this.viewer.camera,
+                this.viewer.scene,
+                this.doc,
+                this.getSolid3DSelectables()
+            );
+            if (solid3D) entity = solid3D;
+        }
+
         if (entity) {
             if (isShift) {
-                if (this.selectedEntityIds.has(entity.id)) {
-                    this.selectedEntityIds.delete(entity.id);
+                if (entity instanceof Solid3D && this.selectionMode === 'OBJECT') {
+                    const allSolids = this.getSolid3DSelectables().filter((e): e is Solid3D => e instanceof Solid3D);
+                    const connected = Selection3DEngine.getConnectedSolid3Ds(entity, allSolids);
+                    const anySelected = connected.some(s => this.selectedEntityIds.has(s.id));
+                    
+                    if (anySelected) {
+                        connected.forEach(s => this.selectedEntityIds.delete(s.id));
+                    } else {
+                        connected.forEach(s => this.selectedEntityIds.add(s.id));
+                    }
                 } else {
-                    this.selectedEntityIds.add(entity.id);
+                    if (this.selectedEntityIds.has(entity.id)) {
+                        this.selectedEntityIds.delete(entity.id);
+                    } else {
+                        this.selectedEntityIds.add(entity.id);
+                    }
                 }
             } else {
                 this.selectedEntityIds.clear();
-                this.selectedEntityIds.add(entity.id);
+                if (entity instanceof Solid3D && this.selectionMode === 'OBJECT') {
+                    const allSolids = this.getSolid3DSelectables().filter((e): e is Solid3D => e instanceof Solid3D);
+                    const connected = Selection3DEngine.getConnectedSolid3Ds(entity, allSolids);
+                    connected.forEach(s => this.selectedEntityIds.add(s.id));
+                } else {
+                    this.selectedEntityIds.add(entity.id);
+                }
             }
 
             this.reportSelectionDimensions();
@@ -547,12 +680,15 @@ export class App {
             const isDimRadiusPick = (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand') && this.cmd.active?.step === 0;
             const isDimAngularPick = activeName === 'DimAngularCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
             const isListPick = activeName === 'ListCommand';
+            const isExtrudePick = activeName === 'ExtrudeCommand' && this.cmd.active?.step === 0;
+            const isRevolvePick = activeName === 'RevolveCommand' && this.cmd.active?.step === 0;
 
-            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isDimRadiusPick || isDimAngularPick || isListPick)) {       
-                if ((isDimRadiusPick || isDimAngularPick || isListPick) && 'setEntity' in this.cmd.active) {
+            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isDimRadiusPick || isDimAngularPick || isListPick || isExtrudePick || isRevolvePick)) {       
+                if ((isDimRadiusPick || isDimAngularPick || isListPick || isExtrudePick || isRevolvePick) && 'setEntity' in this.cmd.active) {
                   (this.cmd.active as unknown as HasSetEntity).setEntity(entity);
                 }
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);
+
                 if (res && typeof res === 'object' && ('action' in res) && (res.action === 'trim' || res.action === 'extend' || res.action === 'fillet' || res.action === 'chamfer' || res.action === 'break' || res.action === 'lengthen')) {
                     (res as CommandAction).pickPt = { x: worldPt.x, y: worldPt.y };
                 }
@@ -736,14 +872,14 @@ export class App {
     const linetype = layerObj ? layerObj.linetype : "CONTINUOUS";
 
     if (entity instanceof Line) {
-      this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id, layer, layerColor, isVisible, linetype);
+      this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id, layer, layerColor, isVisible, linetype, entity.elevation, entity.thickness);
     } else if (entity instanceof Circle) {
-      this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id, layer, layerColor, isVisible, linetype);
+      this.viewer.addCircle(entity.cx, entity.cy, entity.r, entity.id, layer, layerColor, isVisible, linetype, entity.elevation, entity.thickness);
     } else if (entity instanceof Arc) {
 
-      this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id, layer, layerColor, isVisible, linetype);
+      this.viewer.addArc(entity.cx, entity.cy, entity.r, entity.startAngle, entity.endAngle, entity.ccw, entity.id, layer, layerColor, isVisible, linetype, entity.elevation, entity.thickness);
     } else if (entity instanceof Point) {
-      this.viewer.addPoint(entity.x, entity.y, entity.id, layer, layerColor, isVisible);
+      this.viewer.addPoint(entity.x, entity.y, entity.id, layer, layerColor, isVisible, entity.elevation, entity.thickness);
     } else if (entity instanceof Polyline) {
       this.viewer.addPolyline(entity, layer, layerColor, isVisible, linetype);
     } else if (entity instanceof Text) {
@@ -752,7 +888,7 @@ export class App {
       this.viewer.addMText(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Solid) {
       this.viewer.addSolid(entity, layer, layerColor, isVisible);
-    } else if (entity.constructor.name === "Solid3D" || entity instanceof Solid3D) {
+    } else if ((entity as any).type === "Solid3D" || entity instanceof Solid3D) {
       this.viewer.addSolid3D(entity as Solid3D, layer, layerColor, isVisible);
     } else if (entity instanceof Donut) {
       this.viewer.addDonut(entity, layer, layerColor, isVisible);

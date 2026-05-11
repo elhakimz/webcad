@@ -72,7 +72,7 @@ export class Viewer {
     this.gridRenderer = new GridRenderer(this.scene);
     
     // Setup Orthographic Camera with dummy bounds, resize() will set them correctly
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1000)
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -10000, 10000)
     
     this.cursorRenderer = new CursorRenderer(this.scene, this.camera);
 

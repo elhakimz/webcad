@@ -28,6 +28,7 @@ import { TextCommand } from "../commands/TextCommand"
 import { MTextCommand } from "../commands/MTextCommand"
 import { TraceCommand } from "../commands/TraceCommand"
 import { SolidCommand } from "../commands/SolidCommand"
+import { ElevCommand } from "../commands/ElevCommand"
 import { HatchCommand } from "../commands/HatchCommand"
 import { SketchCommand } from "../commands/SketchCommand"
 import { ShapeCommand } from "../commands/ShapeCommand"
@@ -67,6 +68,9 @@ import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 import { UnitsConfig, Document } from "../model/Document"
 import { Entity } from "../model/Entity"
+import { ExtrudeCommand } from "../commands/ExtrudeCommand"
+import { RevolveCommand } from "../commands/RevolveCommand"
+
 
 type CommandFactory = (selection?: string[]) => Command | CommandResponse;
 
@@ -77,12 +81,16 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["ELLIPSE", () => new EllipseCommand()],
   ["SPLINE", () => new SplineCommand()],
   ["BOX", () => new BoxCommand()],
+  ["ELEV", () => new ElevCommand()],
   ["CYLINDER", () => new CylinderCommand()],
   ["SPHERE", () => new SphereCommand()],
   ["CONE", () => new ConeCommand()],
   ["TORUS", () => new TorusCommand()],
   ["FACETRES", () => new FacetresCommand()],
+  ["EXTRUDE", () => new ExtrudeCommand()],
+  ["REVOLVE", () => new RevolveCommand()],
   ["ID", () => new IdCommand()],
+
   ["DIST", () => new DistCommand()],
   ["AREA", () => new AreaCommand()],
   ["LIST", () => new ListCommand()],
@@ -218,7 +226,7 @@ export class CommandManager {
   }
 
   inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }, doc?: Document): CommandResponse | Promise<CommandResponse> | undefined {
-    const pt = CoordinateParser.parseCoordinate(text, units, this.lastPoint || undefined)
+    const pt = CoordinateParser.parseCoordinate(text, units, this.lastPoint || undefined, doc?.currentElevation || 0)
     if (pt) {
       return this.inputPoint(pt.x, pt.y, units, idGenerator, doc, pt.z)
     }

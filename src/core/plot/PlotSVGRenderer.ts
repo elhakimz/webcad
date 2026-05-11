@@ -179,7 +179,7 @@ export class PlotSVGRenderer {
 
     if (entity instanceof Text) {
       const p = toSVG(entity.x, entity.y);
-      const h = toLen((entity.height || 2.5) * 0.2);
+      const h = toLen(entity.height || 2.5);
       const angleDeg = -(entity.rotation || 0); // Text rotation is in degrees
       return `<text x="${p.x.toFixed(4)}" y="${p.y.toFixed(4)}"
                     font-size="${h.toFixed(4)}mm"
@@ -198,7 +198,7 @@ export class PlotSVGRenderer {
       const p2 = toSVG(entity.x2, entity.y2);
       const val = entity.computeValue();
       const text = val.toFixed(entity.style.precision || 2);
-      const h = toLen((entity.style.textHeight || 2.5) * 0.5);
+      const h = toLen(entity.style.textHeight || 2.5);
       
       let linesSVG = '';
       let textSVG = '';
@@ -239,7 +239,7 @@ export class PlotSVGRenderer {
           linesSVG += `\n` + createArrowSVG(pDim2, ux, uy);
           
           const mx = (pDim1.x + pDim2.x) / 2;
-          const my = pDim1.y - 1; // Offset text slightly above the line
+          const my = pDim1.y - h * 0.5; // Offset text based on height
           
           textSVG = `<text x="${mx.toFixed(4)}" y="${my.toFixed(4)}"
                                  font-size="${h.toFixed(4)}mm" font-family="Arial"
@@ -263,7 +263,7 @@ export class PlotSVGRenderer {
           linesSVG += `\n` + createArrowSVG(pDim1, -ux, -uy);
           linesSVG += `\n` + createArrowSVG(pDim2, ux, uy);
           
-          const mx = pDim1.x - 1; // Offset text slightly to the left
+          const mx = pDim1.x - h * 0.5; // Offset text based on height
           const my = (pDim1.y + pDim2.y) / 2;
           
           textSVG = `<text x="${mx.toFixed(4)}" y="${my.toFixed(4)}"
@@ -519,7 +519,7 @@ export class PlotSVGRenderer {
     color: string,
   ): string {
     const parts: string[] = [];
-    const h = toLen((entity.textHeight || 2.5) * 0.2);
+    const h = toLen(entity.textHeight || 2.5);
 
     const cx = entity.bounds.x + entity.width / 2;
     const cy = entity.bounds.y + entity.height / 2;

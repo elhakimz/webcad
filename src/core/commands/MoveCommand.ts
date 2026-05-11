@@ -1,9 +1,9 @@
 import { Command, CommandResponse, PreviewObject } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 
 export class MoveCommand implements Command {
   step = 0
-  basePoint = { x: 0, y: 0 }
+  basePoint = { x: 0, y: 0, z: 0 }
   targetIds: string[] = []
 
   constructor(ids?: string[]) {
@@ -22,18 +22,19 @@ export class MoveCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig, _doc?: IDocument, z?: number): CommandResponse {
     if (this.step === 1) {
-      this.basePoint = { x, y }
+      this.basePoint = { x, y, z: z || 0 }
       this.step = 2
       return "Second point:"
     } else if (this.step === 2) {
       const dx = x - this.basePoint.x
       const dy = y - this.basePoint.y
+      const dz = (z || 0) - this.basePoint.z;
       const ids = [...this.targetIds];
       this.step = 0;
       this.targetIds = [];
-      return { action: "move", ids, dx, dy } as CommandResponse
+      return { action: "move", ids, dx, dy, dz } as CommandResponse
     }
     return this.getPrompt();
   }

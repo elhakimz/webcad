@@ -58,6 +58,7 @@ import { InquiryHandler } from "./core/engine/handlers/InquiryHandler"
 import { AppContext } from "./core/engine/handlers/types"
 import { DraftingState } from "./core/engine/DraftingState"
 import { HasBasePoint, HasUpdateSketch, HasStartSketch, HasFinishSketch, HasSelectedIds } from "./core/commands/types"
+import { GizmoManager } from "./core/engine/GizmoManager"
 
 export class App {
   viewer:Viewer
@@ -77,6 +78,7 @@ export class App {
   private dispatcher: ResultDispatcher;
   private lastMode3d: boolean = false;
   currentZ: number = 0;
+  public gizmoManager!: GizmoManager;
 
   setPromptUpdate(updateFn: () => void) {
     this.promptUpdate = updateFn;
@@ -100,6 +102,9 @@ export class App {
     this.viewer = viewer
     this.cmd = new CommandManager()
     this.doc = new Document()
+    
+    this.gizmoManager = new GizmoManager(this.viewer, this);
+    this.viewer.onBeforeRender = () => this.gizmoManager.update();
 
     // Add lighting for 3D meshes
     const ambient = new THREE.AmbientLight(0xffffff, 0.5);
@@ -601,6 +606,33 @@ export class App {
         this.selectionBoxEl = null;
     }
     this.viewer.setHighlight(Array.from(this.selectedEntityIds));
+    
+    // Attach/detach gizmo based on selection
+    if (this.selectedEntityIds.size === 1) {
+      const id = Array.from(this.selectedEntityIds)[0];
+      const entity = this.doc.getEntity(id);
+      if (entity instanceof Solid3D) {
+        let obj = this.viewer.scene.getObjectByName(id);
+        if (!obj) {
+          // Fallback: traverse scene to find object with matching name
+          this.viewer.scene.traverse(child => {
+            if (child.name === id) obj = child;
+          });
+        }
+        
+        console.log("Gizmo attachment - entity id:", id, "found obj:", obj);
+        
+        if (obj) {
+          this.gizmoManager.attachToObject(obj, entity);
+        } else {
+          this.gizmoManager.detach();
+        }
+      } else {
+        this.gizmoManager.detach();
+      }
+    } else {
+      this.gizmoManager.detach();
+    }
     
     return result;
   }

@@ -43,8 +43,9 @@ export class CursorRenderer {
     ]);
 
     const mat = new THREE.LineBasicMaterial({ color: cursorColor, depthTest: false, transparent: true });
-    this.cursorGroup.add(new THREE.Line(hGeo, mat));
-    this.cursorGroup.add(new THREE.Line(vGeo, mat));
+    // Full-screen crosshair removed as requested by user
+    // this.cursorGroup.add(new THREE.Line(hGeo, mat));
+    // this.cursorGroup.add(new THREE.Line(vGeo, mat));
 
     // Add static origin axes
     const originColor = 0x222222;
@@ -61,8 +62,11 @@ export class CursorRenderer {
     this.scene.add(new THREE.Line(oVGeo, oMat));
   }
 
-  setCursor(x: number, y: number, z: number = 0) {
+  setCursor(x: number, y: number, z: number = 0, quaternion?: THREE.Quaternion) {
     this.cursorGroup.position.set(x, y, z);
+    if (quaternion) {
+      this.cursorGroup.quaternion.copy(quaternion);
+    }
 
     while (this.pickboxGroup.children.length > 0) {
       const obj = this.pickboxGroup.children[0];
@@ -86,7 +90,7 @@ export class CursorRenderer {
     this.pickboxGroup.add(new THREE.Line(geo, mat));
   }
 
-  setActivePointMarker(x: number | null, y: number | null) {
+  setActivePointMarker(x: number | null, y: number | null, z: number = 0.1, quaternion?: THREE.Quaternion) {
     while (this.activePointMarkerGroup.children.length > 0) {
       const obj = this.activePointMarkerGroup.children[0];
       this.activePointMarkerGroup.remove(obj);
@@ -99,7 +103,7 @@ export class CursorRenderer {
         }
       }
     }
-
+ 
     if (x !== null && y !== null) {
       const size = 10 / this.camera.zoom;
       const positions = new Float32Array([
@@ -112,7 +116,10 @@ export class CursorRenderer {
       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
       const marker = new THREE.LineSegments(geo, mat);
-      marker.position.set(x, y, 0.1);
+      marker.position.set(x, y, z);
+      if (quaternion) {
+        marker.quaternion.copy(quaternion);
+      }
       this.activePointMarkerGroup.add(marker);
     }
   }

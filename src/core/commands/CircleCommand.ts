@@ -1,7 +1,7 @@
 import { Circle } from "../model/Circle"
 import { Entity } from "../model/Entity"
 import { Command, CommandResponse } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 
 export class CircleCommand implements Command {
@@ -10,7 +10,7 @@ export class CircleCommand implements Command {
   cy = 0;
   isDiameterMode = false;
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse {
     if (this.step === 0) {
       this.cx = x;
       this.cy = y;
@@ -21,11 +21,11 @@ export class CircleCommand implements Command {
     } else {
       const dist = Math.sqrt(Math.pow(x - this.cx, 2) + Math.pow(y - this.cy, 2));
       const r = this.isDiameterMode ? dist / 2 : dist;
-      return this.finish(r, id, units);
+      return this.finish(r, id, units, doc);
     }
   }
 
-  onInput(text: string, id: string, units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
+  onInput(text: string, id: string, units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     if (this.step === 1 || this.step === 2) {
       if (val === "D" || val === "DIAMETER") {
@@ -42,15 +42,15 @@ export class CircleCommand implements Command {
 
       const num = parseFloat(text);
       if (!isNaN(num) && num > 0) {
-        return this.finish(this.isDiameterMode ? num / 2 : num, id, units);
+        return this.finish(this.isDiameterMode ? num / 2 : num, id, units, doc);
       }
       return this.isDiameterMode ? "Invalid diameter. Diameter:" : "Invalid radius or option. Diameter/<Radius>:";
     }
   }
 
-  private finish(r: number, id: string, units: UnitsConfig) {
+  private finish(r: number, id: string, units: UnitsConfig, doc?: IDocument) {
     const echo = this.isDiameterMode ? FormatUtils.formatDiameter(r * 2, units) : FormatUtils.formatRadius(r, units);
-    const circle = new Circle(id, this.cx, this.cy, r);
+    const circle = new Circle(id, this.cx, this.cy, r, doc?.currentElevation || 0, doc?.currentThickness || 0);
     this.step = 0;
     this.isDiameterMode = false;
     (circle as Entity)._echo = echo;

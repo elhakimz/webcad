@@ -3,6 +3,7 @@ import { UnitsConfig } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 import { Solid3D } from "../model/Solid3D";
 import { OpenCascadeService } from "../io/OpenCascadeService";
+import { Circle } from "../model/Circle";
 import * as THREE from "three";
 
 export class CylinderCommand implements Command {
@@ -89,6 +90,37 @@ export class CylinderCommand implements Command {
   }
 
   getPreview(x: number, y: number, units: UnitsConfig) {
+    if (this.step === 1 && this.center) {
+      const dx = x - this.center.x;
+      const dy = y - this.center.y;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      if (r > 0) {
+        return new Circle("preview", this.center.x, this.center.y, r);
+      }
+    }
+    return null;
+  }
+
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 0) {
+      return [
+        `X: ${FormatUtils.formatDistance(x, units)}`,
+        `Y: ${FormatUtils.formatDistance(y, units)}`
+      ];
+    }
+    if (this.step === 1 && this.center) {
+      const dx = x - this.center.x;
+      const dy = y - this.center.y;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      return [
+        `R: (${FormatUtils.formatDistance(r, units)})`
+      ];
+    }
+    if (this.step === 2) {
+      return [
+        `H: (enter value)`
+      ];
+    }
     return null;
   }
 

@@ -3,6 +3,12 @@ import { Entity, BoundingBox } from "./Entity";
 export class Solid3D extends Entity {
   positions: number[];
   indices: number[];
+  position: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
+  rotation: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
+
+  get type(): string {
+    return "Solid3D";
+  }
 
   constructor(id: string, positions: number[], indices: number[]) {
     super(id);
@@ -14,6 +20,14 @@ export class Solid3D extends Entity {
     for (let i = 0; i < this.positions.length; i += 3) {
       this.positions[i] += dx;
       this.positions[i + 1] += dy;
+    }
+  }
+
+  move3D(dx: number, dy: number, dz: number) {
+    for (let i = 0; i < this.positions.length; i += 3) {
+      this.positions[i] += dx;
+      this.positions[i + 1] += dy;
+      this.positions[i + 2] += dz;
     }
   }
 
@@ -75,10 +89,33 @@ export class Solid3D extends Entity {
     return { minX, minY, maxX, maxY };
   }
 
+  hitTest(px: number, py: number, tolerance: number): boolean {
+    return false; // Signal: use 3D raycaster, not 2D geometric test
+  }
+
+  getBoundingBox3D() {
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let i = 0; i < this.positions.length; i += 3) {
+      const x = this.positions[i];
+      const y = this.positions[i + 1];
+      const z = this.positions[i + 2];
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
+    }
+    return { minX, minY, minZ, maxX, maxY, maxZ };
+  }
+
   clone(newId: string): Solid3D {
     const copy = new Solid3D(newId, [...this.positions], [...this.indices]);
     copy.layer = this.layer;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
+    copy.position = { ...this.position };
+    copy.rotation = { ...this.rotation };
     return copy;
   }
 }

@@ -18,6 +18,8 @@ export interface IDocument {
   facetres: number;
   layers: LayerManager;
   blocks: BlockManager;
+  currentElevation: number;
+  currentThickness: number;
   
   clear(): void;
   getNextId(prefix: string): string;
@@ -44,7 +46,9 @@ export class Document implements IDocument {
   units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 }
   dimtoh: boolean = false;
   dimtad: boolean = false;
-  facetres: number = 0.5;
+  facetres: number = 0.1;
+  currentElevation: number = 0;
+  currentThickness: number = 0;
   private spatialIndex: Quadtree
   private idCounters: Map<string, number> = new Map()
   private removalsCount = 0

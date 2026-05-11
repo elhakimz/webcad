@@ -162,40 +162,24 @@ export class DazViewControl {
   }
 
   private onArrowClick(direction: string) {
-    let nextView = '';
-    const current = this.currentView;
-
-    if (current === 'FRONT') {
-      if (direction === 'top') nextView = 'FRONT_TOP';
-      else if (direction === 'bottom') nextView = 'FRONT_BOTTOM';
-      else if (direction === 'left') nextView = 'FRONT_LEFT';
-      else if (direction === 'right') nextView = 'FRONT_RIGHT';
-    } else if (current === 'BACK') {
-      if (direction === 'top') nextView = 'BACK_TOP';
-      else if (direction === 'bottom') nextView = 'BACK_BOTTOM';
-      else if (direction === 'left') nextView = 'BACK_LEFT';
-      else if (direction === 'right') nextView = 'BACK_RIGHT';
-    } else if (current === 'TOP') {
-      if (direction === 'top') nextView = 'BACK_TOP';
-      else if (direction === 'bottom') nextView = 'FRONT_TOP';
-      else if (direction === 'left') nextView = 'TOP_LEFT';
-      else if (direction === 'right') nextView = 'TOP_RIGHT';
-    } else {
-      // Fallback: just use default perspective if we are already in an edge view or unknown
-      nextView = 'PERSPECTIVE';
+    const step = 15; // Equivalent to 15 pixels of mouse movement
+    
+    if (direction === 'left') {
+      this.viewer.orbit(-step, 0);
+    } else if (direction === 'right') {
+      this.viewer.orbit(step, 0);
+    } else if (direction === 'top') {
+      this.viewer.orbit(0, step);
+    } else if (direction === 'bottom') {
+      this.viewer.orbit(0, -step);
     }
 
     this.rotateCubeToFace('PERSPECTIVE');
-    this.viewer.setCameraView(nextView);
-    this.currentView = nextView;
+    this.currentView = 'PERSPECTIVE';
     
     // Update dropdown
     if (this.viewSelectorEl) {
-      if (nextView.includes('_')) {
-        this.viewSelectorEl.value = 'PERSPECTIVE';
-      } else {
-        this.viewSelectorEl.value = nextView;
-      }
+      this.viewSelectorEl.value = 'PERSPECTIVE';
     }
   }
 

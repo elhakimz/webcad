@@ -15,9 +15,13 @@ export class MoveHandler implements ActionHandler {
         const entity = doc.getEntity(id);
         if (entity) {
           const before = entity.clone(entity.id);
-          entity.move(action.dx!, action.dy!);
+          if (action.dz !== undefined && 'move3D' in entity && typeof (entity as any).move3D === 'function') {
+            (entity as any).move3D(action.dx!, action.dy!, action.dz!);
+          } else {
+            entity.move(action.dx!, action.dy!);
+          }
           doc.recordTransform(before, entity);
-          viewer.moveObject(id, action.dx!, action.dy!);
+          viewer.moveObject(id, action.dx!, action.dy!, action.dz);
         }
       });
       this.cleanup(context);

@@ -8,7 +8,7 @@ export class CoordinateParser {
    * - Relative Cartesian: "@dx,dy"
    * - Relative Polar: "@dist<angle"
    */
-  static parseCoordinate(text: string, units: UnitsConfig, lastPoint?: { x: number; y: number; z?: number }): { x: number; y: number; z: number } | null {
+  static parseCoordinate(text: string, units: UnitsConfig, lastPoint?: { x: number; y: number; z?: number }, elevation = 0): { x: number; y: number; z: number } | null {
     text = text.trim();
     if (!text) return null;
 
@@ -16,21 +16,24 @@ export class CoordinateParser {
     const content = isRelative ? text.substring(1) : text;
 
     if (content.includes('<')) {
-      // Relative Polar: @dist<angle
+      // Relative Polar: @dist<angle or @dist<angle,z
       if (!isRelative || !lastPoint) return null;
       const parts = content.split('<');
       if (parts.length !== 2) return null;
 
       const dist = this.parseValueWithUnits(parts[0], units);
-      const angleDeg = parseFloat(parts[1]);
+      
+      const angleAndZ = parts[1].split(',');
+      const angleDeg = parseFloat(angleAndZ[0]);
+      const zVal = angleAndZ.length === 2 ? this.parseValueWithUnits(angleAndZ[1], units) : 0;
 
-      if (isNaN(dist) || isNaN(angleDeg)) return null;
+      if (isNaN(dist) || isNaN(angleDeg) || isNaN(zVal)) return null;
 
       const angleRad = (angleDeg * Math.PI) / 180;
       return {
         x: lastPoint.x + dist * Math.cos(angleRad),
         y: lastPoint.y + dist * Math.sin(angleRad),
-        z: lastPoint.z || 0,
+        z: (lastPoint.z || 0) + zVal,
       };
     } else if (content.includes(',')) {
       // Absolute or Relative Cartesian
@@ -39,18 +42,19 @@ export class CoordinateParser {
 
       const xVal = this.parseValueWithUnits(parts[0], units);
       const yVal = this.parseValueWithUnits(parts[1], units);
-      const zVal = parts.length === 3 ? this.parseValueWithUnits(parts[2], units) : 0;
-
-      if (isNaN(xVal) || isNaN(yVal) || isNaN(zVal)) return null;
 
       if (isRelative) {
         if (!lastPoint) return null;
+        const zVal = parts.length === 3 ? this.parseValueWithUnits(parts[2], units) : 0;
+        if (isNaN(xVal) || isNaN(yVal) || isNaN(zVal)) return null;
         return {
           x: lastPoint.x + xVal,
           y: lastPoint.y + yVal,
           z: (lastPoint.z || 0) + zVal,
         };
       } else {
+        const zVal = parts.length === 3 ? this.parseValueWithUnits(parts[2], units) : elevation;
+        if (isNaN(xVal) || isNaN(yVal) || isNaN(zVal)) return null;
         return { x: xVal, y: yVal, z: zVal };
       }
     }

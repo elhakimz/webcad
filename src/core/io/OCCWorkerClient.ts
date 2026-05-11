@@ -52,6 +52,15 @@ export class OCCWorkerClient {
     return this.send('createTorus', { x, y, z, r1, r2, deflection });
   }
 
+  createExtrude(points: {x: number, y: number, z: number}[], height: number, thickness?: number, deflection?: number, isClosed?: boolean): Promise<{ positions: number[], indices: number[] }> {
+    return this.send('createExtrude', { points, height, thickness, deflection, isClosed });
+  }
+
+  createRevolve(points: {x: number, y: number, z: number}[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean): Promise<{ positions: number[], indices: number[] }> {
+    return this.send('createRevolve', { points, axisPoint, axisDir, angle, thickness, deflection, isClosed });
+  }
+
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private send(type: string, payload: any): Promise<any> {
     const id = this.messageId++;

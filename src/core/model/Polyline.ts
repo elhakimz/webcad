@@ -13,10 +13,12 @@ export class Polyline extends Entity {
   closed: boolean;
   center?: { x: number; y: number };
 
-  constructor(id: string, vertices: PolylineVertex[], closed: boolean = false) {
+  constructor(id: string, vertices: PolylineVertex[], closed: boolean = false, elevation = 0, thickness = 0) {
     super(id);
     this.vertices = vertices;
     this.closed = closed;
+    this.elevation = elevation;
+    this.thickness = thickness;
   }
 
   move(dx: number, dy: number) {
@@ -84,7 +86,7 @@ export class Polyline extends Entity {
   }
 
   clone(newId: string): Polyline {
-    const copy = new Polyline(newId, this.vertices.map(v => ({ ...v })), this.closed);
+    const copy = new Polyline(newId, this.vertices.map(v => ({ ...v })), this.closed, this.elevation, this.thickness);
     copy.layer = this.layer;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     if (this.center) {

@@ -6,10 +6,12 @@ export class Point extends Entity {
   x: number;
   y: number;
 
-  constructor(id: string, x: number, y: number) {
+  constructor(id: string, x: number, y: number, elevation = 0, thickness = 0) {
     super(id);
     this.x = x;
     this.y = y;
+    this.elevation = elevation;
+    this.thickness = thickness;
   }
 
   move(dx: number, dy: number) {
@@ -44,7 +46,7 @@ export class Point extends Entity {
   }
 
   clone(newId: string): Point {
-    const copy = new Point(newId, this.x, this.y);
+    const copy = new Point(newId, this.x, this.y, this.elevation, this.thickness);
     copy.layer = this.layer;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;

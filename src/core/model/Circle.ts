@@ -7,11 +7,13 @@ export class Circle extends Entity {
   cy: number;
   r: number;
 
-  constructor(id: string, cx: number, cy: number, r: number) {
+  constructor(id: string, cx: number, cy: number, r: number, elevation: number = 0, thickness: number = 0) {
     super(id)
     this.cx = cx;
     this.cy = cy;
     this.r = r;
+    this.elevation = elevation;
+    this.thickness = thickness;
   }
 
   move(dx: number, dy: number) {
@@ -47,7 +49,7 @@ export class Circle extends Entity {
   }
 
   clone(newId: string): Circle {
-    const copy = new Circle(newId, this.cx, this.cy, this.r);
+    const copy = new Circle(newId, this.cx, this.cy, this.r, this.elevation, this.thickness);
     copy.layer = this.layer;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;

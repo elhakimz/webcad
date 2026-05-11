@@ -13,6 +13,8 @@ export abstract class Entity {
   layer: string = "0"
   properties: Record<string, unknown> = {}
   _echo?: string;
+  elevation: number = 0;
+  thickness: number = 0;
 
   constructor(id: string) {
     this.id = id

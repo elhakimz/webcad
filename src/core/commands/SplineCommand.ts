@@ -1,6 +1,6 @@
 import { Spline } from "../model/Spline";
 import { Command, CommandResponse, PreviewObject } from "./types";
-import { UnitsConfig } from "../model/Document";
+import { UnitsConfig, IDocument } from "../model/Document";
 import { Point } from "../engine/MathUtils";
 
 export class SplineCommand implements Command {
@@ -17,14 +17,14 @@ export class SplineCommand implements Command {
     return `Point ${this.step} specified.`;
   }
 
-  onInput(text: string, id: string, _units: UnitsConfig): CommandResponse | undefined {
+  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
     const t = text.trim().toUpperCase();
     if (t === "" || t === "ENTER") {
       if (this.controlPoints.length < 4) {
         return "Minimum 4 points required for cubic spline.";
       }
       const knots = this.generateKnots();
-      const spline = new Spline(id, this.controlPoints, this.degree, knots);
+      const spline = new Spline(id, this.controlPoints, this.degree, knots, false, doc?.currentElevation || 0, doc?.currentThickness || 0);
       this.reset();
       return spline;
     }

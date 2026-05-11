@@ -3,6 +3,7 @@ import { UnitsConfig } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 import { Solid3D } from "../model/Solid3D";
 import { OpenCascadeService } from "../io/OpenCascadeService";
+import { Polyline } from "../model/Polyline";
 
 export class BoxCommand implements Command {
   step = 0;
@@ -42,14 +43,14 @@ export class BoxCommand implements Command {
       const facetres = doc ? doc.facetres : 5.0;
       const deflection = 0.1 / facetres;
       
-      return this.occService.createBox(minX, minY, minZ, dx, dy, dz, deflection).then((geometry) => {
-        const positions = Array.from(geometry.getAttribute('position').array);
-        const indices = Array.from(geometry.getIndex()?.array || []);
+      return this.occService.createBox(minX, minY, minZ, dx, dy, dz, deflection).then((geometry: any) => {
+        const positions = Array.from(geometry.getAttribute('position').array) as number[];
+        const indices = Array.from(geometry.getIndex()?.array || []) as number[];
         
         const solid = new Solid3D(id, positions, indices);
         this.step = 0; // Reset
         return solid;
-      }).catch((err) => {
+      }).catch((err: any) => {
         this.step = 0;
         return `Error creating box: ${err.message || err.toString()}`;
       });
@@ -84,14 +85,14 @@ export class BoxCommand implements Command {
       const facetres = doc ? doc.facetres : 5.0;
       const deflection = 0.1 / facetres;
 
-      return this.occService.createBox(minX, minY, actualMinZ, dx, dy, dz, deflection).then((geometry) => {
-        const positions = Array.from(geometry.getAttribute('position').array);
-        const indices = Array.from(geometry.getIndex()?.array || []);
+      return this.occService.createBox(minX, minY, actualMinZ, dx, dy, dz, deflection).then((geometry: any) => {
+        const positions = Array.from(geometry.getAttribute('position').array) as number[];
+        const indices = Array.from(geometry.getIndex()?.array || []) as number[];
         
         const solid = new Solid3D(id, positions, indices);
         this.step = 0; // Reset
         return solid;
-      }).catch((err) => {
+      }).catch((err: any) => {
         this.step = 0;
         return `Error creating box: ${err.message || err.toString()}`;
       });
@@ -99,6 +100,50 @@ export class BoxCommand implements Command {
   }
 
   getPreview(x: number, y: number, units: UnitsConfig) {
+    if (this.step === 1 && this.p1) {
+      const vertices = [
+        { x: this.p1.x, y: this.p1.y, bulge: 0 },
+        { x: x, y: this.p1.y, bulge: 0 },
+        { x: x, y: y, bulge: 0 },
+        { x: this.p1.x, y: y, bulge: 0 }
+      ];
+      return new Polyline("preview", vertices, true);
+    }
+    if (this.step === 2 && this.p1) {
+      // Height step, return the base rectangle
+      const vertices = [
+        { x: this.p1.x, y: this.p1.y, bulge: 0 },
+        { x: this.p2!.x, y: this.p1.y, bulge: 0 },
+        { x: this.p2!.x, y: this.p2!.y, bulge: 0 },
+        { x: this.p1.x, y: this.p2!.y, bulge: 0 }
+      ];
+      return new Polyline("preview", vertices, true);
+    }
+    return null;
+  }
+
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 0) {
+      return [
+        `X: ${FormatUtils.formatDistance(x, units)}`,
+        `Y: ${FormatUtils.formatDistance(y, units)}`
+      ];
+    }
+    if (this.step === 1 && this.p1) {
+      const dx = x - this.p1.x;
+      const dy = y - this.p1.y;
+      return [
+        `X: ${FormatUtils.formatDistance(x, units)}`,
+        `Y: ${FormatUtils.formatDistance(y, units)}`,
+        `DX: ${FormatUtils.formatDistance(dx, units)}`,
+        `DY: ${FormatUtils.formatDistance(dy, units)}`
+      ];
+    }
+    if (this.step === 2) {
+      return [
+        `H: (enter value)`
+      ];
+    }
     return null;
   }
 

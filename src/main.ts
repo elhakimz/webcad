@@ -9,7 +9,7 @@ import { DisplayRibbonBar } from "./ui/DisplayRibbonBar"
 import { DazViewControl } from "./ui/DazViewControl"
 import { Menu } from "./ui/Menu"
 import { MainMenuScreen } from "./ui/MainMenuScreen"
-import { OpenCascadeService } from "./core/io/OpenCascadeService"
+import { OpenCascadeService } from "./core/io/OpenCascadeService.js"
 import { FloatingToolbar } from "./ui/FloatingToolbar"
 import { DockingManager } from "./ui/DockingManager"
 import { ToolWindowBar } from "./ui/ToolWindowBar"
@@ -18,6 +18,7 @@ import { LayerWindow } from "./ui/LayerWindow"
 import { DimToolbar } from "./ui/DimToolbar"
 import { EditToolbar } from "./ui/EditToolbar"
 import { InquiryToolbar } from "./ui/InquiryToolbar"
+import { SolidToolbar } from "./ui/SolidToolbar"
 import { FileToolWindow } from "./ui/FileToolWindow"
 
 const canvas = document.getElementById("c") as HTMLCanvasElement
@@ -180,6 +181,16 @@ const inquiryToolbar = new InquiryToolbar(async (cmd) => {
   updatePrompt()
 }, dockingManager)
 
+const solidToolbar = new SolidToolbar(async (cmd) => {
+  cmdLine.print(`Command: ${cmd}`)
+  const res = await app.execute(cmd)
+  if (typeof res === 'string') {
+    cmdLine.print(res)
+  }
+  cmdLine.focus()
+  updatePrompt()
+}, dockingManager)
+
 const fileToolbar = new ToolWindow("file", "File Operations")
 new FileToolWindow(fileToolbar, app)
 mainArea.insertBefore(fileToolbar.getElement(), toolWindowBar.getElement().nextSibling);
@@ -207,6 +218,7 @@ const mainMenu = new MainMenuScreen(async (filename?: string) => {
   dimToolbar.show();
   editToolbar.show();
   inquiryToolbar.show();
+  solidToolbar.show();
   
   if (filename) {
     // Option 2: Load existing
@@ -235,7 +247,7 @@ OpenCascadeService.getInstance().init()
     mainMenu.setStatus("");
     mainMenu.setEnabled(true);
   })
-  .catch((err) => {
+  .catch((err: any) => {
     mainMenu.setStatus("Failed to load CAD Kernel.");
     console.error(err);
   });
@@ -509,6 +521,18 @@ window.addEventListener('contextmenu', (e) => {
 
 // Support clicking on command bar to define points when a command is active
 window.addEventListener("pointerdown", (e) => {
+  if (e.shiftKey && e.button === 2) {
+    const selectedIds = Array.from(app.selectedEntityIds);
+    if (selectedIds.length > 0) {
+      const center = viewer.getCenterOfObjects(selectedIds);
+      if (center) {
+        viewer.target.copy(center);
+      }
+    } else {
+      viewer.target.set(0, 0, 0);
+    }
+  }
+
   const target = e.target as HTMLElement;
   const isCanvas = target === canvas;
   const isCmdArea = document.getElementById('command-area')?.contains(target);

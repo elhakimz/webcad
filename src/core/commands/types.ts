@@ -36,6 +36,7 @@ export type CommandAction = {
   entities?: Entity[];
   dx?: number;
   dy?: number;
+  dz?: number;
   baseX?: number;
   baseY?: number;
   basePoint?: { x: number; y: number };

@@ -1,6 +1,6 @@
 import { Polyline, PolylineVertex } from "../model/Polyline"
 import { Command, CommandResponse, PreviewObject } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 import { Point } from "../engine/MathUtils"
 
@@ -12,7 +12,7 @@ export class PolylineCommand implements Command {
   private entityId: string | null = null;
   private currentDirection: { x: number, y: number } | null = null;
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse {
     if (this.step === 0) {
       this.entityId = id;
       this.vertices = [{ x, y, bulge: 0 }]
@@ -42,23 +42,23 @@ export class PolylineCommand implements Command {
       }
 
       this.vertices.push(v)
-      const poly = new Polyline(this.entityId || id, [...this.vertices], this.closed)
+      const poly = new Polyline(this.entityId || id, [...this.vertices], this.closed, doc?.currentElevation || 0, doc?.currentThickness || 0)
       return poly
     }
   }
 
-  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
+  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     const currentId = this.entityId || id;
     if (val === "C" || val === "CLOSE") {
       this.closed = true
-      const poly = new Polyline(currentId, [...this.vertices], true)
+      const poly = new Polyline(currentId, [...this.vertices], true, doc?.currentElevation || 0, doc?.currentThickness || 0)
       return { action: "close", entity: poly } as CommandResponse;
     }
     if (val === "U" || val === "UNDO") {
       if (this.vertices.length > 1) {
         this.vertices.pop()
-        return new Polyline(currentId, [...this.vertices], false)
+        return new Polyline(currentId, [...this.vertices], false, doc?.currentElevation || 0, doc?.currentThickness || 0)
       }
       return "Nothing to undo. PLINE specify start point:";
     }
@@ -72,7 +72,7 @@ export class PolylineCommand implements Command {
     }
     if (val === "") {
         if (this.vertices.length > 1) {
-            const poly = new Polyline(currentId, [...this.vertices], false)
+            const poly = new Polyline(currentId, [...this.vertices], false, doc?.currentElevation || 0, doc?.currentThickness || 0)
             return { action: "close", entity: poly } as CommandResponse;
         }
         return { action: "close" } as CommandResponse;

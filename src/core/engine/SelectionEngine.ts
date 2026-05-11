@@ -9,6 +9,7 @@ import { Solid } from "../model/Solid";
 import { Ellipse } from "../model/Ellipse";
 import { Dimension } from "../model/Dimension";
 import { Spline } from "../model/Spline";
+import { Solid3D } from "../model/Solid3D";
 import { IDocument } from "../model/Document";
 import * as MathUtils from "./MathUtils";
 import { bulgeToArc } from "./MathUtils";
@@ -231,6 +232,11 @@ export class SelectionEngine {
   private static isEntityIntersectingBox(entity: Entity, minX: number, minY: number, maxX: number, maxY: number): boolean {
     const box = entity.getBoundingBox();
     if (box.minX >= minX && box.maxX <= maxX && box.minY >= minY && box.maxY <= maxY) return true;
+
+    if (entity instanceof Solid3D) {
+      const box = entity.getBoundingBox(); // XY projection
+      return !(box.maxX < minX || box.minX > maxX || box.maxY < minY || box.minY > maxY);
+    }
 
     if (entity instanceof Line) return this.isLineIntersectingBox(entity.x1, entity.y1, entity.x2, entity.y2, minX, minY, maxX, maxY);
     if (entity instanceof Circle) return this.isCircleIntersectingBox(entity.cx, entity.cy, entity.r, minX, minY, maxX, maxY);

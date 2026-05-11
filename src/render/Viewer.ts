@@ -1049,6 +1049,12 @@ export class Viewer {
     if (entity.id) obj.name = entity.id;
     if (layer) obj.userData = { ...obj.userData, layer };
     obj.visible = isVisible;
+    
+    // Apply entity's persisted position and rotation on top of center
+    obj.position.add(new THREE.Vector3(entity.position.x, entity.position.y, entity.position.z));
+    const euler = new THREE.Euler(entity.rotation.x, entity.rotation.y, entity.rotation.z);
+    obj.quaternion.setFromEuler(euler);
+    
     this.scene.add(obj);
   }
 
@@ -1058,6 +1064,14 @@ export class Viewer {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(entity.positions, 3));
     geometry.setIndex(entity.indices);
     geometry.computeVertexNormals();
+    
+    // Compute bounding box and center
+    geometry.computeBoundingBox();
+    const center = geometry.boundingBox!.getCenter(new THREE.Vector3());
+    
+    // Translate geometry to be centered at (0,0,0) locally
+    geometry.translate(-center.x, -center.y, -center.z);
+    
     const material = this.shadingMode === 'WIREFRAME' 
       ? new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, wireframe: true })
       : new THREE.MeshPhongMaterial({ color, side: THREE.DoubleSide, wireframe: false });
@@ -1074,6 +1088,9 @@ export class Viewer {
     group.add(mesh);
     group.add(line);
     group.userData = { type: 'Solid3D' };
+    
+    // Set group position to world center
+    group.position.copy(center);
     
     return group;
   }
@@ -2220,12 +2237,29 @@ export class Viewer {
     }
   }
 
-  moveObject(id: string, dx: number, dy: number) {
+  moveObject(id: string, dx: number, dy: number, dz: number = 0) {
     const obj = this.scene.getObjectByName(id);
     if (obj) {
       obj.position.x += dx;
       obj.position.y += dy;
+      obj.position.z += dz;
     }
+  }
+
+  getCenterOfObjects(ids: string[]): THREE.Vector3 | null {
+    const box = new THREE.Box3();
+    let hasValidObject = false;
+    ids.forEach(id => {
+      const obj = this.scene.getObjectByName(id);
+      if (obj) {
+        box.expandByObject(obj);
+        hasValidObject = true;
+      }
+    });
+    if (!hasValidObject) return null;
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    return center;
   }
 
   updateLayerVisibility(layerMap: Map<string, { isVisible: boolean, isFrozen: boolean }>) {
@@ -2245,7 +2279,7 @@ export class Viewer {
   private originalColors: Map<string, number> = new Map();
 
   setHighlight(ids: string[]) {
-    const highlightColor = 0xffff00; // Yellow
+    const highlightColor = 0xddc040; // Neutral Yellow/Gold
 
     const objectsToProcess: THREE.Object3D[] = [];
     this.scene.traverse((obj) => {
@@ -2680,7 +2714,10 @@ export class Viewer {
     }
   }
 
+  public onBeforeRender: () => void = () => {};
+
   render(){
+    this.onBeforeRender();
     this.gridRenderer.updateAxesScale(1 / this.camera.zoom);
     this.renderer.render(this.scene,this.camera)
   }

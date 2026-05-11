@@ -147,7 +147,7 @@ function textToPathElement(
   // opentype.js: fontSize in same units as x/y (here: mm)
   // getPath(text, x, y, fontSize) — y is the BASELINE (same as SVG)
   // Scaled up by 2.5 to fix "too small" bug
-  const path = font.getPath(text, 0, 0, fontSizeMM * 2.5);
+  const path = font.getPath(text, 0, 0, fontSizeMM);
 
   // Apply text-anchor alignment
   // opentype renders left-anchored by default

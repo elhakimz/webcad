@@ -9,13 +9,15 @@ export class Text extends Entity {
   rotation: number; // in degrees
   text: string;
 
-  constructor(id: string, x: number, y: number, height: number, rotation: number, text: string) {
+  constructor(id: string, x: number, y: number, height: number, rotation: number, text: string, elevation = 0, thickness = 0) {
     super(id);
     this.x = x;
     this.y = y;
     this.height = height;
     this.rotation = rotation;
     this.text = text;
+    this.elevation = elevation;
+    this.thickness = thickness;
   }
 
   move(dx: number, dy: number) {
@@ -70,7 +72,7 @@ export class Text extends Entity {
   }
 
   clone(newId: string): Text {
-    const copy = new Text(newId, this.x, this.y, this.height, this.rotation, this.text);
+    const copy = new Text(newId, this.x, this.y, this.height, this.rotation, this.text, this.elevation, this.thickness);
     copy.layer = this.layer;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;

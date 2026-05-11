@@ -1,6 +1,6 @@
 import { Text } from "../model/Text"
 import { Command, CommandResponse } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 
 export class TextCommand implements Command {
@@ -11,7 +11,7 @@ export class TextCommand implements Command {
   currentMouseX = 0
   currentMouseY = 0
 
-  onPoint(x: number, y: number, _id: string, _units: UnitsConfig): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig, doc?: IDocument): CommandResponse {
     if (this.step === 0) {
       this.startPt = { x, y }
       this.step = 1
@@ -28,7 +28,7 @@ export class TextCommand implements Command {
     return this.getPrompt();
   }
 
-  onInput(text: string, id: string, units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
+  onInput(text: string, id: string, units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
     const val = text.trim();
 
     if (this.step === 1) {
@@ -40,7 +40,7 @@ export class TextCommand implements Command {
       this.step = 3
       return "Text:"
     } else if (this.step === 3) {
-      const entity = new Text(id, this.startPt.x, this.startPt.y, this.height, this.rotation, val)
+      const entity = new Text(id, this.startPt.x, this.startPt.y, this.height, this.rotation, val, doc?.currentElevation || 0, doc?.currentThickness || 0)
       const echo = `Text created. ${FormatUtils.formatPoint(this.startPt.x, this.startPt.y, units)}`
       ;(entity as unknown as { _echo: string })._echo = echo
       this.step = 0

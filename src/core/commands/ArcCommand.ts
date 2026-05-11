@@ -1,6 +1,6 @@
 import { Arc } from "../model/Arc"
 import { Command, CommandResponse } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 
 export class ArcCommand implements Command {
@@ -9,7 +9,7 @@ export class ArcCommand implements Command {
   p2 = { x: 0, y: 0 }
   p3 = { x: 0, y: 0 }
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse {
     if (this.step === 0) {
       this.p1 = { x, y }
       this.step = 1
@@ -20,7 +20,7 @@ export class ArcCommand implements Command {
       return FormatUtils.formatPoint(x, y, units, "P2")
     } else {
       this.p3 = { x, y }
-      const arc = this.calculateArc(this.p1, this.p2, this.p3, id, units)
+      const arc = this.calculateArc(this.p1, this.p2, this.p3, id, units, doc)
       if (!arc) {
           this.step = 0;
           return "Points are collinear. Start point of arc:";
@@ -30,7 +30,7 @@ export class ArcCommand implements Command {
     }
   }
 
-  private calculateArc(p1: { x: number, y: number }, p2: { x: number, y: number }, p3: { x: number, y: number }, id: string, units: UnitsConfig): Arc | null {
+  private calculateArc(p1: { x: number, y: number }, p2: { x: number, y: number }, p3: { x: number, y: number }, id: string, units: UnitsConfig, doc?: IDocument): Arc | null {
     // Standard 3-point arc calculation
     const x1 = p1.x, y1 = p1.y
     const x2 = p2.x, y2 = p2.y
@@ -50,7 +50,7 @@ export class ArcCommand implements Command {
     const cross = (x2 - x1) * (y3 - y2) - (y2 - y1) * (x3 - x2)
     const ccw = cross > 0
 
-    const arc = new Arc(id, cx, cy, r, startAngle, endAngle, ccw)
+    const arc = new Arc(id, cx, cy, r, startAngle, endAngle, ccw, doc?.currentElevation || 0, doc?.currentThickness || 0)
     const echo = `Arc created. ${FormatUtils.formatRadius(r, units)}`
     ;(arc as unknown as { _echo: string })._echo = echo
     return arc

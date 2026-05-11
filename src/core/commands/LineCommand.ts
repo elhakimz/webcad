@@ -1,13 +1,13 @@
 import { Line } from "../model/Line"
 import { Command, CommandResponse } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 
 export class LineCommand implements Command {
   points: { x: number; y: number }[] = []
   drawnEntityIds: string[] = []
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse {
     this.points.push({ x, y });
     const pLabel = "P" + this.points.length;
     const echo = FormatUtils.formatPoint(x, y, units, pLabel);
@@ -16,7 +16,7 @@ export class LineCommand implements Command {
       return echo;
     } else {
       const last = this.points[this.points.length - 2];
-      const line = new Line(id, last.x, last.y, x, y);
+      const line = new Line(id, last.x, last.y, x, y, doc?.currentElevation || 0, doc?.currentThickness || 0);
       this.drawnEntityIds.push(line.id);
       return line;
     }

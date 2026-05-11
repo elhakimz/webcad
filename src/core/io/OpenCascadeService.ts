@@ -112,4 +112,36 @@ export class OpenCascadeService {
     
     return geometry;
   }
+
+  /**
+   * Creates a extruded shape from points.
+   * Returns a Promise that resolves to THREE.BufferGeometry.
+   */
+  async createExtrude(points: {x: number, y: number, z: number}[], height: number, thickness?: number, deflection?: number, isClosed?: boolean): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createExtrude(points, height, thickness, deflection, isClosed);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    return geometry;
+  }
+
+  /**
+   * Creates a revolved shape from points.
+   * Returns a Promise that resolves to THREE.BufferGeometry.
+   */
+  async createRevolve(points: {x: number, y: number, z: number}[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createRevolve(points, axisPoint, axisDir, angle, thickness, deflection, isClosed);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    return geometry;
+  }
 }
+
+

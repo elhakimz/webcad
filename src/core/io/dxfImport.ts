@@ -126,6 +126,10 @@ export class DXFImporter {
 
   private parseEntities(groups: DXFGroup[], i: number, doc: Document, isBlockSubSection = false): number {
     const endCondition = isBlockSubSection ? "ENDBLK" : "ENDSEC";
+    let currentLayerForFaces: string | null = null;
+    let currentOriginalId: string | undefined = undefined;
+    let accumulatedPositions: number[] = [];
+    let accumulatedIndices: number[] = [];
     
     while (i < groups.length && !(groups[i].code === 0 && (groups[i].value === endCondition || groups[i].value === "SECTION"))) {
       const g = groups[i];
@@ -143,10 +147,23 @@ export class DXFImporter {
         const layer = props[8] || "0";
         let entity: Entity | null = null;
 
+        if (type !== "3DFACE" && currentLayerForFaces) {
+          const s3d = new Solid3D(doc.getNextId("S3D"), accumulatedPositions, accumulatedIndices);
+          s3d.layer = currentLayerForFaces;
+          doc.addEntity(s3d);
+          currentLayerForFaces = null;
+          accumulatedPositions = [];
+          accumulatedIndices = [];
+        }
+
         if (type === "LINE") {
-          entity = new Line(doc.getNextId("L"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[11]), parseFloat(props[21]));
+          const elevation = parseFloat(props[30] || "0");
+          const thickness = parseFloat(props[39] || "0");
+          entity = new Line(doc.getNextId("L"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[11]), parseFloat(props[21]), elevation, thickness);
         } else if (type === "CIRCLE") {
-          entity = new Circle(doc.getNextId("C"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]));
+          const elevation = parseFloat(props[30] || "0");
+          const thickness = parseFloat(props[39] || "0");
+          entity = new Circle(doc.getNextId("C"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]), elevation, thickness);
         } else if (type === "DONUT") {
           entity = new Donut(doc.getNextId("D"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]), parseFloat(props[41]));
         } else if (type === "ARC") {
@@ -181,31 +198,43 @@ export class DXFImporter {
             entity = new Line(doc.getNextId("L"), vertices[0].x, vertices[0].y, vertices[2].x, vertices[2].y);
           }
         } else if (type === "3DFACE") {
+          const layer = props[8] || "0";
+          const originalId = props[1000]; // Read XData!
+          
+          if (currentLayerForFaces && (currentLayerForFaces !== layer || currentOriginalId !== originalId)) {
+            // Flush!
+            const s3d = new Solid3D(doc.getNextId("S3D"), accumulatedPositions, accumulatedIndices);
+            s3d.layer = currentLayerForFaces;
+            doc.addEntity(s3d);
+            accumulatedPositions = [];
+            accumulatedIndices = [];
+          }
+          
+          currentLayerForFaces = layer;
+          currentOriginalId = originalId;
+          
           const vertices = [];
           if (props[10] !== undefined) vertices.push({ x: parseFloat(props[10]), y: parseFloat(props[20]), z: parseFloat(props[30] || "0") });
           if (props[11] !== undefined) vertices.push({ x: parseFloat(props[11]), y: parseFloat(props[21]), z: parseFloat(props[31] || "0") });
           if (props[12] !== undefined) vertices.push({ x: parseFloat(props[12]), y: parseFloat(props[22]), z: parseFloat(props[32] || "0") });
           if (props[13] !== undefined) vertices.push({ x: parseFloat(props[13]), y: parseFloat(props[23]), z: parseFloat(props[33] || "0") });
           
-          const positions = [];
-          const indices = [];
+          const baseIdx = accumulatedPositions.length / 3;
           
           for (let k = 0; k < vertices.length; k++) {
-            positions.push(vertices[k].x, vertices[k].y, vertices[k].z);
+            accumulatedPositions.push(vertices[k].x, vertices[k].y, vertices[k].z);
           }
           
           if (vertices.length === 3) {
-            indices.push(0, 1, 2);
+            accumulatedIndices.push(baseIdx, baseIdx + 1, baseIdx + 2);
           } else if (vertices.length === 4) {
             // Check if 3rd and 4th point are same
             if (vertices[2].x === vertices[3].x && vertices[2].y === vertices[3].y && vertices[2].z === vertices[3].z) {
-              indices.push(0, 1, 2);
+              accumulatedIndices.push(baseIdx, baseIdx + 1, baseIdx + 2);
             } else {
-              indices.push(0, 1, 2, 0, 2, 3);
+              accumulatedIndices.push(baseIdx, baseIdx + 1, baseIdx + 2, baseIdx, baseIdx + 2, baseIdx + 3);
             }
           }
-          
-          entity = new Solid3D(doc.getNextId("S3D"), positions, indices);
         } else if (type === "SHAPE") {
           entity = new Shape(doc.getNextId("SH"), props[2], parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40] || "1.0"), parseFloat(props[50] || "0"), []);
         } else if (type === "HATCH") {
@@ -226,6 +255,7 @@ export class DXFImporter {
           const degree = parseInt(props[71] || "3");
           const knots: number[] = [];
           const controlPoints: { x: number, y: number }[] = [];
+          let elevation = 0;
           
           for (let k = 0; k < entityGroups.length; k++) {
             if (entityGroups[k].code === 40) {
@@ -233,10 +263,12 @@ export class DXFImporter {
             } else if (entityGroups[k].code === 10) {
               const vx = parseFloat(entityGroups[k].value);
               const vy = parseFloat(entityGroups[k+1] && entityGroups[k+1].code === 20 ? entityGroups[k+1].value : "0");
+              const vz = parseFloat(entityGroups[k+2] && entityGroups[k+2].code === 30 ? entityGroups[k+2].value : "0");
               controlPoints.push({ x: vx, y: vy });
+              elevation = vz;
             }
           }
-          entity = new Spline(doc.getNextId("S"), controlPoints, degree, knots);
+          entity = new Spline(doc.getNextId("S"), controlPoints, degree, knots, false, elevation, 0);
         } else if (type === "NOTE") {
           const anchor = { x: parseFloat(props[10]), y: parseFloat(props[20]) };
           const bend = { x: parseFloat(props[11]), y: parseFloat(props[21]) };
@@ -308,6 +340,14 @@ export class DXFImporter {
         i++;
       }
     }
+    
+    // Flush any remaining faces!
+    if (currentLayerForFaces && accumulatedPositions.length > 0) {
+      const s3d = new Solid3D(doc.getNextId("S3D"), accumulatedPositions, accumulatedIndices);
+      s3d.layer = currentLayerForFaces;
+      doc.addEntity(s3d);
+    }
+    
     return i;
   }
 }

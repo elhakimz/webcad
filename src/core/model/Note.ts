@@ -47,14 +47,37 @@ export class Note extends Entity {
   }
 
   getBoundingBox(): BoundingBox {
-    // For simplicity, bounding box includes anchor and bend points.
-    // Text width is not accounted for here as it's computed at render time.
-    return {
-      minX: Math.min(this.anchorPoint.x, this.bendPoint.x),
-      minY: Math.min(this.anchorPoint.y, this.bendPoint.y),
-      maxX: Math.max(this.anchorPoint.x, this.bendPoint.x),
-      maxY: Math.max(this.anchorPoint.y, this.bendPoint.y)
-    };
+    const textWidthApprox = this.text.length * this.height * 0.6;
+    const textGap = 0.1;
+    let minX = Math.min(this.anchorPoint.x, this.bendPoint.x);
+    let maxX = Math.max(this.anchorPoint.x, this.bendPoint.x);
+    let minY = Math.min(this.anchorPoint.y, this.bendPoint.y);
+    let maxY = Math.max(this.anchorPoint.y, this.bendPoint.y);
+
+    const p1 = this.anchorPoint;
+    const p2 = this.bendPoint;
+
+    if (this.targetEntityId !== null) {
+      const shelfDir = p2.x >= p1.x ? 1 : -1;
+      const shelfLength = Math.max(textWidthApprox, this.height * 2) + 0.5;
+      const shelfEnd = { x: p2.x + shelfDir * shelfLength, y: p2.y };
+      
+      minX = Math.min(minX, shelfEnd.x);
+      maxX = Math.max(maxX, shelfEnd.x);
+      
+      if (shelfDir > 0) {
+        maxX = Math.max(maxX, shelfEnd.x + textGap + textWidthApprox);
+      } else {
+        minX = Math.min(minX, shelfEnd.x - textGap - textWidthApprox);
+      }
+    } else {
+      maxX = Math.max(maxX, p2.x + textGap + textWidthApprox);
+    }
+
+    maxY = Math.max(maxY, p2.y + this.height);
+    minY = Math.min(minY, p2.y - this.height);
+
+    return { minX, minY, maxX, maxY };
   }
 
   hitTest(px: number, py: number, tolerance: number): boolean {

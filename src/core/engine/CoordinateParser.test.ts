@@ -9,19 +9,19 @@ describe('CoordinateParser', () => {
   describe('Absolute Coordinates', () => {
     it('should parse simple x,y', () => {
       const res = CoordinateParser.parseCoordinate('100,200', defUnits)
-      expect(res).toEqual({ x: 100, y: 200 })
+      expect(res).toMatchObject({ x: 100, y: 200 })
     })
 
     it('should parse negative values', () => {
       const res = CoordinateParser.parseCoordinate('-10.5, -20.5', defUnits)
-      expect(res).toEqual({ x: -10.5, y: -20.5 })
+      expect(res).toMatchObject({ x: -10.5, y: -20.5 })
     })
   })
 
   describe('Relative Cartesian (@dx,dy)', () => {
     it('should parse @dx,dy relative to lastPoint', () => {
       const res = CoordinateParser.parseCoordinate('@10,20', defUnits, { x: 50, y: 50 })
-      expect(res).toEqual({ x: 60, y: 70 })
+      expect(res).toMatchObject({ x: 60, y: 70 })
     })
 
     it('should return null if lastPoint is missing for relative', () => {
@@ -47,26 +47,58 @@ describe('CoordinateParser', () => {
   describe('Unit Suffixes', () => {
     it('should parse metric suffixes', () => {
       const res = CoordinateParser.parseCoordinate('100mm,200mm', metricUnits)
-      expect(res).toEqual({ x: 100, y: 200 })
+      expect(res).toMatchObject({ x: 100, y: 200 })
 
       const resCm = CoordinateParser.parseCoordinate('10cm,20cm', metricUnits)
-      expect(resCm).toEqual({ x: 100, y: 200 })
+      expect(resCm).toMatchObject({ x: 100, y: 200 })
 
       const resM = CoordinateParser.parseCoordinate('1m,2m', metricUnits)
-      expect(resM).toEqual({ x: 1000, y: 2000 })
+      expect(resM).toMatchObject({ x: 1000, y: 2000 })
     })
 
     it('should parse architectural suffixes', () => {
       const resIn = CoordinateParser.parseCoordinate('12",24"', archUnits)
-      expect(resIn).toEqual({ x: 12, y: 24 })
+      expect(resIn).toMatchObject({ x: 12, y: 24 })
 
       const resFt = CoordinateParser.parseCoordinate("1',2'", archUnits)
-      expect(resFt).toEqual({ x: 12, y: 24 })
+      expect(resFt).toMatchObject({ x: 12, y: 24 })
     })
 
     it('should ignore suffixes in decimal mode', () => {
       const res = CoordinateParser.parseCoordinate('100mm,200mm', defUnits)
-      expect(res).toEqual({ x: 100, y: 200 }) // parseFloat ignores mm
+      expect(res).toMatchObject({ x: 100, y: 200 }) // parseFloat ignores mm
+    })
+  })
+
+  describe('3D Coordinates', () => {
+    it('should parse absolute 3D coordinates', () => {
+      const res = CoordinateParser.parseCoordinate('100,200,300', defUnits)
+      expect(res).toMatchObject({ x: 100, y: 200, z: 300 })
+    })
+
+    it('should parse relative 3D coordinates', () => {
+      const res = CoordinateParser.parseCoordinate('@10,20,30', defUnits, { x: 50, y: 50, z: 50 })
+      expect(res).toMatchObject({ x: 60, y: 70, z: 80 })
+    })
+
+    it('should parse relative polar with Z offset', () => {
+      const res = CoordinateParser.parseCoordinate('@100<0,50', defUnits, { x: 10, y: 10, z: 10 })
+      expect(res).toMatchObject({ x: 110, y: 10, z: 60 })
+    })
+
+    it('should inherit elevation when Z is omitted in absolute', () => {
+      const res = CoordinateParser.parseCoordinate('100,200', defUnits, undefined, 50)
+      expect(res).toMatchObject({ x: 100, y: 200, z: 50 })
+    })
+
+    it('should default to 0 for delta Z when omitted in relative Cartesian', () => {
+      const res = CoordinateParser.parseCoordinate('@10,20', defUnits, { x: 50, y: 50, z: 50 }, 100)
+      expect(res).toMatchObject({ x: 60, y: 70, z: 50 })
+    })
+
+    it('should default to 0 for delta Z when omitted in relative polar', () => {
+      const res = CoordinateParser.parseCoordinate('@100<0', defUnits, { x: 10, y: 10, z: 10 }, 100)
+      expect(res).toMatchObject({ x: 110, y: 10, z: 10 })
     })
   })
 

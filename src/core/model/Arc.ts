@@ -10,7 +10,7 @@ export class Arc extends Entity {
   endAngle: number;
   ccw: boolean;
 
-  constructor(id: string, cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean) {
+  constructor(id: string, cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean, elevation = 0, thickness = 0) {
     super(id);
     this.cx = cx;
     this.cy = cy;
@@ -18,6 +18,8 @@ export class Arc extends Entity {
     this.startAngle = startAngle;
     this.endAngle = endAngle;
     this.ccw = ccw;
+    this.elevation = elevation;
+    this.thickness = thickness;
   }
 
   move(dx: number, dy: number) {
@@ -71,7 +73,7 @@ export class Arc extends Entity {
   }
 
   clone(newId: string): Arc {
-    const copy = new Arc(newId, this.cx, this.cy, this.r, this.startAngle, this.endAngle, this.ccw);
+    const copy = new Arc(newId, this.cx, this.cy, this.r, this.startAngle, this.endAngle, this.ccw, this.elevation, this.thickness);
     copy.layer = this.layer;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;

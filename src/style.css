@@ -265,11 +265,13 @@ body {
   display: block;
   width: 100%;
   height: 100%;
-  cursor: none;
+  cursor: default;
 }
 
 .dockable-window {
-  background-color: var(--panel-bg);
+  background-color: rgba(45, 45, 45, 0.7); /* Semi-transparent */
+  backdrop-filter: blur(8px); /* Glass effect */
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -452,7 +454,9 @@ body {
 
 /* Floating Toolbar */
 .floating-toolbar {
-  background-color: var(--panel-bg);
+  background-color: rgba(45, 45, 45, 0.7); /* Semi-transparent */
+  backdrop-filter: blur(8px); /* Glass effect */
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Subtle shadow for floating effect */
@@ -461,7 +465,7 @@ body {
 }
 
 .toolbar-header {
-  background-color: var(--bg-color);
+  background-color: rgba(30, 30, 30, 0.5); /* Semi-transparent */
   padding: 4px 8px;
   display: flex;
   justify-content: space-between;

@@ -50,6 +50,11 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 -   **ZOOM:** `Zoom Window`, `Zoom All`, and factor-based zooming.
 -   **NEW:** Workspace reset with safety confirmation prompt.
 
+### 🎮 3D Interaction & Persistence
+- **3D Gizmo**: Interactive translation and rotation gizmo for `Solid3D` entities.
+- **Proportional Scaling**: Gizmo size automatically scales based on the selected object's bounding box.
+- **Smart DXF I/O**: Manipulated position and rotation are saved to DXF (applying matrix transforms to vertices). Objects are intelligently grouped back on load using custom DXF XData.
+
 ### 🖥️ Authentic DOS UI
 -   **Main Menu:** Classic text-based startup screen with project management options.
 -   **Hierarchical Side Menu:** Fully interactive menu navigation (e.g., `DRAW` -> `LINE:`).

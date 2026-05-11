@@ -28,7 +28,7 @@ describe('FacetresCommand', () => {
   it('should reject invalid facetres value', () => {
     const res = cmd.onInput('abc', 'DUMMY', units, undefined, doc);
     expect(res).toEqual('Requires a number between 0.01 and 10.0.');
-    expect(doc.facetres).toEqual(0.5); // Default
+    expect(doc.facetres).toEqual(0.1); // Default
   });
 
   it('should reject out of range value', () => {

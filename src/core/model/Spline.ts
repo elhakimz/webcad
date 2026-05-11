@@ -8,12 +8,14 @@ export class Spline extends Entity {
   isClosed: boolean;
   sampledPoints: Point[];
 
-  constructor(id: string, controlPoints: Point[], degree: number, knots: number[], isClosed = false) {
+  constructor(id: string, controlPoints: Point[], degree: number, knots: number[], isClosed = false, elevation = 0, thickness = 0) {
     super(id);
     this.controlPoints = controlPoints;
     this.degree = degree;
     this.knots = knots;
     this.isClosed = isClosed;
+    this.elevation = elevation;
+    this.thickness = thickness;
     this.sampledPoints = this.updateSampledPoints();
   }
 

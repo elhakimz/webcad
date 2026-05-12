@@ -79,7 +79,10 @@ export class SolidToolbar {
       { cmd: 'CONE', icon: 'cone.svg' },
       { cmd: 'SPHERE', icon: 'sphere.svg' },
       { cmd: 'EXTRUDE', icon: 'extrude.svg' },
-      { cmd: 'REVOLVE', icon: 'revolve.svg' }
+      { cmd: 'REVOLVE', icon: 'revolve.svg' },
+      { cmd: 'UNION', icon: 'union.svg' },
+      { cmd: 'SUBTRACT', icon: 'subtract.svg' },
+      { cmd: 'INTERSECT', icon: 'intersect.svg' }
     ];
 
     commands.forEach(b => {

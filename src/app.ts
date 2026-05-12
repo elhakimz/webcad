@@ -40,6 +40,7 @@ import { ChamferHandler } from "./core/engine/handlers/transform/ChamferHandler"
 import { BreakHandler } from "./core/engine/handlers/transform/BreakHandler"
 import { CopyHandler } from "./core/engine/handlers/transform/CopyHandler"
 import { JoinHandler } from "./core/engine/handlers/transform/JoinHandler"
+import { SweepHandler } from "./core/engine/handlers/transform/SweepHandler"
 import { LengthenHandler } from "./core/engine/handlers/transform/LengthenHandler"
 import { MirrorHandler } from "./core/engine/handlers/transform/MirrorHandler"
 import { MoveHandler } from "./core/engine/handlers/transform/MoveHandler"
@@ -77,7 +78,12 @@ export class App {
   private statusBarUpdate: ((layer: Layer) => void) | null = null
   private layersWindowUpdate: (() => void) | null = null
   private promptUpdate: (() => void) | null = null;
+  private propertiesWindow: any = null;
   private dispatcher: ResultDispatcher;
+
+  public setPropertiesWindow(pw: any) {
+    this.propertiesWindow = pw;
+  }
   private lastMode3d: boolean = false;
   currentZ: number = 0;
   public gizmoManager!: GizmoManager;
@@ -153,6 +159,7 @@ export class App {
     this.dispatcher.registerHandler(new BreakHandler());
     this.dispatcher.registerHandler(new CopyHandler());
     this.dispatcher.registerHandler(new JoinHandler());
+    this.dispatcher.registerHandler(new SweepHandler());
     this.dispatcher.registerHandler(new LengthenHandler());
     this.dispatcher.registerHandler(new MirrorHandler());
     this.dispatcher.registerHandler(new MoveHandler());
@@ -280,6 +287,7 @@ export class App {
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
         (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
         (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'ExtrudeCommand' || activeName === 'RevolveCommand')) ||
+        (this.cmd.active && (this.cmd.active.step === 1 || this.cmd.active.step === 2) && activeName === 'SweepCommand') ||
         (this.cmd.active && 'operation' in this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1)) ||
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
 
@@ -617,6 +625,13 @@ export class App {
     }
     this.viewer.setHighlight(Array.from(this.selectedEntityIds));
     
+    if (this.propertiesWindow) {
+        const selectedEntities = Array.from(this.selectedEntityIds)
+            .map(id => this.doc.getEntity(id))
+            .filter((e): e is Entity => e !== undefined);
+        this.propertiesWindow.update(selectedEntities);
+    }
+    
     // Attach/detach gizmo based on selection
     if (this.selectedEntityIds.size === 1) {
       const id = Array.from(this.selectedEntityIds)[0];
@@ -728,13 +743,12 @@ export class App {
             const isDimRadiusPick = (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand') && this.cmd.active?.step === 0;
             const isDimAngularPick = activeName === 'DimAngularCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
             const isListPick = activeName === 'ListCommand';
-            const isExtrudePick = activeName === 'ExtrudeCommand' && this.cmd.active?.step === 0;
-            const isRevolvePick = activeName === 'RevolveCommand' && this.cmd.active?.step === 0;
             const isBooleanPick = this.cmd.active && 'operation' in this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1);
+            const hasSetEntity = this.cmd.active && 'setEntity' in this.cmd.active;
 
-            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isDimRadiusPick || isDimAngularPick || isListPick || isExtrudePick || isRevolvePick || isBooleanPick)) {       
-                if ((isDimRadiusPick || isDimAngularPick || isListPick || isExtrudePick || isRevolvePick) && 'setEntity' in this.cmd.active) {
-                  (this.cmd.active as unknown as HasSetEntity).setEntity(entity);
+            if (this.cmd.active && (hasSetEntity || isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isBooleanPick)) {       
+                if (hasSetEntity) {
+                  (this.cmd.active as unknown as any).setEntity(entity);
                 }
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);
 

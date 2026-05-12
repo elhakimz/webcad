@@ -477,6 +477,93 @@ self.onmessage = async (e) => {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'createExtrude', success: false, error: errorMessage, id });
     }
+  } else if (type === 'createSweep') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { profilePoints, spinePoints, isSolid, deflection, entityId, profileCount } = payload;
+    try {
+      let resultShape: any = null;
+
+      // Build spine wire
+      const spineWireMaker = new oc.BRepBuilderAPI_MakeWire_1();
+      for (let i = 0; i < spinePoints.length - 1; i++) {
+        const p1 = new oc.gp_Pnt_3(spinePoints[i].x, spinePoints[i].y, spinePoints[i].z);
+        const p2 = new oc.gp_Pnt_3(spinePoints[i+1].x, spinePoints[i+1].y, spinePoints[i+1].z);
+        const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+        if (makeEdge.IsDone()) {
+          spineWireMaker.Add_1(makeEdge.Edge());
+        }
+        p1.delete();
+        p2.delete();
+        makeEdge.delete();
+      }
+      const spineWire = spineWireMaker.Wire();
+
+      // Build profile wire(s)
+      const count = profileCount || 1;
+      const ptsPerProfile = Math.floor(profilePoints.length / count);
+      
+      const sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spineWire);
+      sweepBuilder.SetMode_1(false); // Use Corrected Frenet mode (minimizes torsion)
+      
+      for (let j = 0; j < count; j++) {
+        const startIdx = j * ptsPerProfile;
+        const endIdx = (j === count - 1) ? profilePoints.length : (j + 1) * ptsPerProfile;
+        const currentProfilePts = profilePoints.slice(startIdx, endIdx);
+        
+        const profileWireMaker = new oc.BRepBuilderAPI_MakeWire_1();
+        for (let i = 0; i < currentProfilePts.length - 1; i++) {
+          const p1 = new oc.gp_Pnt_3(currentProfilePts[i].x, currentProfilePts[i].y, currentProfilePts[i].z);
+          const p2 = new oc.gp_Pnt_3(currentProfilePts[i+1].x, currentProfilePts[i+1].y, currentProfilePts[i+1].z);
+          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+          if (makeEdge.IsDone()) {
+            profileWireMaker.Add_1(makeEdge.Edge());
+          }
+          p1.delete();
+          p2.delete();
+          makeEdge.delete();
+        }
+        const profileWire = profileWireMaker.Wire();
+        sweepBuilder.Add_1(profileWire, false, false);
+        profileWireMaker.delete();
+      }
+      
+      sweepBuilder.Build();
+      
+      if (!sweepBuilder.IsDone()) {
+        sweepBuilder.delete();
+        throw new Error("Failed to build sweep.");
+      }
+      
+      if (isSolid) {
+        const success = sweepBuilder.MakeSolid();
+        if (!success) {
+          console.warn("MakeSolid returned false, might still be a shell.");
+        }
+      }
+      
+      resultShape = sweepBuilder.Shape();
+
+      if (entityId) {
+        cacheShape(entityId, resultShape);
+      }
+
+      const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
+      
+      if (!entityId) {
+        resultShape.delete();
+      }
+
+      spineWireMaker.delete();
+      sweepBuilder.delete();
+
+      self.postMessage({ type: 'createSweep', success: true, payload: geometryData, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'createSweep', success: false, error: errorMessage, id });
+    }
   } else if (type === 'createRevolve') {
     if (!oc) {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
@@ -599,6 +686,9 @@ self.onmessage = async (e) => {
         throw new Error(`Unknown boolean operation: ${operation}`);
       }
 
+      if (boolBuilder && boolBuilder.SetFuzzyValue) {
+        boolBuilder.SetFuzzyValue(0.01);
+      }
       boolBuilder.Build();
 
       if (!boolBuilder.IsDone()) {

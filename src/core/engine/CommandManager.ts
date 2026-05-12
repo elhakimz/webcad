@@ -68,6 +68,7 @@ import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 import { UnitsConfig, Document } from "../model/Document"
 import { ExtrudeCommand } from "../commands/ExtrudeCommand.js"
+import { SweepCommand } from "../commands/SweepCommand.js"
 import { RevolveCommand } from "../commands/RevolveCommand.js"
 import { BooleanCommand } from "../commands/BooleanCommand.js"
 import { Entity } from "../model/Entity.js"
@@ -90,6 +91,7 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["FACETRES", () => new FacetresCommand()],
   ["EXTRUDE", () => new ExtrudeCommand()],
   ["REVOLVE", () => new RevolveCommand()],
+  ["SWEEP", () => new SweepCommand()],
   ["UNION", (selection) => new BooleanCommand('fuse', selection)],
   ["SUBTRACT", (selection) => new BooleanCommand('cut', selection)],
   ["INTERSECT", (selection) => new BooleanCommand('common', selection)],

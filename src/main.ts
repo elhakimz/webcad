@@ -15,6 +15,7 @@ import { DockingManager } from "./ui/DockingManager"
 import { ToolWindowBar } from "./ui/ToolWindowBar"
 import { ToolWindow } from "./ui/ToolWindow"
 import { LayerWindow } from "./ui/LayerWindow"
+import { PropertiesWindow } from "./ui/PropertiesWindow"
 import { DimToolbar } from "./ui/DimToolbar"
 import { EditToolbar } from "./ui/EditToolbar"
 import { InquiryToolbar } from "./ui/InquiryToolbar"
@@ -129,6 +130,13 @@ const layerWindow = new LayerWindow(layersWindow, app.doc.layers, (name) => {
 }, (cmd) => {
   app.execute(cmd);
 });
+
+// Properties Window
+const propertiesToolbar = new ToolWindow("properties", "Properties");
+mainArea.insertBefore(propertiesToolbar.getElement(), layersWindow.getElement().nextSibling);
+toolWindowBar.addWindow("P", propertiesToolbar);
+const propertiesWindow = new PropertiesWindow(propertiesToolbar, app);
+app.setPropertiesWindow(propertiesWindow);
 app.setLayersWindowUpdate(() => layerWindow.refresh());
 
 const menu = new Menu(async (cmd) => {

@@ -128,6 +128,17 @@ export class OpenCascadeService {
     return geometry;
   }
 
+  async createSweep(profilePoints: {x: number, y: number, z: number}[], spinePoints: {x: number, y: number, z: number}[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createSweep(profilePoints, spinePoints, isSolid, deflection, entityId, profileCount);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    return geometry;
+  }
+
   /**
    * Creates a revolved shape from points.
    * Returns a Promise that resolves to THREE.BufferGeometry.

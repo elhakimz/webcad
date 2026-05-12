@@ -47,7 +47,7 @@ export class Note extends Entity {
   }
 
   getBoundingBox(): BoundingBox {
-    const textWidthApprox = this.text.length * this.height * 0.6;
+    const textWidthApprox = (this.text || "").length * this.height * 0.6;
     const textGap = 0.1;
     let minX = Math.min(this.anchorPoint.x, this.bendPoint.x);
     let maxX = Math.max(this.anchorPoint.x, this.bendPoint.x);
@@ -106,7 +106,7 @@ export class Note extends Entity {
     }
 
     // Check if point is inside text rectangle
-    const textWidthApprox = this.text.length * this.height * 0.6;
+    const textWidthApprox = (this.text || "").length * this.height * 0.6;
     const textGap = 0.1;
     let textMinX = 0;
     let textMaxX = 0;

@@ -54,8 +54,7 @@ export class EntitySerializer {
                                          innerR: (e as any).innerR, outerR: (e as any).outerR }
     if (e instanceof Solid)     return { vertices: e.vertices }
     if (e instanceof Trace)     return { x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, width: e.width }
-    if (e instanceof Note)      return { x: (e as any).x, y: (e as any).y, text: (e as any).text,
-                                         width: (e as any).width, height: (e as any).height }
+    if (e instanceof Note)      return { targetEntityId: e.targetEntityId, anchorPoint: e.anchorPoint, bendPoint: e.bendPoint, text: e.text, height: e.height }
     if (e instanceof Point)     return { x: (e as any).x, y: (e as any).y }
     if (e instanceof Solid3D)
       // Geometry is in tessellation_cache — store only counts + transform
@@ -101,7 +100,7 @@ export class EntitySerializer {
       case 'Donut':     entity = new Donut(row.id, d.cx, d.cy, d.innerR, d.outerR); break
       case 'Solid':     entity = new Solid(row.id, d.vertices); break
       case 'Trace':     entity = new Trace(row.id, d.x1, d.y1, d.x2, d.y2, d.width); break
-      case 'Note':      entity = new Note(row.id, d.x, d.y, d.text, d.width, d.height); break
+      case 'Note':      entity = new Note(row.id, d.targetEntityId, d.anchorPoint, d.bendPoint, d.text, d.height); break
       case 'Point':     entity = new Point(row.id, d.x, d.y); break
       case 'Solid3D': {
         const s3d = new Solid3D(row.id, [], [])   // geometry filled by PersistenceService

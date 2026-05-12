@@ -2,6 +2,7 @@ import { Command, CommandResponse } from "./types"
 import { UnitsConfig, IDocument } from "../model/Document"
 import { Solid3D } from "../model/Solid3D"
 import { OpenCascadeService } from "../io/OpenCascadeService.js"
+import * as THREE from 'three';
 
 export class BooleanCommand implements Command {
   step = 0
@@ -73,7 +74,40 @@ export class BooleanCommand implements Command {
     const deflection = 0.1 / facetres
     
     console.log(`[BooleanCommand] Executing ${this.operation} on A: ${this.idA}, B: ${this.idB}`);
-    return this.occService.createBoolean(this.operation, this.idA, this.idB, id, deflection).then((geometry: any) => {
+    
+    const entityA = doc?.getEntity(this.idA!) as any;
+    const entityB = doc?.getEntity(this.idB!) as any;
+    const rotA = entityA?.rotation || { x: 0, y: 0, z: 0 };
+    const rotB = entityB?.rotation || { x: 0, y: 0, z: 0 };
+
+    const centerA = { x: 0, y: 0, z: 0 };
+    const centerB = { x: 0, y: 0, z: 0 };
+
+    if (entityA && entityA.positions) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(entityA.positions, 3));
+      geo.computeBoundingBox();
+      const c = geo.boundingBox!.getCenter(new THREE.Vector3());
+      
+      const posA = entityA.position || { x: 0, y: 0, z: 0 };
+      centerA.x = c.x + posA.x;
+      centerA.y = c.y + posA.y;
+      centerA.z = c.z + posA.z;
+    }
+
+    if (entityB && entityB.positions) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(entityB.positions, 3));
+      geo.computeBoundingBox();
+      const c = geo.boundingBox!.getCenter(new THREE.Vector3());
+      
+      const posB = entityB.position || { x: 0, y: 0, z: 0 };
+      centerB.x = c.x + posB.x;
+      centerB.y = c.y + posB.y;
+      centerB.z = c.z + posB.z;
+    }
+
+    return (this.occService as any).createBoolean(this.operation, this.idA, this.idB, id, deflection, rotA, rotB, centerA, centerB).then((geometry: any) => {
       const positions = Array.from(geometry.getAttribute('position').array) as number[]
       const indices = Array.from(geometry.getIndex()?.array || []) as number[]
       

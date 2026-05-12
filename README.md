@@ -57,6 +57,9 @@ A faithful CAD drafting experience, reimagined for the modern web using **TypeSc
 - **3D Gizmo**: Interactive translation and rotation gizmo for `Solid3D` entities.
 - **Proportional Scaling**: Gizmo size automatically scales based on the selected object's bounding box.
 - **Smart DXF I/O**: Manipulated position and rotation are saved to DXF (applying matrix transforms to vertices). Objects are intelligently grouped back on load using custom DXF XData.
+- **Boolean Operations**: Support for Union, Subtract, and Intersect operations on 3D Solids via OpenCascade.
+- **Rotation Preservation**: Boolean operations correctly preserve the position and rotation of operands by calculating the true center of shapes.
+- **Solid Toolbar**: Floating toolbar for quick access to Box, Cylinder, Sphere, and Boolean operations.
 
 ### 🖥️ Authentic DOS UI
 -   **Main Menu:** Classic text-based startup screen with project management options.

@@ -142,8 +142,8 @@ export class OpenCascadeService {
     
     return geometry;
   }
-  async createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.createBoolean(operation, idA, idB, entityId, deflection);
+  async createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number, rotA?: {x:number, y:number, z:number}, rotB?: {x:number, y:number, z:number}, centerA?: {x:number, y:number, z:number}, centerB?: {x:number, y:number, z:number}): Promise<THREE.BufferGeometry> {
+    const data = await (this.client as any).createBoolean(operation, idA, idB, entityId, deflection, rotA, rotB, centerA, centerB);
     
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));

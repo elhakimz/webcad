@@ -60,8 +60,8 @@ export class OCCWorkerClient {
     return this.send('createRevolve', { points, axisPoint, axisDir, angle, thickness, deflection, isClosed, entityId });
   }
 
-  createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number): Promise<{ positions: number[], indices: number[] }> {
-    return this.send('createBoolean', { operation, idA, idB, entityId, deflection });
+  createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number, rotA?: {x:number, y:number, z:number}, rotB?: {x:number, y:number, z:number}, centerA?: {x:number, y:number, z:number}, centerB?: {x:number, y:number, z:number}): Promise<{ positions: number[], indices: number[] }> {
+    return this.send('createBoolean', { operation, idA, idB, entityId, deflection, rotA, rotB, centerA, centerB });
   }
 
   transformShape(entityId: string, dx: number, dy: number, dz: number): Promise<void> {

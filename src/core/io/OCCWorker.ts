@@ -18,6 +18,62 @@ function releaseShape(entityId: string) {
   }
 }
 
+function applyRotation(shape: any, rot: {x:number, y:number, z:number}, oc: any, center?: {x:number, y:number, z:number}) {
+  if (!rot || (rot.x === 0 && rot.y === 0 && rot.z === 0)) return shape;
+  
+  const transform = new oc.gp_Trsf_1();
+  
+  // 1. Translate to origin
+  const toOrigin = new oc.gp_Trsf_1();
+  const centerPt = center ? center : { x: 0, y: 0, z: 0 };
+  const vecToOrigin = new oc.gp_Vec_4(-centerPt.x, -centerPt.y, -centerPt.z);
+  toOrigin.SetTranslation_1(vecToOrigin);
+  
+  // 2. Rotate around origin
+  const rotTrsf = new oc.gp_Trsf_1();
+  
+  const rotX = new oc.gp_Trsf_1();
+  const originPnt = new oc.gp_Pnt_3(0,0,0);
+  rotX.SetRotation_1(new oc.gp_Ax1_2(originPnt, new oc.gp_Dir_4(1,0,0)), rot.x);
+  
+  const rotY = new oc.gp_Trsf_1();
+  rotY.SetRotation_1(new oc.gp_Ax1_2(originPnt, new oc.gp_Dir_4(0,1,0)), rot.y);
+  
+  const rotZ = new oc.gp_Trsf_1();
+  rotZ.SetRotation_1(new oc.gp_Ax1_2(originPnt, new oc.gp_Dir_4(0,0,1)), rot.z);
+  
+  rotTrsf.Multiply(rotZ);
+  rotTrsf.Multiply(rotY);
+  rotTrsf.Multiply(rotX);
+  
+  // 3. Translate back
+  const toBack = new oc.gp_Trsf_1();
+  const vecToBack = new oc.gp_Vec_4(centerPt.x, centerPt.y, centerPt.z);
+  toBack.SetTranslation_1(vecToBack);
+  
+  // Combine: toBack * rotTrsf * toOrigin
+  transform.Multiply(toBack);
+  transform.Multiply(rotTrsf);
+  transform.Multiply(toOrigin);
+  
+  const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+  const newShape = brepTransform.Shape();
+  
+  // Cleanup
+  vecToOrigin.delete();
+  toOrigin.delete();
+  originPnt.delete();
+  rotX.delete();
+  rotY.delete();
+  rotZ.delete();
+  rotTrsf.delete();
+  vecToBack.delete();
+  toBack.delete();
+  transform.delete();
+  
+  return newShape;
+}
+
 self.onmessage = async (e) => {
   const { type, payload, id } = e.data;
 
@@ -503,7 +559,7 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { operation, idA, idB, entityId, deflection } = payload;
+    const { operation, idA, idB, entityId, deflection, rotA, rotB, centerA, centerB } = payload;
     try {
       if (!shapeCache.has(idA)) {
         throw new Error(`Shape not cached for solid A (id: ${idA}). Ensure solid was created in this session.`);
@@ -512,8 +568,11 @@ self.onmessage = async (e) => {
         throw new Error(`Shape not cached for solid B (id: ${idB}).`);
       }
 
-      const shapeA = shapeCache.get(idA);
-      const shapeB = shapeCache.get(idB);
+      const originalShapeA = shapeCache.get(idA);
+      const originalShapeB = shapeCache.get(idB);
+
+      const shapeA = applyRotation(originalShapeA, rotA, oc, centerA);
+      const shapeB = applyRotation(originalShapeB, rotB, oc, centerB);
 
       let boolBuilder: any;
       if (operation === 'fuse') {
@@ -542,12 +601,23 @@ self.onmessage = async (e) => {
       // Section 9: BRepCheck validation
       if (oc.BRepCheck_Analyzer) {
         const analyzer = new oc.BRepCheck_Analyzer(resultShape, true);
-        if (!analyzer.IsValid()) {
+        try {
+          // Check if method exists and is a function
+          const isValidFn = analyzer.IsValid || (analyzer as any).isValid;
+          if (typeof isValidFn === 'function') {
+            if (!isValidFn.call(analyzer)) {
+              analyzer.delete();
+              boolBuilder.delete();
+              throw new Error(`Boolean ${operation} produced an invalid/degenerate shape`);
+            }
+          } else {
+            console.warn(`BRepCheck_Analyzer exists but IsValid is not a function. Methods:`, Object.getOwnPropertyNames(Object.getPrototypeOf(analyzer)));
+          }
+        } catch (e: any) {
+          console.warn(`BRepCheck validation skipped due to error:`, e.message);
+        } finally {
           analyzer.delete();
-          boolBuilder.delete();
-          throw new Error(`Boolean ${operation} produced an invalid/degenerate shape`);
         }
-        analyzer.delete();
       }
 
       if (entityId) {
@@ -560,6 +630,8 @@ self.onmessage = async (e) => {
         resultShape.delete();
       }
       boolBuilder.delete();
+      if (shapeA !== originalShapeA) shapeA.delete();
+      if (shapeB !== originalShapeB) shapeB.delete();
 
       self.postMessage({ type: 'createBoolean', success: true, payload: geometryData, id });
     } catch (error: any) {

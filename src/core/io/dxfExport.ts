@@ -277,6 +277,9 @@ export class DXFExporter {
         
         s += "  0\n3DFACE\n  8\n" + layer + "\n";
         s += "1001\nWEBCAD\n1000\n" + e.id + "\n";
+        if (i === 0 && e.creationParams) {
+          s += "1000\nCREATION_PARAMS:" + JSON.stringify(e.creationParams) + "\n";
+        }
         s += " 10\n" + v1.x + "\n 20\n" + v1.y + "\n 30\n" + v1.z + "\n";
         s += " 11\n" + v2.x + "\n 21\n" + v2.y + "\n 31\n" + v2.z + "\n";
         s += " 12\n" + v3.x + "\n 22\n" + v3.y + "\n 32\n" + v3.z + "\n";

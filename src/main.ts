@@ -192,7 +192,7 @@ const solidToolbar = new SolidToolbar(async (cmd) => {
 }, dockingManager)
 
 const fileToolbar = new ToolWindow("file", "File Operations")
-new FileToolWindow(fileToolbar, app)
+const fileToolWindow = new FileToolWindow(fileToolbar, app)
 mainArea.insertBefore(fileToolbar.getElement(), toolWindowBar.getElement().nextSibling);
 toolWindowBar.addWindow("F", fileToolbar)
 
@@ -242,13 +242,17 @@ const mainMenu = new MainMenuScreen(async (filename?: string) => {
 mainMenu.setEnabled(false);
 mainMenu.setStatus("Loading CAD Kernel (OpenCascade.js)...");
 
-OpenCascadeService.getInstance().init()
+Promise.all([
+  OpenCascadeService.getInstance().init(),
+  app.persistence.init()
+])
   .then(() => {
     mainMenu.setStatus("");
     mainMenu.setEnabled(true);
+    fileToolWindow.renderTableBody();
   })
   .catch((err: any) => {
-    mainMenu.setStatus("Failed to load CAD Kernel.");
+    mainMenu.setStatus("Failed to initialize CAD Engine.");
     console.error(err);
   });
 

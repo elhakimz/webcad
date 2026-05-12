@@ -65,7 +65,7 @@ export class Hatch extends Entity {
   }
 
   getBoundingBox(): BoundingBox {
-    if (this.boundaryVertices.length === 0) {
+    if (!this.boundaryVertices || this.boundaryVertices.length === 0) {
       return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     }
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

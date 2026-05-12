@@ -2,6 +2,8 @@ import { ActionHandler, AppContext } from "./types";
 import { CommandAction, CommandResponse } from "../../commands/types";
 import { DXFExporter } from "../../io/dxfExport";
 import { DXFImporter } from "../../io/dxfImport";
+import { Solid3D } from "../../model/Solid3D";
+import { OpenCascadeService } from "../../io/OpenCascadeService";
 
 export class IOHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -79,6 +81,9 @@ export class IOHandler implements ActionHandler {
           const importer = new DXFImporter();
           importer.import(dxfText, doc);
           
+          // Rebuild worker cache for Solid3D entities
+          await this.rebuildWorkerCache(doc);
+          
           syncFromDocument();
           terminateActiveCommand();
           onLayersChange();
@@ -104,5 +109,42 @@ export class IOHandler implements ActionHandler {
     }
 
     return undefined;
+  }
+
+  private async rebuildWorkerCache(doc: any) {
+    const occService = OpenCascadeService.getInstance();
+    const facetres = doc.facetres || 5.0;
+    const deflection = 0.1 / facetres;
+
+    for (const entity of doc.entities.values()) {
+      if (entity instanceof Solid3D && entity.creationParams) {
+        const { type, params } = entity.creationParams;
+        try {
+          if (type === 'box') {
+            await occService.createBox(params.x, params.y, params.z, params.dx, params.dy, params.dz, deflection, entity.id);
+          } else if (type === 'cylinder') {
+            await occService.createCylinder(params.x, params.y, params.z, params.radius, params.height, deflection, entity.id);
+          } else if (type === 'extrude') {
+            await occService.createExtrude(params.points, params.height, params.thickness, deflection, params.isClosed, entity.id);
+          } else if (type === 'sphere') {
+            await occService.createSphere(params.x, params.y, params.z, params.r, deflection, entity.id);
+          } else if (type === 'cone') {
+            await occService.createCone(params.x, params.y, params.z, params.r, params.h, deflection, entity.id);
+          } else if (type === 'torus') {
+            await occService.createTorus(params.x, params.y, params.z, params.r1, params.r2, deflection, entity.id);
+          } else if (type === 'revolve') {
+            await occService.createRevolve(
+              params.points, params.axisPoint, params.axisDir,
+              params.angle, params.thickness, deflection, params.isClosed, entity.id
+            );
+          }
+          console.log(`Rebuilt worker cache for ${entity.id} (${type})`);
+        } catch (err) {
+          console.error(`Failed to rebuild cache for ${entity.id}:`, err);
+        }
+      } else if (entity instanceof Solid3D) {
+        console.warn(`[IOHandler] Cannot rebuild worker cache for ${entity.id} - no creationParams. Boolean operations will fail on this entity.`);
+      }
+    }
   }
 }

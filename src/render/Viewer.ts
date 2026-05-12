@@ -661,7 +661,7 @@ export class Viewer {
   private createSolidObject(entity: Solid, colorIndex: number): THREE.Object3D {
     const color = aciToRgb(colorIndex);
     const shape = new THREE.Shape();
-    if (entity.vertices.length > 0) {
+    if (entity.vertices && entity.vertices.length > 0) {
       shape.moveTo(entity.vertices[0].x, entity.vertices[0].y);
       for (let i = 1; i < entity.vertices.length; i++) {
         shape.lineTo(entity.vertices[i].x, entity.vertices[i].y);

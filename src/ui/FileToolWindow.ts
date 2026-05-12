@@ -53,8 +53,22 @@ export class FileToolWindow {
     saveBtn.style.color = 'var(--text-color)';
     saveBtn.style.border = '1px solid var(--border-color)';
     saveBtn.style.cursor = 'pointer';
-    saveBtn.onclick = () => {
-      alert('Save functionality not fully implemented yet.');
+    saveBtn.onclick = async () => {
+      const name = prompt('Enter file name to save:', this.app.doc.id || 'drawing1');
+      if (name) {
+        try {
+          const id = await this.app.persistence.saveProject(
+            this.app.doc, 
+            name,
+            this.app.viewer.canvas.toDataURL('image/jpeg', 0.5)
+          );
+          alert(`Saved as ${name} (ID: ${id})`);
+          this.renderTableBody();
+        } catch (e) {
+          console.error(e);
+          alert(`Failed to save: ${e}`);
+        }
+      }
     };
 
     toolbar.appendChild(newBtn);
@@ -78,19 +92,115 @@ export class FileToolWindow {
     thead.innerHTML = `
       <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted);">
         <th style="text-align: left; padding: 4px;">File Name</th>
+        <th style="text-align: left; padding: 4px;">Date</th>
         <th style="text-align: right; padding: 4px;">Action</th>
       </tr>
     `;
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    tableContainer.appendChild(table);
+    this.container.appendChild(tableContainer);
+
+    this.renderTableBody();
+  }
+
+  public async renderTableBody() {
+    const tbody = this.container.querySelector('tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    // History files
+    const history = await this.app.persistence.getHistory();
+    history.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid var(--border-color)';
+      tr.style.backgroundColor = 'rgba(0, 255, 0, 0.05)'; // slight green tint for saved files
+      
+      const tdName = document.createElement('td');
+      tdName.style.padding = '4px';
+      tdName.innerHTML = `${item.name} <span style="background: #4caf50; color: white; padding: 1px 4px; border-radius: 3px; font-size: 9px; margin-left: 5px; font-weight: bold;">DB</span>`;
+      
+      const tdDate = document.createElement('td');
+      tdDate.style.padding = '4px';
+      tdDate.style.color = 'var(--text-muted)';
+      const date = item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-';
+      tdDate.textContent = date;
+      
+      const tdAction = document.createElement('td');
+      tdAction.style.padding = '4px';
+      tdAction.style.textAlign = 'right';
+      tdAction.style.display = 'flex';
+      tdAction.style.justifyContent = 'flex-end';
+      tdAction.style.gap = '4px';
+      
+      const loadBtn = document.createElement('button');
+      loadBtn.textContent = 'LOAD';
+      loadBtn.style.fontSize = '10px';
+      loadBtn.style.padding = '2px 4px';
+      loadBtn.style.background = 'var(--panel-bg)';
+      loadBtn.style.color = 'var(--text-color)';
+      loadBtn.style.border = '1px solid var(--border-color)';
+      loadBtn.style.cursor = 'pointer';
+      
+      loadBtn.onclick = async () => {
+        try {
+          await this.app.persistence.loadProject(item.id, this.app.doc, this.app);
+          this.app.triggerLayersWindowUpdate();
+          alert(`Loaded ${item.name}`);
+        } catch (e) {
+          console.error(e);
+          alert(`Failed to load: ${e}`);
+        }
+      };
+      
+      const delBtn = document.createElement('button');
+      delBtn.textContent = 'DEL';
+      delBtn.style.fontSize = '10px';
+      delBtn.style.padding = '2px 4px';
+      delBtn.style.background = 'var(--panel-bg)';
+      delBtn.style.color = '#ff4d4d';
+      delBtn.style.border = '1px solid var(--border-color)';
+      delBtn.style.cursor = 'pointer';
+      
+      delBtn.onclick = async () => {
+        if (confirm(`Delete "${item.name}"?`)) {
+          try {
+            await this.app.persistence.deleteProject(item.id);
+            this.renderTableBody();
+          } catch (e) {
+            console.error(e);
+            alert(`Failed to delete: ${e}`);
+          }
+        }
+      };
+      
+      tdAction.appendChild(loadBtn);
+      tdAction.appendChild(delBtn);
+      tr.appendChild(tdName);
+      tr.appendChild(tdDate);
+      tr.appendChild(tdAction);
+      
+      tr.onmouseover = () => tr.style.backgroundColor = 'rgba(255,255,255,0.05)';
+      tr.onmouseout = () => tr.style.backgroundColor = 'rgba(0, 255, 0, 0.05)';
+      
+      tbody.appendChild(tr);
+    });
+
+    // Sample files (from files.json)
     files.forEach(file => {
       const tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid var(--border-color)';
       
       const tdName = document.createElement('td');
       tdName.style.padding = '4px';
-      tdName.textContent = file;
+      tdName.innerHTML = `${file} <span style="background: #2196f3; color: white; padding: 1px 4px; border-radius: 3px; font-size: 9px; margin-left: 5px; font-weight: bold;">FILE</span>`;
+      
+      const tdDate = document.createElement('td');
+      tdDate.style.padding = '4px';
+      tdDate.style.color = 'var(--text-muted)';
+      tdDate.textContent = '-';
       
       const tdAction = document.createElement('td');
       tdAction.style.padding = '4px';
@@ -111,6 +221,7 @@ export class FileToolWindow {
       
       tdAction.appendChild(loadBtn);
       tr.appendChild(tdName);
+      tr.appendChild(tdDate);
       tr.appendChild(tdAction);
       
       tr.onmouseover = () => tr.style.backgroundColor = 'rgba(255,255,255,0.05)';
@@ -118,9 +229,6 @@ export class FileToolWindow {
       
       tbody.appendChild(tr);
     });
-    table.appendChild(tbody);
-    tableContainer.appendChild(table);
-    this.container.appendChild(tableContainer);
   }
 
   private async loadFile(filename: string) {
@@ -133,6 +241,7 @@ export class FileToolWindow {
       const importer = new DXFImporter();
       importer.import(text, this.app.doc);
       this.app.syncFromDocument();
+      this.app.triggerLayersWindowUpdate();
       console.log(`Loaded ${filename}`);
     } catch (e) {
       console.error(e);

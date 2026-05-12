@@ -42,8 +42,8 @@ export class OpenCascadeService {
    * Creates a basic 3D box shape.
    * Returns a Promise that resolves to THREE.BufferGeometry.
    */
-  async createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number, deflection?: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.createBox(x, y, z, dx, dy, dz, deflection);
+  async createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number, deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createBox(x, y, z, dx, dy, dz, deflection, entityId);
     
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
@@ -57,8 +57,8 @@ export class OpenCascadeService {
    * Creates a basic 3D cylinder shape.
    * Returns a Promise that resolves to THREE.BufferGeometry.
    */
-  async createCylinder(x: number, y: number, z: number, r: number, h: number, deflection?: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.createCylinder(x, y, z, r, h, deflection);
+  async createCylinder(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createCylinder(x, y, z, r, h, deflection, entityId);
     
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
@@ -72,8 +72,8 @@ export class OpenCascadeService {
    * Creates a basic 3D sphere shape.
    * Returns a Promise that resolves to THREE.BufferGeometry.
    */
-  async createSphere(x: number, y: number, z: number, r: number, deflection?: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.createSphere(x, y, z, r, deflection);
+  async createSphere(x: number, y: number, z: number, r: number, deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createSphere(x, y, z, r, deflection, entityId);
     
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
@@ -87,8 +87,8 @@ export class OpenCascadeService {
    * Creates a basic 3D cone shape.
    * Returns a Promise that resolves to THREE.BufferGeometry.
    */
-  async createCone(x: number, y: number, z: number, r: number, h: number, deflection?: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.createCone(x, y, z, r, h, deflection);
+  async createCone(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createCone(x, y, z, r, h, deflection, entityId);
     
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
@@ -102,8 +102,8 @@ export class OpenCascadeService {
    * Creates a basic 3D torus shape.
    * Returns a Promise that resolves to THREE.BufferGeometry.
    */
-  async createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.createTorus(x, y, z, r1, r2, deflection);
+  async createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createTorus(x, y, z, r1, r2, deflection, entityId);
     
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
@@ -117,8 +117,8 @@ export class OpenCascadeService {
    * Creates a extruded shape from points.
    * Returns a Promise that resolves to THREE.BufferGeometry.
    */
-  async createExtrude(points: {x: number, y: number, z: number}[], height: number, thickness?: number, deflection?: number, isClosed?: boolean): Promise<THREE.BufferGeometry> {
-    const data = await this.client.createExtrude(points, height, thickness, deflection, isClosed);
+  async createExtrude(points: {x: number, y: number, z: number}[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createExtrude(points, height, thickness, deflection, isClosed, entityId);
     
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
@@ -132,8 +132,8 @@ export class OpenCascadeService {
    * Creates a revolved shape from points.
    * Returns a Promise that resolves to THREE.BufferGeometry.
    */
-  async createRevolve(points: {x: number, y: number, z: number}[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean): Promise<THREE.BufferGeometry> {
-    const data = await this.client.createRevolve(points, axisPoint, axisDir, angle, thickness, deflection, isClosed);
+  async createRevolve(points: {x: number, y: number, z: number}[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createRevolve(points, axisPoint, axisDir, angle, thickness, deflection, isClosed, entityId);
     
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
@@ -141,6 +141,32 @@ export class OpenCascadeService {
     geometry.computeVertexNormals();
     
     return geometry;
+  }
+  async createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createBoolean(operation, idA, idB, entityId, deflection);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    return geometry;
+  }
+
+  async transformShape(entityId: string, dx: number, dy: number, dz: number): Promise<void> {
+    await this.client.transformShape(entityId, dx, dy, dz);
+  }
+
+  async releaseShapes(entityIds: string[]): Promise<void> {
+    await this.client.releaseShapes(entityIds);
+  }
+
+  async exportBRep(entityId: string): Promise<Uint8Array> {
+    return this.client.exportBRep(entityId);
+  }
+
+  async importBRep(entityId: string, brepBytes: Uint8Array, deflection?: number): Promise<any> {
+    return await this.client.importBRep(entityId, brepBytes, deflection);
   }
 }
 

@@ -67,9 +67,10 @@ import { PlotCommand } from "../commands/PlotCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 import { UnitsConfig, Document } from "../model/Document"
-import { Entity } from "../model/Entity"
-import { ExtrudeCommand } from "../commands/ExtrudeCommand"
-import { RevolveCommand } from "../commands/RevolveCommand"
+import { ExtrudeCommand } from "../commands/ExtrudeCommand.js"
+import { RevolveCommand } from "../commands/RevolveCommand.js"
+import { BooleanCommand } from "../commands/BooleanCommand.js"
+import { Entity } from "../model/Entity.js"
 
 
 type CommandFactory = (selection?: string[]) => Command | CommandResponse;
@@ -89,6 +90,9 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["FACETRES", () => new FacetresCommand()],
   ["EXTRUDE", () => new ExtrudeCommand()],
   ["REVOLVE", () => new RevolveCommand()],
+  ["UNION", (selection) => new BooleanCommand('fuse', selection)],
+  ["SUBTRACT", (selection) => new BooleanCommand('cut', selection)],
+  ["INTERSECT", (selection) => new BooleanCommand('common', selection)],
   ["ID", () => new IdCommand()],
 
   ["DIST", () => new DistCommand()],
@@ -139,7 +143,7 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["LT", () => new LinetypeCommand()],
   ["SAVE", () => new SaveCommand()],
   ["LOAD", () => new LoadCommand()],
-  ["NEW", () => new NewCommand()],
+  ["NEW", () => ({ action: "new" })],
   ["PLOT",    () => new PlotCommand()],
   ["PRINT",   () => new PlotCommand()],   // alias
   ["EXPORT",  () => new PlotCommand()],   // alias
@@ -249,7 +253,10 @@ export class CommandManager {
       'TextCommand': 'TX',
       'SolidCommand': 'SD',
       'TraceCommand': 'TR',
-      'HatchCommand': 'H'
+      'HatchCommand': 'H',
+      'BoxCommand': 'S3D',
+      'CylinderCommand': 'S3D',
+      'ExtrudeCommand': 'S3D'
     };
     return prefixMap[name] || 'E';
   }

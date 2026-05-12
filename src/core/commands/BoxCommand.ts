@@ -2,7 +2,7 @@ import { Command, CommandResponse } from "./types";
 import { UnitsConfig } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 import { Solid3D } from "../model/Solid3D";
-import { OpenCascadeService } from "../io/OpenCascadeService";
+import { OpenCascadeService } from "../io/OpenCascadeService.js";
 import { Polyline } from "../model/Polyline";
 
 export class BoxCommand implements Command {
@@ -43,11 +43,15 @@ export class BoxCommand implements Command {
       const facetres = doc ? doc.facetres : 5.0;
       const deflection = 0.1 / facetres;
       
-      return this.occService.createBox(minX, minY, minZ, dx, dy, dz, deflection).then((geometry: any) => {
+      return this.occService.createBox(minX, minY, minZ, dx, dy, dz, deflection, id).then((geometry: any) => {
         const positions = Array.from(geometry.getAttribute('position').array) as number[];
         const indices = Array.from(geometry.getIndex()?.array || []) as number[];
         
         const solid = new Solid3D(id, positions, indices);
+        solid.creationParams = {
+          type: 'box',
+          params: { x: minX, y: minY, z: minZ, dx, dy, dz }
+        };
         this.step = 0; // Reset
         return solid;
       }).catch((err: any) => {
@@ -85,11 +89,14 @@ export class BoxCommand implements Command {
       const facetres = doc ? doc.facetres : 5.0;
       const deflection = 0.1 / facetres;
 
-      return this.occService.createBox(minX, minY, actualMinZ, dx, dy, dz, deflection).then((geometry: any) => {
+      return this.occService.createBox(minX, minY, actualMinZ, dx, dy, dz, deflection, id).then((geometry: any) => {
         const positions = Array.from(geometry.getAttribute('position').array) as number[];
         const indices = Array.from(geometry.getIndex()?.array || []) as number[];
-        
         const solid = new Solid3D(id, positions, indices);
+        solid.creationParams = {
+          type: 'box',
+          params: { x: minX, y: minY, z: actualMinZ, dx, dy, dz }
+        };
         this.step = 0; // Reset
         return solid;
       }).catch((err: any) => {

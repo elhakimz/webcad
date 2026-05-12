@@ -41,7 +41,7 @@ export class Solid extends Entity {
   }
 
   getBoundingBox(): BoundingBox {
-    if (this.vertices.length === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+    if (!this.vertices || this.vertices.length === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     this.vertices.forEach(v => {
       minX = Math.min(minX, v.x);

@@ -142,6 +142,7 @@ export class SelectionEngine {
   }
 
   private static isPointInPolygon(px: number, py: number, vertices: { x: number, y: number }[]): boolean {
+    if (!vertices || vertices.length === 0) return false;
     let inside = false;
     for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
       const xi = vertices[i].x, yi = vertices[i].y;

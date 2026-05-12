@@ -5,6 +5,7 @@ export class Solid3D extends Entity {
   indices: number[];
   position: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
   rotation: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
+  creationParams?: { type: string; params: any };
 
   get type(): string {
     return "Solid3D";
@@ -116,6 +117,9 @@ export class Solid3D extends Entity {
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     copy.position = { ...this.position };
     copy.rotation = { ...this.rotation };
+    if (this.creationParams) {
+      copy.creationParams = JSON.parse(JSON.stringify(this.creationParams));
+    }
     return copy;
   }
 }

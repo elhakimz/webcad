@@ -10,6 +10,10 @@ export class GizmoController {
   private dragStartPos: THREE.Vector3 = new THREE.Vector3();
   private dragStartQuat: THREE.Quaternion = new THREE.Quaternion();
 
+  public get startPos(): THREE.Vector3 {
+    return this.dragStartPos;
+  }
+
   private dragPlaneNormal: THREE.Vector3 = new THREE.Vector3();
   private dragPlaneOrigin: THREE.Vector3 = new THREE.Vector3();
   private dragStartHitPt: THREE.Vector3 = new THREE.Vector3();

@@ -2,6 +2,21 @@ import { initOpenCascade } from "opencascade.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let oc: any = null;
+const shapeCache = new Map<string, any>();
+
+function cacheShape(entityId: string, shape: any) {
+  if (shapeCache.has(entityId)) {
+    shapeCache.get(entityId).delete();
+  }
+  shapeCache.set(entityId, shape);
+}
+
+function releaseShape(entityId: string) {
+  if (shapeCache.has(entityId)) {
+    shapeCache.get(entityId).delete();
+    shapeCache.delete(entityId);
+  }
+}
 
 self.onmessage = async (e) => {
   const { type, payload, id } = e.data;
@@ -23,11 +38,15 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { x, y, z, dx, dy, dz, deflection } = payload;
+    const { x, y, z, dx, dy, dz, deflection, entityId } = payload;
     try {
       const pt = new oc.gp_Pnt_3(x, y, z);
       const box = new oc.BRepPrimAPI_MakeBox_2(pt, dx, dy, dz);
       const shape = box.Shape();
+      
+      if (entityId) {
+        cacheShape(entityId, shape);
+      }
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
@@ -49,7 +68,7 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { x, y, z, r, h, deflection } = payload;
+    const { x, y, z, r, h, deflection, entityId } = payload;
     try {
       // Use constructor with 3 parameters: Radius, Height, Angle
       const cylinder = new oc.BRepPrimAPI_MakeCylinder_2(r, h, 2 * Math.PI);
@@ -65,6 +84,10 @@ self.onmessage = async (e) => {
         translation.delete();
         transform.delete();
         brepTransform.delete();
+      }
+
+      if (entityId) {
+        cacheShape(entityId, shape);
       }
 
       // Tessellate and get geometry data
@@ -86,7 +109,7 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { x, y, z, r, deflection } = payload;
+    const { x, y, z, r, deflection, entityId } = payload;
     try {
       // Use constructor with 1 parameter: Radius (creates at origin)
       const sphere = new oc.BRepPrimAPI_MakeSphere_1(r);
@@ -102,6 +125,10 @@ self.onmessage = async (e) => {
         translation.delete();
         transform.delete();
         brepTransform.delete();
+      }
+
+      if (entityId) {
+        cacheShape(entityId, shape);
       }
 
       // Tessellate and get geometry data
@@ -123,7 +150,7 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { x, y, z, r, h, deflection } = payload;
+    const { x, y, z, r, h, deflection, entityId } = payload;
     try {
       // Try BRepPrimAPI_MakeCone_1
       const cone = new oc.BRepPrimAPI_MakeCone_1(r, 0, h);
@@ -139,6 +166,10 @@ self.onmessage = async (e) => {
         translation.delete();
         transform.delete();
         brepTransform.delete();
+      }
+
+      if (entityId) {
+        cacheShape(entityId, shape);
       }
 
       // Tessellate and get geometry data
@@ -160,7 +191,7 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { x, y, z, r1, r2, deflection } = payload;
+    const { x, y, z, r1, r2, deflection, entityId } = payload;
     try {
       // Try BRepPrimAPI_MakeTorus_1
       const torus = new oc.BRepPrimAPI_MakeTorus_1(r1, r2);
@@ -176,6 +207,10 @@ self.onmessage = async (e) => {
         translation.delete();
         transform.delete();
         brepTransform.delete();
+      }
+
+      if (entityId) {
+        cacheShape(entityId, shape);
       }
 
       // Tessellate and get geometry data
@@ -197,7 +232,7 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { points, height, thickness, deflection, isClosed } = payload;
+    const { points, height, thickness, deflection, isClosed, entityId } = payload;
     try {
       let resultShape: any = null;
 
@@ -356,9 +391,16 @@ self.onmessage = async (e) => {
         throw new Error("Failed to create extrude shape.");
       }
 
+      if (entityId) {
+        cacheShape(entityId, resultShape);
+      }
+
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      resultShape.delete();
+      
+      if (!entityId) {
+        resultShape.delete();
+      }
 
       self.postMessage({ type: 'createExtrude', success: true, payload: geometryData, id });
     } catch (error: any) {
@@ -370,7 +412,7 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { points, axisPoint, axisDir, angle, thickness, deflection, isClosed } = payload;
+    const { points, axisPoint, axisDir, angle, thickness, deflection, isClosed, entityId } = payload;
     try {
       let resultShape: any = null;
       const angleRad = angle * Math.PI / 180;
@@ -440,18 +482,267 @@ self.onmessage = async (e) => {
       revAxis.delete();
 
 
-      if (!resultShape) {
-        throw new Error("Failed to create revolve shape.");
+      if (entityId) {
+        cacheShape(entityId, resultShape);
       }
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      resultShape.delete();
+      
+      if (!entityId) {
+        resultShape.delete();
+      }
 
       self.postMessage({ type: 'createRevolve', success: true, payload: geometryData, id });
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'createRevolve', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'createBoolean') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { operation, idA, idB, entityId, deflection } = payload;
+    try {
+      if (!shapeCache.has(idA)) {
+        throw new Error(`Shape not cached for solid A (id: ${idA}). Ensure solid was created in this session.`);
+      }
+      if (!shapeCache.has(idB)) {
+        throw new Error(`Shape not cached for solid B (id: ${idB}).`);
+      }
+
+      const shapeA = shapeCache.get(idA);
+      const shapeB = shapeCache.get(idB);
+
+      let boolBuilder: any;
+      if (operation === 'fuse') {
+        boolBuilder = new oc.BRepAlgoAPI_Fuse_3(shapeA, shapeB);
+      } else if (operation === 'cut') {
+        boolBuilder = new oc.BRepAlgoAPI_Cut_3(shapeA, shapeB);
+      } else if (operation === 'common') {
+        boolBuilder = new oc.BRepAlgoAPI_Common_3(shapeA, shapeB);
+      } else {
+        throw new Error(`Unknown boolean operation: ${operation}`);
+      }
+
+      boolBuilder.Build();
+
+      if (!boolBuilder.IsDone()) {
+        boolBuilder.delete();
+        throw new Error(`Boolean ${operation} failed — shapes may not intersect or be invalid`);
+      }
+
+      const resultShape = boolBuilder.Shape();
+      if (resultShape.IsNull()) {
+        boolBuilder.delete();
+        throw new Error(`Boolean ${operation} produced an empty result`);
+      }
+
+      if (entityId) {
+        cacheShape(entityId, resultShape);
+      }
+
+      const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
+      
+      if (!entityId) {
+        resultShape.delete();
+      }
+      boolBuilder.delete();
+
+      self.postMessage({ type: 'createBoolean', success: true, payload: geometryData, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'createBoolean', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'transformShape') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, dx, dy, dz } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not cached for entity ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+      
+      const translation = new oc.gp_Vec_4(dx, dy, dz);
+      const transform = new oc.gp_Trsf_1();
+      transform.SetTranslation_1(translation);
+      const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+      const newShape = brepTransform.Shape();
+      
+      cacheShape(entityId, newShape); // Update cache
+      
+      translation.delete();
+      transform.delete();
+      brepTransform.delete();
+      
+      self.postMessage({ type: 'transformShape', success: true, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'transformShape', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'releaseShapes') {
+    const { entityIds } = payload;
+    for (const eid of entityIds) {
+      releaseShape(eid);
+    }
+    self.postMessage({ type: 'releaseShapes', success: true, id });
+  } else if (type === 'exportBRep') {
+    const { entityId } = payload;
+    try {
+      const shape = shapeCache.get(entityId);
+      if (!shape) {
+        const keys = Array.from(shapeCache.keys());
+        self.postMessage({ type: 'exportBRep', success: false,
+          error: `No cached shape for entityId: ${entityId}. Cached keys: ${keys.join(', ')}`, id });
+        return;
+      }
+      const filename = `${entityId}.stp`;
+      
+      let stepError = null;
+      if (typeof oc.STEPControl_Writer_1 === 'function' || typeof oc.STEPControl_Writer === 'function') {
+        try {
+          const writer = typeof oc.STEPControl_Writer_1 === 'function' 
+            ? new oc.STEPControl_Writer_1() 
+            : new oc.STEPControl_Writer();
+            
+          try {
+            writer.Transfer(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true);
+          } catch(e) {
+            writer.Transfer(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true, new oc.Message_ProgressRange_1());
+          }
+          
+          writer.Write(filename);
+          
+          const stepBytes = oc.FS.readFile(filename);
+          oc.FS.unlink(filename);
+          
+          (self as any).postMessage(
+            { type: 'exportBRep', success: true, id, payload: stepBytes },
+            [stepBytes.buffer]
+          );
+          return;
+        } catch(e: any) {
+          stepError = e.message || e.toString();
+          console.log("[Worker] STEP export failed, falling back:", e);
+        }
+      }
+      
+      // Fallback to BinTools or BRepTools
+      const brepFilename = `${entityId}.brep`;
+      let success = false;
+      if (oc.BinTools && typeof oc.BinTools.Write_2 === 'function') {
+        try {
+          oc.BinTools.Write_2(shape, brepFilename);
+          success = true;
+        } catch(e) { console.log("[Worker] BinTools.Write_2 failed:", e); }
+      } else if (oc.BinTools && typeof oc.BinTools.Write === 'function') {
+        try {
+          oc.BinTools.Write(shape, brepFilename);
+          success = true;
+        } catch(e) { console.log("[Worker] BinTools.Write failed:", e); }
+      }
+      
+      if (!success) {
+        if (typeof oc.BRepTools.Write_3 === 'function') {
+          success = oc.BRepTools.Write_3(shape, brepFilename);
+        } else if (typeof oc.BRepTools.Write === 'function') {
+          try { success = oc.BRepTools.Write(shape, brepFilename); } catch(e) { }
+        }
+      }
+      
+      if (!success) {
+        const binKeys = oc.BinTools ? Object.keys(oc.BinTools).filter(k => k.startsWith('Write')) : [];
+        const brepKeys = Object.keys(oc.BRepTools).filter(k => k.startsWith('Write'));
+        const stepWriterExists = typeof oc.STEPControl_Writer_1 === 'function' || typeof oc.STEPControl_Writer === 'function';
+        throw new Error(`Failed to export shape. STEP error: ${stepError}. BinTools keys: [${binKeys.join(', ')}]. BRepTools keys: [${brepKeys.join(', ')}]. STEPWriter exists: ${stepWriterExists}`);
+      }
+      
+      const brepBytes = oc.FS.readFile(brepFilename);
+      oc.FS.unlink(brepFilename);
+      
+      (self as any).postMessage(
+        { type: 'exportBRep', success: true, id, payload: brepBytes },
+        [brepBytes.buffer]
+      );
+    } catch (err: any) {
+      self.postMessage({ type: 'exportBRep', success: false, error: err.message, id });
+    }
+
+  } else if (type === 'importBRep') {
+    const { entityId, brepBytes, deflection } = payload;
+    try {
+      const filename = `${entityId}.stp`;
+      oc.FS.writeFile(filename, new Uint8Array(brepBytes));
+      
+      let success = false;
+      let loadedShape: any = null;
+      
+      if (typeof oc.STEPControl_Reader_1 === 'function' || typeof oc.STEPControl_Reader === 'function') {
+        try {
+          const reader = typeof oc.STEPControl_Reader_1 === 'function' 
+            ? new oc.STEPControl_Reader_1() 
+            : new oc.STEPControl_Reader();
+            
+          const status = reader.ReadFile(filename);
+          if (status === oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
+            reader.TransferRoots();
+            loadedShape = reader.OneShape();
+            success = true;
+          }
+        } catch(e) {
+          console.log("[Worker] STEP import failed, falling back:", e);
+        }
+      }
+      
+      const shape = new oc.TopoDS_Shape();
+      const builder = new oc.BRep_Builder();
+      
+      if (!success) {
+        const brepFilename = `${entityId}.brep`;
+        oc.FS.writeFile(brepFilename, new Uint8Array(brepBytes));
+        
+        if (oc.BinTools && typeof oc.BinTools.Read_2 === 'function') {
+          try {
+            oc.BinTools.Read_2(shape, brepFilename);
+            success = true;
+          } catch(e) { }
+        } else if (oc.BinTools && typeof oc.BinTools.Read === 'function') {
+          try {
+            oc.BinTools.Read(shape, brepFilename);
+            success = true;
+          } catch(e) { }
+        }
+        
+        if (!success) {
+          if (typeof oc.BRepTools.Read === 'function') {
+            success = oc.BRepTools.Read(shape, brepFilename, builder);
+          } else if (typeof oc.BRepTools.Read_1 === 'function') {
+            success = oc.BRepTools.Read_1(shape, brepFilename, builder);
+          }
+        }
+        
+        oc.FS.unlink(brepFilename);
+        loadedShape = shape;
+      }
+      
+      if (!success) {
+        throw new Error("Failed to import shape using STEP, BinTools, or BRepTools.");
+      }
+      
+      oc.FS.unlink(filename);
+      
+      cacheShape(entityId, loadedShape);    // now available for boolean ops
+      
+      // Tessellate and get geometry data
+      const geometryData = shapeToBufferGeometryData(loadedShape, oc, deflection || 0.1);
+      
+      self.postMessage({ type: 'importBRep', success: true, payload: geometryData, id });
+    } catch (err: any) {
+      self.postMessage({ type: 'importBRep', success: false, error: err.message, id });
     }
   }
 }

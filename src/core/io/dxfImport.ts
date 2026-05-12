@@ -128,6 +128,7 @@ export class DXFImporter {
     const endCondition = isBlockSubSection ? "ENDBLK" : "ENDSEC";
     let currentLayerForFaces: string | null = null;
     let currentOriginalId: string | undefined = undefined;
+    let currentCreationParams: any = undefined;
     let accumulatedPositions: number[] = [];
     let accumulatedIndices: number[] = [];
     
@@ -150,6 +151,10 @@ export class DXFImporter {
         if (type !== "3DFACE" && currentLayerForFaces) {
           const s3d = new Solid3D(doc.getNextId("S3D"), accumulatedPositions, accumulatedIndices);
           s3d.layer = currentLayerForFaces;
+          if (currentCreationParams) {
+            s3d.creationParams = currentCreationParams;
+            currentCreationParams = undefined; // Reset
+          }
           doc.addEntity(s3d);
           currentLayerForFaces = null;
           accumulatedPositions = [];
@@ -201,10 +206,30 @@ export class DXFImporter {
           const layer = props[8] || "0";
           const originalId = props[1000]; // Read XData!
           
+          let creationParams: any = undefined;
+          for (const g of entityGroups) {
+            if (g.code === 1000 && g.value.startsWith("CREATION_PARAMS:")) {
+              const str = g.value.substring("CREATION_PARAMS:".length);
+              try {
+                creationParams = JSON.parse(str);
+              } catch (e) {
+                console.error("Failed to parse creationParams:", e);
+              }
+              break;
+            }
+          }
+          if (creationParams) {
+            currentCreationParams = creationParams;
+          }
+          
           if (currentLayerForFaces && (currentLayerForFaces !== layer || currentOriginalId !== originalId)) {
             // Flush!
             const s3d = new Solid3D(doc.getNextId("S3D"), accumulatedPositions, accumulatedIndices);
             s3d.layer = currentLayerForFaces;
+            if (currentCreationParams) {
+              s3d.creationParams = currentCreationParams;
+              currentCreationParams = undefined; // Reset
+            }
             doc.addEntity(s3d);
             accumulatedPositions = [];
             accumulatedIndices = [];

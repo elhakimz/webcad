@@ -1,6 +1,6 @@
-# WebCAD - AutoCAD 2.18 Web Clone
+# WebCAD 
 
-A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, reimagined for the modern web using **TypeScript**, **Three.js**, and **Vite**.
+A faithful CAD drafting experience, reimagined for the modern web using **TypeScript**, **Three.js**, and **Vite**.
 
 ![WebCAD Interface Screenshot](screenshots/screen1.png)
 
@@ -20,8 +20,11 @@ A faithful replica of the classic AutoCAD 2.18 (DOS era) drafting experience, re
 
 ### 💾 File I/O & Interoperability
 -   **DXF I/O Layer:** **Custom R12/R14 ASCII Writer & Parser** for industry-standard interoperability.
--   **SAVE:** Save drawings directly to the local project `./files` directory (via integrated Vite File API).
--   **LOAD:** Load existing DXF files from the `./files` directory with full layer and entity reconstruction.
+-   **IndexedDB Persistence:** Robust storage for drawings and 3D shapes using RxDB.
+-   **Solid Persistence:** Switched to STEP format for reliable saving and loading of 3D boolean shapes.
+-   **File Operations Window:** Dedicated UI panel listing DB projects and static files, featuring:
+    -   **Date-Time Column:** Shows when the project was last updated.
+    -   **Delete with Confirmation:** Safe deletion of stored projects.
 -   **Main Menu Integration:** Integrated "Edit an EXISTING drawing" workflow with dynamic file listing and selection.
 
 ### ⌨️ Classic Commands
@@ -113,7 +116,7 @@ npm run lint
 -   [x] **Advanced Curves:** **SPLINE** command with cubic B-spline drafting, snap support, and DXF R14 persistence.
 -   [x] **Modification:** **STRETCH** command with crossing-window selection and dynamic vertex displacement.
 -   [ ] **Snaps:** Intersection and Perpendicular snapping modes.
--   [ ] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT.
+-   [x] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT with robust STEP persistence.
 
 ## 📄 License
 MIT

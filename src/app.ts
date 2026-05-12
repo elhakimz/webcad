@@ -33,6 +33,7 @@ import { Layer } from "./core/model/Layer"
 import { DynamicInput } from "./ui/DynamicInput"
 import { ResultDispatcher } from "./core/engine/handlers/ResultDispatcher"
 import { LayerHandler } from "./core/engine/handlers/LayerHandler"
+import { BooleanHandler } from "./core/engine/handlers/transform/BooleanHandler"
 import { ArrayHandler } from "./core/engine/handlers/transform/ArrayHandler"
 import { FilletHandler } from "./core/engine/handlers/transform/FilletHandler"
 import { ChamferHandler } from "./core/engine/handlers/transform/ChamferHandler"
@@ -59,6 +60,7 @@ import { AppContext } from "./core/engine/handlers/types"
 import { DraftingState } from "./core/engine/DraftingState"
 import { HasBasePoint, HasUpdateSketch, HasStartSketch, HasFinishSketch, HasSelectedIds } from "./core/commands/types"
 import { GizmoManager } from "./core/engine/GizmoManager"
+import { PersistenceService } from "./core/persistence/PersistenceService"
 
 export class App {
   viewer:Viewer
@@ -79,6 +81,7 @@ export class App {
   private lastMode3d: boolean = false;
   currentZ: number = 0;
   public gizmoManager!: GizmoManager;
+  public persistence: PersistenceService;
 
   setPromptUpdate(updateFn: () => void) {
     this.promptUpdate = updateFn;
@@ -87,6 +90,10 @@ export class App {
 
   setLayersWindowUpdate(updateFn: () => void) {
     this.layersWindowUpdate = updateFn;
+  }
+
+  triggerLayersWindowUpdate() {
+    if (this.layersWindowUpdate) this.layersWindowUpdate();
   }
 
   setCommandLine(printFn: (msg: string) => void) {
@@ -105,6 +112,7 @@ export class App {
     
     this.gizmoManager = new GizmoManager(this.viewer, this);
     this.viewer.onBeforeRender = () => this.gizmoManager.update();
+    this.persistence = PersistenceService.getInstance();
 
     // Add lighting for 3D meshes
     const ambient = new THREE.AmbientLight(0xffffff, 0.5);
@@ -138,6 +146,7 @@ export class App {
     });
 
     this.dispatcher.registerHandler(new LayerHandler());
+    this.dispatcher.registerHandler(new BooleanHandler());
     this.dispatcher.registerHandler(new ArrayHandler());
     this.dispatcher.registerHandler(new FilletHandler());
     this.dispatcher.registerHandler(new ChamferHandler());
@@ -271,6 +280,7 @@ export class App {
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
         (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
         (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'ExtrudeCommand' || activeName === 'RevolveCommand')) ||
+        (this.cmd.active && 'operation' in this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1)) ||
         (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
 
         (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
@@ -291,7 +301,7 @@ export class App {
   }
 
   private getSolid3DSelectables(): Solid3D[] {
-    return this.getSelectableEntities().filter(e => e instanceof Solid3D) as Solid3D[];
+    return this.getSelectableEntities().filter(e => (e as any).type === "Solid3D" || e instanceof Solid3D) as Solid3D[];
   }
 
   private getEditableEntities(entities: Entity[]): Entity[] {
@@ -620,6 +630,12 @@ export class App {
           });
         }
         
+        // If the found object is a child of a group with the same name,
+        // use the parent group so that Gizmo reads the correct world position!
+        if (obj && obj.parent && obj.parent.name === id) {
+          obj = obj.parent;
+        }
+        
         console.log("Gizmo attachment - entity id:", id, "found obj:", obj);
         
         if (obj) {
@@ -714,8 +730,9 @@ export class App {
             const isListPick = activeName === 'ListCommand';
             const isExtrudePick = activeName === 'ExtrudeCommand' && this.cmd.active?.step === 0;
             const isRevolvePick = activeName === 'RevolveCommand' && this.cmd.active?.step === 0;
+            const isBooleanPick = this.cmd.active && 'operation' in this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1);
 
-            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isDimRadiusPick || isDimAngularPick || isListPick || isExtrudePick || isRevolvePick)) {       
+            if (this.cmd.active && (isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isDimRadiusPick || isDimAngularPick || isListPick || isExtrudePick || isRevolvePick || isBooleanPick)) {       
                 if ((isDimRadiusPick || isDimAngularPick || isListPick || isExtrudePick || isRevolvePick) && 'setEntity' in this.cmd.active) {
                   (this.cmd.active as unknown as HasSetEntity).setEntity(entity);
                 }
@@ -772,7 +789,7 @@ export class App {
       let entity: Entity | undefined;
       let isCloseAction = false;
       
-      if (result && (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof MText || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape || result instanceof Spline || result instanceof Note || result.constructor.name === "Solid3D" || result instanceof Solid3D)) {
+      if (result && (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof MText || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape || result instanceof Spline || result instanceof Note || (result as any).type === "Solid3D" || result instanceof Solid3D)) {
         entity = result as Entity;
       } else if (result && typeof result === 'object' && 'action' in result && result.action === 'close') {
         if (result.entity) {
@@ -896,6 +913,10 @@ export class App {
     }
 
     this.doc.addEntity(entity);
+    this.persistence.scheduleAutoSave(
+      this.doc,
+      () => this.viewer.canvas.toDataURL('image/jpeg', 0.5)
+    );
     const layer = entity.layer;
     const layerObj = this.doc.layers.getLayer(layer);
     const isVisible = layerObj ? layerObj.isVisible && !layerObj.isFrozen : true;

@@ -6,7 +6,7 @@ import { Polyline } from "../model/Polyline"
 import { Circle } from "../model/Circle"
 import { Spline } from "../model/Spline"
 import { Solid3D } from "../model/Solid3D"
-import { OpenCascadeService } from "../io/OpenCascadeService"
+import { OpenCascadeService } from "../io/OpenCascadeService.js";
 
 export class ExtrudeCommand implements Command {
   step = 0
@@ -125,11 +125,15 @@ export class ExtrudeCommand implements Command {
     const facetres = doc ? doc.facetres : 5.0;
     const deflection = 0.1 / facetres;
     
-    return this.occService.createExtrude(points, this.height, this.thickness, deflection, isClosed).then((geometry: any) => {
+    return this.occService.createExtrude(points, this.height, this.thickness, deflection, isClosed, id).then((geometry: any) => {
       const positions = Array.from(geometry.getAttribute('position').array) as number[];
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
       
       const solid = new Solid3D(id, positions, indices);
+      solid.creationParams = {
+        type: 'extrude',
+        params: { points, height: this.height, thickness: this.thickness, isClosed }
+      };
       if (this.selectedEntity) {
         solid.layer = this.selectedEntity.layer;
       }

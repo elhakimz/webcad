@@ -11,6 +11,7 @@ export interface UnitsConfig {
 }
 
 export interface IDocument {
+  id?: string;
   entities: Map<string, Entity>;
   units: UnitsConfig;
   dimtoh: boolean;
@@ -29,6 +30,8 @@ export interface IDocument {
   querySpatialIndex(range: BoundingBox): string[];
   getEntity(id: string): Entity | undefined;
   getAllEntities(): Entity[];
+  getIdCounters(): Record<string, number>;
+  restoreIdCounters(counters: Record<string, number>): void;
   recordAdd(entity: Entity): void;
   recordRemove(entity: Entity): void;
   recordTransform(before: Entity, after: Entity): void;
@@ -39,6 +42,7 @@ export interface IDocument {
 }
 
 export class Document implements IDocument {
+  id?: string;
   entities: Map<string, Entity> = new Map()
   history = new HistoryManager()
   layers = new LayerManager()
@@ -108,6 +112,16 @@ export class Document implements IDocument {
 
   getAllEntities() {
     return Array.from(this.entities.values())
+  }
+
+  getIdCounters(): Record<string, number> {
+    const out: Record<string, number> = {};
+    this.idCounters.forEach((v, k) => { out[k] = v; });
+    return out;
+  }
+
+  restoreIdCounters(counters: Record<string, number>): void {
+    this.idCounters = new Map(Object.entries(counters));
   }
 
   recordAdd(entity: Entity) {

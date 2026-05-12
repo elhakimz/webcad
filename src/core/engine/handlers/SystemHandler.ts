@@ -1,5 +1,7 @@
 import { ActionHandler, AppContext } from "./types";
 import { CommandAction, CommandResponse } from "../../commands/types";
+import { OpenCascadeService } from "../../io/OpenCascadeService";
+import { PersistenceService } from "../../persistence/PersistenceService";
 
 export class SystemHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -45,14 +47,29 @@ export class SystemHandler implements ActionHandler {
     }
 
     if (action.action === 'delete' && action.ids) {
-      action.ids.forEach(id => {
+      const solidIds: string[] = [];
+      for (const id of action.ids) {
         const entity = doc.getEntity(id);
         if (entity) {
           doc.recordRemove(entity);
           doc.removeEntity(id);
           viewer.removeObject(id);
+          await PersistenceService.getInstance().onEntityErased(id, entity);
+          if ((entity as any).type === "Solid3D" || entity.constructor.name === "Solid3D") {
+            solidIds.push(id);
+          }
         }
-      });
+      }
+      
+      if (solidIds.length > 0) {
+        try {
+          await OpenCascadeService.getInstance().releaseShapes(solidIds);
+          console.log(`[SystemHandler] Released shapes from worker:`, solidIds);
+        } catch (err) {
+          console.error(`[SystemHandler] Failed to release shapes from worker:`, err);
+        }
+      }
+      
       doc.updateSpatialIndex();
       return `Deleted ${action.ids.length} objects.`;
     }

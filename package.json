@@ -13,15 +13,20 @@
     "test:ui": "playwright test"
   },
   "dependencies": {
+    "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
+    "dexie": "^4.4.2",
     "jspdf": "^4.2.1",
     "opencascade.js": "^1.1.4",
+    "rxdb": "^17.2.0",
     "svg2pdf.js": "^2.7.0",
-    "three": "^0.160.0"
+    "three": "^0.160.0",
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@types/node": "^25.6.0",
     "@types/three": "^0.184.0",
+    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.59.1",
     "@typescript-eslint/parser": "^8.59.1",
     "eslint": "^10.3.0",

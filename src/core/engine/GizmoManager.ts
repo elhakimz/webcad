@@ -4,6 +4,7 @@ import { GizmoRenderer, HandleDescriptor } from "../../render/GizmoRenderer";
 import { GizmoController } from "./GizmoController";
 import { App } from "../../app";
 import { Solid3D } from "../model/Solid3D";
+import { OpenCascadeService } from "../io/OpenCascadeService";
 
 export class GizmoManager {
   private renderer: GizmoRenderer;
@@ -71,6 +72,7 @@ export class GizmoManager {
   private snapGizmoToObject() {
     if (!this.targetObject) return;
     
+    this.targetObject.updateMatrixWorld(true);
     const bbox = new THREE.Box3().setFromObject(this.targetObject);
     const center = bbox.getCenter(new THREE.Vector3());
     this.renderer.root.position.copy(center);
@@ -112,7 +114,7 @@ export class GizmoManager {
         
         // But wait! We didn't store the initial object position in this class!
         // Let's use the delta of the gizmo!
-        const deltaPos = this.renderer.root.position.clone().sub(this.controller["dragStartPos"]);
+        const deltaPos = this.renderer.root.position.clone().sub(this.controller.startPos);
         
         // If the target object is a Group at (0,0,0), setting its position to deltaPos will move it correctly!
         this.targetObject.position.copy(this.initialObjectPosition).add(deltaPos);
@@ -184,7 +186,7 @@ export class GizmoManager {
     e.stopPropagation();
   }
 
-  private syncTransformToEntity() {
+  private async syncTransformToEntity() {
     if (!this.targetEntity || !this.targetObject) return;
 
     // Create a snapshot of the entity before modification for history
@@ -195,6 +197,8 @@ export class GizmoManager {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.targetEntity.positions, 3));
     geometry.computeBoundingBox();
     const center = geometry.boundingBox!.getCenter(new THREE.Vector3());
+
+    const oldPos = { ...this.targetEntity.position };
 
     // Update position and rotation in entity
     // We save the delta position relative to the original center!
@@ -210,6 +214,20 @@ export class GizmoManager {
       y: euler.y,
       z: euler.z
     };
+
+    const dx = this.targetEntity.position.x - oldPos.x;
+    const dy = this.targetEntity.position.y - oldPos.y;
+    const dz = this.targetEntity.position.z - oldPos.z;
+
+    // Sync with OpenCascade worker
+    if (dx !== 0 || dy !== 0 || dz !== 0) {
+      try {
+        await OpenCascadeService.getInstance().transformShape(this.targetEntity.id, dx, dy, dz);
+        console.log(`Synced transform to worker for ${this.targetEntity.id}: dx=${dx}, dy=${dy}, dz=${dz}`);
+      } catch (err) {
+        console.error(`Failed to transform shape in worker for ${this.targetEntity.id}:`, err);
+      }
+    }
 
     // Record the transformation in the document history
     this.app.doc.recordTransform(before, this.targetEntity);

@@ -2,7 +2,7 @@ import { Command, CommandResponse } from "./types";
 import { UnitsConfig } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 import { Solid3D } from "../model/Solid3D";
-import { OpenCascadeService } from "../io/OpenCascadeService";
+import { OpenCascadeService } from "../io/OpenCascadeService.js";
 import * as THREE from "three";
 
 export class TorusCommand implements Command {
@@ -56,18 +56,24 @@ export class TorusCommand implements Command {
         return "Invalid minor radius. Specify minor radius:";
       }
 
-      if (!this.center || this.majorRadius === null) return "Error: Center or major radius not set.";
+      const center = this.center;
+      if (!center) return "Error: Center not set.";
+      if (this.majorRadius === null) return "Error: Major radius not set.";
 
       const r1 = this.majorRadius;
       const r2 = minorRadius;
       const facetres = doc ? doc.facetres : 0.5;
       const deflection = 0.1 / facetres;
 
-      return this.occService.createTorus(this.center.x, this.center.y, this.center.z, r1, r2, deflection).then((geometry: THREE.BufferGeometry) => {
+      return this.occService.createTorus(center.x, center.y, center.z, r1, r2, deflection, id).then((geometry: THREE.BufferGeometry) => {
         const positions = Array.from(geometry.getAttribute('position').array) as number[];
         const indices = Array.from(geometry.getIndex()?.array || []) as number[];
         
         const solid = new Solid3D(id, positions, indices);
+        solid.creationParams = {
+          type: 'torus',
+          params: { x: center.x, y: center.y, z: center.z, r1, r2 }
+        };
         this.step = 0; // Reset
         return solid;
       }).catch((err: any) => {

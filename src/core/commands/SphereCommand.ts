@@ -2,7 +2,7 @@ import { Command, CommandResponse } from "./types";
 import { UnitsConfig } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 import { Solid3D } from "../model/Solid3D";
-import { OpenCascadeService } from "../io/OpenCascadeService";
+import { OpenCascadeService } from "../io/OpenCascadeService.js";
 import { Circle } from "../model/Circle";
 import * as THREE from "three";
 
@@ -54,13 +54,18 @@ export class SphereCommand implements Command {
   }
 
   private executeCreate(id: string, radius: number, deflection?: number): Promise<CommandResponse> {
-    if (!this.center) return Promise.resolve("Error: Center not set.");
+    const center = this.center;
+    if (!center) return Promise.resolve("Error: Center not set.");
     
-    return this.occService.createSphere(this.center.x, this.center.y, this.center.z, radius, deflection).then((geometry: THREE.BufferGeometry) => {
+    return this.occService.createSphere(center.x, center.y, center.z, radius, deflection, id).then((geometry: THREE.BufferGeometry) => {
       const positions = Array.from(geometry.getAttribute('position').array) as number[];
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
       
       const solid = new Solid3D(id, positions, indices);
+      solid.creationParams = {
+        type: 'sphere',
+        params: { x: center.x, y: center.y, z: center.z, r: radius }
+      };
       this.step = 0; // Reset
       return solid;
     }).catch((err: any) => {

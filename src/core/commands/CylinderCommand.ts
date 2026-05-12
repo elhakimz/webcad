@@ -2,7 +2,7 @@ import { Command, CommandResponse } from "./types";
 import { UnitsConfig } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 import { Solid3D } from "../model/Solid3D";
-import { OpenCascadeService } from "../io/OpenCascadeService";
+import { OpenCascadeService } from "../io/OpenCascadeService.js";
 import { Circle } from "../model/Circle";
 import * as THREE from "three";
 
@@ -76,11 +76,14 @@ export class CylinderCommand implements Command {
   }
 
   private executeCreate(id: string, radius: number, height: number, deflection: number): Promise<CommandResponse> {
-    return this.occService.createCylinder(this.center!.x, this.center!.y, this.center!.z, radius, height, deflection).then((geometry: THREE.BufferGeometry) => {
+    return this.occService.createCylinder(this.center!.x, this.center!.y, this.center!.z, radius, height, deflection, id).then((geometry: THREE.BufferGeometry) => {
       const positions = Array.from(geometry.getAttribute('position').array) as number[];
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
-      
       const solid = new Solid3D(id, positions, indices);
+      solid.creationParams = {
+        type: 'cylinder',
+        params: { x: this.center!.x, y: this.center!.y, z: this.center!.z, radius, height }
+      };
       this.step = 0; // Reset
       return solid;
     }).catch((err: any) => {

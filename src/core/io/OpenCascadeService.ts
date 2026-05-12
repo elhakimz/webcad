@@ -166,7 +166,27 @@ export class OpenCascadeService {
   }
 
   async importBRep(entityId: string, brepBytes: Uint8Array, deflection?: number): Promise<any> {
-    return await this.client.importBRep(entityId, brepBytes, deflection);
+    return await this.workerClient!.importBRep(entityId, brepBytes, deflection);
+  }
+
+  async rehydrate(doc: any): Promise<void> {
+    if (!this.workerClient) return;
+    
+    console.log("[OCC] Re-hydrating worker with current solids...");
+    for (const entity of doc.getEntities()) {
+      if ((entity as any).type === "Solid3D") {
+        const solid = entity as any;
+        if (solid.brepSnapshot) {
+          try {
+            const deflection = 0.1 / (doc.facetres || 5.0);
+            await this.workerClient.importBRep(solid.id, solid.brepSnapshot, deflection);
+            console.log(`[OCC] Re-hydrated solid ${solid.id}`);
+          } catch (e) {
+            console.error(`[OCC] Failed to re-hydrate solid ${solid.id}:`, e);
+          }
+        }
+      }
+    }
   }
 }
 

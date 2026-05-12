@@ -1,4 +1,5 @@
 import { Entity } from "./Entity"
+import { Solid3D } from "./Solid3D"
 
 export enum HistoryAction {
   ADD = 'ADD',
@@ -63,7 +64,8 @@ export class HistoryManager {
   undo(
     getEntity: (id: string) => Entity | undefined,
     removeEntity: (id: string) => void,
-    addEntity: (entity: Entity) => void
+    addEntity: (entity: Entity) => void,
+    onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => void
   ) {
     const transaction = this.undoStack.pop()
     if (!transaction) return
@@ -94,6 +96,19 @@ export class HistoryManager {
               entity: entity.clone(entity.id)
           })
           
+          // Calculate delta for Solid3D if callback provided
+          if (onSolidTransform && (entity instanceof Solid3D)) {
+            const posBefore = (record.entity as any).position || { x: 0, y: 0, z: 0 };
+            const posAfter = (entity as any).position || { x: 0, y: 0, z: 0 };
+            const dx = posBefore.x - posAfter.x;
+            const dy = posBefore.y - posAfter.y;
+            const dz = posBefore.z - posAfter.z;
+            
+            if (dx !== 0 || dy !== 0 || dz !== 0) {
+              onSolidTransform(entity.id, dx, dy, dz);
+            }
+          }
+          
           removeEntity(record.entityId)
           addEntity(record.entity.clone(record.entityId))
         }
@@ -106,7 +121,8 @@ export class HistoryManager {
   redo(
     getEntity: (id: string) => Entity | undefined,
     removeEntity: (id: string) => void,
-    addEntity: (entity: Entity) => void
+    addEntity: (entity: Entity) => void,
+    onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => void
   ) {
     const transaction = this.redoStack.pop()
     if (!transaction) return
@@ -134,6 +150,19 @@ export class HistoryManager {
                   entityId: entity.id, 
                   entity: entity.clone(entity.id)
               })
+              
+              // Calculate delta for Solid3D if callback provided
+              if (onSolidTransform && (entity instanceof Solid3D)) {
+                const posBefore = (record.entity as any).position || { x: 0, y: 0, z: 0 };
+                const posAfter = (entity as any).position || { x: 0, y: 0, z: 0 };
+                const dx = posBefore.x - posAfter.x;
+                const dy = posBefore.y - posAfter.y;
+                const dz = posBefore.z - posAfter.z;
+                
+                if (dx !== 0 || dy !== 0 || dz !== 0) {
+                  onSolidTransform(entity.id, dx, dy, dz);
+                }
+              }
               
               removeEntity(record.entityId)
               addEntity(record.entity.clone(record.entityId))

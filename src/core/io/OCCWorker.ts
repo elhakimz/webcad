@@ -34,13 +34,25 @@ function applyRotation(shape: any, rot: {x:number, y:number, z:number}, oc: any,
   
   const rotX = new oc.gp_Trsf_1();
   const originPnt = new oc.gp_Pnt_3(0,0,0);
-  rotX.SetRotation_1(new oc.gp_Ax1_2(originPnt, new oc.gp_Dir_4(1,0,0)), rot.x);
+  const dirX = new oc.gp_Dir_4(1, 0, 0);
+  const axX  = new oc.gp_Ax1_2(originPnt, dirX);
+  rotX.SetRotation_1(axX, rot.x);
+  axX.delete();
+  dirX.delete();
   
   const rotY = new oc.gp_Trsf_1();
-  rotY.SetRotation_1(new oc.gp_Ax1_2(originPnt, new oc.gp_Dir_4(0,1,0)), rot.y);
+  const dirY = new oc.gp_Dir_4(0, 1, 0);
+  const axY  = new oc.gp_Ax1_2(originPnt, dirY);
+  rotY.SetRotation_1(axY, rot.y);
+  axY.delete();
+  dirY.delete();
   
   const rotZ = new oc.gp_Trsf_1();
-  rotZ.SetRotation_1(new oc.gp_Ax1_2(originPnt, new oc.gp_Dir_4(0,0,1)), rot.z);
+  const dirZ = new oc.gp_Dir_4(0, 0, 1);
+  const axZ  = new oc.gp_Ax1_2(originPnt, dirZ);
+  rotZ.SetRotation_1(axZ, rot.z);
+  axZ.delete();
+  dirZ.delete();
   
   rotTrsf.Multiply(rotZ);
   rotTrsf.Multiply(rotY);
@@ -70,6 +82,7 @@ function applyRotation(shape: any, rot: {x:number, y:number, z:number}, oc: any,
   vecToBack.delete();
   toBack.delete();
   transform.delete();
+  brepTransform.delete();
   
   return newShape;
 }
@@ -351,13 +364,14 @@ self.onmessage = async (e) => {
         if (shapes.length > 0) {
           resultShape = shapes[0];
           for (let i = 1; i < shapes.length; i++) {
-            const fuse = new oc.BRepAlgoAPI_Fuse_4(resultShape, shapes[i]);
-
-
+            const prevResult = resultShape;
+            const fuse = new oc.BRepAlgoAPI_Fuse_3(resultShape, shapes[i]);
             fuse.Build();
             if (fuse.IsDone()) {
               resultShape = fuse.Shape();
+              prevResult.delete();
             }
+            shapes[i].delete();
             fuse.delete();
           }
         }
@@ -596,6 +610,14 @@ self.onmessage = async (e) => {
       if (resultShape.IsNull()) {
         boolBuilder.delete();
         throw new Error(`Boolean ${operation} produced an empty result`);
+      }
+      // Fallback check: ensure the shape has faces
+      const exp = new oc.TopExp_Explorer_2(resultShape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      const hasFaces = exp.More();
+      exp.delete();
+      if (!hasFaces) {
+        boolBuilder.delete();
+        throw new Error(`Boolean ${operation} produced a shape with no faces — shapes may not intersect`);
       }
 
       // Section 9: BRepCheck validation

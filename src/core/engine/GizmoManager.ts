@@ -230,7 +230,9 @@ export class GizmoManager {
     }
 
     // Record the transformation in the document history
+    this.app.doc.history.startTransaction();
     this.app.doc.recordTransform(before, this.targetEntity);
+    this.app.doc.history.commitTransaction();
   }
 
   private getNormalizedDeviceCoordinates(clientX: number, clientY: number): THREE.Vector2 {

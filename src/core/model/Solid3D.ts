@@ -6,6 +6,7 @@ export class Solid3D extends Entity {
   position: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
   rotation: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
   creationParams?: { type: string; params: any };
+  brepSnapshot?: Uint8Array;
 
   get type(): string {
     return "Solid3D";
@@ -119,6 +120,9 @@ export class Solid3D extends Entity {
     copy.rotation = { ...this.rotation };
     if (this.creationParams) {
       copy.creationParams = JSON.parse(JSON.stringify(this.creationParams));
+    }
+    if (this.brepSnapshot) {
+      copy.brepSnapshot = new Uint8Array(this.brepSnapshot);
     }
     return copy;
   }

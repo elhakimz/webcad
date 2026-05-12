@@ -37,10 +37,9 @@ export class BooleanHandler implements ActionHandler {
       
       // Add new solid
       addEntity(solid, true, false); // recordHistory=true, useCurrentLayer=false
-      viewer.addSolid3D(solid, solid.layer);
       
-      doc.updateSpatialIndex();
-      viewer.render();
+      // Automatic REGEN to clean up residue
+      context.syncFromDocument();
       
       return `3D Solid created.`;
     }

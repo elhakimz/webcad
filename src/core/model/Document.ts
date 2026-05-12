@@ -1,4 +1,5 @@
 import { Entity, BoundingBox } from "./Entity"
+import { OpenCascadeService } from "../io/OpenCascadeService.js"
 import { HistoryManager } from "./HistoryManager"
 import { LayerManager } from "./Layer"
 import { BlockManager } from "./Block"
@@ -140,7 +141,10 @@ export class Document implements IDocument {
     return this.history.undo(
       (id) => this.getEntity(id),
       (id) => this.removeEntity(id),
-      (entity) => this.addEntity(entity)
+      (entity) => this.addEntity(entity),
+      (id, dx, dy, dz) => {
+        OpenCascadeService.getInstance().transformShape(id, dx, dy, dz);
+      }
     )
   }
 
@@ -148,7 +152,10 @@ export class Document implements IDocument {
     return this.history.redo(
       (id) => this.getEntity(id),
       (id) => this.removeEntity(id),
-      (entity) => this.addEntity(entity)
+      (entity) => this.addEntity(entity),
+      (id, dx, dy, dz) => {
+        OpenCascadeService.getInstance().transformShape(id, dx, dy, dz);
+      }
     )
   }
 

@@ -61,7 +61,8 @@ A faithful CAD drafting experience, reimagined for the modern web using **TypeSc
 - **Rotation Preservation**: Boolean operations correctly preserve the position and rotation of operands by calculating the true center of shapes.
 - **Solid Toolbar**: Floating toolbar for quick access to Box, Cylinder, Sphere, and Boolean operations.
 
-### 🖥️ Authentic DOS UI
+### 🖥️ Modern Dark UI (AutoCAD Classic Style)
+-   **Modern Dark Theme:** Sleek dark interface with clean typography, styled after classic AutoCAD but modernized for the web.
 -   **Main Menu:** Classic text-based startup screen with project management options.
 -   **Hierarchical Side Menu:** Fully interactive menu navigation (e.g., `DRAW` -> `LINE:`).
 -   **Command Area:** Multi-line status log with persistent command prompt, cleaned interaction echoes, and discovery (`?` to list files/shapes).

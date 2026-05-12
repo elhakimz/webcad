@@ -41,8 +41,7 @@ export class BooleanCommand implements Command {
     if (this.step === 0) {
       if (doc) {
         const entity = doc.getEntity(val)
-        if (entity && ((entity as any).type === "Solid3D" || entity instanceof Solid3D)) {
-          console.log(`[BooleanCommand] Detected Solid A: ${val}`);
+        if (entity && entity instanceof Solid3D) {
           this.idA = val
           this.step = 1
           return "Select second solid (B):"
@@ -54,8 +53,7 @@ export class BooleanCommand implements Command {
     if (this.step === 1) {
       if (doc) {
         const entity = doc.getEntity(val)
-        if (entity && ((entity as any).type === "Solid3D" || entity instanceof Solid3D)) {
-          console.log(`[BooleanCommand] Detected Solid B: ${val}`);
+        if (entity && entity instanceof Solid3D) {
           if (val === this.idA) {
             return "Cannot operate on the same solid. Select second solid (B):"
           }
@@ -73,7 +71,7 @@ export class BooleanCommand implements Command {
     const facetres = doc ? doc.facetres : 5.0
     const deflection = 0.1 / facetres
     
-    console.log(`[BooleanCommand] Executing ${this.operation} on A: ${this.idA}, B: ${this.idB}`);
+
     
     const entityA = doc?.getEntity(this.idA!) as any;
     const entityB = doc?.getEntity(this.idB!) as any;
@@ -122,11 +120,24 @@ export class BooleanCommand implements Command {
       }
       
       this.step = 0 // Reset
-      return {
-        action: "boolean_result",
-        result: solid,
-        deleteIds: [this.idA!, this.idB!]
-      } as unknown as CommandResponse
+      
+      // Export BREP for rehydration!
+      return this.occService.exportBRep(id).then((brepBytes) => {
+        solid.brepSnapshot = brepBytes;
+        return {
+          action: "boolean_result",
+          result: solid,
+          deleteIds: [this.idA!, this.idB!]
+        } as unknown as CommandResponse;
+      }).catch((err) => {
+        console.error("Failed to export BREP for new boolean result:", err);
+        // Still return the solid!
+        return {
+          action: "boolean_result",
+          result: solid,
+          deleteIds: [this.idA!, this.idB!]
+        } as unknown as CommandResponse;
+      });
     }).catch((err: any) => {
       this.step = 0
       return `Error performing boolean: ${err.message || err.toString()}`

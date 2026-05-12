@@ -539,6 +539,17 @@ self.onmessage = async (e) => {
         throw new Error(`Boolean ${operation} produced an empty result`);
       }
 
+      // Section 9: BRepCheck validation
+      if (oc.BRepCheck_Analyzer) {
+        const analyzer = new oc.BRepCheck_Analyzer(resultShape, true);
+        if (!analyzer.IsValid()) {
+          analyzer.delete();
+          boolBuilder.delete();
+          throw new Error(`Boolean ${operation} produced an invalid/degenerate shape`);
+        }
+        analyzer.delete();
+      }
+
       if (entityId) {
         cacheShape(entityId, resultShape);
       }

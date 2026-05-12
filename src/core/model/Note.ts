@@ -11,10 +11,10 @@ export class Note extends Entity {
   constructor(id: string, targetEntityId: string | null, anchorPoint: { x: number; y: number }, bendPoint: { x: number; y: number }, text: string, height: number = 2.5) {
     super(id);
     this.targetEntityId = targetEntityId;
-    this.anchorPoint = anchorPoint;
-    this.bendPoint = bendPoint;
-    this.text = text;
-    this.height = height;
+    this.anchorPoint = anchorPoint || { x: 0, y: 0 };
+    this.bendPoint = bendPoint || { x: 0, y: 0 };
+    this.text = text || "";
+    this.height = height || 2.5;
   }
 
   move(dx: number, dy: number) {

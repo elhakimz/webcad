@@ -12,6 +12,7 @@ export class SweepCommand implements Command {
   profileEntity: Entity | null = null
   spineEntity: Entity | null = null
   mode: 'SOLID' | 'HOLLOW' = 'SOLID'
+  cornerMode: 'DEFAULT' | 'MITER' | 'ROUND' = 'DEFAULT'
 
   setEntity(entity: Entity) {
     if (this.step === 1) {
@@ -69,14 +70,29 @@ export class SweepCommand implements Command {
         }
       }
     }
-    
+
     if (this.step === 3) {
-      if (this.profileEntity && this.spineEntity) {
+      const upper = text.toUpperCase().trim();
+      if (upper === 'M' || upper === 'MITER') {
+        this.cornerMode = 'MITER';
+        this.step = 4;
+      } else if (upper === 'R' || upper === 'ROUND') {
+        this.cornerMode = 'ROUND';
+        this.step = 4;
+      } else if (upper === 'D' || upper === 'DEFAULT' || text === '') {
+        this.cornerMode = 'DEFAULT';
+        this.step = 4;
+      } else {
+        return "Invalid option. Corner mode [Default/Miter/Round] <Default>:";
+      }
+      
+      if (this.step === 4 && this.profileEntity && this.spineEntity) {
         return {
           action: "sweep",
           id1: this.profileEntity.id,
           id2: this.spineEntity.id,
-          type: this.mode
+          type: this.mode,
+          cornerMode: this.cornerMode
         } as CommandAction;
       }
     }
@@ -92,6 +108,7 @@ export class SweepCommand implements Command {
     if (this.step === 0) return "Mode [Solid/Hollow] <Solid>:";
     if (this.step === 1) return "Select profile:";
     if (this.step === 2) return "Select spine:";
+    if (this.step === 3) return "Corner mode [Default/Miter/Round] <Default>:";
     return "Press Enter to complete.";
   }
 }

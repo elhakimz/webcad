@@ -18,6 +18,7 @@ export type CommandAction = {
   spacing?: number;
   precision?: number;
   type?: string;
+  cornerMode?: string;
   result?: Entity;
   deleteIds?: string[];
   rows?: number;

@@ -56,8 +56,8 @@ export class OCCWorkerClient {
     return this.send('createExtrude', { points, height, thickness, deflection, isClosed, entityId });
   }
 
-  createSweep(profilePoints: {x: number, y: number, z: number}[], spinePoints: {x: number, y: number, z: number}[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number): Promise<{ positions: number[], indices: number[] }> {
-    return this.send('createSweep', { profilePoints, spinePoints, isSolid, deflection, entityId, profileCount });
+  createSweep(profilePoints: {x: number, y: number, z: number}[], spinePoints: {x: number, y: number, z: number}[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number, cornerMode?: string): Promise<{ positions: number[], indices: number[] }> {
+    return this.send('createSweep', { profilePoints, spinePoints, isSolid, deflection, entityId, profileCount, cornerMode });
   }
 
   createRevolve(points: {x: number, y: number, z: number}[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<{ positions: number[], indices: number[] }> {

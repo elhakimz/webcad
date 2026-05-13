@@ -482,7 +482,7 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { profilePoints, spinePoints, isSolid, deflection, entityId, profileCount } = payload;
+    const { profilePoints, spinePoints, isSolid, deflection, entityId, profileCount, cornerMode } = payload;
     try {
       let resultShape: any = null;
 
@@ -505,46 +505,100 @@ self.onmessage = async (e) => {
       const count = profileCount || 1;
       const ptsPerProfile = Math.floor(profilePoints.length / count);
       
-      const sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spineWire);
-      sweepBuilder.SetMode_1(false); // Use Corrected Frenet mode (minimizes torsion)
-      
-      for (let j = 0; j < count; j++) {
-        const startIdx = j * ptsPerProfile;
-        const endIdx = (j === count - 1) ? profilePoints.length : (j + 1) * ptsPerProfile;
-        const currentProfilePts = profilePoints.slice(startIdx, endIdx);
-        
-        const profileWireMaker = new oc.BRepBuilderAPI_MakeWire_1();
-        for (let i = 0; i < currentProfilePts.length - 1; i++) {
-          const p1 = new oc.gp_Pnt_3(currentProfilePts[i].x, currentProfilePts[i].y, currentProfilePts[i].z);
-          const p2 = new oc.gp_Pnt_3(currentProfilePts[i+1].x, currentProfilePts[i+1].y, currentProfilePts[i+1].z);
-          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
-          if (makeEdge.IsDone()) {
-            profileWireMaker.Add_1(makeEdge.Edge());
+      // Detect if the spine is flat in the XY plane
+      let isFlat = true;
+      const firstZ = spinePoints[0]?.z || 0;
+      for (let i = 1; i < spinePoints.length; i++) {
+        if (Math.abs(spinePoints[i].z - firstZ) > 1e-4) {
+          isFlat = false;
+          break;
+        }
+      }
+
+      let usedMakePipe = false;
+
+      // For flat curves with a single profile, try BRepOffsetAPI_MakePipe
+      // which is simpler and less prone to twisting.
+      if (isFlat && count === 1) {
+        try {
+          const profileWireMaker = new oc.BRepBuilderAPI_MakeWire_1();
+          for (let i = 0; i < profilePoints.length - 1; i++) {
+            const p1 = new oc.gp_Pnt_3(profilePoints[i].x, profilePoints[i].y, profilePoints[i].z);
+            const p2 = new oc.gp_Pnt_3(profilePoints[i+1].x, profilePoints[i+1].y, profilePoints[i+1].z);
+            const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+            if (makeEdge.IsDone()) {
+              profileWireMaker.Add_1(makeEdge.Edge());
+            }
+            p1.delete(); p2.delete(); makeEdge.delete();
           }
-          p1.delete();
-          p2.delete();
-          makeEdge.delete();
+          const profileWire = profileWireMaker.Wire();
+          
+          const pipeMaker = new oc.BRepOffsetAPI_MakePipe_1(spineWire, profileWire);
+          resultShape = pipeMaker.Shape();
+          pipeMaker.delete();
+          profileWireMaker.delete();
+          usedMakePipe = true;
+        } catch (e) {
+          console.warn("BRepOffsetAPI_MakePipe failed, falling back to MakePipeShell", e);
         }
-        const profileWire = profileWireMaker.Wire();
-        sweepBuilder.Add_1(profileWire, false, false);
-        profileWireMaker.delete();
       }
-      
-      sweepBuilder.Build();
-      
-      if (!sweepBuilder.IsDone()) {
+
+      if (!usedMakePipe) {
+        const sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spineWire);
+        
+        if (isFlat) {
+          sweepBuilder.SetMode_1(true); // Frenet
+        } else {
+          sweepBuilder.SetMode_1(false); // Corrected Frenet
+        }
+
+        if (cornerMode === 'MITER') {
+          sweepBuilder.SetTransitionMode(oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner);
+        } else if (cornerMode === 'ROUND') {
+          sweepBuilder.SetTransitionMode(oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RoundCorner);
+        } else {
+          sweepBuilder.SetTransitionMode(oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_Transformed);
+        }
+        
+        for (let j = 0; j < count; j++) {
+          const startIdx = j * ptsPerProfile;
+          const endIdx = (j === count - 1) ? profilePoints.length : (j + 1) * ptsPerProfile;
+          const currentProfilePts = profilePoints.slice(startIdx, endIdx);
+          
+          const profileWireMaker = new oc.BRepBuilderAPI_MakeWire_1();
+          for (let i = 0; i < currentProfilePts.length - 1; i++) {
+            const p1 = new oc.gp_Pnt_3(currentProfilePts[i].x, currentProfilePts[i].y, currentProfilePts[i].z);
+            const p2 = new oc.gp_Pnt_3(currentProfilePts[i+1].x, currentProfilePts[i+1].y, currentProfilePts[i+1].z);
+            const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+            if (makeEdge.IsDone()) {
+              profileWireMaker.Add_1(makeEdge.Edge());
+            }
+            p1.delete();
+            p2.delete();
+            makeEdge.delete();
+          }
+          const profileWire = profileWireMaker.Wire();
+          sweepBuilder.Add_1(profileWire, false, false);
+          profileWireMaker.delete();
+        }
+        
+        sweepBuilder.Build();
+        
+        if (!sweepBuilder.IsDone()) {
+          sweepBuilder.delete();
+          throw new Error("Failed to build sweep.");
+        }
+        
+        if (isSolid) {
+          const success = sweepBuilder.MakeSolid();
+          if (!success) {
+            console.warn("MakeSolid returned false, might still be a shell.");
+          }
+        }
+        
+        resultShape = sweepBuilder.Shape();
         sweepBuilder.delete();
-        throw new Error("Failed to build sweep.");
       }
-      
-      if (isSolid) {
-        const success = sweepBuilder.MakeSolid();
-        if (!success) {
-          console.warn("MakeSolid returned false, might still be a shell.");
-        }
-      }
-      
-      resultShape = sweepBuilder.Shape();
 
       if (entityId) {
         cacheShape(entityId, resultShape);
@@ -557,7 +611,6 @@ self.onmessage = async (e) => {
       }
 
       spineWireMaker.delete();
-      sweepBuilder.delete();
 
       self.postMessage({ type: 'createSweep', success: true, payload: geometryData, id });
     } catch (error: any) {

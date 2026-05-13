@@ -42,125 +42,52 @@ export class SweepHandler implements ActionHandler {
           { x: spineEntity.x1, y: spineEntity.y1, z: spineElevation },
           { x: spineEntity.x2, y: spineEntity.y2, z: spineElevation }
         ];
-      } else if (spineEntity instanceof Polyline && profileEntity instanceof Circle) {
-        const segmentIds: string[] = [];
-        let finalGeometry: any;
-        const segmentGeometries: any[] = [];
+      } else if (spineEntity instanceof Polyline) {
+        spinePoints = [];
+        const count = spineEntity.vertices.length;
+        const limit = spineEntity.closed ? count : count - 1;
         
-        for (let i = 0; i < spineEntity.vertices.length - (spineEntity.closed ? 0 : 1); i++) {
+        for (let i = 0; i < limit; i++) {
           const v1 = spineEntity.vertices[i];
-          const v2 = spineEntity.vertices[(i + 1) % spineEntity.vertices.length];
-          const tempId = `temp_seg_${i}_${Date.now()}`;
-          
-          const p = { x: v1.x, y: v1.y, z: spineElevation };
-          let alpha = 0;
-          let isArc = false;
-          let arcParams: any;
+          const v2 = spineEntity.vertices[(i + 1) % count];
           
           if (v1.bulge && Math.abs(v1.bulge) >= 1e-6) {
-            arcParams = bulgeToArc(v1, v2, v1.bulge);
+            const arcParams = bulgeToArc(v1, v2, v1.bulge);
             if (arcParams) {
-              isArc = true;
-              const dx = arcParams.ccw ? -(v1.y - arcParams.cy) : (v1.y - arcParams.cy);
-              const dy = arcParams.ccw ? (v1.x - arcParams.cx) : -(v1.x - arcParams.cx);
-              alpha = Math.atan2(dy, dx);
+              const startAngle = arcParams.startAngle;
+              const endAngle = arcParams.endAngle;
+              let sweep = endAngle - startAngle;
+              if (arcParams.ccw) {
+                if (sweep < 0) sweep += 2 * Math.PI;
+              } else {
+                if (sweep > 0) sweep -= 2 * Math.PI;
+              }
+              const segments = 16;
+              for (let j = 0; j < segments; j++) {
+                const angle = startAngle + (j / segments) * sweep;
+                spinePoints.push({
+                  x: arcParams.cx + arcParams.r * Math.cos(angle),
+                  y: arcParams.cy + arcParams.r * Math.sin(angle),
+                  z: spineElevation
+                });
+              }
+            } else {
+              spinePoints.push({ x: v1.x, y: v1.y, z: spineElevation });
             }
           } else {
-            const dx = v2.x - v1.x;
-            const dy = v2.y - v1.y;
-            alpha = Math.atan2(dy, dx);
-          }
-          
-          // Generate profile points perpendicular to the path at start
-          const profilePts = [];
-          const segments = 32;
-          for (let j = 0; j < segments; j++) {
-            const t = (j / segments) * 2 * Math.PI;
-            profilePts.push({
-              x: p.x + profileEntity.r * Math.cos(t) * (-Math.sin(alpha)),
-              y: p.y + profileEntity.r * Math.cos(t) * Math.cos(alpha),
-              z: p.z + profileEntity.r * Math.sin(t)
-            });
-          }
-          
-          let geo: any;
-          if (isArc && arcParams) {
-            let sweep = arcParams.endAngle - arcParams.startAngle;
-            if (arcParams.ccw && sweep < 0) sweep += 2 * Math.PI;
-            if (!arcParams.ccw && sweep > 0) sweep -= 2 * Math.PI;
-            let angleDeg = sweep * 180 / Math.PI;
-            axisPoint = { x: arcParams.cx, y: arcParams.cy, z: spineElevation };
-            axisDir = { x: 0, y: 0, z: 1 };
-            
-            if (angleDeg < 0) {
-              angleDeg = -angleDeg;
-              axisDir.z = -1;
-            }
-            
-            geo = await occService.createRevolve(profilePts, axisPoint, axisDir, angleDeg, undefined, deflection, isSolid, tempId);
-            segmentIds.push(tempId);
-          } else {
-            const spinePts = [
-              { x: v1.x, y: v1.y, z: spineElevation },
-              { x: v2.x, y: v2.y, z: spineElevation }
-            ];
-            geo = await occService.createSweep(profilePts, spinePts, isSolid, deflection, tempId);
-            segmentIds.push(tempId);
-          }
-          if (segmentIds.length === 1) finalGeometry = geo;
-          segmentGeometries.push(geo);
-        }
-        
-        if (segmentIds.length === 0) throw new Error("No segments created for sweep.");
-        
-        let success = true;
-        if (segmentIds.length > 1) {
-          let currentFusedId = segmentIds[0];
-          for (let i = 1; i < segmentIds.length; i++) {
-            const nextFusedId = `temp_fused_${i}_${Date.now()}`;
-            try {
-              finalGeometry = await occService.createBoolean('fuse', currentFusedId, segmentIds[i], nextFusedId);
-              currentFusedId = nextFusedId;
-            } catch (e) {
-              console.warn(`Failed to fuse segment ${i}, falling back to separate segments.`);
-              success = false;
-              break;
-            }
+            spinePoints.push({ x: v1.x, y: v1.y, z: spineElevation });
           }
         }
-        
-        if (success) {
-          const solidId = doc.getNextId("S3D");
-          const positions = Array.from(finalGeometry.getAttribute('position').array) as number[];
-          const indices = Array.from(finalGeometry.getIndex()?.array || []) as number[];
-          
-          const solid = new Solid3D(solidId, positions, indices);
-          addEntity(solid, true, false);
+        // Add the very last point if not closed
+        if (!spineEntity.closed) {
+          const lastV = spineEntity.vertices[count - 1];
+          spinePoints.push({ x: lastV.x, y: lastV.y, z: spineElevation });
         } else {
-          // Combine geometries of all segments into a single solid
-          const combinedPositions: number[] = [];
-          const combinedIndices: number[] = [];
-          let vertexOffset = 0;
-          
-          for (let i = 0; i < segmentGeometries.length; i++) {
-            const g = segmentGeometries[i];
-            const positions = Array.from(g.getAttribute('position').array) as number[];
-            const indices = Array.from(g.getIndex()?.array || []) as number[];
-            
-            combinedPositions.push(...positions);
-            for (let j = 0; j < indices.length; j++) {
-              combinedIndices.push(indices[j] + vertexOffset);
-            }
-            vertexOffset += positions.length / 3;
-          }
-          
-          const solidId = doc.getNextId("S3D");
-          const solid = new Solid3D(solidId, combinedPositions, combinedIndices);
-          addEntity(solid, true, false);
+          // If closed, add the first point to close it
+          spinePoints.push(spinePoints[0]);
         }
-        viewer.clearHighlight();
-        return "Sweep completed.";
-        return "Sweep completed.";
+      } else if (spineEntity instanceof Spline) {
+        spinePoints = spineEntity.sampledPoints.map(v => ({ x: v.x, y: v.y, z: spineElevation }));
       } else if (spineEntity instanceof Arc) {
         const segments = 128;
         const startAngle = spineEntity.startAngle;
@@ -288,12 +215,122 @@ export class SweepHandler implements ActionHandler {
           }
           
           const angleDeg = sweep * 180 / Math.PI;
-          axisPoint = { x: spineEntity.cx, y: spineEntity.cy, z: spineElevation };
-          axisDir = { x: 0, y: 0, z: 1 };
+          const axisPoint = { x: spineEntity.cx, y: spineEntity.cy, z: spineElevation };
+          const axisDir = { x: 0, y: 0, z: 1 };
           
           geometry = await occService.createRevolve(profilePts, axisPoint, axisDir, angleDeg, undefined, deflection, isSolid, doc.getNextId("S3D"));
         } else {
-          geometry = await occService.createSweep(profilePoints, spinePoints, isSolid, deflection, doc.getNextId("S3D"), profileCount);
+          if (spineEntity instanceof Polyline && profileEntity instanceof Circle) {
+            console.log("Using pure JS tube generation for Polyline and Circle to bypass OpenCascade failures.");
+            
+            const allPositions: number[] = [];
+            const allIndices: number[] = [];
+            const sphereCenters: THREE.Vector3[] = [];
+            
+            const segments = 32; // Radial segments
+            
+            // We need a normal vector for the first point
+            let normal = new THREE.Vector3(0, 0, 1); // Default up vector
+            
+            for (let i = 0; i < spinePoints.length; i++) {
+              const p = new THREE.Vector3(spinePoints[i].x, spinePoints[i].y, spinePoints[i].z);
+              
+              // Compute tangent using bisector of incoming and outgoing vectors
+              let tangent = new THREE.Vector3();
+              let t1 = new THREE.Vector3();
+              let t2 = new THREE.Vector3();
+              
+              if (i > 0) {
+                t1.subVectors(p, new THREE.Vector3(spinePoints[i-1].x, spinePoints[i-1].y, spinePoints[i-1].z)).normalize();
+              }
+              if (i < spinePoints.length - 1) {
+                t2.subVectors(new THREE.Vector3(spinePoints[i+1].x, spinePoints[i+1].y, spinePoints[i+1].z), p).normalize();
+              }
+              
+              if (i > 0 && i < spinePoints.length - 1) {
+                tangent.addVectors(t1, t2).normalize(); // Bisector
+                
+                const mode = (action.cornerMode || 'default').toLowerCase();
+                if (mode === 'round') {
+                  const dot = t1.dot(t2);
+                  if (dot < 0.99) {
+                    sphereCenters.push(p.clone());
+                  }
+                }
+              } else if (i === 0) {
+                tangent.copy(t2);
+              } else {
+                tangent.copy(t1);
+              }
+              
+              // Parallel transport the normal
+              if (i > 0) {
+                // Project previous normal onto the plane perpendicular to the new tangent
+                // N_new = N_old - (N_old . T) * T
+                const dot = normal.dot(tangent);
+                normal.subVectors(normal, tangent.clone().multiplyScalar(dot));
+                normal.normalize();
+              } else {
+                // For the first point, if tangent is parallel to default normal, find another one
+                if (Math.abs(normal.dot(tangent)) > 0.9) {
+                  normal.set(1, 0, 0);
+                }
+                const dot = normal.dot(tangent);
+                normal.subVectors(normal, tangent.clone().multiplyScalar(dot));
+                normal.normalize();
+              }
+              
+              const binormal = new THREE.Vector3().crossVectors(tangent, normal).normalize();
+              
+              for (let k = 0; k <= segments; k++) {
+                const t = (k / segments) * 2 * Math.PI;
+                const cost = Math.cos(t);
+                const sint = Math.sin(t);
+                
+                const pt = p.clone()
+                  .add(normal.clone().multiplyScalar(profileEntity.r * cost))
+                  .add(binormal.clone().multiplyScalar(profileEntity.r * sint));
+                
+                allPositions.push(pt.x, pt.y, pt.z);
+              }
+            }
+            
+            // Generate indices
+            for (let i = 0; i < spinePoints.length - 1; i++) {
+              for (let k = 0; k < segments; k++) {
+                const v0 = i * (segments + 1) + k;
+                const v1 = (i + 1) * (segments + 1) + k;
+                const v2 = (i + 1) * (segments + 1) + k + 1;
+                const v3 = i * (segments + 1) + k + 1;
+                
+                // Two triangles per quad
+                allIndices.push(v0, v1, v2);
+                allIndices.push(v0, v2, v3);
+              }
+            }
+            
+            // If cornerMode is Round, add spheres at collected sharp corners!
+            for (const center of sphereCenters) {
+              const sphereGeom = new THREE.SphereGeometry(profileEntity.r, 16, 16);
+              const spherePos = Array.from(sphereGeom.getAttribute('position').array) as number[];
+              const sphereIdx = Array.from(sphereGeom.getIndex()?.array || []) as number[];
+              
+              const offset = allPositions.length / 3;
+              for (let j = 0; j < spherePos.length; j += 3) {
+                allPositions.push(spherePos[j] + center.x, spherePos[j+1] + center.y, spherePos[j+2] + center.z);
+              }
+              for (let j = 0; j < sphereIdx.length; j++) {
+                allIndices.push(sphereIdx[j] + offset);
+              }
+            }
+            
+            geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(allPositions, 3));
+            geometry.setIndex(allIndices);
+            geometry.computeVertexNormals();
+          } else {
+            geometry = await occService.createSweep(profilePoints, spinePoints, isSolid, deflection, doc.getNextId("S3D"), profileCount, action.cornerMode);
+          }
         }
         
         const solidId = doc.getNextId("S3D");

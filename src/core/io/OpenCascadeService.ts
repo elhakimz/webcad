@@ -128,8 +128,8 @@ export class OpenCascadeService {
     return geometry;
   }
 
-  async createSweep(profilePoints: {x: number, y: number, z: number}[], spinePoints: {x: number, y: number, z: number}[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.createSweep(profilePoints, spinePoints, isSolid, deflection, entityId, profileCount);
+  async createSweep(profilePoints: {x: number, y: number, z: number}[], spinePoints: {x: number, y: number, z: number}[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number, cornerMode?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createSweep(profilePoints, spinePoints, isSolid, deflection, entityId, profileCount, cornerMode);
     
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));

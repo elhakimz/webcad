@@ -58,6 +58,23 @@ export class OpenCascadeService {
     return geometry;
   }
 
+  async filletSolid(entityId: string, edgeIndex: number, radius: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.filletSolid(entityId, edgeIndex, radius);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
+    
+    return geometry;
+
+  }
+
   /**
    * Creates a basic 3D cylinder shape.
    * Returns a Promise that resolves to THREE.BufferGeometry.

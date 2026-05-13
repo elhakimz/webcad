@@ -388,69 +388,7 @@ body {
   padding: 0;
 }
 
-/* Main Menu Screen */
-#main-menu-screen {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  width: 100vw;
-  background-color: var(--bg-color);
-  color: var(--text-color);
-  font-family: var(--font-family);
-}
 
-#main-menu-content {
-  width: 500px;
-  background-color: var(--panel-bg);
-  padding: 30px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-}
-
-.menu-title {
-  text-align: center;
-  font-size: 1.5em;
-  font-weight: 600;
-  margin-bottom: 30px;
-  color: var(--accent-color);
-}
-
-.menu-options p {
-  margin: 8px 0;
-  font-family: var(--font-mono);
-}
-
-#main-menu-selection {
-  margin-top: 40px;
-  display: flex;
-  align-items: center;
-  font-family: var(--font-mono);
-}
-
-#main-menu-input {
-  background: #181818; /* Submerged input */
-  border: 1px solid var(--border-color);
-  color: var(--accent-color);
-  font-family: inherit;
-  font-size: inherit;
-  outline: none;
-  margin-left: 10px;
-  width: 50px;
-  padding: 2px 5px;
-  border-radius: var(--radius-sm);
-}
-
-#main-menu-input:focus {
-  border-color: var(--accent-color);
-}
-
-#main-menu-status {
-  margin-top: 20px;
-  color: var(--error-color); /* Use error color for status/warnings */
-  min-height: 1.2em;
-  font-family: var(--font-mono);
-}
 
 /* Floating Toolbar */
 .floating-toolbar {

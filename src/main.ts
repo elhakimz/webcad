@@ -7,8 +7,6 @@ import { DraftingAidsRibbonBar } from "./ui/DraftingAidsRibbonBar"
 import { UnitsAndCoordRibbonBar } from "./ui/UnitsAndCoordRibbonBar"
 import { DisplayRibbonBar } from "./ui/DisplayRibbonBar"
 import { DazViewControl } from "./ui/DazViewControl"
-import { Menu } from "./ui/Menu"
-import { MainMenuScreen } from "./ui/MainMenuScreen"
 import { OpenCascadeService } from "./core/io/OpenCascadeService.js"
 import { FloatingToolbar } from "./ui/FloatingToolbar"
 import { DockingManager } from "./ui/DockingManager"
@@ -139,16 +137,6 @@ const propertiesWindow = new PropertiesWindow(propertiesToolbar, app);
 app.setPropertiesWindow(propertiesWindow);
 app.setLayersWindowUpdate(() => layerWindow.refresh());
 
-const menu = new Menu(async (cmd) => {
-  cmdLine.print(`Command: ${cmd}`)
-  const res = await app.execute(cmd)
-  if (typeof res === 'string') {
-    cmdLine.print(res)
-  }
-  cmdLine.focus()
-  updatePrompt()
-}, dockingManager)
-
 const floatingToolbar = new FloatingToolbar(async (cmd) => {
   cmdLine.print(`Command: ${cmd}`)
   const res = await app.execute(cmd)
@@ -218,50 +206,37 @@ if (viewportContainer) {
   resizeObserver.observe(viewportContainer);
 }
 
-// Main Menu Logic
-const mainMenu = new MainMenuScreen(async (filename?: string) => {
-  // Callback when starting/loading a drawing
-  document.getElementById('drawing-editor')!.style.display = 'block';
-  floatingToolbar.show();
-  dimToolbar.show();
-  editToolbar.show();
-  inquiryToolbar.show();
-  solidToolbar.show();
-  
-  if (filename) {
-    // Option 2: Load existing
-    cmdLine.print(`Loading drawing: ${filename}`);
-    await app.execute(`LOAD ${filename}`);
-  } else {
-    // Option 1: Begin NEW drawing - Clear everything
-    await app.execute('NEW');
-  }
-
-  viewer.resize();
-  viewer.render();
-
-  // Focus command line after transition
-  const cmdInput = document.getElementById('cmd') as HTMLInputElement;
-  cmdInput.focus();
-  updatePrompt();
-});
+// Show editor and toolbars immediately
+const editor = document.getElementById('drawing-editor');
+if (editor) editor.style.display = 'block';
+floatingToolbar.show();
+dimToolbar.show();
+editToolbar.show();
+inquiryToolbar.show();
+solidToolbar.show();
 
 // Initialize CAD Engine
-mainMenu.setEnabled(false);
-mainMenu.setStatus("Loading CAD Kernel (OpenCascade.js)...");
-
 Promise.all([
   OpenCascadeService.getInstance().init(),
   app.persistence.init()
 ])
-  .then(() => {
-    mainMenu.setStatus("");
-    mainMenu.setEnabled(true);
+  .then(async () => {
+    // Begin NEW drawing - Clear everything
+    await app.execute('NEW');
+    
+    viewer.resize();
+    viewer.render();
+  
+    // Focus command line
+    const cmdInput = document.getElementById('cmd') as HTMLInputElement;
+    if (cmdInput) cmdInput.focus();
+    updatePrompt();
+    
     fileToolWindow.renderTableBody();
   })
   .catch((err: any) => {
-    mainMenu.setStatus("Failed to initialize CAD Engine.");
-    console.error(err);
+    console.error("Failed to initialize CAD Engine:", err);
+    cmdLine.print("Error: Failed to initialize CAD Engine.");
   });
 
 let lastMouseX = 0
@@ -491,20 +466,14 @@ window.addEventListener("keydown", async (e) => {
 cmdLine.onCommand(async (val) => {
   const trimmedUpper = val.trim().toUpperCase()
 
-  if (trimmedUpper === "MENU") {
-    menu.goToRoot()
-    cmdLine.print("Returned to root menu.")
-    updatePrompt()
-    return
-  }
+
 
   if (trimmedUpper === "QUIT" || trimmedUpper === "EXIT") {
-    document.getElementById('drawing-editor')!.style.display = 'none';
-    floatingToolbar.hide();
-    menu.goToRoot();
-    mainMenu.show();
+    await app.execute('NEW')
     return;
   }
+
+
 
   // Pass raw value for text preservation, handle matching inside
   let res = await app.inputText(val)
@@ -553,12 +522,7 @@ window.addEventListener("pointerdown", (e) => {
     const { clampedX, clampedY } = getClampedCoordinates(e);
     app.pointerDown(clampedX, clampedY);
     
-    // Check if pan was just ended by this click
-    if (viewer.wasPanEnded()) {
-      cmdLine.print("PAN ended.")
-      updatePrompt()
-      viewer.clearPanEndedFlag()
-    }
+
   }
 });
 
@@ -575,6 +539,13 @@ window.addEventListener("pointerup", async (e) => {
     }
     // Force preview update (X markers, rubber-band) after click
     app.move(clampedX, clampedY, e.ctrlKey, e.shiftKey);
+    
+    if (viewer.wasPanEnded()) {
+      cmdLine.print("PAN ended.");
+      app.terminateActiveCommand();
+      viewer.clearPanEndedFlag();
+    }
+    
     updatePrompt();
   }
 });

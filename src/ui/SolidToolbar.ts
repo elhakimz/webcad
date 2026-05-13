@@ -19,7 +19,7 @@ export class SolidToolbar {
     this.populateCommands();
 
     if (this.dockingManager) {
-      this.dockingManager.registerWindow('solid-toolbar', this.container, false, 'calc(100vw - 350px)', 300); // Default floating, below Draw toolbar
+      this.dockingManager.registerWindow('solid-toolbar', this.container, true, 200, 300); // Default docked
     }
   }
 
@@ -29,7 +29,7 @@ export class SolidToolbar {
     this.container.className = 'floating-toolbar'; // Reuse styles
     this.container.style.position = 'absolute';
     this.container.style.top = '300px';
-    this.container.style.left = 'calc(100vw - 350px)';
+    this.container.style.left = '100px';
     this.container.style.width = '120px'; // Fixed width for 3 columns
     this.container.style.zIndex = '1000';
 
@@ -73,22 +73,39 @@ export class SolidToolbar {
   }
 
   private populateCommands() {
-    const commands = [
+    const commands: ({ cmd: string, icon: string } | { type: string })[] = [
       { cmd: 'BOX', icon: 'box.svg' },
       { cmd: 'CYLINDER', icon: 'cylinder.svg' },
       { cmd: 'CONE', icon: 'cone.svg' },
       { cmd: 'SPHERE', icon: 'sphere.svg' },
+      { cmd: 'TORUS', icon: 'torus.svg' },
       { cmd: 'EXTRUDE', icon: 'extrude.svg' },
       { cmd: 'REVOLVE', icon: 'revolve.svg' },
+      { cmd: 'SWEEP', icon: 'sweep.svg' },
+      { cmd: 'LOFT', icon: 'loft.svg' },
+      { cmd: 'SFILLET', icon: 'sfillet.svg' },
+      { type: 'separator' },
       { cmd: 'UNION', icon: 'union.svg' },
       { cmd: 'SUBTRACT', icon: 'subtract.svg' },
       { cmd: 'INTERSECT', icon: 'intersect.svg' }
     ];
 
     commands.forEach(b => {
+      if ('type' in b && b.type === 'separator') {
+        const sep = document.createElement('div');
+        sep.className = 'grid-separator';
+        sep.style.gridColumn = '1 / -1';
+        sep.style.height = '1px';
+        sep.style.backgroundColor = 'var(--border-color)';
+        sep.style.margin = '4px 0';
+        this.gridEl.appendChild(sep);
+        return;
+      }
+
+      const item = b as { cmd: string, icon: string };
       const btn = document.createElement('div');
       btn.className = 'tool-button';
-      btn.title = b.cmd;
+      btn.title = item.cmd;
       btn.style.width = '32px';
       btn.style.height = '32px';
       btn.style.border = '1px solid var(--border-color)';
@@ -99,14 +116,14 @@ export class SolidToolbar {
       btn.style.backgroundColor = 'var(--panel-bg)';
 
       const img = document.createElement('img');
-      img.src = `/icons/black_blue/${b.icon}`;
+      img.src = `/icons/black_blue/${item.icon}`;
       img.style.width = '24px';
       img.style.height = '24px';
       img.style.pointerEvents = 'none';
 
       img.onerror = () => {
         img.style.display = 'none';
-        btn.textContent = b.cmd.substring(0, 2); // Show first 2 letters
+        btn.textContent = item.cmd.substring(0, 2); // Show first 2 letters
         btn.style.fontSize = '10px';
         btn.style.fontWeight = 'bold';
       };
@@ -114,7 +131,7 @@ export class SolidToolbar {
       btn.appendChild(img);
 
       btn.onclick = () => {
-        this.onAction(b.cmd);
+        this.onAction(item.cmd);
       };
 
       this.gridEl.appendChild(btn);

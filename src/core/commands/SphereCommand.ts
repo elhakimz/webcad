@@ -61,7 +61,7 @@ export class SphereCommand implements Command {
       const positions = Array.from(geometry.getAttribute('position').array) as number[];
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
       
-      const solid = new Solid3D(id, positions, indices);
+      const solid = new Solid3D(id, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
       solid.creationParams = {
         type: 'sphere',
         params: { x: center.x, y: center.y, z: center.z, r: radius }

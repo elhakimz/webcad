@@ -75,7 +75,7 @@ export class DockingManager {
     this.contentContainer.appendChild(el);
   }
 
-  public undock(id: string, x: string | number = 100, y: string | number = 100) {
+  public undock(id: string, x: string | number = 1000, y: string | number = 100) {
     const el = this.windows.get(id);
     if (!el) return;
 
@@ -85,8 +85,17 @@ export class DockingManager {
     el.style.position = 'absolute';
     el.style.top = typeof y === 'number' ? `${y}px` : y;
     el.style.left = typeof x === 'number' ? `${x}px` : x;
+    el.style.display = 'block'; // Ensure visible when undocked
+    el.style.visibility = 'visible';
+    el.style.opacity = '1';
+    el.style.zIndex = '9999';
     
-    document.body.appendChild(el);
+    const editor = document.getElementById('drawing-editor');
+    if (editor) {
+      editor.appendChild(el);
+    } else {
+      document.body.appendChild(el);
+    }
   }
 
   public toggleDock(id: string) {

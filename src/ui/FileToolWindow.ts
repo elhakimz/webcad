@@ -71,8 +71,35 @@ export class FileToolWindow {
       }
     };
 
+    const cleanBtn = document.createElement('button');
+    cleanBtn.textContent = 'CLEAN';
+    cleanBtn.style.flex = '1';
+    cleanBtn.className = 'tool-button';
+    cleanBtn.style.fontSize = '11px';
+    cleanBtn.style.padding = '4px';
+    cleanBtn.style.background = 'var(--panel-bg)';
+    cleanBtn.style.color = '#ff4d4d';
+    cleanBtn.style.border = '1px solid var(--border-color)';
+    cleanBtn.style.cursor = 'pointer';
+    cleanBtn.title = 'Delete all "Untitled" records';
+    cleanBtn.onclick = async () => {
+      const history = await this.app.persistence.getHistory();
+      const untitled = history.filter(item => item.name === 'Untitled');
+      if (untitled.length === 0) {
+        alert('No "Untitled" records found.');
+        return;
+      }
+      if (confirm(`Delete ${untitled.length} "Untitled" records?`)) {
+        for (const item of untitled) {
+          await this.app.persistence.deleteProject(item.id);
+        }
+        this.renderTableBody();
+      }
+    };
+
     toolbar.appendChild(newBtn);
     toolbar.appendChild(saveBtn);
+    toolbar.appendChild(cleanBtn);
     this.container.appendChild(toolbar);
 
     const tableContainer = document.createElement('div');

@@ -7,30 +7,7 @@
   <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
-  <div id="main-menu-screen">
-    <div id="main-menu-content">
-      <div class="menu-title">Main Menu</div>
-      <div id="main-menu-options" class="menu-options">
-        <p>0.  Exit WebCAD</p>
-        <p>1.  Begin a NEW drawing</p>
-        <p>2.  Edit an EXISTING drawing</p>
-        <p>3.  Plot a drawing</p>
-        <p>4.  Printer plot a drawing</p>
-        <br>
-        <p>5.  Configure WebCAD</p>
-        <p>6.  File Utilities</p>
-        <p>7.  Compile shape/font description file</p>
-        <p>8.  Convert old drawing file</p>
-      </div>
-      <div id="main-menu-selection">
-        <span>Enter Selection:</span>
-        <input id="main-menu-input" autocomplete="off" />
-      </div>
-      <div id="main-menu-status"></div>
-    </div>
-  </div>
-
-  <div id="drawing-editor" style="display: none;">
+  <div id="drawing-editor">
     <div id="app">
     <div id="status-bar">
       <div id="layer-info">Layer 0</div>
@@ -45,10 +22,7 @@
       <div id="viewport-container">
         <canvas id="c"></canvas>
       </div>
-      <div id="side-menu">
-        <div class="menu-header">ROOT<br>MENU</div>
-        <div id="menu-items"></div>
-      </div>
+
       <div id="docking-pane"></div>
     </div>
     <div id="command-area">

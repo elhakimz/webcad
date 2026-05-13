@@ -79,7 +79,7 @@ export class CylinderCommand implements Command {
     return this.occService.createCylinder(this.center!.x, this.center!.y, this.center!.z, radius, height, deflection, id).then((geometry: THREE.BufferGeometry) => {
       const positions = Array.from(geometry.getAttribute('position').array) as number[];
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
-      const solid = new Solid3D(id, positions, indices);
+      const solid = new Solid3D(id, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
       solid.creationParams = {
         type: 'cylinder',
         params: { x: this.center!.x, y: this.center!.y, z: this.center!.z, radius, height }

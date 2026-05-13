@@ -146,6 +146,60 @@ self.onmessage = async (e) => {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'createBox', success: false, error: errorMessage, id });
     }
+  } else if (type === 'filletSolid') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, edgeIndex, radius, deflection } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not found for entity: ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+
+      // Find the edge by index
+      let foundEdge: any = null;
+      let currentIndex = 0;
+      const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      while (explorer.More()) {
+        if (currentIndex === edgeIndex) {
+          foundEdge = oc.TopoDS.Edge_1(explorer.Current());
+          break;
+        }
+        currentIndex++;
+        explorer.Next();
+      }
+      explorer.delete();
+
+      if (!foundEdge) {
+        throw new Error(`Edge index ${edgeIndex} not found in shape.`);
+      }
+
+      // Perform fillet
+      const fillet = new oc.BRepFilletAPI_MakeFillet(shape, oc.ChFi3d_FilletShape.ChFi3d_Rational);
+      fillet.Add_2(radius, foundEdge);
+      const newShape = fillet.Shape();
+
+      foundEdge.delete();
+
+      // Update cache
+      cacheShape(entityId, newShape);
+
+      // Tessellate and get geometry data
+      const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
+
+      fillet.delete();
+
+      if (geometryData.positions.length === 0) {
+        throw new Error("No geometry generated from shape. Positions array is empty.");
+      }
+
+      self.postMessage({ type: 'filletSolid', success: true, payload: geometryData, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'filletSolid', success: false, error: errorMessage, id });
+    }
   } else if (type === 'createCylinder') {
     if (!oc) {
       self.postMessage({ type: 'error', error: 'Not initialized', id });

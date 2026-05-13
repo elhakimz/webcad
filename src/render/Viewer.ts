@@ -81,8 +81,9 @@ export class Viewer {
 
     this.renderer = new THREE.WebGLRenderer({canvas})
     
-    this.resize()
-    this.camera.position.set(this.camera.right, this.camera.top, 500) 
+    this.resize();
+    this.camera.position.set(0, 0, 500);
+    this.camera.lookAt(0, 0, 0); 
 
     this.setupEvents()
     this.loadFont()
@@ -908,14 +909,7 @@ export class Viewer {
 
     this.canvas.addEventListener('pointerdown', (e) => {
       if (e.button === 1 || (e.button === 0 && this.isLeftPanEnabled)) { 
-        if (e.button === 0 && this.isLeftPanEnabled && this.hasPanned) {
-          this.isLeftPanEnabled = false
-          this.isPanning = false
-          this.hasPanned = false
-          this.panEnded = true
-          return
-        }
-        this.isPanning = true
+        this.isPanning = true;
         this.lastPanPos.set(e.clientX, e.clientY)
         if (this.isLeftPanEnabled) {
           this.panStartX = this.camera.position.x
@@ -943,8 +937,11 @@ export class Viewer {
         this.canvas.releasePointerCapture(e.pointerId)
       }
       if (e.button === 0 && this.isLeftPanEnabled) {
-        this.isPanning = false
-        this.canvas.releasePointerCapture(e.pointerId)
+        this.isPanning = false;
+        this.isLeftPanEnabled = false;
+        this.hasPanned = false;
+        this.panEnded = true;
+        this.canvas.releasePointerCapture(e.pointerId);
       }
     })
   }

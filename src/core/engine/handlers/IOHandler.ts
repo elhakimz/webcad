@@ -19,6 +19,12 @@ export class IOHandler implements ActionHandler {
       doc.layers.layers.clear();
       doc.layers.createLayer("0", 7, "CONTINUOUS");
       doc.layers.currentLayerName = "0";
+      
+      // Reset settings to default
+      doc.facetres = 5.0;
+      doc.currentElevation = 0;
+      viewer.setCameraView('TOP');
+      
       syncFromDocument();
       terminateActiveCommand();
       onLayersChange();

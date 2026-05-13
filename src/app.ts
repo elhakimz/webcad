@@ -36,6 +36,7 @@ import { LayerHandler } from "./core/engine/handlers/LayerHandler"
 import { BooleanHandler } from "./core/engine/handlers/transform/BooleanHandler"
 import { ArrayHandler } from "./core/engine/handlers/transform/ArrayHandler"
 import { FilletHandler } from "./core/engine/handlers/transform/FilletHandler"
+import { SFilletHandler } from "./core/engine/handlers/transform/SFilletHandler"
 import { ChamferHandler } from "./core/engine/handlers/transform/ChamferHandler"
 import { BreakHandler } from "./core/engine/handlers/transform/BreakHandler"
 import { CopyHandler } from "./core/engine/handlers/transform/CopyHandler"
@@ -158,6 +159,7 @@ export class App {
     this.dispatcher.registerHandler(new BooleanHandler());
     this.dispatcher.registerHandler(new ArrayHandler());
     this.dispatcher.registerHandler(new FilletHandler());
+    this.dispatcher.registerHandler(new SFilletHandler());
     this.dispatcher.registerHandler(new ChamferHandler());
     this.dispatcher.registerHandler(new BreakHandler());
     this.dispatcher.registerHandler(new CopyHandler());
@@ -729,6 +731,10 @@ export class App {
             this.selectedEdge = { entityId: subEntity.entity.id, edgeIndex: subEntity.edgeIndex };
             this.viewer.highlightEdge(subEntity.entity.id, subEntity.edgeIndex);
             
+            const text = `EDGE:${subEntity.entity.id}:${subEntity.edgeIndex}`;
+            const res = await this.cmd.inputString(text, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);
+            await this.handleResult(res);
+            
             // Get coordinates and paint it
             if (subEntity.entity.edgeLines) {
               const edgePoints = subEntity.entity.edgeLines[subEntity.edgeIndex];
@@ -745,6 +751,11 @@ export class App {
             }
           } else if (subEntity.faceIndex !== undefined) {
             this.selectedFaces.push({ entityId: subEntity.entity.id, faceIndex: subEntity.faceIndex });
+            
+            const text = `FACE:${subEntity.entity.id}:${subEntity.faceIndex}`;
+            const res = await this.cmd.inputString(text, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);
+            await this.handleResult(res);
+            
             if (this.selectedFaces.length > 2) {
               this.selectedFaces.shift();
             }

@@ -48,6 +48,10 @@ export class OCCWorkerClient {
     return this.send('createCone', { x, y, z, r, h, deflection, entityId });
   }
 
+  filletSolid(entityId: string, edgeIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+    return this.send('filletSolid', { entityId, edgeIndex, radius });
+
+  }
   createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
     return this.send('createTorus', { x, y, z, r1, r2, deflection, entityId });
   }

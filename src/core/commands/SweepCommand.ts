@@ -6,9 +6,10 @@ import { Circle } from "../model/Circle"
 import { Spline } from "../model/Spline"
 import { Line } from "../model/Line"
 import { Arc } from "../model/Arc"
+import { Ellipse } from "../model/Ellipse"
 
 export class SweepCommand implements Command {
-  step = 0
+  step = 1
   profileEntity: Entity | null = null
   spineEntity: Entity | null = null
   mode: 'SOLID' | 'HOLLOW' = 'SOLID'
@@ -16,14 +17,6 @@ export class SweepCommand implements Command {
 
   setEntity(entity: Entity) {
     if (this.step === 1) {
-      const isClosed = ('closed' in entity && (entity as any).closed) || 
-                       ('isClosed' in entity && (entity as any).isClosed) || 
-                       'r' in entity; // Circle is always closed
-      
-      if (this.mode === 'SOLID' && !isClosed) {
-        return; // Reject open profiles for SOLID mode
-      }
-      
       this.profileEntity = entity;
       this.step = 2;
     } else if (this.step === 2) {
@@ -37,19 +30,7 @@ export class SweepCommand implements Command {
   }
 
   onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
-    if (this.step === 0) {
-      const upper = text.toUpperCase().trim();
-      if (upper === 'H' || upper === 'HOLLOW') {
-        this.mode = 'HOLLOW';
-        this.step = 1;
-        return "Select profile:";
-      } else if (upper === 'S' || upper === 'SOLID' || text === '') {
-        this.mode = 'SOLID';
-        this.step = 1;
-        return "Select profile:";
-      }
-      return "Invalid option. Mode [Solid/Hollow] <Solid>:";
-    }
+    const upper = text.toUpperCase().trim();
 
     if (this.step === 1 && !this.profileEntity) {
       if (doc) {
@@ -65,6 +46,9 @@ export class SweepCommand implements Command {
       if (doc) {
         const entity = doc.getEntity(text);
         if (entity) {
+          if (this.profileEntity && entity.id === this.profileEntity.id) {
+            return this.getPrompt();
+          }
           this.setEntity(entity);
           return this.getPrompt();
         }
@@ -72,21 +56,46 @@ export class SweepCommand implements Command {
     }
 
     if (this.step === 3) {
-      const upper = text.toUpperCase().trim();
+      if (upper === 'H' || upper === 'HOLLOW') {
+        this.mode = 'HOLLOW';
+        this.step = 4;
+      } else if (upper === 'S' || upper === 'SOLID' || text === '') {
+        this.mode = 'SOLID';
+        this.step = 4;
+      } else {
+        return "Invalid option. Mode [Solid/Hollow] <Solid>:";
+      }
+
+      // If we are in SOLID mode, check if profile is closed!
+      if (this.mode === 'SOLID' && this.profileEntity) {
+        const isClosed = ('closed' in this.profileEntity && (this.profileEntity as any).closed) || 
+                         ('isClosed' in this.profileEntity && (this.profileEntity as any).isClosed) || 
+                         'r' in this.profileEntity ||
+                         (this.profileEntity instanceof Ellipse && Math.abs(this.profileEntity.endAngle - this.profileEntity.startAngle) >= 2 * Math.PI - 0.01);
+        if (!isClosed) {
+          this.step = 3; // Stay in step 3
+          return "Profile must be closed for SOLID mode. Mode [Solid/Hollow] <Solid>:";
+        }
+      }
+
+      return this.getPrompt();
+    }
+
+    if (this.step === 4) {
       if (upper === 'M' || upper === 'MITER') {
         this.cornerMode = 'MITER';
-        this.step = 4;
+        this.step = 5;
       } else if (upper === 'R' || upper === 'ROUND') {
         this.cornerMode = 'ROUND';
-        this.step = 4;
+        this.step = 5;
       } else if (upper === 'D' || upper === 'DEFAULT' || text === '') {
         this.cornerMode = 'DEFAULT';
-        this.step = 4;
+        this.step = 5;
       } else {
         return "Invalid option. Corner mode [Default/Miter/Round] <Default>:";
       }
       
-      if (this.step === 4 && this.profileEntity && this.spineEntity) {
+      if (this.step === 5 && this.profileEntity && this.spineEntity) {
         return {
           action: "sweep",
           id1: this.profileEntity.id,
@@ -105,10 +114,10 @@ export class SweepCommand implements Command {
   }
 
   getPrompt(): string {
-    if (this.step === 0) return "Mode [Solid/Hollow] <Solid>:";
-    if (this.step === 1) return "Select profile:";
-    if (this.step === 2) return "Select spine:";
-    if (this.step === 3) return "Corner mode [Default/Miter/Round] <Default>:";
+    if (this.step === 1) return "Select profile (Polyline, POLYGON, Circle, Ellipse):";
+    if (this.step === 2) return "Select spine (Line, Arc, Polyline):";
+    if (this.step === 3) return "Mode [Solid/Hollow] <Solid>:";
+    if (this.step === 4) return "Corner mode [Default/Miter/Round] <Default>:";
     return "Press Enter to complete.";
   }
 }

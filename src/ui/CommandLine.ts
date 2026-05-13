@@ -102,6 +102,12 @@ export class CommandLine {
     if (!msg) return;
     const line = document.createElement('div');
     line.textContent = msg;
+    
+    const upper = msg.toUpperCase();
+    if (upper.startsWith("ERROR") || upper.startsWith("FAILED") || upper.includes("EXCEPTION") || upper.includes("FAIL")) {
+      line.style.color = "#ff4444"; // Use a bright red
+    }
+    
     this.logEl.appendChild(line);
     
     // Auto-scroll to bottom

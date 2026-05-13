@@ -128,6 +128,7 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["POINT", () => new PointCommand()],
   ["PLINE", () => new PolylineCommand()],
   ["POLYGON", () => new PolygonCommand()],
+  ["PG", () => new PolygonCommand()],
   ["RECTANG", () => new RectangCommand()],
   ["REC", () => new RectangCommand()],
   ["RECTANGLE", () => new RectangCommand()],

@@ -5,6 +5,7 @@ import { Circle } from "../../../model/Circle";
 import { Spline } from "../../../model/Spline";
 import { Line } from "../../../model/Line";
 import { Arc } from "../../../model/Arc";
+import { Ellipse } from "../../../model/Ellipse";
 import { Solid3D } from "../../../model/Solid3D";
 import { OpenCascadeService } from "../../../io/OpenCascadeService";
 import { bulgeToArc } from "../../../engine/MathUtils";
@@ -177,6 +178,26 @@ export class SweepHandler implements ActionHandler {
         }
       } else if (profileEntity instanceof Spline) {
         profilePoints = profileEntity.sampledPoints.map(v => ({ x: v.x, y: v.y, z: elevation }));
+      } else if (profileEntity instanceof Ellipse) {
+        const segments = 32;
+        const a = Math.sqrt(profileEntity.majorX**2 + profileEntity.majorY**2);
+        const b = a * profileEntity.ratio;
+        const angle = Math.atan2(profileEntity.majorY, profileEntity.majorX);
+        
+        for (let i = 0; i <= segments; i++) {
+          const t = (i / segments) * 2 * Math.PI;
+          const cost = Math.cos(t);
+          const sint = Math.sin(t);
+          
+          const rx = a * cost * Math.cos(angle) - b * sint * Math.sin(angle);
+          const ry = a * cost * Math.sin(angle) + b * sint * Math.cos(angle);
+          
+          profilePoints.push({
+            x: profileEntity.cx + rx,
+            y: profileEntity.cy + ry,
+            z: elevation
+          });
+        }
       }
 
       try {
@@ -349,7 +370,8 @@ export class SweepHandler implements ActionHandler {
           } else {
             // STABLE: Fixed ID mismatch for persistence. Do not change unless allowed.
             const solidId = doc.getNextId("S3D");
-            geometry = await occService.createSweep(profilePoints, spinePoints, isSolid, deflection, solidId, profileCount, action.cornerMode);
+            const isEllipse = profileEntity instanceof Ellipse;
+            geometry = await occService.createSweep(profilePoints, spinePoints, isSolid, deflection, solidId, profileCount, action.cornerMode, isEllipse);
             
             const positions = Array.from(geometry.getAttribute('position').array) as number[];
             const indices = Array.from(geometry.getIndex()?.array || []) as number[];

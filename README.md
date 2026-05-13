@@ -117,10 +117,10 @@ npm run lint
     -   **Strict Layer Isolation:** Selection engine now respects the current active layer for both commands and direct editing.
     -   **Robust Hatching:** Upgraded clipping algorithm using midpoint validation for leak-proof patterns in complex boundaries.
     -   **Data Consistency:** Fixed DXF persistence for `HATCH` (repeated codes) and `DONUT` (filled state preservation).
--   [x] **Advanced Curves:** **SPLINE** command with cubic B-spline drafting, snap support, and DXF R14 persistence.
--   [x] **Modification:** **STRETCH** command with crossing-window selection and dynamic vertex displacement.
--   [ ] **Snaps:** Intersection and Perpendicular snapping modes.
--   [x] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT with robust STEP persistence.
+- [x] **Advanced Curves:** **SPLINE** command with cubic B-spline drafting, snap support, and DXF R14 persistence.
+- [x] **Modification:** **STRETCH** command with crossing-window selection and dynamic vertex displacement.
+- [ ] **Snaps:** Intersection and Perpendicular snapping modes.
+- [x] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT with robust STEP persistence.
 
 ## 📄 License
 MIT
@@ -130,3 +130,8 @@ MIT
 **Note:** AutoCAD is an Autodesk product. This project is a modern web-based recreation of the classic AutoCAD 2.18 interface for educational and demonstration purposes.
 
 **Disclaimer:** This application uses open-source icons from LibreCAD.
+
+Dedicated for SMT Penerbangan / SMK 12 Bandung Students and Allumni .
+<center>
+[logosmt.png]  [logosmk.png]
+</center>

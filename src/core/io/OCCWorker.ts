@@ -496,7 +496,7 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { profilePoints, spinePoints, isSolid, deflection, entityId, profileCount, cornerMode } = payload;
+    const { profilePoints, spinePoints, isSolid, deflection, entityId, profileCount, cornerMode, isEllipse } = payload;
     try {
       let resultShape: any = null;
 
@@ -566,7 +566,7 @@ self.onmessage = async (e) => {
         }
       }
 
-      if (count === 1) {
+      if (count === 1 && (!cornerMode || cornerMode === 'DEFAULT' || (isEllipse && cornerMode === 'MITER'))) {
         // STABLE: Custom JS generator using RMF (Double Reflection) to prevent twisting. Do not change unless allowed.
         // Find centroid of RAW profile points for mapping
         let cx = 0, cy = 0, cz = 0;
@@ -697,11 +697,50 @@ self.onmessage = async (e) => {
           const X = frame.X;
           const Y = frame.Y;
           
+          let nx = 0, ny = 0, scaleFactor = 1.0;
+          let applyMiter = false;
+          
+          // STABLE: Pure JS Bisector Scaling Miter for Ellipse. Do not change unless allowed.
+          if (isEllipse && cornerMode === 'MITER' && i > 0 && i < N - 1) {
+            const T1 = { x: spinePoints[i].x - spinePoints[i-1].x, y: spinePoints[i].y - spinePoints[i-1].y, z: spinePoints[i].z - spinePoints[i-1].z };
+            const T2 = { x: spinePoints[i+1].x - spinePoints[i].x, y: spinePoints[i+1].y - spinePoints[i].y, z: spinePoints[i+1].z - spinePoints[i].z };
+            const l1 = Math.sqrt(T1.x*T1.x + T1.y*T1.y + T1.z*T1.z);
+            const l2 = Math.sqrt(T2.x*T2.x + T2.y*T2.y + T2.z*T2.z);
+            if (l1 > 1e-6 && l2 > 1e-6) {
+              T1.x /= l1; T1.y /= l1; T1.z /= l1;
+              T2.x /= l2; T2.y /= l2; T2.z /= l2;
+              
+              const dot = T1.x*T2.x + T1.y*T2.y + T1.z*T2.z;
+              if (dot < 0.999 && dot > -0.999) { // Only if it's a real corner
+                const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+                const halfAngle = angle / 2;
+                scaleFactor = 1 / Math.cos(halfAngle);
+                
+                const B = { x: T2.x - T1.x, y: T2.y - T1.y, z: T2.z - T1.z };
+                const bx = B.x * X.x + B.y * X.y + B.z * X.z;
+                const by = B.x * Y.x + B.y * Y.y + B.z * Y.z;
+                const blen = Math.sqrt(bx*bx + by*by);
+                if (blen > 1e-6) {
+                  nx = bx / blen;
+                  ny = by / blen;
+                  applyMiter = true;
+                }
+              }
+            }
+          }
+          
           for (let j = 0; j < M; j++) {
             const p = profilePoints[j];
-            const x = p.x - cx;
-            const y = p.y - cy;
+            let x = p.x - cx;
+            let y = p.y - cy;
             const z = p.z - cz;
+            
+            if (applyMiter) {
+              const proj = x * nx + y * ny;
+              const scaledProj = proj * scaleFactor;
+              x = x + (scaledProj - proj) * nx;
+              y = y + (scaledProj - proj) * ny;
+            }
             
             const px = spinePoints[i].x + x * X.x + y * Y.x + z * T.x;
             const py = spinePoints[i].y + x * X.y + y * Y.y + z * T.y;

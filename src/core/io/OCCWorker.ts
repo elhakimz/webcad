@@ -18,6 +18,20 @@ function releaseShape(entityId: string) {
   }
 }
 
+function decodeOCCError(label: string, e: unknown): string {
+  if (typeof e === 'number') {
+    try {
+      const [type, msg] = oc.getExceptionMessage(e);
+      return `[${label}] ${type}${msg ? ': ' + msg : ''}`;
+    } catch {
+      return `[${label}] WASM C++ exception at address 0x${e.toString(16)} (${e})`;
+    }
+  }
+  if (typeof e === 'string') return `[${label}] Binding error: ${e}`;
+  if (e instanceof Error)    return `[${label}] ${e.message}`;
+  return `[${label}] Unknown error: ${String(e)}`;
+}
+
 function applyRotation(shape: any, rot: {x:number, y:number, z:number}, oc: any, center?: {x:number, y:number, z:number}) {
   if (!rot || (rot.x === 0 && rot.y === 0 && rot.z === 0)) return shape;
   
@@ -474,7 +488,7 @@ self.onmessage = async (e) => {
 
       self.postMessage({ type: 'createExtrude', success: true, payload: geometryData, id });
     } catch (error: any) {
-      const errorMessage = error.message || error.toString() || 'Unknown error';
+      const errorMessage = decodeOCCError('createExtrude', error);
       self.postMessage({ type: 'createExtrude', success: false, error: errorMessage, id });
     }
   } else if (type === 'createSweep') {
@@ -515,40 +529,253 @@ self.onmessage = async (e) => {
         }
       }
 
-      let usedMakePipe = false;
+      let transformedProfilePts = profilePoints;
 
-      // For flat curves with a single profile, try BRepOffsetAPI_MakePipe
-      // which is simpler and less prone to twisting.
-      if (isFlat && count === 1) {
-        try {
-          const profileWireMaker = new oc.BRepBuilderAPI_MakeWire_1();
-          for (let i = 0; i < profilePoints.length - 1; i++) {
-            const p1 = new oc.gp_Pnt_3(profilePoints[i].x, profilePoints[i].y, profilePoints[i].z);
-            const p2 = new oc.gp_Pnt_3(profilePoints[i+1].x, profilePoints[i+1].y, profilePoints[i+1].z);
-            const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
-            if (makeEdge.IsDone()) {
-              profileWireMaker.Add_1(makeEdge.Edge());
-            }
-            p1.delete(); p2.delete(); makeEdge.delete();
-          }
-          const profileWire = profileWireMaker.Wire();
-          
-          const pipeMaker = new oc.BRepOffsetAPI_MakePipe_1(spineWire, profileWire);
-          resultShape = pipeMaker.Shape();
-          pipeMaker.delete();
-          profileWireMaker.delete();
-          usedMakePipe = true;
-        } catch (e) {
-          console.warn("BRepOffsetAPI_MakePipe failed, falling back to MakePipeShell", e);
+      if (profilePoints.length >= 3 && spinePoints.length >= 2) {
+        // Find centroid of profile points
+        let cx = 0, cy = 0, cz = 0;
+        for (const p of profilePoints) {
+          cx += p.x; cy += p.y; cz += p.z;
+        }
+        cx /= profilePoints.length;
+        cy /= profilePoints.length;
+        cz /= profilePoints.length;
+
+        // Spine start tangent
+        const tx = spinePoints[1].x - spinePoints[0].x;
+        const ty = spinePoints[1].y - spinePoints[0].y;
+        const len = Math.sqrt(tx * tx + ty * ty);
+        
+        if (len > 1e-6) {
+          transformedProfilePts = profilePoints.map((p: any) => {
+            const x = p.x - cx;
+            const y = p.y - cy;
+            const z = p.z - cz;
+            
+            // Map to frame: X' = (-ty, tx, 0), Y' = (0, 0, 1), Z' = (tx, ty, 0)
+            const rx = -(ty / len) * x + (tx / len) * z;
+            const ry = (tx / len) * x + (ty / len) * z;
+            const rz = y;
+            
+            return {
+              x: rx + spinePoints[0].x,
+              y: ry + spinePoints[0].y,
+              z: rz + spinePoints[0].z
+            };
+          });
         }
       }
 
-      if (!usedMakePipe) {
+      if (count === 1) {
+        // STABLE: Custom JS generator using RMF (Double Reflection) to prevent twisting. Do not change unless allowed.
+        // Find centroid of RAW profile points for mapping
+        let cx = 0, cy = 0, cz = 0;
+        for (const p of profilePoints) {
+          cx += p.x; cy += p.y; cz += p.z;
+        }
+        cx /= profilePoints.length;
+        cy /= profilePoints.length;
+        cz /= profilePoints.length;
+
+        const M = profilePoints.length;
+        const N = spinePoints.length;
+        
+        const positions: number[] = [];
+        const indices: number[] = [];
+        
+        // Compute tangents at spine points
+        const tangents: {x:number, y:number, z:number}[] = [];
+        for (let i = 0; i < N; i++) {
+          let tx = 0, ty = 0, tz = 0;
+          if (i === 0) {
+            tx = spinePoints[1].x - spinePoints[0].x;
+            ty = spinePoints[1].y - spinePoints[0].y;
+            tz = spinePoints[1].z - spinePoints[0].z;
+          } else if (i === N - 1) {
+            tx = spinePoints[N-1].x - spinePoints[N-2].x;
+            ty = spinePoints[N-1].y - spinePoints[N-2].y;
+            tz = spinePoints[N-1].z - spinePoints[N-2].z;
+          } else {
+            tx = spinePoints[i+1].x - spinePoints[i-1].x;
+            ty = spinePoints[i+1].y - spinePoints[i-1].y;
+            tz = spinePoints[i+1].z - spinePoints[i-1].z;
+          }
+          const len = Math.sqrt(tx*tx + ty*ty + tz*tz);
+          tangents.push({ x: tx/len, y: ty/len, z: tz/len });
+        }
+        
+        // Compute frames using Double Reflection Method (RMF)
+        const frames: { T: {x:number,y:number,z:number}, X: {x:number,y:number,z:number}, Y: {x:number,y:number,z:number} }[] = [];
+        
+        // Initial frame at P0
+        const T0 = tangents[0];
+        let N0 = { x: 0, y: 0, z: 1 }; // Default up vector
+        if (Math.abs(T0.z) > 0.99) {
+          N0 = { x: 1, y: 0, z: 0 };
+        }
+        // X = cross(N0, T0)
+        let xx = N0.y*T0.z - N0.z*T0.y;
+        let xy = N0.z*T0.x - N0.x*T0.z;
+        let xz = N0.x*T0.y - N0.y*T0.x;
+        const xlen = Math.sqrt(xx*xx + xy*xy + xz*xz);
+        xx /= xlen; xy /= xlen; xz /= xlen;
+        
+        // Y = cross(T0, X)
+        const yx = T0.y*xz - T0.z*xy;
+        const yy = T0.z*xx - T0.x*xz;
+        const yz = T0.x*xy - T0.y*xx;
+        
+        frames.push({ T: T0, X: {x:xx, y:xy, z:xz}, Y: {x:yx, y:yy, z:yz} });
+
+        for (let i = 1; i < N; i++) {
+          const Pprev = spinePoints[i-1];
+          const Pcurr = spinePoints[i];
+          const Tprev = frames[i-1].T;
+          const Tcurr = tangents[i];
+          const Xprev = frames[i-1].X;
+          const Yprev = frames[i-1].Y;
+          
+          // Step 1: v1 = Pcurr - Pprev
+          const v1x = Pcurr.x - Pprev.x;
+          const v1y = Pcurr.y - Pprev.y;
+          const v1z = Pcurr.z - Pprev.z;
+          const c1 = v1x*v1x + v1y*v1y + v1z*v1z;
+          
+          if (c1 < 1e-12) {
+            frames.push({ T: Tcurr, X: Xprev, Y: Yprev });
+            continue;
+          }
+          
+          // Step 3: XprevL = Xprev - (2/c1) * (v1 . Xprev) * v1
+          const dot1 = v1x*Xprev.x + v1y*Xprev.y + v1z*Xprev.z;
+          const factor1 = 2 / c1 * dot1;
+          const XprevLx = Xprev.x - factor1 * v1x;
+          const XprevLy = Xprev.y - factor1 * v1y;
+          const XprevLz = Xprev.z - factor1 * v1z;
+          
+          // Step 4: TprevL = Tprev - (2/c1) * (v1 . Tprev) * v1
+          const dot2 = v1x*Tprev.x + v1y*Tprev.y + v1z*Tprev.z;
+          const factor2 = 2 / c1 * dot2;
+          const TprevLx = Tprev.x - factor2 * v1x;
+          const TprevLy = Tprev.y - factor2 * v1y;
+          const TprevLz = Tprev.z - factor2 * v1z;
+          
+          // Step 5: v2 = Tcurr - TprevL
+          const v2x = Tcurr.x - TprevLx;
+          const v2y = Tcurr.y - TprevLy;
+          const v2z = Tcurr.z - TprevLz;
+          const c2 = v2x*v2x + v2y*v2y + v2z*v2z;
+          
+          let Xcurr = { x: XprevLx, y: XprevLy, z: XprevLz };
+          if (c2 > 1e-12) {
+            // Step 7: Xcurr = XprevL - (2/c2) * (v2 . XprevL) * v2
+            const dot3 = v2x*XprevLx + v2y*XprevLy + v2z*XprevLz;
+            const factor3 = 2 / c2 * dot3;
+            Xcurr.x -= factor3 * v2x;
+            Xcurr.y -= factor3 * v2y;
+            Xcurr.z -= factor3 * v2z;
+          }
+          
+          // Normalize Xcurr
+          const xlen2 = Math.sqrt(Xcurr.x*Xcurr.x + Xcurr.y*Xcurr.y + Xcurr.z*Xcurr.z);
+          Xcurr.x /= xlen2; Xcurr.y /= xlen2; Xcurr.z /= xlen2;
+          
+          // Step 8: Ycurr = cross(Tcurr, Xcurr)
+          const Ycurr = {
+            x: Tcurr.y*Xcurr.z - Tcurr.z*Xcurr.y,
+            y: Tcurr.z*Xcurr.x - Tcurr.x*Xcurr.z,
+            z: Tcurr.x*Xcurr.y - Tcurr.y*Xcurr.x
+          };
+          
+          frames.push({ T: Tcurr, X: Xcurr, Y: Ycurr });
+        }
+        
+        // Generate vertices
+        for (let i = 0; i < N; i++) {
+          const frame = frames[i];
+          const T = frame.T;
+          const X = frame.X;
+          const Y = frame.Y;
+          
+          for (let j = 0; j < M; j++) {
+            const p = profilePoints[j];
+            const x = p.x - cx;
+            const y = p.y - cy;
+            const z = p.z - cz;
+            
+            const px = spinePoints[i].x + x * X.x + y * Y.x + z * T.x;
+            const py = spinePoints[i].y + x * X.y + y * Y.y + z * T.y;
+            const pz = spinePoints[i].z + x * X.z + y * Y.z + z * T.z;
+            
+            positions.push(px, py, pz);
+          }
+        }
+        
+        // Generate indices for faces
+        for (let i = 0; i < N - 1; i++) {
+          for (let j = 0; j < M; j++) {
+            const next_j = (j + 1) % M;
+            
+            const v1 = i * M + j;
+            const v2 = (i + 1) * M + j;
+            const v3 = (i + 1) * M + next_j;
+            const v4 = i * M + next_j;
+            
+            indices.push(v1, v2, v3);
+            indices.push(v1, v3, v4);
+          }
+        }
+        
+        // Add caps if solid is requested
+        if (isSolid) {
+          // Start cap
+          const startCenterIdx = positions.length / 3;
+          positions.push(spinePoints[0].x, spinePoints[0].y, spinePoints[0].z);
+          for (let j = 0; j < M; j++) {
+            indices.push(startCenterIdx, (j + 1) % M, j); // Counter-clockwise
+          }
+          
+          // End cap
+          const endCenterIdx = positions.length / 3;
+          positions.push(spinePoints[N-1].x, spinePoints[N-1].y, spinePoints[N-1].z);
+          for (let j = 0; j < M; j++) {
+            const v1 = (N - 1) * M + j;
+            const v2 = (N - 1) * M + (j + 1) % M;
+            indices.push(endCenterIdx, v1, v2); // Counter-clockwise
+          }
+        }
+        
+        const geometryData = {
+          positions: positions,
+          indices: indices,
+          normal: [] // Three.js can compute normals
+        };
+        
+        // Cache DUMMY shape for persistence!
+        if (entityId) {
+          const p1 = new oc.gp_Pnt_3(0, 0, 0);
+          const p2 = new oc.gp_Pnt_3(1, 1, 1);
+          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+          const dummyShape = makeEdge.Edge();
+          cacheShape(entityId, dummyShape);
+          p1.delete();
+          p2.delete();
+          makeEdge.delete();
+        }
+        
+        self.postMessage({ type: 'createSweep', success: true, payload: geometryData, id });
+        return;
+      } else {
+        // Use MakePipeShell for multiple profiles
         const sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spineWire);
         
-        if (isFlat) {
-          sweepBuilder.SetMode_1(true); // Frenet
-        } else {
+        // Try to set fixed binormal to Z axis to prevent twisting!
+        try {
+          const zDir = new oc.gp_Dir_4(0, 0, 1);
+          // @ts-ignore
+          sweepBuilder.SetMode_2(zDir);
+          zDir.delete();
+        } catch (e) {
           sweepBuilder.SetMode_1(false); // Corrected Frenet
         }
 
@@ -562,8 +789,8 @@ self.onmessage = async (e) => {
         
         for (let j = 0; j < count; j++) {
           const startIdx = j * ptsPerProfile;
-          const endIdx = (j === count - 1) ? profilePoints.length : (j + 1) * ptsPerProfile;
-          const currentProfilePts = profilePoints.slice(startIdx, endIdx);
+          const endIdx = (j === count - 1) ? transformedProfilePts.length : (j + 1) * ptsPerProfile;
+          const currentProfilePts = transformedProfilePts.slice(startIdx, endIdx);
           
           const profileWireMaker = new oc.BRepBuilderAPI_MakeWire_1();
           for (let i = 0; i < currentProfilePts.length - 1; i++) {
@@ -578,7 +805,9 @@ self.onmessage = async (e) => {
             makeEdge.delete();
           }
           const profileWire = profileWireMaker.Wire();
+          
           sweepBuilder.Add_1(profileWire, false, false);
+          
           profileWireMaker.delete();
         }
         
@@ -614,7 +843,7 @@ self.onmessage = async (e) => {
 
       self.postMessage({ type: 'createSweep', success: true, payload: geometryData, id });
     } catch (error: any) {
-      const errorMessage = error.message || error.toString() || 'Unknown error';
+      const errorMessage = decodeOCCError('createSweep', error);
       self.postMessage({ type: 'createSweep', success: false, error: errorMessage, id });
     }
   } else if (type === 'createRevolve') {
@@ -705,7 +934,7 @@ self.onmessage = async (e) => {
 
       self.postMessage({ type: 'createRevolve', success: true, payload: geometryData, id });
     } catch (error: any) {
-      const errorMessage = error.message || error.toString() || 'Unknown error';
+      const errorMessage = decodeOCCError('createRevolve', error);
       self.postMessage({ type: 'createRevolve', success: false, error: errorMessage, id });
     }
   } else if (type === 'createBoolean') {
@@ -800,7 +1029,7 @@ self.onmessage = async (e) => {
 
       self.postMessage({ type: 'createBoolean', success: true, payload: geometryData, id });
     } catch (error: any) {
-      const errorMessage = error.message || error.toString() || 'Unknown error';
+      const errorMessage = decodeOCCError('createBoolean', error);
       self.postMessage({ type: 'createBoolean', success: false, error: errorMessage, id });
     }
   } else if (type === 'transformShape') {
@@ -829,7 +1058,7 @@ self.onmessage = async (e) => {
       
       self.postMessage({ type: 'transformShape', success: true, id });
     } catch (error: any) {
-      const errorMessage = error.message || error.toString() || 'Unknown error';
+      const errorMessage = decodeOCCError('transformShape', error);
       self.postMessage({ type: 'transformShape', success: false, error: errorMessage, id });
     }
   } else if (type === 'releaseShapes') {
@@ -986,7 +1215,7 @@ self.onmessage = async (e) => {
       cacheShape(entityId, loadedShape);    // now available for boolean ops
       
       // Tessellate and get geometry data
-      const geometryData = shapeToBufferGeometryData(loadedShape, oc, deflection || 0.1);
+      const geometryData = shapeToBufferGeometryData(loadedShape, oc, deflection || 0.01);
       
       self.postMessage({ type: 'importBRep', success: true, payload: geometryData, id });
     } catch (err: any) {
@@ -997,7 +1226,7 @@ self.onmessage = async (e) => {
 
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number = 0.1) {
+function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number = 0.01) {
   // Triangulate the shape
   new oc.BRepMesh_IncrementalMesh_2(shape, linearDeflection, false, 0.5, false);
 

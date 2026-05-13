@@ -309,6 +309,24 @@ export class SweepHandler implements ActionHandler {
               }
             }
             
+            // Add caps if solid is requested
+            if (isSolid) {
+              // Start cap
+              const startCenterIdx = allPositions.length / 3;
+              allPositions.push(spinePoints[0].x, spinePoints[0].y, spinePoints[0].z);
+              for (let k = 0; k < segments; k++) {
+                allIndices.push(startCenterIdx, k, k + 1);
+              }
+              
+              // End cap
+              const endCenterIdx = allPositions.length / 3;
+              const lastRingOffset = (spinePoints.length - 1) * (segments + 1);
+              allPositions.push(spinePoints[spinePoints.length - 1].x, spinePoints[spinePoints.length - 1].y, spinePoints[spinePoints.length - 1].z);
+              for (let k = 0; k < segments; k++) {
+                allIndices.push(endCenterIdx, lastRingOffset + k + 1, lastRingOffset + k);
+              }
+            }
+
             // If cornerMode is Round, add spheres at collected sharp corners!
             for (const center of sphereCenters) {
               const sphereGeom = new THREE.SphereGeometry(profileEntity.r, 16, 16);
@@ -329,7 +347,20 @@ export class SweepHandler implements ActionHandler {
             geometry.setIndex(allIndices);
             geometry.computeVertexNormals();
           } else {
-            geometry = await occService.createSweep(profilePoints, spinePoints, isSolid, deflection, doc.getNextId("S3D"), profileCount, action.cornerMode);
+            // STABLE: Fixed ID mismatch for persistence. Do not change unless allowed.
+            const solidId = doc.getNextId("S3D");
+            geometry = await occService.createSweep(profilePoints, spinePoints, isSolid, deflection, solidId, profileCount, action.cornerMode);
+            
+            const positions = Array.from(geometry.getAttribute('position').array) as number[];
+            const indices = Array.from(geometry.getIndex()?.array || []) as number[];
+            
+            const solid = new Solid3D(solidId, positions, indices);
+            addEntity(solid, true, false);
+            
+            viewer.clearHighlight();
+            context.syncFromDocument();
+            
+            return "Sweep completed.";
           }
         }
         

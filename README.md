@@ -133,5 +133,5 @@ MIT
 
 Dedicated for SMT Penerbangan / SMK 12 Bandung Students and Allumni .
 <center>
-[logosmt.png]  [logosmk.png]
+![SMT Penerbangan Bandung](screenshots/logosmt.png) |  ![SMKN 12 Bandung](screenshots/logosmk.png)
 </center>

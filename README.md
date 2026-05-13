@@ -132,6 +132,5 @@ MIT
 **Disclaimer:** This application uses open-source icons from LibreCAD.
 
 Dedicated for SMT Penerbangan / SMK 12 Bandung Students and Allumni .
-<center>
+
 ![SMT Penerbangan Bandung](screenshots/logosmt.png) |  ![SMKN 12 Bandung](screenshots/logosmk.png)
-</center>

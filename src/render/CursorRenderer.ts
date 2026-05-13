@@ -77,7 +77,7 @@ export class CursorRenderer {
       }
     }
 
-    const size = 5 / this.camera.zoom;
+    const size = 10 / this.camera.zoom; // Increased pickbox size (was 5)
     const color = 0x555555; // Same grey as cursor
     const mat = new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true });
     const geo = new THREE.BufferGeometry().setFromPoints([
@@ -193,7 +193,7 @@ export class CursorRenderer {
     }
   }
 
-  setCursorHover(isHovering: boolean) {
+  setCursorHover(isHovering: boolean, isEdge: boolean = false) {
     while (this.hoverGroup.children.length > 0) {
       const obj = this.hoverGroup.children[0];
       this.hoverGroup.remove(obj);
@@ -224,6 +224,15 @@ export class CursorRenderer {
 
       this.hoverGroup.add(leftLine);
       this.hoverGroup.add(rightLine);
+
+      if (isEdge) {
+        const centerGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, size, 0),
+          new THREE.Vector3(0, -size, 0)
+        ]);
+        const centerLine = new THREE.Line(centerGeo, mat);
+        this.hoverGroup.add(centerLine);
+      }
     }
   }
 }

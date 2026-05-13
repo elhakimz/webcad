@@ -371,7 +371,7 @@ window.addEventListener("mousemove", (e) => {
 
   const worldPt = viewer.screenToWorld(clampedX, clampedY)
   unitsRibbon.updateCoordinates(worldPt.x, worldPt.y, app.doc.units, app.currentZ)
-  app.move(clampedX, clampedY)
+  app.move(clampedX, clampedY, e.ctrlKey, e.shiftKey)
   if (app.cmd.active) {
     updatePrompt()
   }
@@ -569,12 +569,12 @@ window.addEventListener("pointerup", async (e) => {
   
   if (isCanvas || (isCmdArea && app.cmd.active && target.tagName !== 'INPUT' && !target.classList.contains('control-btn'))) {
     const { clampedX, clampedY } = getClampedCoordinates(e);
-    const res = await app.pointerUp(clampedX, clampedY, e.shiftKey);
+    const res = await app.pointerUp(clampedX, clampedY, e.shiftKey, e.ctrlKey);
     if (typeof res === 'string' && res) {
       cmdLine.print(res);
     }
     // Force preview update (X markers, rubber-band) after click
-    app.move(clampedX, clampedY);
+    app.move(clampedX, clampedY, e.ctrlKey, e.shiftKey);
     updatePrompt();
   }
 });

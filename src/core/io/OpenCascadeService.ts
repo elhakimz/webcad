@@ -50,6 +50,11 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
+    
     return geometry;
   }
 
@@ -64,6 +69,11 @@ export class OpenCascadeService {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
+    
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
     
     return geometry;
   }
@@ -80,6 +90,11 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
+    
     return geometry;
   }
 
@@ -94,6 +109,11 @@ export class OpenCascadeService {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
+    
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
     
     return geometry;
   }
@@ -110,6 +130,11 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
+    
     return geometry;
   }
 
@@ -125,6 +150,11 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
+    
     return geometry;
   }
 
@@ -136,6 +166,11 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
+    
     return geometry;
   }
 
@@ -146,6 +181,11 @@ export class OpenCascadeService {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
+    
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
     
     return geometry;
   }
@@ -162,6 +202,11 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
+    
     return geometry;
   }
   async createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number, rotA?: {x:number, y:number, z:number}, rotB?: {x:number, y:number, z:number}, centerA?: {x:number, y:number, z:number}, centerB?: {x:number, y:number, z:number}): Promise<THREE.BufferGeometry> {
@@ -171,6 +216,11 @@ export class OpenCascadeService {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
+    
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
     
     return geometry;
   }

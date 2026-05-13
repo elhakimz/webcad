@@ -70,6 +70,8 @@ export class App {
   doc: Document
   drafting: DraftingState
   selectedEntityIds: Set<string> = new Set()
+  selectedEdge: { entityId: string, edgeIndex: number } | null = null;
+  selectedFaces: { entityId: string, faceIndex: number }[] = [];
   private selectionStartPoint: { x: number, y: number, screenX?: number, screenY?: number } | null = null;
   private selectionBoxEl: HTMLDivElement | null = null;
   private selectionMode: 'OBJECT' | 'SURFACE' = 'OBJECT';
@@ -387,7 +389,7 @@ export class App {
     return await callHandleResult(result)
   }
 
-  move(screenX: number, screenY: number) {
+  move(screenX: number, screenY: number, ctrlKey = false, shiftKey = false) {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
     const actualPt = this.viewer.screenToWorldActual(screenX, screenY);
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
@@ -426,17 +428,59 @@ export class App {
     const selectableEntities = this.getSelectableEntities();
     const tolerance = 10 / this.viewer.camera.zoom;
     let hoveredEntity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
+    
+    let subEntity: { entity: Solid3D, faceIndex?: number, edgeIndex?: number } | null = null;
+    
     if (hoveredEntity === null) {
         const ndc = this.viewer.getNormalizedDeviceCoordinates(screenX, screenY);
-        hoveredEntity = Selection3DEngine.getHoveredSolid3D(
-            ndc,
-            this.viewer.camera,
-            this.viewer.scene,
-            this.doc,
-            this.getSolid3DSelectables()
-        );
+        
+        if (ctrlKey && shiftKey) {
+          // Face selection mode
+          subEntity = Selection3DEngine.getSubEntityAt(ndc, this.viewer.camera, this.viewer.scene, this.doc, this.getSolid3DSelectables(), 'FACE');
+          if (subEntity) {
+            hoveredEntity = subEntity.entity;
+            console.log("[Face Hover] Detected face index:", subEntity.faceIndex);
+          }
+        } else if (ctrlKey) {
+          // Edge selection mode
+          subEntity = Selection3DEngine.getSubEntityAt(ndc, this.viewer.camera, this.viewer.scene, this.doc, this.getSolid3DSelectables(), 'EDGE');
+          if (subEntity) {
+            hoveredEntity = subEntity.entity;
+            console.log("[Edge Hover] Detected edge index:", subEntity.edgeIndex);
+          }
+        } else {
+          hoveredEntity = Selection3DEngine.getHoveredSolid3D(
+              ndc,
+              this.viewer.camera,
+              this.viewer.scene,
+              this.doc,
+              this.getSolid3DSelectables()
+          );
+        }
     }
-    this.viewer.setCursorHover(!!hoveredEntity);
+    
+    const isEdgeHover = !!(subEntity && subEntity.edgeIndex !== undefined);
+    this.viewer.setCursorHover(!!hoveredEntity, isEdgeHover);
+    
+    // Clear highlights first for visible solids
+    const allSolids = this.getSolid3DSelectables() as Solid3D[];
+    allSolids.forEach(s => {
+      this.viewer.highlightFace(s.id, null);
+      this.viewer.highlightEdge(s.id, null);
+    });
+
+    if (subEntity) {
+      if (subEntity.faceIndex !== undefined) {
+        this.viewer.highlightFace(subEntity.entity.id, subEntity.faceIndex);
+      } else if (subEntity.edgeIndex !== undefined) {
+        this.viewer.highlightEdge(subEntity.entity.id, subEntity.edgeIndex);
+      }
+    }
+
+    // Re-apply selected edge LAST so it always wins over hover resets
+    if (this.selectedEdge) {
+      this.viewer.highlightEdge(this.selectedEdge.entityId, this.selectedEdge.edgeIndex);
+    }
 
     if (this.cmd.active) {
         this.viewer.setActivePointMarker(worldX, worldY, worldZ, this.viewer.camera.quaternion);
@@ -563,7 +607,7 @@ export class App {
     this.selectionStartPoint = { x: worldPt.x, y: worldPt.y, screenX, screenY };
   }
 
-  async pointerUp(screenX: number, screenY: number, isShift = false): Promise<CommandResponse | undefined> {
+  async pointerUp(screenX: number, screenY: number, isShift = false, isCtrl = false): Promise<CommandResponse | undefined> {
     const sketchCmd = this.cmd.active as unknown as HasFinishSketch;
     if (sketchCmd && typeof sketchCmd.finishSketch === 'function') {
       const id = this.doc.getNextId("SK");
@@ -584,7 +628,7 @@ export class App {
 
     if (dx < tolerance && dy < tolerance) {
         // Single click
-        result = await this.click(screenX, screenY, isShift);
+        result = await this.click(screenX, screenY, isShift, isCtrl);
     } else if (isSelectionStep) {
         // Box selection only allowed during selection steps
         const isCrossing = worldPt.x < this.selectionStartPoint.x;
@@ -608,7 +652,9 @@ export class App {
         found = [...entities2D, ...entities3D].filter((e, i, arr) => arr.findIndex(x => x.id === e.id) === i);
         
         for (const e of found) {
-            this.selectedEntityIds.add(e.id);
+            if (!isCtrl) {
+                this.selectedEntityIds.add(e.id);
+            }
             if (this.cmd.active) {
                 if ('setEntity' in this.cmd.active) {
                     (this.cmd.active as unknown as HasSetEntity).setEntity(e);
@@ -635,7 +681,7 @@ export class App {
     }
     
     // Attach/detach gizmo based on selection
-    if (this.selectedEntityIds.size === 1) {
+    if (this.selectedEntityIds.size === 1 && !isCtrl) {
       const id = Array.from(this.selectedEntityIds)[0];
       const entity = this.doc.getEntity(id);
       if (entity instanceof Solid3D) {
@@ -670,8 +716,72 @@ export class App {
     return result;
   }
 
-  async click(screenX:number, screenY:number, isShift = false){
+  async click(screenX:number, screenY:number, isShift = false, isCtrl = false){
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
+    if (isCtrl) {
+        console.log(`[app.click] Ctrl+Click detected. Mode: ${isShift ? 'FACE' : 'EDGE'}`);
+        const ndc = this.viewer.getNormalizedDeviceCoordinates(screenX, screenY);
+        const subEntity = Selection3DEngine.getSubEntityAt(ndc, this.viewer.camera, this.viewer.scene, this.doc, this.getSolid3DSelectables(), isShift ? 'FACE' : 'EDGE');
+        console.log(`[app.click] getSubEntityAt result:`, subEntity);
+        
+        if (subEntity) {
+          if (subEntity.edgeIndex !== undefined) {
+            this.selectedEdge = { entityId: subEntity.entity.id, edgeIndex: subEntity.edgeIndex };
+            this.viewer.highlightEdge(subEntity.entity.id, subEntity.edgeIndex);
+            
+            // Get coordinates and paint it
+            if (subEntity.entity.edgeLines) {
+              const edgePoints = subEntity.entity.edgeLines[subEntity.edgeIndex];
+              if (edgePoints && edgePoints.length >= 6) {
+                const p1 = { x: edgePoints[0], y: edgePoints[1], z: edgePoints[2] };
+                const p2 = { x: edgePoints[edgePoints.length-3], y: edgePoints[edgePoints.length-2], z: edgePoints[edgePoints.length-1] };
+                
+                console.log(`[app.click] Found edge: ${subEntity.edgeIndex}`);
+                console.log(`[app.click] p1: [${p1.x.toFixed(3)}, ${p1.y.toFixed(3)}, ${p1.z.toFixed(3)}]`);
+                console.log(`[app.click] p2: [${p2.x.toFixed(3)}, ${p2.y.toFixed(3)}, ${p2.z.toFixed(3)}]`);
+                
+                this.viewer.drawDebugLine(p1, p2, 0xffa500);
+              }
+            }
+          } else if (subEntity.faceIndex !== undefined) {
+            this.selectedFaces.push({ entityId: subEntity.entity.id, faceIndex: subEntity.faceIndex });
+            if (this.selectedFaces.length > 2) {
+              this.selectedFaces.shift();
+            }
+            
+            console.log(`[app.click] Selected faces:`, this.selectedFaces);
+            
+            // Highlight the clicked face
+            this.viewer.highlightFace(subEntity.entity.id, subEntity.faceIndex);
+            
+            if (this.selectedFaces.length === 2) {
+              const f1 = this.selectedFaces[0];
+              const f2 = this.selectedFaces[1];
+              if (f1.entityId === f2.entityId) {
+                 const sharedEdgeResult = Selection3DEngine.getSharedEdge(subEntity.entity, f1.faceIndex, f2.faceIndex);
+                 if (sharedEdgeResult !== null) {
+                   this.selectedEdge = { entityId: f1.entityId, edgeIndex: sharedEdgeResult.edgeIndex };
+                   this.viewer.highlightEdge(f1.entityId, sharedEdgeResult.edgeIndex);
+                   console.log(`[app.click] Found shared edge: ${sharedEdgeResult.edgeIndex}`);
+                   console.log(`[app.click] p1: [${sharedEdgeResult.p1.x.toFixed(3)}, ${sharedEdgeResult.p1.y.toFixed(3)}, ${sharedEdgeResult.p1.z.toFixed(3)}]`);
+                   console.log(`[app.click] p2: [${sharedEdgeResult.p2.x.toFixed(3)}, ${sharedEdgeResult.p2.y.toFixed(3)}, ${sharedEdgeResult.p2.z.toFixed(3)}]`);
+                   // Paint the line across those coords
+                   this.viewer.drawDebugLine(sharedEdgeResult.p1, sharedEdgeResult.p2, 0xffa500);
+                  
+                  // Clear face highlights
+                  this.viewer.highlightFace(f1.entityId, null);
+                  
+                  this.selectedFaces = []; // Clear for next pair
+                } else {
+                  console.log(`[app.click] No shared edge between face ${f1.faceIndex} and ${f2.faceIndex}`);
+                }
+              } else {
+                console.log(`[app.click] Faces belong to different entities`);
+              }
+            }
+          }
+        }
+    }
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
     const { x, y } = snapped;
 
@@ -705,32 +815,35 @@ export class App {
         }
 
         if (entity) {
-            if (isShift) {
-                if (entity instanceof Solid3D && this.selectionMode === 'OBJECT') {
-                    const allSolids = this.getSolid3DSelectables().filter((e): e is Solid3D => e instanceof Solid3D);
-                    const connected = Selection3DEngine.getConnectedSolid3Ds(entity, allSolids);
-                    const anySelected = connected.some(s => this.selectedEntityIds.has(s.id));
-                    
-                    if (anySelected) {
-                        connected.forEach(s => this.selectedEntityIds.delete(s.id));
+            if (!isCtrl) {
+                this.selectedEdge = null; // Clear edge selection on standard click
+                if (isShift) {
+                    if (entity instanceof Solid3D && this.selectionMode === 'OBJECT') {
+                        const allSolids = this.getSolid3DSelectables().filter((e): e is Solid3D => e instanceof Solid3D);
+                        const connected = Selection3DEngine.getConnectedSolid3Ds(entity, allSolids);
+                        const anySelected = connected.some(s => this.selectedEntityIds.has(s.id));
+                        
+                        if (anySelected) {
+                            connected.forEach(s => this.selectedEntityIds.delete(s.id));
+                        } else {
+                            connected.forEach(s => this.selectedEntityIds.add(s.id));
+                        }
                     } else {
-                        connected.forEach(s => this.selectedEntityIds.add(s.id));
+                        if (this.selectedEntityIds.has(entity.id)) {
+                            this.selectedEntityIds.delete(entity.id);
+                        } else {
+                            this.selectedEntityIds.add(entity.id);
+                        }
                     }
                 } else {
-                    if (this.selectedEntityIds.has(entity.id)) {
-                        this.selectedEntityIds.delete(entity.id);
+                    this.selectedEntityIds.clear();
+                    if (entity instanceof Solid3D && this.selectionMode === 'OBJECT') {
+                        const allSolids = this.getSolid3DSelectables().filter((e): e is Solid3D => e instanceof Solid3D);
+                        const connected = Selection3DEngine.getConnectedSolid3Ds(entity, allSolids);
+                        connected.forEach(s => this.selectedEntityIds.add(s.id));
                     } else {
                         this.selectedEntityIds.add(entity.id);
                     }
-                }
-            } else {
-                this.selectedEntityIds.clear();
-                if (entity instanceof Solid3D && this.selectionMode === 'OBJECT') {
-                    const allSolids = this.getSolid3DSelectables().filter((e): e is Solid3D => e instanceof Solid3D);
-                    const connected = Selection3DEngine.getConnectedSolid3Ds(entity, allSolids);
-                    connected.forEach(s => this.selectedEntityIds.add(s.id));
-                } else {
-                    this.selectedEntityIds.add(entity.id);
                 }
             }
 
@@ -762,6 +875,7 @@ export class App {
             return;
         } else if (!isShift) {
             this.selectedEntityIds.clear();
+            this.selectedEdge = null; // Clear edge selection on empty space click
         }
 
         // If there's an active edit command at step 0 and user has selected entities, re-run command with selection

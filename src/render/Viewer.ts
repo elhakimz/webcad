@@ -1,6 +1,9 @@
 import * as THREE from "three"
 import { Font } from 'three/examples/jsm/loaders/FontLoader.js'
 import { TTFLoader } from 'three/examples/jsm/loaders/TTFLoader.js'
+import { Line2 } from 'three/examples/jsm/lines/Line2.js'
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { Entity } from "../core/model/Entity"
 import { UnitsConfig } from "../core/model/Document"
 import { FormatUtils } from "../core/engine/FormatUtils"
@@ -103,8 +106,8 @@ export class Viewer {
     this.scheduleRender();
   }
 
-  setCursorHover(isHovering: boolean) {
-    this.cursorRenderer.setCursorHover(isHovering);
+  setCursorHover(isHovering: boolean, isEdge: boolean = false) {
+    this.cursorRenderer.setCursorHover(isHovering, isEdge);
     this.scheduleRender();
   }
 
@@ -344,6 +347,15 @@ export class Viewer {
     this.camera.bottom = -h / 2;
     
     this.camera.updateProjectionMatrix();
+    
+    // Update resolution for all LineMaterials
+    this.scene.traverse(obj => {
+      const anyObj = obj as any;
+      if (anyObj.material && anyObj.material.isLineMaterial) {
+        anyObj.material.resolution.set(w, h);
+      }
+    });
+    
     this.scheduleRender();
   }
 
@@ -1074,15 +1086,66 @@ export class Viewer {
     
     const material = this.shadingMode === 'WIREFRAME' 
       ? new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, wireframe: true })
-      : new THREE.MeshPhongMaterial({ color, side: THREE.DoubleSide, wireframe: false });
+      : new THREE.MeshPhongMaterial({ 
+          color, 
+          side: THREE.DoubleSide, 
+          wireframe: false,
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1
+        });
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.userData = { type: 'Solid3D' };
+    mesh.userData = { type: 'Solid3D', faceMapping: entity.faceMapping };
     mesh.name = entity.id;
     
-    // Create edges geometry with a threshold angle (e.g., 1 degree)
-    const edges = new THREE.EdgesGeometry(geometry, 1);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0x000000 }); // Black edges
-    const line = new THREE.LineSegments(edges, lineMat);
+    // Create edges geometry
+    let line: THREE.Object3D;
+    console.log(`[createSolid3DObject] entity ${entity.id} has edgeLines:`, !!entity.edgeLines, entity.edgeLines?.length);
+    if (entity.edgeLines && entity.edgeLines.length > 0) {
+      const edgeGroup = new THREE.Group();
+      
+      for (let edgeIdx = 0; edgeIdx < entity.edgeLines.length; edgeIdx++) {
+        const edgePoints = entity.edgeLines[edgeIdx];
+        const pts: THREE.Vector3[] = [];
+        for (let i = 0; i < edgePoints.length; i += 3) {
+          pts.push(new THREE.Vector3(edgePoints[i], edgePoints[i+1], edgePoints[i+2]));
+        }
+        // Translate points to local space (relative to center)
+        for (const pt of pts) {
+          pt.sub(center);
+        }
+        
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const radius = 0.15; // Thicker radius in world units (was 0.05)
+        
+        for (let i = 0; i < pts.length - 1; i++) {
+          const p1 = pts[i];
+          const p2 = pts[i+1];
+          const distance = p1.distanceTo(p2);
+          if (distance < 0.001) continue;
+          
+          const cylGeo = new THREE.CylinderGeometry(radius, radius, distance, 6);
+          const cyl = new THREE.Mesh(cylGeo, lineMat);
+          
+          // Position at midpoint
+          cyl.position.copy(p1).add(p2).multiplyScalar(0.5);
+          
+          // Rotate to align with direction
+          const direction = p2.clone().sub(p1).normalize();
+          cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+          
+          cyl.userData.edgeIndex = edgeIdx;
+          cyl.userData.entityId = entity.id;
+          edgeGroup.add(cyl);
+        }
+      }
+      line = edgeGroup;
+    } else {
+      // Fallback to EdgesGeometry
+      const edges = new THREE.EdgesGeometry(geometry, 1);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000 }); // Black edges
+      line = new THREE.LineSegments(edges, lineMat);
+    }
     
     const group = new THREE.Group();
     group.add(mesh);
@@ -1093,6 +1156,115 @@ export class Viewer {
     group.position.copy(center);
     
     return group;
+  }
+
+  highlightFace(entityId: string, faceIndex: number | null) {
+    const obj = this.scene.getObjectByName(entityId);
+    if (!obj || !(obj instanceof THREE.Group)) return;
+    
+    // Find the mesh
+    const mesh = obj.children.find(c => c instanceof THREE.Mesh) as THREE.Mesh;
+    if (!mesh) return;
+    
+    // Remove existing face highlight if any
+    const existingHighlight = obj.getObjectByName('faceHighlight');
+    if (existingHighlight) obj.remove(existingHighlight);
+    
+    if (faceIndex === null) {
+      this.scheduleRender();
+      return;
+    }
+    
+    const faceMapping = mesh.userData.faceMapping;
+    if (!faceMapping) return;
+    
+    const geometry = mesh.geometry as THREE.BufferGeometry;
+    const indices = geometry.getIndex()!.array;
+    const positions = geometry.getAttribute('position').array;
+    
+    const faceIndices: number[] = [];
+    for (let i = 0; i < faceMapping.length; i++) {
+      if (faceMapping[i] === faceIndex) {
+        faceIndices.push(indices[i*3], indices[i*3+1], indices[i*3+2]);
+      }
+    }
+    
+    if (faceIndices.length === 0) return;
+    
+    const faceGeo = new THREE.BufferGeometry();
+    faceGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    faceGeo.setIndex(faceIndices);
+    
+    // Orange color for face highlight
+    const faceMat = new THREE.MeshBasicMaterial({ color: 0xffa500, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+    const faceMesh = new THREE.Mesh(faceGeo, faceMat);
+    faceMesh.name = 'faceHighlight';
+    
+    obj.add(faceMesh);
+    this.scheduleRender();
+  }
+
+  highlightEdge(entityId: string, edgeIndex: number | null) {
+    // Find all edge lines belonging to this entity
+    const entityEdgeLines: THREE.Object3D[] = [];
+    this.scene.traverse(obj => {
+      if (obj.userData.entityId === entityId && obj.userData.edgeIndex !== undefined) {
+        entityEdgeLines.push(obj);
+      }
+    });
+
+    if (entityEdgeLines.length === 0) return;
+
+    // Reset all edges to black
+    entityEdgeLines.forEach(line => {
+      const mat = (line as any).material;
+      if (mat && mat.color) {
+        mat.color.setHex(0x000000);
+        mat.needsUpdate = true;
+      }
+    });
+
+    // Highlight the specific edge
+    if (edgeIndex !== null) {
+      const target = entityEdgeLines.find(l => l.userData.edgeIndex === edgeIndex);
+      if (target) {
+        const mat = (target as any).material;
+        if (mat && mat.color) {
+          mat.color.setHex(0xffa500); // Orange
+          mat.needsUpdate = true;
+        }
+      }
+    }
+
+    this.scheduleRender();
+  }
+
+  drawDebugLine(p1: {x:number,y:number,z:number}, p2: {x:number,y:number,z:number}, color: number = 0xffa500) {
+    const prev = this.scene.getObjectByName('debugLine');
+    if (prev) this.scene.remove(prev);
+
+    const v1 = new THREE.Vector3(p1.x, p1.y, p1.z);
+    const v2 = new THREE.Vector3(p2.x, p2.y, p2.z);
+    const distance = v1.distanceTo(v2);
+    if (distance < 0.001) return;
+
+    const radius = 1.0; // Much thicker radius for large scale
+    const geo = new THREE.CylinderGeometry(radius, radius, distance, 6);
+    const mat = new THREE.MeshBasicMaterial({ 
+      color: color,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
+    });
+    const cyl = new THREE.Mesh(geo, mat);
+    
+    cyl.position.copy(v1).add(v2).multiplyScalar(0.5);
+    const direction = v2.clone().sub(v1).normalize();
+    cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+    
+    cyl.name = 'debugLine';
+    this.scene.add(cyl);
+    this.scheduleRender();
   }
 
   addPolyline(entity: Polyline, layer?: string, color?: number, isVisible = true, linetype?: string) {

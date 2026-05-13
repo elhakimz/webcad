@@ -3,6 +3,8 @@ import { Entity, BoundingBox } from "./Entity";
 export class Solid3D extends Entity {
   positions: number[];
   indices: number[];
+  faceMapping?: number[];
+  edgeLines?: number[][];
   position: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
   rotation: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
   creationParams?: { type: string; params: any };
@@ -12,10 +14,12 @@ export class Solid3D extends Entity {
     return "Solid3D";
   }
 
-  constructor(id: string, positions: number[], indices: number[]) {
+  constructor(id: string, positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][]) {
     super(id);
     this.positions = positions;
     this.indices = indices;
+    this.faceMapping = faceMapping;
+    this.edgeLines = edgeLines;
   }
 
   move(dx: number, dy: number) {

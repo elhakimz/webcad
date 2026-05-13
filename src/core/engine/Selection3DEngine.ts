@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Solid3D } from '../model/Solid3D';
 import { Entity } from '../model/Entity';
 import { IDocument } from '../model/Document';
+import * as MathUtils from './MathUtils';
 
 const raycaster = new THREE.Raycaster();
 raycaster.params.Mesh.threshold = 0; // exact triangle intersection only
@@ -99,6 +100,68 @@ export class Selection3DEngine {
 
     const entity = doc.getEntity(hit.object.name);
     if (entity instanceof Solid3D) return entity;
+    return null;
+  }
+
+  static getSubEntityAt(
+    ndc: THREE.Vector2,
+    camera: THREE.OrthographicCamera,
+    scene: THREE.Scene,
+    doc: IDocument,
+    selectableEntities: Entity[],
+    mode: 'EDGE' | 'FACE'
+  ): { entity: Solid3D, faceIndex?: number, edgeIndex?: number } | null {
+    if (mode === 'FACE') {
+      raycaster.setFromCamera(ndc, camera);
+      const meshes = this.getSolid3DMeshes(scene, selectableEntities);
+      const intersects = raycaster.intersectObjects(meshes, false);
+      
+      if (intersects.length === 0) return null;
+      
+      const hit = intersects[0];
+      const entity = doc.getEntity(hit.object.name);
+      if (!(entity instanceof Solid3D)) return null;
+      
+      const triangleIndex = hit.faceIndex;
+      if (triangleIndex !== undefined && triangleIndex !== null) {
+        const mesh = hit.object as THREE.Mesh;
+        const faceMapping = mesh.userData.faceMapping;
+        if (faceMapping && triangleIndex < faceMapping.length) {
+          const mappedFaceIndex = faceMapping[triangleIndex];
+          return { entity, faceIndex: mappedFaceIndex };
+        }
+      }
+    } else if (mode === 'EDGE') {
+      // Collect all edge line objects from the scene that have been tagged with userData.edgeIndex
+      const edgeLines: THREE.Object3D[] = [];
+      scene.traverse(obj => {
+        if (obj.userData.edgeIndex !== undefined && obj.userData.entityId !== undefined) {
+          edgeLines.push(obj);
+        }
+      });
+
+      if (edgeLines.length === 0) return null;
+
+      const edgeRaycaster = new THREE.Raycaster();
+      // Calculate threshold based on screen pixels to match pickbox size
+      const screenTolerance = 50; // Increased to 50 pixels tolerance on screen
+      const worldTolerance = screenTolerance / camera.zoom;
+      edgeRaycaster.params.Line = { threshold: worldTolerance };
+      edgeRaycaster.setFromCamera(ndc, camera);
+
+      const hits = edgeRaycaster.intersectObjects(edgeLines, false);
+      if (hits.length === 0) return null;
+
+      const hit = hits[0].object;
+      const entityId = hit.userData.entityId as string;
+      const edgeIndex = hit.userData.edgeIndex as number;
+
+      const entity = doc.getEntity(entityId);
+      if (entity instanceof Solid3D) {
+        return { entity, edgeIndex };
+      }
+    }
+    
     return null;
   }
 
@@ -233,5 +296,52 @@ export class Selection3DEngine {
     }
 
     return Array.from(result);
+  }
+
+  static getSharedEdge(entity: Solid3D, face1: number, face2: number): { edgeIndex: number, p1: {x:number,y:number,z:number}, p2: {x:number,y:number,z:number} } | null {
+    if (!entity.edgeLines || !entity.positions || !entity.indices || !entity.faceMapping) return null;
+
+    for (let edgeIdx = 0; edgeIdx < entity.edgeLines.length; edgeIdx++) {
+      const edgePoints = entity.edgeLines[edgeIdx];
+      if (edgePoints.length < 6) continue;
+      
+      const p1 = { x: edgePoints[0], y: edgePoints[1], z: edgePoints[2] };
+      const p2 = { x: edgePoints[edgePoints.length-3], y: edgePoints[edgePoints.length-2], z: edgePoints[edgePoints.length-1] };
+      
+      const facesOfP1 = this.getFacesConnectedToPoint(entity, p1);
+      const facesOfP2 = this.getFacesConnectedToPoint(entity, p2);
+      
+      const sharedFaces = facesOfP1.filter(f => facesOfP2.includes(f));
+      
+      if (sharedFaces.includes(face1) && sharedFaces.includes(face2)) {
+        return { edgeIndex: edgeIdx, p1, p2 };
+      }
+    }
+    return null;
+  }
+
+  private static getFacesConnectedToPoint(entity: Solid3D, p: {x:number, y:number, z:number}): number[] {
+    const faces: Set<number> = new Set();
+    const tol = 0.001;
+    
+    for (let i = 0; i < entity.indices.length; i += 3) {
+      const v1Idx = entity.indices[i] * 3;
+      const v2Idx = entity.indices[i+1] * 3;
+      const v3Idx = entity.indices[i+2] * 3;
+      
+      const v1 = { x: entity.positions[v1Idx], y: entity.positions[v1Idx+1], z: entity.positions[v1Idx+2] };
+      const v2 = { x: entity.positions[v2Idx], y: entity.positions[v2Idx+1], z: entity.positions[v2Idx+2] };
+      const v3 = { x: entity.positions[v3Idx], y: entity.positions[v3Idx+1], z: entity.positions[v3Idx+2] };
+      
+      if (this.isPointEqual(p, v1, tol) || this.isPointEqual(p, v2, tol) || this.isPointEqual(p, v3, tol)) {
+        const faceIdx = entity.faceMapping![i / 3];
+        faces.add(faceIdx);
+      }
+    }
+    return Array.from(faces);
+  }
+
+  private static isPointEqual(p1: {x:number, y:number, z:number}, p2: {x:number, y:number, z:number}, tol: number): boolean {
+    return Math.abs(p1.x - p2.x) < tol && Math.abs(p1.y - p2.y) < tol && Math.abs(p1.z - p2.z) < tol;
   }
 }

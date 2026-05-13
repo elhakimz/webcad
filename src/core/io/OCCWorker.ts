@@ -1435,7 +1435,9 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
 
   const positions: number[] = [];
   const indices: number[] = [];
+  const faceMapping: number[] = []; // Maps triangle index to face index
   let vertexOffset = 0;
+  let faceCounter = 0;
 
   // Explore all faces
   const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
@@ -1443,9 +1445,6 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
   while (explorer.More()) {
     const faceShape = explorer.Current();
 
-    // Guard: skip non-face shapes — can occur when the shape is a shell
-    // rather than a solid. The OCC.js binding rejects TopoDS.Face_1() on a
-    // plain TopoDS_Shape reference that isn't a proper TopoDS_Face subtype.
     if (faceShape.ShapeType() !== oc.TopAbs_ShapeEnum.TopAbs_FACE) {
       explorer.Next();
       continue;
@@ -1483,11 +1482,64 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
         }
 
         indices.push(n1 + vertexOffset - 1, n2 + vertexOffset - 1, n3 + vertexOffset - 1);
+        faceMapping.push(faceCounter); // Tag this triangle with the current face index
       }
       vertexOffset += nbNodes;
+      faceCounter++;
     }
     explorer.Next();
   }
 
-  return { positions, indices };
+  // Extract edges
+  // Extract edges using pre-existing mesh (BRep_Tool.Polygon3D)
+  const edgeLines: number[][] = [];
+  const edgeExplorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  
+  while (edgeExplorer.More()) {
+    const edgeShape = edgeExplorer.Current();
+    if (edgeShape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_EDGE) {
+      const edge = oc.TopoDS.Edge_1(edgeShape);
+      const loc = new oc.TopLoc_Location_1();
+      const poly = oc.BRep_Tool.Polygon3D(edge, loc);
+      
+      if (!poly.IsNull()) {
+        const nodes = poly.get().Nodes();
+        const edgePoints: number[] = [];
+        const trsf = loc.Transformation();
+        
+        for (let i = nodes.Lower(); i <= nodes.Upper(); i++) {
+          const pnt = nodes.Value(i);
+          pnt.Transform(trsf); // Apply transformation
+          edgePoints.push(pnt.X(), pnt.Y(), pnt.Z());
+        }
+        edgeLines.push(edgePoints);
+      } else {
+        // Fallback to adaptor if polygon is null
+        try {
+          const adaptor = new oc.BRepAdaptor_Curve_2(edge);
+          const first = adaptor.FirstParameter();
+          const last = adaptor.LastParameter();
+          const numSamples = 10;
+          const edgePoints: number[] = [];
+          
+          const pnt = new oc.gp_Pnt_1();
+          for (let i = 0; i <= numSamples; i++) {
+            const u = first + (last - first) * (i / numSamples);
+            adaptor.D0(u, pnt);
+            edgePoints.push(pnt.X(), pnt.Y(), pnt.Z());
+          }
+          pnt.delete();
+          adaptor.delete();
+          
+          edgeLines.push(edgePoints);
+        } catch (e) {
+          console.warn("Failed to extract curve points for edge.", e);
+        }
+      }
+      loc.delete();
+    }
+    edgeExplorer.Next();
+  }
+
+  return { positions, indices, faceMapping, edgeLines };
 }

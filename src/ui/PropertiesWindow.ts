@@ -53,6 +53,10 @@ export class PropertiesWindow {
       this.updateProperty(entity, 'layer', val);
     });
 
+    // Elevation & Thickness
+    this.addNumberField("Elevation", entity.elevation, (val) => { this.updateProperty(entity, 'elevation', val); });
+    this.addNumberField("Thickness", entity.thickness, (val) => { this.updateProperty(entity, 'thickness', val); });
+
     // Entity specific fields
     if (entity.constructor.name === "Line") {
       const line = entity as any;

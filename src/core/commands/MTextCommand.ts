@@ -41,7 +41,7 @@ export class MTextCommand implements Command {
     return this.getPrompt();
   }
 
-  onInput(text: string, id: string, units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
+  onInput(text: string, id: string, units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
     const val = text.trim();
 
     if (this.step === 1) {
@@ -53,6 +53,8 @@ export class MTextCommand implements Command {
     } else if (this.step === 2) {
       // Create MText entity
       const entity = new MText(id, { ...this.firstCorner }, this.width, this.height, val);
+      entity.elevation = doc?.currentElevation || 0;
+      entity.thickness = doc?.currentThickness || 0;
       
       // Default properties
       entity.textHeight = this.textHeight;
@@ -61,7 +63,7 @@ export class MTextCommand implements Command {
       
       entity.layoutMText(); // Compute layout lines and bounds
       
-      const echo = `MText created. ${FormatUtils.formatPoint(this.firstCorner.x, this.firstCorner.y, units)}`;
+      const echo = `MText created. ${FormatUtils.formatPoint(this.firstCorner.x, this.firstCorner.y, units, "P", doc?.currentElevation || 0)}`;
       (entity as unknown as { _echo: string })._echo = echo;
       
       this.step = 0;

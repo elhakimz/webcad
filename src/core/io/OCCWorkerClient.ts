@@ -60,6 +60,10 @@ export class OCCWorkerClient {
     return this.send('createSweep', { profilePoints, spinePoints, isSolid, deflection, entityId, profileCount, cornerMode, isEllipse });
   }
 
+  createLoft(profiles: {id: string, points: {x: number, y: number, z: number}[], closed: boolean}[], isSolid: boolean, isRuled: boolean, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[] }> {
+    return this.send('createLoft', { profiles, isSolid, isRuled, deflection, entityId });
+  }
+
   createRevolve(points: {x: number, y: number, z: number}[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<{ positions: number[], indices: number[] }> {
     return this.send('createRevolve', { points, axisPoint, axisDir, angle, thickness, deflection, isClosed, entityId });
   }

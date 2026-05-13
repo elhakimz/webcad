@@ -41,6 +41,7 @@ import { BreakHandler } from "./core/engine/handlers/transform/BreakHandler"
 import { CopyHandler } from "./core/engine/handlers/transform/CopyHandler"
 import { JoinHandler } from "./core/engine/handlers/transform/JoinHandler"
 import { SweepHandler } from "./core/engine/handlers/transform/SweepHandler"
+import { LoftHandler } from "./core/engine/handlers/transform/LoftHandler"
 import { LengthenHandler } from "./core/engine/handlers/transform/LengthenHandler"
 import { MirrorHandler } from "./core/engine/handlers/transform/MirrorHandler"
 import { MoveHandler } from "./core/engine/handlers/transform/MoveHandler"
@@ -160,6 +161,7 @@ export class App {
     this.dispatcher.registerHandler(new CopyHandler());
     this.dispatcher.registerHandler(new JoinHandler());
     this.dispatcher.registerHandler(new SweepHandler());
+    this.dispatcher.registerHandler(new LoftHandler());
     this.dispatcher.registerHandler(new LengthenHandler());
     this.dispatcher.registerHandler(new MirrorHandler());
     this.dispatcher.registerHandler(new MoveHandler());

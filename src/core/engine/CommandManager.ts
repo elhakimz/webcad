@@ -71,6 +71,7 @@ import { ExtrudeCommand } from "../commands/ExtrudeCommand.js"
 import { SweepCommand } from "../commands/SweepCommand.js"
 import { RevolveCommand } from "../commands/RevolveCommand.js"
 import { BooleanCommand } from "../commands/BooleanCommand.js"
+import { LoftCommand } from "../commands/LoftCommand.js"
 import { Entity } from "../model/Entity.js"
 
 
@@ -92,6 +93,7 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["EXTRUDE", () => new ExtrudeCommand()],
   ["REVOLVE", () => new RevolveCommand()],
   ["SWEEP", () => new SweepCommand()],
+  ["LOFT", () => new LoftCommand()],
   ["UNION", (selection) => new BooleanCommand('fuse', selection)],
   ["SUBTRACT", (selection) => new BooleanCommand('cut', selection)],
   ["INTERSECT", (selection) => new BooleanCommand('common', selection)],

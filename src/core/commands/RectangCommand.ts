@@ -1,17 +1,17 @@
 import { Polyline } from "../model/Polyline"
 import { Command, CommandResponse } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 
 export class RectangCommand implements Command {
   step = 0
   firstCorner = { x: 0, y: 0 }
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse {
     if (this.step === 0) {
       this.firstCorner = { x, y }
       this.step = 1
-      return FormatUtils.formatPoint(x, y, units, "P1")
+      return FormatUtils.formatPoint(x, y, units, "P1", doc?.currentElevation || 0)
     } else {
       const x2 = x
       const y2 = y
@@ -25,7 +25,7 @@ export class RectangCommand implements Command {
         { x: x1, y: y2, bulge: 0 }
       ]
 
-      const poly = new Polyline(id, vertices, true)
+      const poly = new Polyline(id, vertices, true, doc?.currentElevation || 0, doc?.currentThickness || 0)
       this.step = 0
       return poly
     }

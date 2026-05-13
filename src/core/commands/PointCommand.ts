@@ -10,7 +10,7 @@ export class PointCommand implements Command {
   }
   onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse {
     const pt = new Point(id, x, y, doc?.currentElevation || 0, doc?.currentThickness || 0)
-    const echo = `Point created. ${FormatUtils.formatPoint(x, y, units)}`
+    const echo = `Point created. ${FormatUtils.formatPoint(x, y, units, "P", doc?.currentElevation || 0)}`
     ;(pt as unknown as { _echo: string })._echo = echo
     return pt
   }

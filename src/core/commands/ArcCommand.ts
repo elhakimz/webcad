@@ -13,11 +13,11 @@ export class ArcCommand implements Command {
     if (this.step === 0) {
       this.p1 = { x, y }
       this.step = 1
-      return FormatUtils.formatPoint(x, y, units, "P1")
+      return FormatUtils.formatPoint(x, y, units, "P1", doc?.currentElevation || 0)
     } else if (this.step === 1) {
       this.p2 = { x, y }
       this.step = 2
-      return FormatUtils.formatPoint(x, y, units, "P2")
+      return FormatUtils.formatPoint(x, y, units, "P2", doc?.currentElevation || 0)
     } else {
       this.p3 = { x, y }
       const arc = this.calculateArc(this.p1, this.p2, this.p3, id, units, doc)

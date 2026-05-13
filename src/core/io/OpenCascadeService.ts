@@ -139,6 +139,17 @@ export class OpenCascadeService {
     return geometry;
   }
 
+  async createLoft(profiles: {id: string, points: {x: number, y: number, z: number}[], closed: boolean}[], isSolid: boolean, isRuled: boolean, deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await (this.client as any).createLoft(profiles, isSolid, isRuled, deflection, entityId);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    return geometry;
+  }
+
   /**
    * Creates a revolved shape from points.
    * Returns a Promise that resolves to THREE.BufferGeometry.

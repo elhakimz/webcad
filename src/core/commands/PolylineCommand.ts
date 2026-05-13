@@ -17,7 +17,7 @@ export class PolylineCommand implements Command {
       this.entityId = id;
       this.vertices = [{ x, y, bulge: 0 }]
       this.step = 1
-      return FormatUtils.formatPoint(x, y, units, "P1")
+      return FormatUtils.formatPoint(x, y, units, "P1", doc?.currentElevation || 0)
     } else {
       const prev = this.vertices[this.vertices.length - 1];
       const v: PolylineVertex = { x, y, bulge: 0 }

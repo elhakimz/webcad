@@ -10,7 +10,7 @@ export class LineCommand implements Command {
   onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse {
     this.points.push({ x, y });
     const pLabel = "P" + this.points.length;
-    const echo = FormatUtils.formatPoint(x, y, units, pLabel);
+    const echo = FormatUtils.formatPoint(x, y, units, pLabel, doc?.currentElevation || 0);
 
     if (this.points.length === 1) {
       return echo;

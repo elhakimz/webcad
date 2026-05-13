@@ -16,7 +16,7 @@ export class CircleCommand implements Command {
       this.cy = y;
       this.step = 1;
       this.isDiameterMode = false;
-      const echo = FormatUtils.formatPoint(x, y, units, "Center");
+      const echo = FormatUtils.formatPoint(x, y, units, "Center", doc?.currentElevation || 0);
       return echo;
     } else {
       const dist = Math.sqrt(Math.pow(x - this.cx, 2) + Math.pow(y - this.cy, 2));

@@ -129,8 +129,17 @@ MIT
 
 **Note:** AutoCAD is an Autodesk product. This project is a modern web-based recreation of the classic AutoCAD 2.18 interface for educational and demonstration purposes.
 
-**Disclaimer:** This application uses open-source icons from LibreCAD.
+**Disclaimer:** 
 
+This application uses:
+- ThreeJS for 3D rendering.
+- OpenCascadeJS for 3D modeling.
+- open-source icons from LibreCAD.
+
+
+<p align="center">
 Dedicated for SMT Penerbangan / SMK 12 Bandung Students and Allumni .
+<br><br>
+<img src="screenshots/logosmt.png" width="128" alt="SMT Penerbangan Bandung"> | <img src="screenshots/logosmk.png" width="128" alt="SMKN 12 Bandung">
+</p>
 
-![SMT Penerbangan Bandung](screenshots/logosmt.png) |  ![SMKN 12 Bandung](screenshots/logosmk.png)

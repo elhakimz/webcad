@@ -926,6 +926,8 @@ export class Viewer {
         const dy = e.clientY - this.lastPanPos.y
         this.camera.position.x -= dx / this.camera.zoom
         this.camera.position.y += dy / this.camera.zoom
+        this.target.x -= dx / this.camera.zoom
+        this.target.y += dy / this.camera.zoom
         this.lastPanPos.set(e.clientX, e.clientY)
         this.scheduleRender()
       }

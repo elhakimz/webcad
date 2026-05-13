@@ -288,7 +288,7 @@ window.addEventListener("mousemove", (e) => {
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
 
-  if (e.shiftKey && (e.buttons & 2)) {
+  if (e.buttons & 2) {
     viewer.orbit(dx, dy);
     return;
   }
@@ -495,22 +495,20 @@ function getClampedCoordinates(e: PointerEvent) {
 }
 
 window.addEventListener('contextmenu', (e) => {
-  if (e.shiftKey && e.target === canvas) {
+  if (e.target === canvas) {
     e.preventDefault();
   }
 });
 
 // Support clicking on command bar to define points when a command is active
 window.addEventListener("pointerdown", (e) => {
-  if (e.shiftKey && e.button === 2) {
+  if (e.button === 2) {
     const selectedIds = Array.from(app.selectedEntityIds);
     if (selectedIds.length > 0) {
       const center = viewer.getCenterOfObjects(selectedIds);
       if (center) {
         viewer.target.copy(center);
       }
-    } else {
-      viewer.target.set(0, 0, 0);
     }
   }
 

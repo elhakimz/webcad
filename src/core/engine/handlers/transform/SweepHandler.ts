@@ -376,7 +376,7 @@ export class SweepHandler implements ActionHandler {
             const positions = Array.from(geometry.getAttribute('position').array) as number[];
             const indices = Array.from(geometry.getIndex()?.array || []) as number[];
             
-            const solid = new Solid3D(solidId, positions, indices);
+            const solid = new Solid3D(solidId, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
             addEntity(solid, true, false);
             
             viewer.clearHighlight();
@@ -390,7 +390,7 @@ export class SweepHandler implements ActionHandler {
         const positions = Array.from(geometry.getAttribute('position').array) as number[];
         const indices = Array.from(geometry.getIndex()?.array || []) as number[];
         
-        const solid = new Solid3D(solidId, positions, indices);
+        const solid = new Solid3D(solidId, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
         addEntity(solid, true, false);
         
         viewer.clearHighlight();

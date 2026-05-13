@@ -109,7 +109,7 @@ export class BooleanCommand implements Command {
       const positions = Array.from(geometry.getAttribute('position').array) as number[]
       const indices = Array.from(geometry.getIndex()?.array || []) as number[]
       
-      const solid = new Solid3D(id, positions, indices)
+      const solid = new Solid3D(id, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
       
       // Inherit layer from A
       if (doc) {

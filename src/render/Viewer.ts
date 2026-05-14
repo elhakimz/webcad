@@ -61,6 +61,19 @@ export class Viewer {
   constructor(canvas:HTMLCanvasElement){
     this.canvas = canvas
     this.scene = new THREE.Scene()
+    
+    // Create gradient background (Skybox effect)
+    const bgCanvas = document.createElement('canvas');
+    bgCanvas.width = 2;
+    bgCanvas.height = 512;
+    const bgCtx = bgCanvas.getContext('2d')!;
+    const bgGradient = bgCtx.createLinearGradient(0, 0, 0, 512);
+    bgGradient.addColorStop(0, '#050510'); // Dark top
+    bgGradient.addColorStop(1, '#00aaaa'); // Cyan/Teal bottom for better contrast
+    bgCtx.fillStyle = bgGradient;
+    bgCtx.fillRect(0, 0, 2, 512);
+    this.scene.background = new THREE.CanvasTexture(bgCanvas);
+
     this.scene.add(this.helperGroup);
     this.scene.add(this.boundaryGroup);
     this.scene.add(this.baseLineGroup);

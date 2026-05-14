@@ -819,7 +819,7 @@ self.onmessage = async (e) => {
         }
       }
 
-      if (count === 1 && (!cornerMode || cornerMode === 'DEFAULT' || (isEllipse && cornerMode === 'MITER'))) {
+      if (false && count === 1 && (!cornerMode || cornerMode === 'DEFAULT' || (isEllipse && cornerMode === 'MITER'))) {
         // STABLE: Custom JS generator using RMF (Double Reflection) to prevent twisting. Do not change unless allowed.
         // Find centroid of RAW profile points for mapping
         let cx = 0, cy = 0, cz = 0;

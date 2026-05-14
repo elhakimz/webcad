@@ -2,6 +2,7 @@ import { ToolWindow } from "./ToolWindow"
 import files from "../files.json"
 import { DXFImporter } from "../core/io/dxfImport"
 import { App } from "../app"
+import { NotificationManager } from "./NotificationManager"
 
 export class FileToolWindow {
   private container: HTMLElement;
@@ -62,11 +63,11 @@ export class FileToolWindow {
             name,
             this.app.viewer.canvas.toDataURL('image/jpeg', 0.5)
           );
-          alert(`Saved as ${name} (ID: ${id})`);
+          NotificationManager.getInstance().show(`Saved as ${name}`, 'success');
           this.renderTableBody();
         } catch (e) {
           console.error(e);
-          alert(`Failed to save: ${e}`);
+          NotificationManager.getInstance().show(`Failed to save: ${e}`, 'error');
         }
       }
     };
@@ -86,7 +87,7 @@ export class FileToolWindow {
       const history = await this.app.persistence.getHistory();
       const untitled = history.filter(item => item.name === 'Untitled');
       if (untitled.length === 0) {
-        alert('No "Untitled" records found.');
+        NotificationManager.getInstance().show('No "Untitled" records found.', 'info');
         return;
       }
       if (confirm(`Delete ${untitled.length} "Untitled" records?`)) {
@@ -175,10 +176,10 @@ export class FileToolWindow {
         try {
           await this.app.persistence.loadProject(item.id, this.app.doc, this.app);
           this.app.triggerLayersWindowUpdate();
-          alert(`Loaded ${item.name}`);
+          NotificationManager.getInstance().show(`Loaded ${item.name}`, 'success');
         } catch (e) {
           console.error(e);
-          alert(`Failed to load: ${e}`);
+          NotificationManager.getInstance().show(`Failed to load: ${e}`, 'error');
         }
       };
       
@@ -198,7 +199,7 @@ export class FileToolWindow {
             this.renderTableBody();
           } catch (e) {
             console.error(e);
-            alert(`Failed to delete: ${e}`);
+            NotificationManager.getInstance().show(`Failed to delete: ${e}`, 'error');
           }
         }
       };
@@ -272,7 +273,7 @@ export class FileToolWindow {
       console.log(`Loaded ${filename}`);
     } catch (e) {
       console.error(e);
-      alert(`Failed to load file: ${e}`);
+      NotificationManager.getInstance().show(`Failed to load file: ${e}`, 'error');
     }
   }
 }

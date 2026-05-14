@@ -38,6 +38,10 @@ export class OpenCascadeService {
     return this.workerClient;
   }
 
+  async clearCache(): Promise<{ success: boolean }> {
+    return this.client.clearCache();
+  }
+
   /**
    * Creates a basic 3D box shape.
    * Returns a Promise that resolves to THREE.BufferGeometry.

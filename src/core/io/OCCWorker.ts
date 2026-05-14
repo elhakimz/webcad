@@ -101,6 +101,23 @@ function applyRotation(shape: any, rot: {x:number, y:number, z:number}, oc: any,
   return newShape;
 }
 
+function configureBooleanOp(op: any) {
+  if (!op) return;
+  
+  if (op.SetFuzzyValue) {
+    op.SetFuzzyValue(1e-6);
+  }
+  if (op.SetRunParallel) {
+    op.SetRunParallel(false);
+  }
+  if (op.SetCheckInverted) {
+    op.SetCheckInverted(true);
+  }
+  if (op.SetNonDestructive) {
+    op.SetNonDestructive(false);
+  }
+}
+
 self.onmessage = async (e) => {
   const { type, payload, id } = e.data;
 
@@ -115,6 +132,20 @@ self.onmessage = async (e) => {
       }
     } else {
       self.postMessage({ type: 'init', success: true, id });
+    }
+  } else if (type === 'clearCache') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    try {
+      for (const shape of shapeCache.values()) {
+        shape.delete();
+      }
+      shapeCache.clear();
+      self.postMessage({ type: 'clearCache', success: true, id });
+    } catch (error: any) {
+      self.postMessage({ type: 'clearCache', success: false, error: error.message, id });
     }
   } else if (type === 'createBox') {
     if (!oc) {
@@ -405,6 +436,13 @@ self.onmessage = async (e) => {
 
       // Perform Boolean Cut
       const cutter = new oc.BRepAlgoAPI_Cut_3(shape, scaledShape);
+      configureBooleanOp(cutter);
+      cutter.Build();
+      
+      if (!cutter.IsDone()) {
+        cutter.delete();
+        throw new Error(`Boolean cut failed for shell`);
+      }
       
       newShape = cutter.Shape();
       
@@ -488,13 +526,16 @@ self.onmessage = async (e) => {
               // Create prism from the face (scaled or unscaled)
               const prismBuilder = new oc.BRepPrimAPI_MakePrism_1(faceToExtrude, vec, false, true);
               if (prismBuilder.IsDone()) {
-                const cuttingShape = prismBuilder.Shape();
-                const faceCutter = new oc.BRepAlgoAPI_Cut_3(newShape, cuttingShape);
-                if (faceCutter.IsDone()) {
-                  newShape = faceCutter.Shape();
-                }
-              }
-              prismBuilder.delete();
+                 const cuttingShape = prismBuilder.Shape();
+                 const faceCutter = new oc.BRepAlgoAPI_Cut_3(newShape, cuttingShape);
+                 configureBooleanOp(faceCutter);
+                 faceCutter.Build();
+                 
+                 if (faceCutter.IsDone()) {
+                   newShape = faceCutter.Shape();
+                 }
+               }
+               prismBuilder.delete();
               if (faceTransformer) faceTransformer.delete();
               if (faceTrsf) faceTrsf.delete();
               vec.delete();
@@ -833,6 +874,7 @@ self.onmessage = async (e) => {
           for (let i = 1; i < shapes.length; i++) {
             const prevResult = resultShape;
             const fuse = new oc.BRepAlgoAPI_Fuse_3(resultShape, shapes[i]);
+            configureBooleanOp(fuse);
             fuse.Build();
             if (fuse.IsDone()) {
               resultShape = fuse.Shape();
@@ -1623,8 +1665,8 @@ self.onmessage = async (e) => {
         throw new Error(`Unknown boolean operation: ${operation}`);
       }
 
-      if (boolBuilder && boolBuilder.SetFuzzyValue) {
-        boolBuilder.SetFuzzyValue(0.01);
+      if (boolBuilder) {
+        configureBooleanOp(boolBuilder);
       }
       boolBuilder.Build();
 

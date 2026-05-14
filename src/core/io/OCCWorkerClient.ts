@@ -32,6 +32,10 @@ export class OCCWorkerClient {
     return this.send('init', {});
   }
 
+  clearCache(): Promise<{ success: boolean }> {
+    return this.send('clearCache', {});
+  }
+
   createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
     return this.send('createBox', { x, y, z, dx, dy, dz, deflection, entityId });
   }

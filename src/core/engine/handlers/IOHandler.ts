@@ -84,6 +84,10 @@ export class IOHandler implements ActionHandler {
           doc.layers.createLayer("0", 7, "CONTINUOUS");
           doc.layers.currentLayerName = "0";
           
+          // Clear worker cache to prevent memory leaks!
+          const occService = OpenCascadeService.getInstance();
+          await occService.clearCache();
+          
           const importer = new DXFImporter();
           importer.import(dxfText, doc);
           

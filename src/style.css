@@ -598,6 +598,34 @@ body {
   border: 1px solid var(--border-color);
   border-radius: 50%;
   font-size: 12px;
+  position: relative;
+}
+
+.daz-shader-popup {
+  position: absolute;
+  top: 25px;
+  left: 0;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  z-index: 1001;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+  display: none;
+  min-width: 100px;
+}
+
+.daz-shader-item {
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-color);
+  transition: background-color 0.2s;
+  text-align: left;
+}
+
+.daz-shader-item:hover {
+  background-color: var(--accent-color);
+  color: #fff;
 }
 
 .daz-view-selector {
@@ -744,4 +772,61 @@ body {
   right: 2px;
   top: 50%;
   transform: translateY(-50%);
+}
+
+/* Notification System */
+#notification-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.toast {
+  background-color: rgba(45, 45, 45, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 10px 15px;
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  min-width: 200px;
+  max-width: 350px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  transform: translateX(120%);
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+  opacity: 0;
+  pointer-events: auto;
+}
+
+.toast.toast-show {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+.toast.toast-fade-out {
+  transform: translateX(120%);
+  opacity: 0;
+}
+
+.toast-success {
+  border-left: 4px solid #10b981; /* Green */
+}
+
+.toast-error {
+  border-left: 4px solid var(--error-color); /* Orange/Red */
+}
+
+.toast-info {
+  border-left: 4px solid var(--accent-color); /* Blue */
 }

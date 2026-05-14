@@ -8,7 +8,7 @@ export class DazViewControl {
   private cubeEl: HTMLElement | null = null;
   private currentView = 'TOP';
   private viewSelectorEl: HTMLSelectElement | null = null;
-  private currentShadingMode: 'WIREFRAME' | 'PHONG' = 'WIREFRAME';
+  private currentShadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' = 'WIREFRAME';
 
   constructor(viewer: Viewer, app: App) {
     this.viewer = viewer;
@@ -29,15 +29,41 @@ export class DazViewControl {
     shaderBtn.className = 'daz-shader-btn';
     shaderBtn.innerHTML = '&#127761;'; // Sphere icon placeholder
     shaderBtn.title = "Shader Options";
-    shaderBtn.addEventListener('click', () => {
-      this.currentShadingMode = this.currentShadingMode === 'WIREFRAME' ? 'PHONG' : 'WIREFRAME';
-      this.viewer.setShadingMode(this.currentShadingMode);
-      shaderBtn.title = `Shader: ${this.currentShadingMode}`;
-      if (this.currentShadingMode === 'PHONG') {
-        shaderBtn.style.color = '#00ff00';
-      } else {
-        shaderBtn.style.color = '';
-      }
+    
+    const popup = document.createElement('div');
+    popup.className = 'daz-shader-popup';
+    
+    const options = ['Wireframe', 'Shaded', 'Phong', 'Blinn'];
+    options.forEach(opt => {
+      const item = document.createElement('div');
+      item.className = 'daz-shader-item';
+      item.textContent = opt;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const mode = opt.toUpperCase() as 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN';
+        this.currentShadingMode = mode;
+        this.viewer.setShadingMode(mode);
+        popup.style.display = 'none';
+        shaderBtn.title = `Shader: ${opt}`;
+        
+        // Visual feedback on button
+        if (mode === 'WIREFRAME') shaderBtn.style.color = '';
+        else shaderBtn.style.color = '#00ff00';
+      });
+      popup.appendChild(item);
+    });
+    
+    shaderBtn.appendChild(popup);
+
+    shaderBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = popup.style.display === 'block';
+      popup.style.display = isVisible ? 'none' : 'block';
+    });
+
+    // Close popup when clicking anywhere else
+    document.addEventListener('click', () => {
+      popup.style.display = 'none';
     });
 
     const viewSelector = document.createElement('select');

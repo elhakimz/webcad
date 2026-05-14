@@ -72,7 +72,7 @@ export class PersistenceService {
 
     // 3. Save entities
     const entityRows: object[] = []
-    const deflection = 0.1 / (doc.facetres ?? 5.0)
+    const deflection = 0.1 / (doc.facetres ?? 0.5)
     for (const ent of doc.entities.values()) {
       entityRows.push(EntitySerializer.serialize(ent, projectId))
 
@@ -87,7 +87,12 @@ export class PersistenceService {
             this.cache.saveBRep(ent.id, projectId, brepBytes)
           }
         } catch (e) {
-          console.error(`[Persistence] Failed to export BREP for ${ent.id}:`, e)
+          const errorMsg = e instanceof Error ? e.message : String(e);
+          if (!errorMsg.includes("No cached shape")) {
+            console.error(`[Persistence] Failed to export BREP for ${ent.id}:`, e);
+          } else {
+            console.log(`[Persistence] Skipping BREP export for ${ent.id} (not in worker cache - likely imported raw mesh).`);
+          }
         }
       }
 
@@ -111,6 +116,7 @@ export class PersistenceService {
     this.activeProjectId = projectId
     this.activeProjectName = proj.name
     doc.id = projectId
+    doc.clear() // clear existing before loading
     doc.units = proj.settings.units
     doc.facetres = proj.settings.facetres
     doc.dimtoh = proj.settings.dimtoh
@@ -140,7 +146,6 @@ export class PersistenceService {
 
     // Load entities
     const entRows = await this.db.getEntitiesForProject(projectId)
-    doc.clear() // clear existing if any
 
     for (const row of entRows) {
       const ent = EntitySerializer.deserialize(row)

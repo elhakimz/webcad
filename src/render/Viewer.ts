@@ -55,7 +55,7 @@ export class Viewer {
   private textQueue: Text[] = []
   private noteQueue: Note[] = []
   private selectionBox: THREE.Line | null = null
-  private shadingMode: 'WIREFRAME' | 'PHONG' = 'WIREFRAME';
+  private shadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' = 'WIREFRAME';
   public target: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
 
   constructor(canvas:HTMLCanvasElement){
@@ -304,22 +304,36 @@ export class Viewer {
     this.scheduleRender();
   }
 
-  setShadingMode(mode: 'WIREFRAME' | 'PHONG') {
+  setShadingMode(mode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN') {
     this.shadingMode = mode;
     this.scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh && obj.userData.type !== 'Text') {
         const material = obj.material as any;
         const color = material.color;
         if (color) {
-          if (mode === 'WIREFRAME') {
-            obj.material = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, wireframe: true });
-          } else {
-            obj.material = new THREE.MeshPhongMaterial({ color, side: THREE.DoubleSide, wireframe: false });
-          }
+          obj.material = this.getMeshMaterial(color.getHex());
         }
       }
     });
     this.scheduleRender();
+  }
+
+  getMeshMaterial(color: number): THREE.Material {
+    const options = { color, side: THREE.DoubleSide };
+    const offsetOptions = { ...options, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 };
+    
+    switch (this.shadingMode) {
+      case 'WIREFRAME':
+        return new THREE.MeshBasicMaterial({ ...options, wireframe: true });
+      case 'SHADED':
+        return new THREE.MeshLambertMaterial(offsetOptions);
+      case 'PHONG':
+        return new THREE.MeshPhongMaterial({ ...offsetOptions, shininess: 30 });
+      case 'BLINN':
+        return new THREE.MeshStandardMaterial({ ...offsetOptions, roughness: 0.5, metalness: 0.5 });
+      default:
+        return new THREE.MeshPhongMaterial({ ...offsetOptions, shininess: 30 });
+    }
   }
 
   orbit(deltaX: number, deltaY: number) {
@@ -713,9 +727,7 @@ export class Viewer {
     const thickness = entity.thickness || 0;
     const elevation = entity.elevation || 0;
 
-    const meshMat = this.shadingMode === 'WIREFRAME' 
-      ? new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, wireframe: true })
-      : new THREE.MeshPhongMaterial({ color, side: THREE.DoubleSide, wireframe: false });
+    const meshMat = this.getMeshMaterial(color);
 
     for (let i = 0; i < entity.vertices.length - (entity.closed ? 0 : 1); i++) {
       const v1 = entity.vertices[i];
@@ -1101,16 +1113,7 @@ export class Viewer {
     // Translate geometry to be centered at (0,0,0) locally
     geometry.translate(-center.x, -center.y, -center.z);
     
-    const material = this.shadingMode === 'WIREFRAME' 
-      ? new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, wireframe: true })
-      : new THREE.MeshPhongMaterial({ 
-          color, 
-          side: THREE.DoubleSide, 
-          wireframe: false,
-          polygonOffset: true,
-          polygonOffsetFactor: 1,
-          polygonOffsetUnits: 1
-        });
+    const material = this.getMeshMaterial(color);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.userData = { type: 'Solid3D', faceMapping: entity.faceMapping };
     mesh.name = entity.id;
@@ -1132,7 +1135,7 @@ export class Viewer {
           pt.sub(center);
         }
         
-        const lineMat = new THREE.MeshBasicMaterial({ color: 0x555555 });
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0xa9a9a9 }); // Dark gray edges
         const radius = 0.15; // Thicker radius in world units (was 0.05)
         
         for (let i = 0; i < pts.length - 1; i++) {
@@ -1160,7 +1163,7 @@ export class Viewer {
     } else {
       // Fallback to EdgesGeometry
       const edges = new THREE.EdgesGeometry(geometry, 1);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x555555 }); // Dark gray edges
+      const lineMat = new THREE.LineBasicMaterial({ color: 0xa9a9a9 }); // Dark gray edges
       line = new THREE.LineSegments(edges, lineMat);
     }
     
@@ -1236,7 +1239,7 @@ export class Viewer {
     entityEdgeLines.forEach(line => {
       const mat = (line as any).material;
       if (mat && mat.color) {
-        mat.color.setHex(0x555555);
+        mat.color.setHex(0xa9a9a9);
         mat.needsUpdate = true;
       }
     });
@@ -1612,13 +1615,7 @@ export class Viewer {
       ]);
       const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
       const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-      geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-      geometry.computeVertexNormals();
-      
-      const material = this.shadingMode === 'WIREFRAME' 
-        ? new THREE.MeshBasicMaterial({ color: aciToRgb(color), side: THREE.DoubleSide, wireframe: true })
-        : new THREE.MeshPhongMaterial({ color: aciToRgb(color), side: THREE.DoubleSide, wireframe: false });
+      const material = this.getMeshMaterial(aciToRgb(color));
         
       const mesh = new THREE.Mesh(geometry, material);
       mesh.userData = { type: 'Solid3D' };
@@ -1642,20 +1639,6 @@ export class Viewer {
   }
 
   private createCircleObject(cx: number, cy: number, r: number, color: number, linetype?: string, elevation = 0, thickness = 0): THREE.Object3D {
-    if (thickness !== 0) {
-      const geometry = new THREE.CylinderGeometry(r, r, Math.abs(thickness), 32, 1, true);
-      geometry.rotateX(Math.PI / 2); // Align with Z axis
-      geometry.translate(cx, cy, elevation + thickness / 2);
-      
-      const material = this.shadingMode === 'WIREFRAME' 
-        ? new THREE.MeshBasicMaterial({ color: aciToRgb(color), side: THREE.DoubleSide, wireframe: true })
-        : new THREE.MeshPhongMaterial({ color: aciToRgb(color), side: THREE.DoubleSide, wireframe: false });
-        
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.userData = { type: 'Solid3D' };
-      return mesh;
-    }
-
     const pattern = linetype ? getLinetypeSettings(linetype) : null;
     const material = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
     const curve = new THREE.EllipseCurve(cx, cy, r, r, 0, 2 * Math.PI, false, 0);
@@ -1701,13 +1684,11 @@ export class Viewer {
       }
       
       const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
       geometry.setIndex(indices);
       geometry.computeVertexNormals();
-      
-      const material = this.shadingMode === 'WIREFRAME' 
-        ? new THREE.MeshBasicMaterial({ color: aciToRgb(color), side: THREE.DoubleSide, wireframe: true })
-        : new THREE.MeshPhongMaterial({ color: aciToRgb(color), side: THREE.DoubleSide, wireframe: false });
+
+      const material = this.getMeshMaterial(aciToRgb(color));
         
       const mesh = new THREE.Mesh(geometry, material);
       mesh.userData = { type: 'Solid3D' };

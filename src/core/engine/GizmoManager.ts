@@ -220,7 +220,55 @@ export class GizmoManager {
     const dz = this.targetEntity.position.z - oldPos.z;
 
     // Sync with OpenCascade worker
-    if (dx !== 0 || dy !== 0 || dz !== 0) {
+    if (!this.targetEntity.creationParams) {
+      // Fallback for raw meshes from DXF!
+      console.log(`[GizmoManager] Raw mesh detected for ${this.targetEntity.id}. Applying transform in JS.`);
+      
+      const newPositions = new Array(this.targetEntity.positions.length);
+      const v = new THREE.Vector3();
+      
+      for (let i = 0; i < this.targetEntity.positions.length; i += 3) {
+        v.set(
+          this.targetEntity.positions[i],
+          this.targetEntity.positions[i+1],
+          this.targetEntity.positions[i+2]
+        );
+        
+        // 1. Center the vertex (like Viewer does)
+        v.sub(center);
+        
+        // 2. Apply rotation of the group
+        v.applyQuaternion(this.targetObject.quaternion);
+        
+        // 3. Apply position of the group
+        v.add(this.targetObject.position);
+        
+        newPositions[i] = v.x;
+        newPositions[i+1] = v.y;
+        newPositions[i+2] = v.z;
+      }
+      
+      this.targetEntity.positions = newPositions;
+      
+      // Also update edgeLines if they exist!
+      if (this.targetEntity.edgeLines) {
+        const newEdgeLines: number[][] = [];
+        for (const line of this.targetEntity.edgeLines) {
+          const newLine = new Array(line.length);
+          for (let i = 0; i < line.length; i += 3) {
+            v.set(line[i], line[i+1], line[i+2]);
+            v.sub(center);
+            v.applyQuaternion(this.targetObject.quaternion);
+            v.add(this.targetObject.position);
+            newLine[i] = v.x;
+            newLine[i+1] = v.y;
+            newLine[i+2] = v.z;
+          }
+          newEdgeLines.push(newLine);
+        }
+        this.targetEntity.edgeLines = newEdgeLines;
+      }
+    } else if (dx !== 0 || dy !== 0 || dz !== 0) {
       try {
         await OpenCascadeService.getInstance().transformShape(this.targetEntity.id, dx, dy, dz);
         console.log(`Synced transform to worker for ${this.targetEntity.id}: dx=${dx}, dy=${dy}, dz=${dz}`);

@@ -258,6 +258,54 @@ export class OpenCascadeService {
     return await this.workerClient!.importBRep(entityId, brepBytes, deflection);
   }
 
+  async chamferSolid(entityId: string, edgeIndex: number, distance: number, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await (this.client as any).chamferSolid(entityId, edgeIndex, distance, deflection);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
+    
+    return geometry;
+  }
+
+  async filletSolidFace(entityId: string, faceIndex: number, radius: number, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.filletSolidFace(entityId, faceIndex, radius);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
+    
+    return geometry;
+  }
+
+  async chamferSolidFace(entityId: string, faceIndex: number, radius: number, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.chamferSolidFace(entityId, faceIndex, radius);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
+    
+    return geometry;
+  }
+
   async rehydrate(doc: any): Promise<void> {
     if (!this.workerClient) return;
     

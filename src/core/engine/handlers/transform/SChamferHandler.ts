@@ -3,9 +3,9 @@ import { CommandAction, CommandResponse } from "../../../commands/types";
 import { Solid3D } from "../../../model/Solid3D";
 import { OpenCascadeService } from "../../../io/OpenCascadeService";
 
-export class SFilletHandler implements ActionHandler {
+export class SChamferHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return action.action === 'fillet_solid' || action.action === 'fillet_solid_face';
+    return action.action === 'chamfer_solid' || action.action === 'chamfer_solid_face';
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
@@ -13,7 +13,7 @@ export class SFilletHandler implements ActionHandler {
 
     if (action.id && action.radius !== undefined) {
       const entityId = action.id;
-      const radius = action.radius as number;
+      const distance = action.radius as number; // SChamferCommand sends distance in radius field
 
       const entity = doc.getEntity(entityId);
       if (!entity || !(entity instanceof Solid3D)) {
@@ -24,14 +24,14 @@ export class SFilletHandler implements ActionHandler {
         let geometry;
         let msg = "";
         
-        if (action.action === 'fillet_solid' && action.value !== undefined) {
+        if (action.action === 'chamfer_solid' && action.value !== undefined) {
           const edgeIndex = action.value as number;
-          geometry = await OpenCascadeService.getInstance().filletSolid(entityId, edgeIndex, radius);
-          msg = `Fillet applied to edge ${edgeIndex}.`;
-        } else if (action.action === 'fillet_solid_face' && action.faceIndex !== undefined) {
+          geometry = await OpenCascadeService.getInstance().chamferSolid(entityId, edgeIndex, distance);
+          msg = `Chamfer applied to edge ${edgeIndex}.`;
+        } else if (action.action === 'chamfer_solid_face' && action.faceIndex !== undefined) {
           const faceIndex = action.faceIndex;
-          geometry = await OpenCascadeService.getInstance().filletSolidFace(entityId, faceIndex, radius);
-          msg = `Fillet applied to all edges of face ${faceIndex}.`;
+          geometry = await OpenCascadeService.getInstance().chamferSolidFace(entityId, faceIndex, distance);
+          msg = `Chamfer applied to all edges of face ${faceIndex}.`;
         } else {
           return undefined;
         }
@@ -56,7 +56,7 @@ export class SFilletHandler implements ActionHandler {
         
         return msg;
       } catch (err: any) {
-        return `Error applying fillet: ${err.message || err.toString()}`;
+        return `Error applying chamfer: ${err.message || err.toString()}`;
       }
     }
     return undefined;

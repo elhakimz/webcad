@@ -37,6 +37,7 @@ import { BooleanHandler } from "./core/engine/handlers/transform/BooleanHandler"
 import { ArrayHandler } from "./core/engine/handlers/transform/ArrayHandler"
 import { FilletHandler } from "./core/engine/handlers/transform/FilletHandler"
 import { SFilletHandler } from "./core/engine/handlers/transform/SFilletHandler"
+import { SChamferHandler } from "./core/engine/handlers/transform/SChamferHandler"
 import { ChamferHandler } from "./core/engine/handlers/transform/ChamferHandler"
 import { BreakHandler } from "./core/engine/handlers/transform/BreakHandler"
 import { CopyHandler } from "./core/engine/handlers/transform/CopyHandler"
@@ -161,6 +162,7 @@ export class App {
     this.dispatcher.registerHandler(new FilletHandler());
     this.dispatcher.registerHandler(new SFilletHandler());
     this.dispatcher.registerHandler(new ChamferHandler());
+    this.dispatcher.registerHandler(new SChamferHandler());
     this.dispatcher.registerHandler(new BreakHandler());
     this.dispatcher.registerHandler(new CopyHandler());
     this.dispatcher.registerHandler(new JoinHandler());

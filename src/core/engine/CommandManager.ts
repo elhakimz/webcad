@@ -38,6 +38,7 @@ import { SaveCommand, LoadCommand, NewCommand } from "../commands/IOCommands"
 import { UnitsCommand } from "../commands/UnitsCommand"
 import { FilletCommand } from "../commands/FilletCommand"
 import { SFilletCommand } from "../commands/SFilletCommand"
+import { SChamferCommand } from "../commands/SChamferCommand"
 import { ChamferCommand } from "../commands/ChamferCommand"
 import { BreakCommand } from "../commands/BreakCommand"
 import { JoinCommand } from "../commands/JoinCommand"
@@ -161,6 +162,7 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["OFFSET", () => new OffsetCommand()],
   ["FILLET", () => new FilletCommand()],
   ["SFILLET", (selection) => new SFilletCommand(selection)],
+  ["SCHAMFER", (selection) => new SChamferCommand(selection)],
   ["CHAMFER", () => new ChamferCommand()],
   ["BREAK", () => new BreakCommand()],
   ["JOIN", (selection) => {

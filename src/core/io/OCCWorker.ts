@@ -200,6 +200,205 @@ self.onmessage = async (e) => {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'filletSolid', success: false, error: errorMessage, id });
     }
+  } else if (type === 'chamferSolid') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, edgeIndex, radius: distance, deflection } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not found for entity: ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+
+      // Find the edge by index
+      let foundEdge: any = null;
+      let currentIndex = 0;
+      const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      while (explorer.More()) {
+        if (currentIndex === edgeIndex) {
+          foundEdge = oc.TopoDS.Edge_1(explorer.Current());
+          break;
+        }
+        currentIndex++;
+        explorer.Next();
+      }
+      explorer.delete();
+
+      if (!foundEdge) {
+        throw new Error(`Edge index ${edgeIndex} not found in shape.`);
+      }
+
+      // Perform chamfer
+      const chamfer = new oc.BRepFilletAPI_MakeChamfer(shape);
+      // Try Add_2 first, or Add if it fails. In OpenCascade.js, overloads are often numbered.
+      try {
+        chamfer.Add_2(distance, foundEdge);
+      } catch (e) {
+        chamfer.Add(distance, foundEdge);
+      }
+      const newShape = chamfer.Shape();
+
+      foundEdge.delete();
+
+      // Update cache
+      cacheShape(entityId, newShape);
+
+      // Tessellate and get geometry data
+      const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
+
+      chamfer.delete();
+
+      if (geometryData.positions.length === 0) {
+        throw new Error("No geometry generated from shape. Positions array is empty.");
+      }
+
+      self.postMessage({ type: 'chamferSolid', success: true, payload: geometryData, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'chamferSolid', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'filletSolidFace') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, faceIndex, radius, deflection } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not found for entity: ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+
+      // Find the face by index
+      let foundFace: any = null;
+      let currentIndex = 0;
+      const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      while (explorer.More()) {
+        if (currentIndex === faceIndex) {
+          foundFace = oc.TopoDS.Face_1(explorer.Current());
+          break;
+        }
+        currentIndex++;
+        explorer.Next();
+      }
+      explorer.delete();
+
+      if (!foundFace) {
+        throw new Error(`Face index ${faceIndex} not found in shape.`);
+      }
+
+      const fillet = new oc.BRepFilletAPI_MakeFillet(shape, oc.ChFi3d_FilletShape.ChFi3d_Rational);
+      
+      // Explore edges of the face
+      const edgeExplorer = new oc.TopExp_Explorer_2(foundFace, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      let edgesAdded = 0;
+      while (edgeExplorer.More()) {
+        const edge = oc.TopoDS.Edge_1(edgeExplorer.Current());
+        fillet.Add_2(radius, edge);
+        edge.delete();
+        edgesAdded++;
+        edgeExplorer.Next();
+      }
+      edgeExplorer.delete();
+      foundFace.delete();
+
+      if (edgesAdded === 0) {
+        throw new Error(`No edges found for face ${faceIndex}.`);
+      }
+
+      const newShape = fillet.Shape();
+
+      // Update cache
+      cacheShape(entityId, newShape);
+
+      // Tessellate and get geometry data
+      const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
+
+      fillet.delete();
+
+      if (geometryData.positions.length === 0) {
+        throw new Error("No geometry generated from shape. Positions array is empty.");
+      }
+
+      self.postMessage({ type: 'filletSolidFace', success: true, payload: geometryData, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'filletSolidFace', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'chamferSolidFace') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, faceIndex, radius: distance, deflection } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not found for entity: ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+
+      // Find the face by index
+      let foundFace: any = null;
+      let currentIndex = 0;
+      const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      while (explorer.More()) {
+        if (currentIndex === faceIndex) {
+          foundFace = oc.TopoDS.Face_1(explorer.Current());
+          break;
+        }
+        currentIndex++;
+        explorer.Next();
+      }
+      explorer.delete();
+
+      if (!foundFace) {
+        throw new Error(`Face index ${faceIndex} not found in shape.`);
+      }
+
+      const chamfer = new oc.BRepFilletAPI_MakeChamfer(shape);
+      
+      // Explore edges of the face
+      const edgeExplorer = new oc.TopExp_Explorer_2(foundFace, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      let edgesAdded = 0;
+      while (edgeExplorer.More()) {
+        const edge = oc.TopoDS.Edge_1(edgeExplorer.Current());
+        try {
+          chamfer.Add_2(distance, edge);
+        } catch (e) {
+          chamfer.Add(distance, edge);
+        }
+        edge.delete();
+        edgesAdded++;
+        edgeExplorer.Next();
+      }
+      edgeExplorer.delete();
+      foundFace.delete();
+
+      if (edgesAdded === 0) {
+        throw new Error(`No edges found for face ${faceIndex}.`);
+      }
+
+      const newShape = chamfer.Shape();
+
+      // Update cache
+      cacheShape(entityId, newShape);
+
+      // Tessellate and get geometry data
+      const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
+
+      chamfer.delete();
+
+      if (geometryData.positions.length === 0) {
+        throw new Error("No geometry generated from shape. Positions array is empty.");
+      }
+
+      self.postMessage({ type: 'chamferSolidFace', success: true, payload: geometryData, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'chamferSolidFace', success: false, error: errorMessage, id });
+    }
   } else if (type === 'createCylinder') {
     if (!oc) {
       self.postMessage({ type: 'error', error: 'Not initialized', id });

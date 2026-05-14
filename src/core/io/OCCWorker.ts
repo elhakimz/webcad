@@ -327,6 +327,206 @@ self.onmessage = async (e) => {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'filletSolidFace', success: false, error: errorMessage, id });
     }
+  } else if (type === 'makeThickSolid') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, faceIndices, thickness, deflection, removeFaces } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not found for entity: ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+
+      let newShape: any = null;
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      let sumX = 0, sumY = 0, sumZ = 0;
+      let nodeCount = 0;
+
+      // Ensure the shape is triangulated so we can find mesh nodes (required for analytical shapes like cylinders)
+      const linearDeflection = deflection || 0.1;
+      const mesher = new oc.BRepMesh_IncrementalMesh_2(shape, linearDeflection, false, 0.5, false);
+      mesher.delete();
+
+      // Iterate over faces to find center and bounding box via triangulation
+      const faceExplorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      while (faceExplorer.More()) {
+        const face = oc.TopoDS.Face_1(faceExplorer.Current());
+        const loc = new oc.TopLoc_Location_1();
+        const triangulation = oc.BRep_Tool.Triangulation(face, loc);
+        if (!triangulation.IsNull()) {
+          const tri = triangulation.get();
+          const nbNodes = tri.NbNodes();
+          for (let i = 1; i <= nbNodes; i++) {
+            const p = tri.Node(i);
+            const x = p.X();
+            const y = p.Y();
+            const z = p.Z();
+            
+            sumX += x; sumY += y; sumZ += z;
+            nodeCount++;
+            
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+          }
+        }
+        faceExplorer.Next();
+      }
+      faceExplorer.delete();
+
+      if (nodeCount === 0) {
+        throw new Error("Could not compute shape center for hollowing (no mesh nodes found).");
+      }
+
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      const centerZ = (minZ + maxZ) / 2;
+      
+      const sizeX = maxX - minX;
+      const sizeY = maxY - minY;
+      const sizeZ = maxZ - minZ;
+      const maxSize = Math.max(sizeX, sizeY, sizeZ);
+
+      // Calculate scale factor: (size - 2*thickness) / size
+      const targetThickness = Math.abs(thickness);
+      let scaleFactor = (maxSize - 2 * targetThickness) / maxSize;
+      if (scaleFactor <= 0.1) scaleFactor = 0.95; // Fallback to 5% shell if thickness is too large
+
+      // Create scaled clone
+      const trsf = new oc.gp_Trsf_1();
+      const centerPnt = new oc.gp_Pnt_3(centerX, centerY, centerZ);
+      trsf.SetScale(centerPnt, scaleFactor);
+      
+      const transformer = new oc.BRepBuilderAPI_Transform_2(shape, trsf, true);
+      const scaledShape = transformer.Shape();
+
+      // Perform Boolean Cut
+      const cutter = new oc.BRepAlgoAPI_Cut_3(shape, scaledShape);
+      
+      newShape = cutter.Shape();
+      
+    // [SIGNED PORTION: DO NOT CHANGE WITHOUT REQUEST]
+    // Stable face removal for shell (Supports Box, Cylinder, Polylines, and Polygons).
+    // NO CHANGES ALLOWED UNLESS EXPLICITLY ASKED.
+      if (removeFaces && faceIndices && faceIndices.length > 0) {
+        const indicesSet = new Set(faceIndices);
+        let currentIndex = 0;
+        
+        let nbFaces = 0;
+        const countExp = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        while (countExp.More()) { nbFaces++; countExp.Next(); }
+        countExp.delete();
+        
+        const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        
+        while (explorer.More()) {
+          if (indicesSet.has(currentIndex)) {
+            const face = oc.TopoDS.Face_1(explorer.Current());
+            
+            // Calculate face center and bounding box
+            let fSumX = 0, fSumY = 0, fSumZ = 0;
+            let fNodeCount = 0;
+            let fMinX = Infinity, fMinY = Infinity, fMinZ = Infinity;
+            let fMaxX = -Infinity, fMaxY = -Infinity, fMaxZ = -Infinity;
+            
+            const loc = new oc.TopLoc_Location_1();
+            const triangulation = oc.BRep_Tool.Triangulation(face, loc);
+            
+            if (!triangulation.IsNull()) {
+              const tri = triangulation.get();
+              const nbNodes = tri.NbNodes();
+              for (let i = 1; i <= nbNodes; i++) {
+                const p = tri.Node(i);
+                const x = p.X(), y = p.Y(), z = p.Z();
+                fSumX += x; fSumY += y; fSumZ += z;
+                fMinX = Math.min(fMinX, x); fMaxX = Math.max(fMaxX, x);
+                fMinY = Math.min(fMinY, y); fMaxY = Math.max(fMaxY, y);
+                fMinZ = Math.min(fMinZ, z); fMaxZ = Math.max(fMaxZ, z);
+                fNodeCount++;
+              }
+              
+              const fCenterX = fSumX / fNodeCount;
+              const fCenterY = fSumY / fNodeCount;
+              const fCenterZ = fSumZ / fNodeCount;
+              
+              // Vector from shape center to face center
+              const dx = fCenterX - centerX;
+              const dy = fCenterY - centerY;
+              const dz = fCenterZ - centerZ;
+              const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+              let nx = 0, ny = 0, nz = 1;
+              if (len > 0.001) {
+                nx = dx / len; ny = dy / len; nz = dz / len;
+              }
+              
+              // Vector points INWARD (opposite to normal)
+              // Make it VERY LONG (e.g., 20 times thickness) to ensure it reaches the cavity!
+              const vec = new oc.gp_Vec_4(-nx * targetThickness * 20, -ny * targetThickness * 20, -nz * targetThickness * 20);
+              
+              let faceToExtrude = face;
+              let faceTransformer: any = null;
+              let faceTrsf: any = null;
+              
+              // For complex shapes like extruded polylines (more than 6 faces),
+              // we scale the face DOWN slightly so the prism doesn't remove the side walls!
+              if (nbFaces > 6) {
+                const faceMaxSize = Math.max(fMaxX - fMinX, fMaxY - fMinY);
+                let faceScale = (faceMaxSize - 2 * targetThickness) / faceMaxSize;
+                if (faceScale <= 0.1) faceScale = 0.9;
+                
+                faceTrsf = new oc.gp_Trsf_1();
+                const fCenterPnt = new oc.gp_Pnt_3(fCenterX, fCenterY, fCenterZ);
+                faceTrsf.SetScale(fCenterPnt, faceScale);
+                faceTransformer = new oc.BRepBuilderAPI_Transform_2(face, faceTrsf, true);
+                faceToExtrude = faceTransformer.Shape();
+                fCenterPnt.delete();
+              }
+              
+              // Create prism from the face (scaled or unscaled)
+              const prismBuilder = new oc.BRepPrimAPI_MakePrism_1(faceToExtrude, vec, false, true);
+              if (prismBuilder.IsDone()) {
+                const cuttingShape = prismBuilder.Shape();
+                const faceCutter = new oc.BRepAlgoAPI_Cut_3(newShape, cuttingShape);
+                if (faceCutter.IsDone()) {
+                  newShape = faceCutter.Shape();
+                }
+              }
+              prismBuilder.delete();
+              if (faceTransformer) faceTransformer.delete();
+              if (faceTrsf) faceTrsf.delete();
+              vec.delete();
+            }
+          }
+          currentIndex++;
+          explorer.Next();
+        }
+        explorer.delete();
+      }
+      
+      // Cleanup
+      cutter.delete();
+      transformer.delete();
+      trsf.delete();
+      centerPnt.delete();
+
+      // Update cache
+      cacheShape(entityId, newShape);
+
+      // Tessellate and get geometry data
+      const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
+
+      if (geometryData.positions.length === 0) {
+        throw new Error("No geometry generated from shape. Positions array is empty.");
+      }
+
+      self.postMessage({ type: 'makeThickSolid', success: true, payload: geometryData, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'makeThickSolid', success: false, error: errorMessage, id });
+    }
   } else if (type === 'chamferSolidFace') {
     if (!oc) {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
@@ -919,7 +1119,7 @@ self.onmessage = async (e) => {
           const v2z = Tcurr.z - TprevLz;
           const c2 = v2x*v2x + v2y*v2y + v2z*v2z;
           
-          let Xcurr = { x: XprevLx, y: XprevLy, z: XprevLz };
+          const Xcurr = { x: XprevLx, y: XprevLy, z: XprevLz };
           if (c2 > 1e-12) {
             // Step 7: Xcurr = XprevL - (2/c2) * (v2 . XprevL) * v2
             const dot3 = v2x*XprevLx + v2y*XprevLy + v2z*XprevLz;

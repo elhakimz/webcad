@@ -233,6 +233,9 @@ export class GizmoManager {
     this.app.doc.history.startTransaction();
     this.app.doc.recordTransform(before, this.targetEntity);
     this.app.doc.history.commitTransaction();
+    
+    // Update properties window to reflect new position/rotation
+    this.app.updatePropertiesWindow();
   }
 
   private getNormalizedDeviceCoordinates(clientX: number, clientY: number): THREE.Vector2 {

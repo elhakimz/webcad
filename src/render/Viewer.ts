@@ -1132,7 +1132,7 @@ export class Viewer {
           pt.sub(center);
         }
         
-        const lineMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0x555555 });
         const radius = 0.15; // Thicker radius in world units (was 0.05)
         
         for (let i = 0; i < pts.length - 1; i++) {
@@ -1160,7 +1160,7 @@ export class Viewer {
     } else {
       // Fallback to EdgesGeometry
       const edges = new THREE.EdgesGeometry(geometry, 1);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x000000 }); // Black edges
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x555555 }); // Dark gray edges
       line = new THREE.LineSegments(edges, lineMat);
     }
     
@@ -1232,11 +1232,11 @@ export class Viewer {
 
     if (entityEdgeLines.length === 0) return;
 
-    // Reset all edges to black
+    // Reset all edges to dark gray
     entityEdgeLines.forEach(line => {
       const mat = (line as any).material;
       if (mat && mat.color) {
-        mat.color.setHex(0x000000);
+        mat.color.setHex(0x555555);
         mat.needsUpdate = true;
       }
     });

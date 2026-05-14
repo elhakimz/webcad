@@ -246,6 +246,10 @@ export class OpenCascadeService {
     await this.client.transformShape(entityId, dx, dy, dz);
   }
 
+  async rotateShape(entityId: string, rx: number, ry: number, rz: number, cx: number, cy: number, cz: number): Promise<void> {
+    await this.client.rotateShape(entityId, rx, ry, rz, cx, cy, cz);
+  }
+
   async releaseShapes(entityIds: string[]): Promise<void> {
     await this.client.releaseShapes(entityIds);
   }
@@ -292,6 +296,22 @@ export class OpenCascadeService {
 
   async chamferSolidFace(entityId: string, faceIndex: number, radius: number, deflection?: number): Promise<THREE.BufferGeometry> {
     const data = await this.client.chamferSolidFace(entityId, faceIndex, radius);
+    
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+    geometry.setIndex(data.indices);
+    geometry.computeVertexNormals();
+    
+    geometry.userData = {
+      faceMapping: data.faceMapping,
+      edgeLines: data.edgeLines
+    };
+    
+    return geometry;
+  }
+
+  async makeThickSolid(entityId: string, faceIndices: number[], thickness: number, removeFaces?: boolean): Promise<THREE.BufferGeometry> {
+    const data = await (this.client as any).makeThickSolid(entityId, faceIndices, thickness, removeFaces);
     
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));

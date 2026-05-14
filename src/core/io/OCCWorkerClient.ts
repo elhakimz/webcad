@@ -64,6 +64,10 @@ export class OCCWorkerClient {
     return this.send('chamferSolidFace', { entityId, faceIndex, radius });
   }
 
+  makeThickSolid(entityId: string, faceIndices: number[], thickness: number, removeFaces?: boolean): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+    return this.send('makeThickSolid', { entityId, faceIndices, thickness, removeFaces });
+  }
+
   createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
     return this.send('createTorus', { x, y, z, r1, r2, deflection, entityId });
   }
@@ -90,6 +94,10 @@ export class OCCWorkerClient {
 
   transformShape(entityId: string, dx: number, dy: number, dz: number): Promise<void> {
     return this.send('transformShape', { entityId, dx, dy, dz });
+  }
+
+  rotateShape(entityId: string, rx: number, ry: number, rz: number, cx: number, cy: number, cz: number): Promise<void> {
+    return this.send('rotateShape', { entityId, rx, ry, rz, cx, cy, cz });
   }
 
   releaseShapes(entityIds: string[]): Promise<void> {

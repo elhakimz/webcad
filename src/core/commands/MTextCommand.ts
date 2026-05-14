@@ -1,7 +1,7 @@
 import { MText } from "../model/MText";
 import { Line } from "../model/Line";
 import { Command, CommandResponse, PreviewObject, XMarkerPreview } from "./types";
-import { UnitsConfig } from "../model/Document";
+import { UnitsConfig, IDocument } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 
 export class MTextCommand implements Command {

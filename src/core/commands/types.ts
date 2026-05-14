@@ -2,7 +2,7 @@ import { Entity } from "../model/Entity";
 import { UnitsConfig, IDocument } from "../model/Document";
 
 export type CommandAction = {
-  action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerLineweight' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen' | 'create3d' | 'save' | 'load' | 'ortho' | 'orthoToggle' | 'grid' | 'gridToggle' | 'gridSet' | 'snap' | 'snapToggle' | 'snapSet' | 'array' | 'offset' | 'trim' | 'extend' | 'block' | 'insert' | 'blockList' | 'unitsSet' | 'fillet' | 'chamfer' | 'break' | 'join' | 'lengthen' | 'dimlinear' | 'dimaligned' | 'dimradius' | 'dimangular' | 'new' | 'listFiles' | 'stretch' | 'dimtoh' | 'dimtad' | 'dimtohToggle' | 'dimtadToggle' | 'id' | 'dist' | 'area' | 'list' | 'plot' | 'plot_window' | 'showPlotDialog' | 'boolean_result' | 'sweep' | 'loft_result' | 'fillet_solid' | 'chamfer_solid' | 'fillet_solid_face' | 'chamfer_solid_face';
+  action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerLineweight' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen' | 'create3d' | 'save' | 'load' | 'ortho' | 'orthoToggle' | 'grid' | 'gridToggle' | 'gridSet' | 'snap' | 'snapToggle' | 'snapSet' | 'array' | 'offset' | 'trim' | 'extend' | 'block' | 'insert' | 'blockList' | 'unitsSet' | 'fillet' | 'chamfer' | 'break' | 'join' | 'lengthen' | 'dimlinear' | 'dimaligned' | 'dimradius' | 'dimangular' | 'new' | 'listFiles' | 'stretch' | 'dimtoh' | 'dimtad' | 'dimtohToggle' | 'dimtadToggle' | 'id' | 'dist' | 'area' | 'list' | 'plot' | 'plot_window' | 'showPlotDialog' | 'boolean_result' | 'sweep' | 'loft_result' | 'fillet_solid' | 'chamfer_solid' | 'fillet_solid_face' | 'chamfer_solid_face' | 'shell';
 
   id?: string;
   ids?: string[];
@@ -35,6 +35,8 @@ export type CommandAction = {
   count?: number;
   angleToFill?: number;
   rotateObjects?: boolean;
+  thickness?: number;
+  faceIndices?: number[];
 
   entity?: Entity;
   entities?: Entity[];

@@ -15,6 +15,7 @@ export class PropertiesWindow {
     this.container.style.padding = '10px';
     this.container.style.color = 'var(--text-color)';
     this.container.style.fontFamily = 'var(--font-mono)';
+    this.container.style.fontSize = '11px';
     
     this.toolWindow.setContent(this.container);
     this.renderEmpty();
@@ -75,11 +76,27 @@ export class PropertiesWindow {
         this.updateProperty(entity, 'closed', val);
       });
       this.addPropertyField("Vertices", poly.vertices.length.toString(), true);
+    } else if (entity.constructor.name === "Spline") {
+      const spline = entity as any;
+      this.addBooleanField("Closed", spline.isClosed, (val) => {
+        this.app.doc.history.startTransaction();
+        const before = spline.clone(spline.id);
+        spline.isClosed = val;
+        spline.sampledPoints = spline.updateSampledPoints();
+        this.app.doc.recordTransform(before, spline);
+        this.app.doc.history.commitTransaction();
+        this.app.syncFromDocument();
+      });
+      this.addPropertyField("Control Points", spline.controlPoints.length.toString(), true);
     } else if (entity.constructor.name === "Solid3D") {
       const solid = entity as Solid3D;
       this.addNumberField("Pos X", solid.position.x, (val) => { this.updateSolidPos(solid, 'x', val); });
       this.addNumberField("Pos Y", solid.position.y, (val) => { this.updateSolidPos(solid, 'y', val); });
       this.addNumberField("Pos Z", solid.position.z, (val) => { this.updateSolidPos(solid, 'z', val); });
+      
+      this.addNumberField("R X", solid.rotation.x, (val) => { this.updateSolidRot(solid, 'x', val); });
+      this.addNumberField("R Y", solid.rotation.y, (val) => { this.updateSolidRot(solid, 'y', val); });
+      this.addNumberField("R Z", solid.rotation.z, (val) => { this.updateSolidRot(solid, 'z', val); });
       
       // Non-editable properties
       this.addPropertyField("Vertices", (solid.positions.length / 3).toString(), true);
@@ -258,6 +275,31 @@ export class PropertiesWindow {
     // Sync with worker if it's a transform!
     if (dx !== 0 || dy !== 0 || dz !== 0) {
         OpenCascadeService.getInstance().transformShape(solid.id, dx, dy, dz).then(() => {
+            this.app.syncFromDocument();
+        }).catch((err: any) => {
+            console.error("Failed to sync transform to worker:", err);
+            this.app.syncFromDocument();
+        });
+    } else {
+        this.app.syncFromDocument();
+    }
+  }
+
+  private updateSolidRot(solid: Solid3D, axis: 'x' | 'y' | 'z', value: number) {
+    this.app.doc.history.startTransaction();
+    const before = solid.clone(solid.id);
+    
+    const drx = axis === 'x' ? value - solid.rotation.x : 0;
+    const dry = axis === 'y' ? value - solid.rotation.y : 0;
+    const drz = axis === 'z' ? value - solid.rotation.z : 0;
+    
+    solid.rotation[axis] = value;
+    
+    this.app.doc.recordTransform(before, solid);
+    this.app.doc.history.commitTransaction();
+    
+    if (drx !== 0 || dry !== 0 || drz !== 0) {
+        OpenCascadeService.getInstance().rotateShape(solid.id, drx, dry, drz, solid.position.x, solid.position.y, solid.position.z).then(() => {
             this.app.syncFromDocument();
         }).catch((err: any) => {
             console.error("Failed to sync transform to worker:", err);

@@ -20,7 +20,11 @@ export class Spline extends Entity {
   }
 
   updateSampledPoints(): Point[] {
-    return tessellateSpline(this.controlPoints, this.degree, this.knots, 100);
+    const pts = tessellateSpline(this.controlPoints, this.degree, this.knots, 100);
+    if (this.isClosed && pts.length > 1) {
+      pts.push({ ...pts[0] });
+    }
+    return pts;
   }
 
   move(dx: number, dy: number) {

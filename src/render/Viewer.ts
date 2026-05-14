@@ -68,8 +68,8 @@ export class Viewer {
     bgCanvas.height = 512;
     const bgCtx = bgCanvas.getContext('2d')!;
     const bgGradient = bgCtx.createLinearGradient(0, 0, 0, 512);
-    bgGradient.addColorStop(0, '#050510'); // Dark top
-    bgGradient.addColorStop(1, '#00aaaa'); // Cyan/Teal bottom for better contrast
+    bgGradient.addColorStop(0, '#000000'); // Pure black top
+    bgGradient.addColorStop(1, '#002222'); // Very dark cyan bottom
     bgCtx.fillStyle = bgGradient;
     bgCtx.fillRect(0, 0, 2, 512);
     this.scene.background = new THREE.CanvasTexture(bgCanvas);

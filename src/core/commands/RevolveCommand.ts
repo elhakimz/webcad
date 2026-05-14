@@ -7,6 +7,7 @@ import { Circle } from "../model/Circle"
 import { Spline } from "../model/Spline"
 import { Solid3D } from "../model/Solid3D"
 import { OpenCascadeService } from "../io/OpenCascadeService.js";
+import { bulgeToArc } from "../engine/MathUtils";
 
 export class RevolveCommand implements Command {
   step = 0
@@ -111,7 +112,46 @@ export class RevolveCommand implements Command {
     const elevation = this.selectedEntity.elevation || 0;
     
     if (this.selectedEntity instanceof Polyline) {
-      points = this.selectedEntity.vertices.map(v => ({ x: v.x, y: v.y, z: elevation }));
+      const count = this.selectedEntity.vertices.length;
+      const limit = this.selectedEntity.closed ? count : count - 1;
+      
+      for (let i = 0; i < limit; i++) {
+        const v1 = this.selectedEntity.vertices[i];
+        const v2 = this.selectedEntity.vertices[(i + 1) % count];
+        
+        if (v1.bulge && Math.abs(v1.bulge) >= 1e-6) {
+          const arcParams = bulgeToArc(v1, v2, v1.bulge);
+          if (arcParams) {
+            const startAngle = arcParams.startAngle;
+            const endAngle = arcParams.endAngle;
+            let sweep = endAngle - startAngle;
+            if (v1.bulge > 0) {
+              if (sweep < 0) sweep += 2 * Math.PI;
+            } else {
+              if (sweep > 0) sweep -= 2 * Math.PI;
+            }
+            const segments = 16;
+            for (let j = 0; j < segments; j++) {
+              const angle = startAngle + (j / segments) * sweep;
+              points.push({
+                x: arcParams.cx + arcParams.r * Math.cos(angle),
+                y: arcParams.cy + arcParams.r * Math.sin(angle),
+                z: elevation
+              });
+            }
+          } else {
+            points.push({ x: v1.x, y: v1.y, z: elevation });
+          }
+        } else {
+          points.push({ x: v1.x, y: v1.y, z: elevation });
+        }
+      }
+      
+      if (!this.selectedEntity.closed && count > 0) {
+        const lastV = this.selectedEntity.vertices[count - 1];
+        points.push({ x: lastV.x, y: lastV.y, z: elevation });
+      }
+      
       isClosed = this.selectedEntity.closed;
     } else if (this.selectedEntity instanceof Circle) {
       const segments = 32;

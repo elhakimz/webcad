@@ -8,7 +8,7 @@ import { Arc } from "../../../model/Arc";
 import { Ellipse } from "../../../model/Ellipse";
 import { Solid3D } from "../../../model/Solid3D";
 import { OpenCascadeService } from "../../../io/OpenCascadeService";
-import { bulgeToArc } from "../../../engine/MathUtils";
+import { bulgeToArc, tessellateSpline } from "../../../engine/MathUtils";
 import * as THREE from 'three';
 
 export class SweepHandler implements ActionHandler {
@@ -31,8 +31,8 @@ export class SweepHandler implements ActionHandler {
       const isSolid = action.type === 'SOLID';
       const facetres = doc.facetres || 5.0;
       const deflection = 0.1 / facetres;
-      let axisPoint: {x: number, y: number, z: number} = { x: 0, y: 0, z: 0 };
-      let axisDir: {x: number, y: number, z: number} = { x: 0, y: 0, z: 1 };
+      const axisPoint: {x: number, y: number, z: number} = { x: 0, y: 0, z: 0 };
+      const axisDir: {x: number, y: number, z: number} = { x: 0, y: 0, z: 1 };
 
       // Extract points from spine
       let spinePoints: {x: number, y: number, z: number}[] = [];
@@ -88,7 +88,9 @@ export class SweepHandler implements ActionHandler {
           spinePoints.push(spinePoints[0]);
         }
       } else if (spineEntity instanceof Spline) {
-        spinePoints = spineEntity.sampledPoints.map(v => ({ x: v.x, y: v.y, z: spineElevation }));
+        // Reduce segments for sweep to avoid too many vertices
+        spinePoints = tessellateSpline(spineEntity.controlPoints, spineEntity.degree, spineEntity.knots, 30)
+          .map(v => ({ x: v.x, y: v.y, z: spineElevation }));
       } else if (spineEntity instanceof Arc) {
         const segments = 128;
         const startAngle = spineEntity.startAngle;
@@ -160,19 +162,12 @@ export class SweepHandler implements ActionHandler {
           }
           profilePoints = profiles.flat();
         } else {
-          // Find tangent at spine start
-          const p0 = spinePoints[0];
-          const p1 = spinePoints[1] || p0;
-          const dx = p1.x - p0.x;
-          const dy = p1.y - p0.y;
-          const alpha = Math.atan2(dy, dx);
-          
           for (let i = 0; i <= segments; i++) {
             const t = (i / segments) * 2 * Math.PI;
             profilePoints.push({
-              x: p0.x + profileEntity.r * Math.cos(t) * (-Math.sin(alpha)),
-              y: p0.y + profileEntity.r * Math.cos(t) * Math.cos(alpha),
-              z: p0.z + profileEntity.r * Math.sin(t)
+              x: profileEntity.cx + profileEntity.r * Math.cos(t),
+              y: profileEntity.cy + profileEntity.r * Math.sin(t),
+              z: elevation
             });
           }
         }
@@ -251,15 +246,15 @@ export class SweepHandler implements ActionHandler {
             const segments = 32; // Radial segments
             
             // We need a normal vector for the first point
-            let normal = new THREE.Vector3(0, 0, 1); // Default up vector
+            const normal = new THREE.Vector3(0, 0, 1); // Default up vector
             
             for (let i = 0; i < spinePoints.length; i++) {
               const p = new THREE.Vector3(spinePoints[i].x, spinePoints[i].y, spinePoints[i].z);
               
               // Compute tangent using bisector of incoming and outgoing vectors
-              let tangent = new THREE.Vector3();
-              let t1 = new THREE.Vector3();
-              let t2 = new THREE.Vector3();
+              const tangent = new THREE.Vector3();
+              const t1 = new THREE.Vector3();
+              const t2 = new THREE.Vector3();
               
               if (i > 0) {
                 t1.subVectors(p, new THREE.Vector3(spinePoints[i-1].x, spinePoints[i-1].y, spinePoints[i-1].z)).normalize();

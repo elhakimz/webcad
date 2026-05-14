@@ -20,8 +20,8 @@ export class SweepCommand implements Command {
       this.profileEntity = entity;
       this.step = 2;
     } else if (this.step === 2) {
-      // Spine can be Line, Arc, or Polyline
-      const isSpine = 'x1' in entity || 'startAngle' in entity || 'vertices' in entity;
+      // Spine can be Line, Arc, Polyline, or Spline
+      const isSpine = 'x1' in entity || 'startAngle' in entity || 'vertices' in entity || entity instanceof Spline;
       if (isSpine) {
         this.spineEntity = entity;
         this.step = 3;
@@ -115,7 +115,7 @@ export class SweepCommand implements Command {
 
   getPrompt(): string {
     if (this.step === 1) return "Select profile (Polyline, POLYGON, Circle, Ellipse):";
-    if (this.step === 2) return "Select spine (Line, Arc, Polyline):";
+    if (this.step === 2) return "Select spine (Line, Arc, Polyline, Spline):";
     if (this.step === 3) return "Mode [Solid/Hollow] <Solid>:";
     if (this.step === 4) return "Corner mode [Default/Miter/Round] <Default>:";
     return "Press Enter to complete.";

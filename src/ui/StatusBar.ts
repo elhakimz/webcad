@@ -6,6 +6,7 @@ export interface DraftingStatus {
   ortho: boolean;
   xyz: boolean;
   mode3d: boolean;
+  axis: boolean;
 }
 
 export class StatusBar {

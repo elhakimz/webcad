@@ -6,6 +6,7 @@ export class DraftingState {
   snapSpacing: number = 5;
   xyzEnabled: boolean = true;
   mode3d: boolean = false;
+  axisEnabled: boolean = false;
 
   private listeners: (() => void)[] = [];
 
@@ -39,6 +40,11 @@ export class DraftingState {
 
   toggleMode3d() {
     this.mode3d = !this.mode3d;
+    this.notify();
+  }
+
+  toggleAxis() {
+    this.axisEnabled = !this.axisEnabled;
     this.notify();
   }
 

@@ -41,6 +41,7 @@ const draftingRibbon = new DraftingAidsRibbonBar(
     if (type === 'ortho') app.drafting.toggleOrtho();
     if (type === 'xyz') app.drafting.toggleXyz();
     if (type === 'mode') app.drafting.toggleMode3d();
+    if (type === 'axis') app.drafting.toggleAxis();
   },
   (type, value) => {
     if (type === 'snap') app.drafting.setSnapSpacing(value);
@@ -92,11 +93,13 @@ function updateStatusBar() {
     grid: app.drafting.gridEnabled,
     ortho: app.drafting.orthoEnabled,
     xyz: app.drafting.xyzEnabled,
-    mode3d: app.drafting.mode3d
+    mode3d: app.drafting.mode3d,
+    axis: app.drafting.axisEnabled
   });
   draftingRibbon.updateSizes(app.drafting.snapSpacing, app.drafting.gridSpacing);
   unitsRibbon.updateUnits(app.doc.units);
   viewer.setAxesVisible(app.drafting.xyzEnabled);
+  viewer.setDraftingAxisVisible(app.drafting.axisEnabled);
 }
 
 app.setStatusBar((_layer) => {

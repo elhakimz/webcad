@@ -151,6 +151,11 @@ export class Viewer {
     this.scheduleRender();
   }
 
+  setDraftingAxisVisible(visible: boolean) {
+    this.cursorRenderer.setAxisVisible(visible);
+    this.scheduleRender();
+  }
+
   set3DMode(enabled: boolean) {
     if (enabled) {
       // Switch to Isometric view

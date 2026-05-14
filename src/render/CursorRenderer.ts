@@ -9,6 +9,7 @@ export class CursorRenderer {
   private activePointMarkerGroup: THREE.Group = new THREE.Group();
   private hoverGroup: THREE.Group = new THREE.Group();
   private pickboxGroup: THREE.Group = new THREE.Group();
+  private axisGroup: THREE.Group = new THREE.Group();
 
   constructor(scene: THREE.Scene, camera: THREE.OrthographicCamera) {
     this.scene = scene;
@@ -19,6 +20,7 @@ export class CursorRenderer {
     this.scene.add(this.activePointMarkerGroup);
     this.cursorGroup.add(this.hoverGroup);
     this.cursorGroup.add(this.pickboxGroup);
+    this.cursorGroup.add(this.axisGroup);
 
     this.cursorGroup.name = 'cursorGroup';
 
@@ -43,9 +45,12 @@ export class CursorRenderer {
     ]);
 
     const mat = new THREE.LineBasicMaterial({ color: cursorColor, depthTest: false, transparent: true });
-    // Full-screen crosshair removed as requested by user
-    // this.cursorGroup.add(new THREE.Line(hGeo, mat));
-    // this.cursorGroup.add(new THREE.Line(vGeo, mat));
+    
+    const hLine = new THREE.Line(hGeo, mat);
+    const vLine = new THREE.Line(vGeo, mat);
+    this.axisGroup.add(hLine);
+    this.axisGroup.add(vLine);
+    this.axisGroup.visible = false; // Default hidden
 
     // Add static origin axes
     const originColor = 0x222222;
@@ -88,6 +93,10 @@ export class CursorRenderer {
       new THREE.Vector3(-size, -size, 0)
     ]);
     this.pickboxGroup.add(new THREE.Line(geo, mat));
+  }
+
+  setAxisVisible(visible: boolean) {
+    this.axisGroup.visible = visible;
   }
 
   setActivePointMarker(x: number | null, y: number | null, z: number = 0.1, quaternion?: THREE.Quaternion) {

@@ -7,11 +7,12 @@ export class DraftingAidsRibbonBar extends RibbonBar {
   private orthoEl: HTMLElement;
   private xyzEl: HTMLElement;
   private modeEl!: HTMLElement;
+  private axisEl!: HTMLElement;
   private snapInput!: HTMLInputElement;
   private gridInput!: HTMLInputElement;
 
   constructor(
-    private onToggle: (type: 'snap' | 'grid' | 'ortho' | 'xyz' | 'mode') => void,
+    private onToggle: (type: 'snap' | 'grid' | 'ortho' | 'xyz' | 'mode' | 'axis') => void,
     private onSizeChange?: (type: 'snap' | 'grid', value: number) => void,
     initialSnap: number = 5,
     initialGrid: number = 10
@@ -30,6 +31,7 @@ export class DraftingAidsRibbonBar extends RibbonBar {
       <div class="ribbon-item toggle" id="ribbon-ortho">ORTHO</div>
       <div class="ribbon-item toggle" id="ribbon-xyz">XYZ</div>
       <div class="ribbon-item toggle" id="ribbon-mode">2D/3D</div>
+      <div class="ribbon-item toggle" id="ribbon-axis">AXIS</div>
     `;
 
     this.snapEl = this.content.querySelector('#ribbon-snap')!;
@@ -37,6 +39,7 @@ export class DraftingAidsRibbonBar extends RibbonBar {
     this.orthoEl = this.content.querySelector('#ribbon-ortho')!;
     this.xyzEl = this.content.querySelector('#ribbon-xyz')!;
     this.modeEl = this.content.querySelector('#ribbon-mode')!;
+    this.axisEl = this.content.querySelector('#ribbon-axis')!;
     this.snapInput = this.content.querySelector('#ribbon-snap-size')! as HTMLInputElement;
     this.gridInput = this.content.querySelector('#ribbon-grid-size')! as HTMLInputElement;
 
@@ -45,6 +48,7 @@ export class DraftingAidsRibbonBar extends RibbonBar {
     this.orthoEl.addEventListener('click', () => this.onToggle('ortho'));
     this.xyzEl.addEventListener('click', () => this.onToggle('xyz'));
     this.modeEl.addEventListener('click', () => this.onToggle('mode'));
+    this.axisEl.addEventListener('click', () => this.onToggle('axis'));
 
     this.snapInput.addEventListener('change', () => {
       const val = parseFloat(this.snapInput.value);
@@ -67,6 +71,7 @@ export class DraftingAidsRibbonBar extends RibbonBar {
     this.updateTag(this.orthoEl, status.ortho);
     this.updateTag(this.xyzEl, status.xyz);
     this.updateTag(this.modeEl, status.mode3d);
+    this.updateTag(this.axisEl, status.axis);
   }
 
   public updateSizes(snap: number, grid: number) {

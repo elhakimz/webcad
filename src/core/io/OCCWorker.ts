@@ -1061,15 +1061,8 @@ self.onmessage = async (e) => {
         // Use MakePipeShell for multiple profiles
         const sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spineWire);
         
-        // Try to set fixed binormal to Z axis to prevent twisting!
-        try {
-          const zDir = new oc.gp_Dir_4(0, 0, 1);
-          // @ts-ignore
-          sweepBuilder.SetMode_2(zDir);
-          zDir.delete();
-        } catch (e) {
-          sweepBuilder.SetMode_1(false); // Corrected Frenet
-        }
+        // Set mode to Frenet to make profile rotate with spine
+        sweepBuilder.SetMode_1(true); // true = Frenet mode
 
         if (cornerMode === 'MITER') {
           sweepBuilder.SetTransitionMode(oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner);

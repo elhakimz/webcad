@@ -1330,17 +1330,23 @@ self.onmessage = async (e) => {
           makeEdge.delete();
         }
 
-        // For closed profiles: add the closing edge from last point back to first
+        // For closed profiles: add the closing edge from last point back to first if not already closed
         if (isClosed) {
-          const pLast  = new oc.gp_Pnt_3(points[points.length-1].x, points[points.length-1].y, points[points.length-1].z);
-          const pFirst = new oc.gp_Pnt_3(points[0].x, points[0].y, points[0].z);
-          const closeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pLast, pFirst);
-          if (closeEdge.IsDone()) {
-            makeWire.Add_1(closeEdge.Edge());
+          const p0 = points[0];
+          const pN = points[points.length - 1];
+          const dist = Math.sqrt((p0.x - pN.x)**2 + (p0.y - pN.y)**2 + (p0.z - pN.z)**2);
+          
+          if (dist >= 1e-5) {
+            const pLast  = new oc.gp_Pnt_3(pN.x, pN.y, pN.z);
+            const pFirst = new oc.gp_Pnt_3(p0.x, p0.y, p0.z);
+            const closeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pLast, pFirst);
+            if (closeEdge.IsDone()) {
+              makeWire.Add_1(closeEdge.Edge());
+            }
+            pLast.delete();
+            pFirst.delete();
+            closeEdge.delete();
           }
-          pLast.delete();
-          pFirst.delete();
-          closeEdge.delete();
         }
 
         if (!makeWire.IsDone()) {
@@ -1516,6 +1522,27 @@ self.onmessage = async (e) => {
     } catch (error: any) {
       const errorMessage = decodeOCCError('transformShape', error);
       self.postMessage({ type: 'transformShape', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'rotateShape') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, rx, ry, rz, cx, cy, cz } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not cached for entity ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+      
+      const rotatedShape = applyRotation(shape, { x: rx, y: ry, z: rz }, oc, { x: cx, y: cy, z: cz });
+      
+      cacheShape(entityId, rotatedShape); // Update cache
+      
+      self.postMessage({ type: 'rotateShape', success: true, id });
+    } catch (error: any) {
+      const errorMessage = decodeOCCError('rotateShape', error);
+      self.postMessage({ type: 'rotateShape', success: false, error: errorMessage, id });
     }
   } else if (type === 'releaseShapes') {
     const { entityIds } = payload;

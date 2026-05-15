@@ -533,6 +533,7 @@ export class Viewer {
       obj.position.x = entity.x + width / 2;
       obj.position.y = entity.y + height / 2;
       obj.position.z = entity.elevation || 0;
+      obj.rotation.z = (entity.rotation || 0) * (Math.PI / 180);
     } else if (entity instanceof Note) {
       obj = this.createNoteObject(entity, previewColor);
     } else if (entity instanceof Spline || ('type' in entity && entity.type === 'spline_preview')) {

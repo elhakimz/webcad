@@ -195,9 +195,7 @@ export class MText extends Entity {
     const lineHeight = this.textHeight * this.lineSpacing;
     const totalHeight = lines.length * lineHeight;
 
-    if (this.height === 0) {
-      this.height = totalHeight;
-    }
+    this.height = Math.max(this.height, totalHeight);
 
     const boxOrigin = this.computeBoxOrigin(
       this.insertionPoint,

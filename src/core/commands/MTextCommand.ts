@@ -22,6 +22,11 @@ export class MTextCommand implements Command {
       this.width = Math.abs(x - this.firstCorner.x);
       this.height = Math.abs(y - this.firstCorner.y);
       
+      // Update text height based on box height if not zero
+      if (this.height > 0) {
+        this.textHeight = this.height;
+      }
+      
       // Fallback for zero width or height
       if (this.width === 0) this.width = 100;
       if (this.height === 0) this.height = this.textHeight; // Default to one line height roughly
@@ -79,14 +84,27 @@ export class MTextCommand implements Command {
     }
   }
 
-  getPreview(x: number, y: number, _units: UnitsConfig): PreviewObject | null {
+  getPreview(x: number, y: number, _units: UnitsConfig, doc?: IDocument): PreviewObject | null {
     this.currentMouseX = x;
     this.currentMouseY = y;
     
-    if (this.step === 1) {
-      return { type: 'xmarker', x: this.firstCorner.x, y: this.firstCorner.y } as XMarkerPreview;
+    if (this.step === 0) {
+      const mtext = new MText("PREVIEW", { x, y }, 10, 5, "Lorem Ipsum");
+      mtext.textHeight = this.textHeight;
+      mtext.elevation = doc?.currentElevation || 0;
+      mtext.layoutMText();
+      return mtext;
+    } else if (this.step === 1) {
+      const width = Math.abs(x - this.firstCorner.x);
+      const height = Math.abs(y - this.firstCorner.y);
+      const w = width > 0 ? width : 10;
+      const h = height > 0 ? height : 5;
+      const mtext = new MText("PREVIEW", { ...this.firstCorner }, w, h, "Lorem Ipsum");
+      mtext.textHeight = h > 0 ? h : 2.5; // Use box height as text height
+      mtext.elevation = doc?.currentElevation || 0;
+      mtext.layoutMText();
+      return mtext;
     } else if (this.step === 3) {
-      // Show a rubber band line from first corner to current mouse position to indicate height
       return new Line("PREVIEW", this.firstCorner.x, this.firstCorner.y, x, y);
     }
     return null;

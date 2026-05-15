@@ -547,6 +547,8 @@ export class Viewer {
       obj = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, previewColor);
     } else if (entity instanceof Ellipse) {
       obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle || 0, entity.endAngle || Math.PI * 2, entity.ccw !== false, previewColor);
+    } else if (entity instanceof MText) {
+      obj = this.createMTextObject(entity, previewColor);
     }
     return obj;
   }
@@ -662,19 +664,18 @@ export class Viewer {
     canvas.height = ch;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.scale(scale, scale);
-    ctx.clearRect(0, 0, entity.width, entity.height);
+    ctx.clearRect(0, 0, cw, ch);
 
     const color = aciToRgb(colorIndex);
     const hexColor = `#${color.toString(16).padStart(6, '0')}`;
     
-    ctx.font = `${entity.textHeight}px Arial`;
+    ctx.font = `${entity.textHeight * scale}px Arial`;
     ctx.fillStyle = hexColor;
     ctx.textBaseline = "top";
 
     entity.layoutLines.forEach(line => {
-      const canvasX = line.x - entity.bounds.x;
-      const canvasY = (entity.bounds.y + entity.height) - line.y;
+      const canvasX = (line.x - entity.bounds.x) * scale;
+      const canvasY = ((entity.bounds.y + entity.height) - line.y) * scale;
       ctx.fillText(line.text, canvasX, canvasY);
     });
 

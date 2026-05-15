@@ -14,42 +14,41 @@ export class Selection3DEngine {
   static CLICK_SAME_POS_TOLERANCE = 5; // drawing units
 
   private static getSolid3DMeshes(
-    scene: THREE.Scene,
+    selectableMeshes: THREE.Mesh[],
     selectableEntities: Entity[]
   ): THREE.Mesh[] {
     const result: THREE.Mesh[] = [];
     const selectableIds = new Set(selectableEntities.map(e => e.id));
 
-    scene.traverse(obj => {
+    for (const obj of selectableMeshes) {
+      const entityId = obj.userData && obj.userData.entityId;
       if (
-        obj instanceof THREE.Mesh &&
-        obj.userData.type === 'Solid3D' &&
-        obj.name &&
-        selectableIds.has(obj.name)
+        entityId &&
+        selectableIds.has(entityId)
       ) {
         result.push(obj);
       }
-    });
+    }
     return result;
   }
 
   static getSolid3DAt(
     ndc: THREE.Vector2,
     camera: THREE.OrthographicCamera,
-    scene: THREE.Scene,
+    selectableMeshes: THREE.Mesh[],
     doc: IDocument,
     selectableEntities: Entity[]
   ): Solid3D | null {
     raycaster.setFromCamera(ndc, camera);
 
-    const meshes = this.getSolid3DMeshes(scene, selectableEntities);
+    const meshes = this.getSolid3DMeshes(selectableMeshes, selectableEntities);
     if (meshes.length === 0) return null;
 
     const intersects = raycaster.intersectObjects(meshes, false);
     if (intersects.length === 0) return null;
 
     const hit = intersects[0];
-    const entityId = hit.object.name;
+    const entityId = hit.object.userData.entityId;
     const entity = doc.getEntity(entityId);
 
     if (entity instanceof Solid3D) return entity;
@@ -61,13 +60,13 @@ export class Selection3DEngine {
     worldX: number,
     worldY: number,
     camera: THREE.OrthographicCamera,
-    scene: THREE.Scene,
+    selectableMeshes: THREE.Mesh[],
     doc: IDocument,
     selectableEntities: Entity[]
   ): Solid3D | null {
     raycaster.setFromCamera(ndc, camera);
 
-    const meshes = this.getSolid3DMeshes(scene, selectableEntities);
+    const meshes = this.getSolid3DMeshes(selectableMeshes, selectableEntities);
     if (meshes.length === 0) {
       this.lastClickedId = null;
       return null;
@@ -94,11 +93,11 @@ export class Selection3DEngine {
       hit = intersects[0];
     }
 
-    this.lastClickedId = hit.object.name;
+    this.lastClickedId = hit.object.userData.entityId;
     this.lastClickWorldX = worldX;
     this.lastClickWorldY = worldY;
 
-    const entity = doc.getEntity(hit.object.name);
+    const entity = doc.getEntity(hit.object.userData.entityId);
     if (entity instanceof Solid3D) return entity;
     return null;
   }
@@ -106,20 +105,21 @@ export class Selection3DEngine {
   static getSubEntityAt(
     ndc: THREE.Vector2,
     camera: THREE.OrthographicCamera,
-    scene: THREE.Scene,
+    selectableMeshes: THREE.Mesh[],
+    edgeLines: THREE.Object3D[],
     doc: IDocument,
     selectableEntities: Entity[],
     mode: 'EDGE' | 'FACE'
   ): { entity: Solid3D, faceIndex?: number, edgeIndex?: number } | null {
     if (mode === 'FACE') {
       raycaster.setFromCamera(ndc, camera);
-      const meshes = this.getSolid3DMeshes(scene, selectableEntities);
+      const meshes = this.getSolid3DMeshes(selectableMeshes, selectableEntities);
       const intersects = raycaster.intersectObjects(meshes, false);
       
       if (intersects.length === 0) return null;
       
       const hit = intersects[0];
-      const entity = doc.getEntity(hit.object.name);
+      const entity = doc.getEntity(hit.object.userData.entityId);
       if (!(entity instanceof Solid3D)) return null;
       
       const triangleIndex = hit.faceIndex;
@@ -132,15 +132,10 @@ export class Selection3DEngine {
         }
       }
     } else if (mode === 'EDGE') {
-      // Collect all edge line objects from the scene that have been tagged with userData.edgeIndex
-      const edgeLines: THREE.Object3D[] = [];
-      scene.traverse(obj => {
-        if (obj.userData.edgeIndex !== undefined && obj.userData.entityId !== undefined) {
-          edgeLines.push(obj);
-        }
-      });
+      const selectableIds = new Set(selectableEntities.map(e => e.id));
+      const filteredEdgeLines = edgeLines.filter(l => l.userData.entityId && selectableIds.has(l.userData.entityId));
 
-      if (edgeLines.length === 0) return null;
+      if (filteredEdgeLines.length === 0) return null;
 
       const edgeRaycaster = new THREE.Raycaster();
       // Calculate threshold based on screen pixels to match pickbox size
@@ -149,7 +144,7 @@ export class Selection3DEngine {
       edgeRaycaster.params.Line = { threshold: worldTolerance };
       edgeRaycaster.setFromCamera(ndc, camera);
 
-      const hits = edgeRaycaster.intersectObjects(edgeLines, false);
+      const hits = edgeRaycaster.intersectObjects(filteredEdgeLines, false);
       if (hits.length === 0) return null;
 
       const hit = hits[0].object;
@@ -159,6 +154,62 @@ export class Selection3DEngine {
       const entity = doc.getEntity(entityId);
       if (entity instanceof Solid3D) {
         return { entity, edgeIndex };
+      }
+    }
+    
+    return null;
+  }
+
+  static getSubEntityAtSmart(
+    ndc: THREE.Vector2,
+    camera: THREE.OrthographicCamera,
+    selectableMeshes: THREE.Mesh[],
+    edgeLines: THREE.Object3D[],
+    doc: IDocument,
+    selectableEntities: Entity[]
+  ): { entity: Solid3D, faceIndex?: number, edgeIndex?: number } | null {
+    // 1. Try to find edges first with a smaller tolerance for "smart" mode
+    const selectableIds = new Set(selectableEntities.map(e => e.id));
+    const filteredEdgeLines = edgeLines.filter(l => l.userData.entityId && selectableIds.has(l.userData.entityId));
+
+    if (filteredEdgeLines.length > 0) {
+      const edgeRaycaster = new THREE.Raycaster();
+      const screenTolerance = 15; // 15 pixels tolerance for smart mode
+      const worldTolerance = screenTolerance / camera.zoom;
+      edgeRaycaster.params.Line = { threshold: worldTolerance };
+      edgeRaycaster.setFromCamera(ndc, camera);
+
+      const hits = edgeRaycaster.intersectObjects(filteredEdgeLines, false);
+      if (hits.length > 0) {
+        const hit = hits[0].object;
+        const entityId = hit.userData.entityId as string;
+        const edgeIndex = hit.userData.edgeIndex as number;
+
+        const entity = doc.getEntity(entityId);
+        if (entity instanceof Solid3D) {
+          return { entity, edgeIndex };
+        }
+      }
+    }
+
+    // 2. Fallback to faces if no edge is hit
+    raycaster.setFromCamera(ndc, camera);
+    const meshes = this.getSolid3DMeshes(selectableMeshes, selectableEntities);
+    const intersects = raycaster.intersectObjects(meshes, false);
+    
+    if (intersects.length > 0) {
+      const hit = intersects[0];
+      const entity = doc.getEntity(hit.object.userData.entityId);
+      if (entity instanceof Solid3D) {
+        const triangleIndex = hit.faceIndex;
+        if (triangleIndex !== undefined && triangleIndex !== null) {
+          const mesh = hit.object as THREE.Mesh;
+          const faceMapping = mesh.userData.faceMapping;
+          if (faceMapping && triangleIndex < faceMapping.length) {
+            const mappedFaceIndex = faceMapping[triangleIndex];
+            return { entity, faceIndex: mappedFaceIndex };
+          }
+        }
       }
     }
     
@@ -253,11 +304,11 @@ export class Selection3DEngine {
   static getHoveredSolid3D(
     ndc: THREE.Vector2,
     camera: THREE.OrthographicCamera,
-    scene: THREE.Scene,
+    selectableMeshes: THREE.Mesh[],
     doc: IDocument,
     selectableEntities: Entity[]
   ): Solid3D | null {
-    return this.getSolid3DAt(ndc, camera, scene, doc, selectableEntities);
+    return this.getSolid3DAt(ndc, camera, selectableMeshes, doc, selectableEntities);
   }
 
   static getConnectedSolid3Ds(seed: Solid3D, allSolids: Solid3D[]): Solid3D[] {

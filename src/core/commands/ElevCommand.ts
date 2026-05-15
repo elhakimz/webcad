@@ -6,8 +6,9 @@ export class ElevCommand implements Command {
   elevation = 0;
   thickness = 0;
 
-  getPrompt(): string {
-    return "New current elevation <0>:";
+  getPrompt(doc?: IDocument): string {
+    const elev = doc ? doc.currentElevation : 0;
+    return `New current elevation <${elev}>:`;
   }
 
   onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {

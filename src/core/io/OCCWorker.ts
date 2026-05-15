@@ -1844,6 +1844,10 @@ self.onmessage = async (e) => {
       if (!success) {
         if (typeof oc.BRepTools.Write_3 === 'function') {
           success = oc.BRepTools.Write_3(shape, brepFilename);
+        } else if (typeof oc.BRepTools.Write_2 === 'function') {
+          try { oc.BRepTools.Write_2(shape, brepFilename); success = true; } catch(e) { console.log("[Worker] BRepTools.Write_2 failed:", e); }
+        } else if (typeof oc.BRepTools.Write_1 === 'function') {
+          try { oc.BRepTools.Write_1(shape, brepFilename); success = true; } catch(e) { console.log("[Worker] BRepTools.Write_1 failed:", e); }
         } else if (typeof oc.BRepTools.Write === 'function') {
           try { success = oc.BRepTools.Write(shape, brepFilename); } catch(e) { }
         }

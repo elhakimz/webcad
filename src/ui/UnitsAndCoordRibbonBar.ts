@@ -6,21 +6,22 @@ export class UnitsAndCoordRibbonBar extends RibbonBar {
   private coordsEl: HTMLElement;
   private unitsEl: HTMLSelectElement;
 
-  constructor(private onUnitsChange?: (units: 'decimal' | 'architectural' | 'metric') => void) {
+  constructor(
+    private onUnitsChange?: (units: 'decimal' | 'architectural' | 'metric') => void,
+    private onResetElev?: () => void
+  ) {
     super("Units & Coords");
 
     this.content.innerHTML = `
       <div class="ribbon-item" style="white-space: nowrap;">
-        <span class="ribbon-label">Coords:</span>
-        <span class="ribbon-value" id="ribbon-coords">0.0000, 0.0000</span>
-      </div>
-      <div class="ribbon-item" style="white-space: nowrap;">
-        <span class="ribbon-label">Units:</span>
+        <span id="ribbon-coords">X:0.0000, Y:0.0000, Z:0.0000, E:0.0000</span>
+        <span style="margin-left: 10px;">Units:</span>
         <select id="ribbon-units" style="font-size: 11px; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); border-radius: var(--radius-sm);">
           <option value="decimal">Decimal</option>
           <option value="architectural">Architectural</option>
           <option value="metric">Metric</option>
         </select>
+        <button id="ribbon-reset-elev" style="margin-left: 5px; font-size: 11px; padding: 1px 5px; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); border-radius: var(--radius-sm); cursor: pointer;">[E:0]</button>
       </div>
     `;
 
@@ -32,10 +33,17 @@ export class UnitsAndCoordRibbonBar extends RibbonBar {
         this.onUnitsChange(this.unitsEl.value as 'decimal' | 'architectural' | 'metric');
       }
     });
+
+    const resetBtn = this.content.querySelector('#ribbon-reset-elev')!;
+    resetBtn.addEventListener('click', () => {
+      if (this.onResetElev) {
+        this.onResetElev();
+      }
+    });
   }
 
-  public updateCoordinates(x: number, y: number, units: UnitsConfig, z: number = 0) {
-    this.coordsEl.textContent = `${FormatUtils.formatValue(x, units)}, ${FormatUtils.formatValue(y, units)}, ${FormatUtils.formatValue(z, units)}`;
+  public updateCoordinates(x: number, y: number, units: UnitsConfig, z: number = 0, e: number = 0) {
+    this.coordsEl.textContent = `X:${FormatUtils.formatValue(x, units)}, Y:${FormatUtils.formatValue(y, units)}, Z:${FormatUtils.formatValue(z, units)}, E:${FormatUtils.formatValue(e, units)}`;
   }
 
   public updateUnits(units: UnitsConfig) {

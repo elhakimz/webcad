@@ -180,8 +180,12 @@ export class GizmoManager {
 
     this.controller.onDragEnd(this.renderer.root);
 
-    // Sync transform back to entity
     this.syncTransformToEntity();
+
+    // Re-apply selected edge highlight after transform
+    if (this.app.selectedEdge) {
+      this.viewer.highlightEdge(this.app.selectedEdge.entityId, this.app.selectedEdge.edgeIndex);
+    }
 
     e.stopPropagation();
   }

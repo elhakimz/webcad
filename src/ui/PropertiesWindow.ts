@@ -94,9 +94,9 @@ export class PropertiesWindow {
       this.addNumberField("Pos Y", solid.position.y, (val) => { this.updateSolidPos(solid, 'y', val); });
       this.addNumberField("Pos Z", solid.position.z, (val) => { this.updateSolidPos(solid, 'z', val); });
       
-      this.addNumberField("R X", solid.rotation.x, (val) => { this.updateSolidRot(solid, 'x', val); });
-      this.addNumberField("R Y", solid.rotation.y, (val) => { this.updateSolidRot(solid, 'y', val); });
-      this.addNumberField("R Z", solid.rotation.z, (val) => { this.updateSolidRot(solid, 'z', val); });
+      this.addNumberField("R X", solid.rotation.x * 180 / Math.PI, (val) => { this.updateSolidRot(solid, 'x', val * Math.PI / 180); });
+      this.addNumberField("R Y", solid.rotation.y * 180 / Math.PI, (val) => { this.updateSolidRot(solid, 'y', val * Math.PI / 180); });
+      this.addNumberField("R Z", solid.rotation.z * 180 / Math.PI, (val) => { this.updateSolidRot(solid, 'z', val * Math.PI / 180); });
       
       // Non-editable properties
       this.addPropertyField("Vertices", (solid.positions.length / 3).toString(), true);

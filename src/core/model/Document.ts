@@ -73,7 +73,7 @@ export class Document implements IDocument {
   getNextId(prefix: string): string {
     const count = (this.idCounters.get(prefix) || 0) + 1;
     this.idCounters.set(prefix, count);
-    return prefix + count;
+    return `${prefix}${count}_${Date.now()}`;
   }
 
   addEntity(entity: Entity) {

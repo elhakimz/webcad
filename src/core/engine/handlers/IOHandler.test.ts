@@ -13,6 +13,23 @@ vi.mock('../../io/dxfImport', () => {
   }
 })
 
+vi.mock('../../io/OpenCascadeService', () => {
+  return {
+    OpenCascadeService: {
+      getInstance: () => ({
+        clearCache: async () => {},
+        createBox: async () => {},
+        createCylinder: async () => {},
+        createExtrude: async () => {},
+        createSphere: async () => {},
+        createCone: async () => {},
+        createTorus: async () => {},
+        createRevolve: async () => {}
+      })
+    }
+  }
+})
+
 describe('IOHandler', () => {
   let doc: Document
   let context: AppContext
@@ -32,7 +49,8 @@ describe('IOHandler', () => {
           updateProjectionMatrix: vi.fn()
         },
         zoomAll: vi.fn(),
-        render: vi.fn()
+        render: vi.fn(),
+        setCameraView: vi.fn()
       } as unknown as AppContext['viewer'],
       cmd: {} as unknown as AppContext['cmd'],
       drafting: {} as unknown as AppContext['drafting'],

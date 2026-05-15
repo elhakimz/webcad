@@ -110,7 +110,7 @@ export interface Command {
   onInput?(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | Promise<CommandResponse> | undefined;
   getPreview?(x: number, y: number, units: UnitsConfig): PreviewObject | null;
   getReferencePoints?(): { x: number, y: number }[];
-  getPrompt?(): string;
+  getPrompt?(doc?: IDocument): string;
   getDynamicInput?(x: number, y: number, units: UnitsConfig): string[] | null;
   getOptions?(units: UnitsConfig): string[];
   step?: number;

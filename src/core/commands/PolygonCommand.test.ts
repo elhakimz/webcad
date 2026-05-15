@@ -14,11 +14,6 @@ describe('PolygonCommand', () => {
     // Step 1: Center
     cmd.onPoint(100, 100, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     expect(cmd.center).toEqual({ x: 100, y: 100 })
-    // removed
-
-    // Step 2: I/C
-    cmd.onInput('I', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
-    expect(cmd.inscribed).toBe(true)
     expect(cmd.step).toBe(3)
 
     // Step 3: Radius
@@ -64,7 +59,6 @@ describe('PolygonCommand', () => {
     const cmd = new PolygonCommand()
     cmd.onInput('', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) // Default sides = 4
     cmd.onPoint(0, 0, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) // Center
-    cmd.onInput('', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) // Default I
     const _res = cmd.onPoint(10, 0, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as Polyline
     // removed
     // removed
@@ -74,7 +68,6 @@ describe('PolygonCommand', () => {
     const cmd = new PolygonCommand()
     cmd.onInput('3', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     cmd.onPoint(0, 0, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
-    cmd.onInput('I', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 })
     const _preview = cmd.getPreview(10, 0, { type: 'decimal', precision: 2, scale: 1.0 }) as Polyline
     // removed
     // removed
@@ -92,10 +85,6 @@ describe('PolygonCommand', () => {
     expect(cmd.getOptions(units)).toEqual(["Edge"])
     
     cmd.onPoint(100, 100, 'DUMMY', units)
-    // Step 2: I/C
-    expect(cmd.getOptions(units)).toEqual(["Inscribed", "Circumscribed"])
-    
-    cmd.onInput('I', 'DUMMY', units)
     // Step 3: Radius
     expect(cmd.getOptions(units)).toEqual([])
   })
@@ -106,7 +95,6 @@ describe('PolygonCommand', () => {
     
     cmd.onInput('4', 'DUMMY', units)
     cmd.onPoint(100, 100, 'DUMMY', units)
-    cmd.onInput('I', 'DUMMY', units)
     
     // Test with pickPt (cursor angle 45 deg)
     const pickPt = { x: 200, y: 200 } // 45 degrees from (100,100)
@@ -133,10 +121,6 @@ describe('PolygonCommand', () => {
     expect(cmd.getDynamicInput(0, 0, units)).toEqual(["Edge/<Center of polygon>:"])
     
     cmd.onPoint(100, 100, 'DUMMY', units)
-    // Step 2: I/C
-    expect(cmd.getDynamicInput(0, 0, units)).toEqual(["Inscribed in circle/Circumscribed about circle (I/C) <I>:"])
-    
-    cmd.onInput('I', 'DUMMY', units)
     // Step 3: Radius
     const info = cmd.getDynamicInput(200, 100, units)
     expect(info).toEqual(["Radius of polygon:", "D:Distance: 100.00"])

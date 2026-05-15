@@ -20,7 +20,7 @@ export class PolygonCommand implements Command {
   inscribed = true
   edgeP1: Point | null = null
 
-  onInput(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }): CommandResponse | undefined {
+  onInput(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === PolygonState.SIDES) {
@@ -45,11 +45,7 @@ export class PolygonCommand implements Command {
       }
     }
 
-    if (this.step === PolygonState.INSCRIBED) {
-      this.inscribed = (val !== "C");
-      this.step = PolygonState.RADIUS
-      return "Radius of polygon:"
-    }
+
 
     if (this.step === PolygonState.RADIUS) {
       const radius = parseFloat(val);
@@ -62,28 +58,29 @@ export class PolygonCommand implements Command {
           const x = this.center!.x + radius * Math.cos(angle);
           const y = this.center!.y + radius * Math.sin(angle);
           
-          return this.onPoint(x, y, id, units);
+          return this.onPoint(x, y, id, units, doc);
         } else {
           // Default angle 0 if no pickPt
           const x = this.center!.x + radius;
           const y = this.center!.y;
-          return this.onPoint(x, y, id, units);
+          return this.onPoint(x, y, id, units, doc);
         }
       }
       return "Invalid radius. Radius of polygon:";
     }
   }
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig): CommandResponse {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse {
     if (this.step === PolygonState.CENTER_OR_EDGE) {
       this.center = { x, y }
-      this.step = PolygonState.INSCRIBED
-      return "Inscribed in circle/Circumscribed about circle (I/C) <I>:"
+      this.step = PolygonState.RADIUS
+      this.inscribed = true // Default to inscribed
+      return "Radius of polygon:"
     }
 
     if (this.step === PolygonState.RADIUS) {
       const vertices = calculatePolygonVerticesByCenter(this.center!, this.numSides, { x, y }, this.inscribed)
-      const poly = new Polyline(id, vertices.map(v => ({ ...v, bulge: 0 })), true)
+      const poly = new Polyline(id, vertices.map(v => ({ ...v, bulge: 0 })), true, doc?.currentElevation || 0, doc?.currentThickness || 0)
       
       const dist = Math.sqrt((x - this.center!.x) ** 2 + (y - this.center!.y) ** 2)
       const angle = Math.atan2(y - this.center!.y, x - this.center!.x) * (180 / Math.PI)
@@ -103,7 +100,7 @@ export class PolygonCommand implements Command {
 
     if (this.step === PolygonState.EDGE_P2) {
         const vertices = calculatePolygonVerticesByEdge(this.edgeP1!, { x, y }, this.numSides)
-        const poly = new Polyline(id, vertices.map(v => ({ ...v, bulge: 0 })), true)
+        const poly = new Polyline(id, vertices.map(v => ({ ...v, bulge: 0 })), true, doc?.currentElevation || 0, doc?.currentThickness || 0)
         this.step = PolygonState.SIDES
         return poly
     }
@@ -138,7 +135,6 @@ export class PolygonCommand implements Command {
   getPrompt() {
     if (this.step === PolygonState.SIDES) return "Number of sides <4>:";
     if (this.step === PolygonState.CENTER_OR_EDGE) return "Edge/<Center of polygon>:";
-    if (this.step === PolygonState.INSCRIBED) return "Inscribed in circle/Circumscribed about circle (I/C) <I>:";
     if (this.step === PolygonState.RADIUS) return "Radius of polygon:";
     if (this.step === PolygonState.EDGE_P1) return "First endpoint of edge:";
     if (this.step === PolygonState.EDGE_P2) return "Second endpoint of edge:";
@@ -147,14 +143,12 @@ export class PolygonCommand implements Command {
 
   getOptions(_units: UnitsConfig): string[] {
     if (this.step === PolygonState.CENTER_OR_EDGE) return ["Edge"];
-    if (this.step === PolygonState.INSCRIBED) return ["Inscribed", "Circumscribed"];
     return [];
   }
 
   getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
     if (this.step === PolygonState.SIDES) return ["Number of sides <4>:"];
     if (this.step === PolygonState.CENTER_OR_EDGE) return ["Edge/<Center of polygon>:"];
-    if (this.step === PolygonState.INSCRIBED) return ["Inscribed in circle/Circumscribed about circle (I/C) <I>:"];
     
     if (this.step === PolygonState.RADIUS) {
       const dist = Math.sqrt((x - this.center!.x) ** 2 + (y - this.center!.y) ** 2);

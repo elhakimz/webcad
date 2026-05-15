@@ -56,32 +56,25 @@ export class GridRenderer {
     while (this.gridGroup.children.length > 0) {
       const obj = this.gridGroup.children[0];
       this.gridGroup.remove(obj);
-      if (obj instanceof THREE.Points) {
-        obj.geometry.dispose();
-        (obj.material as THREE.Material).dispose();
-      }
+      const anyObj = obj as any;
+      if (anyObj.geometry) anyObj.geometry.dispose();
+      if (anyObj.material) anyObj.material.dispose();
     }
 
     if (!enabled) return;
 
-    // Create a large grid around the current view
-    const count = 100; // 100x100 grid of dots
-    const positions = [];
-    
     // Align grid to the camera center
     const cx = Math.round(cameraPosition.x / spacing) * spacing;
     const cy = Math.round(cameraPosition.y / spacing) * spacing;
 
-    for (let i = -count; i <= count; i++) {
-        for (let j = -count; j <= count; j++) {
-            positions.push(cx + i * spacing, cy + j * spacing, -0.5);
-        }
-    }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const mat = new THREE.PointsMaterial({ color: 0x444444, size: 1, sizeAttenuation: false });
-    const grid = new THREE.Points(geo, mat);
+    const count = 50; // 50 lines in each direction
+    const size = count * spacing * 2;
+    const divisions = count * 2;
+    
+    // Lighten colors: 0x777777 for center lines, 0x444444 for grid lines
+    const grid = new THREE.GridHelper(size, divisions, 0x777777, 0x444444);
+    grid.position.set(cx, cy, -0.5);
+    grid.rotation.x = Math.PI / 2; // Rotate to XY plane
     this.gridGroup.add(grid);
   }
 

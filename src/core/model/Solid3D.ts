@@ -27,6 +27,14 @@ export class Solid3D extends Entity {
       this.positions[i] += dx;
       this.positions[i + 1] += dy;
     }
+    if (this.edgeLines) {
+      for (const edge of this.edgeLines) {
+        for (let i = 0; i < edge.length; i += 3) {
+          edge[i] += dx;
+          edge[i + 1] += dy;
+        }
+      }
+    }
   }
 
   move3D(dx: number, dy: number, dz: number) {
@@ -34,6 +42,15 @@ export class Solid3D extends Entity {
       this.positions[i] += dx;
       this.positions[i + 1] += dy;
       this.positions[i + 2] += dz;
+    }
+    if (this.edgeLines) {
+      for (const edge of this.edgeLines) {
+        for (let i = 0; i < edge.length; i += 3) {
+          edge[i] += dx;
+          edge[i + 1] += dy;
+          edge[i + 2] += dz;
+        }
+      }
     }
   }
 
@@ -117,7 +134,13 @@ export class Solid3D extends Entity {
   }
 
   clone(newId: string): Solid3D {
-    const copy = new Solid3D(newId, [...this.positions], [...this.indices]);
+    const copy = new Solid3D(
+      newId, 
+      [...this.positions], 
+      [...this.indices], 
+      this.faceMapping ? [...this.faceMapping] : undefined,
+      this.edgeLines ? this.edgeLines.map(arr => [...arr]) : undefined
+    );
     copy.layer = this.layer;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     copy.position = { ...this.position };

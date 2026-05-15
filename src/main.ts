@@ -54,6 +54,15 @@ const unitsRibbon = new UnitsAndCoordRibbonBar((type) => {
   app.doc.units.type = type;
   app.syncFromDocument();
   if (updateStatusBar) updateStatusBar();
+}, () => {
+  // Reset elev callback
+  app.doc.currentElevation = 0;
+  app.currentZ = 0;
+  // Update coordinates display immediately
+  if ((app as any).lastWorldPt) {
+    const pt = (app as any).lastWorldPt;
+    unitsRibbon.updateCoordinates(pt.x, pt.y, app.doc.units, app.currentZ, app.doc.currentElevation);
+  }
 });
 const displayRibbon = new DisplayRibbonBar(async (action) => {
   if (action === 'PAN') {
@@ -248,7 +257,7 @@ let lastMouseY = 0
 function updatePrompt() {
   const activeCmd = app.cmd.active;
   if (activeCmd && activeCmd.getPrompt) {
-    const prompt = activeCmd.getPrompt();
+    const prompt = activeCmd.getPrompt(app.doc);
     cmdLine.setPrompt(prompt);
     
     // Auto-focus command line for specific inputs that primarily expect text/numbers
@@ -300,6 +309,7 @@ window.addEventListener("mousemove", (e) => {
     // Change Z based on mouse Y delta
     // Moving UP (negative dy) increases Z
     app.currentZ -= dy * 0.5;
+    app.doc.currentElevation = app.currentZ; // Also set elevation
   }
 
   const rect = viewer.canvas.getBoundingClientRect();
@@ -332,7 +342,7 @@ window.addEventListener("mousemove", (e) => {
         const clampedY = Math.max(rect.top, lastMouseY); 
         
         const worldPt = viewer.screenToWorld(clampedX, clampedY);
-        unitsRibbon.updateCoordinates(worldPt.x, worldPt.y, app.doc.units, app.currentZ);
+        unitsRibbon.updateCoordinates(worldPt.x, worldPt.y, app.doc.units, app.currentZ, app.doc.currentElevation);
         app.move(clampedX, clampedY);
         updatePrompt();
       }, 50);
@@ -348,7 +358,7 @@ window.addEventListener("mousemove", (e) => {
   const clampedY = Math.max(rect.top, e.clientY); 
 
   const worldPt = viewer.screenToWorld(clampedX, clampedY)
-  unitsRibbon.updateCoordinates(worldPt.x, worldPt.y, app.doc.units, app.currentZ)
+  unitsRibbon.updateCoordinates(worldPt.x, worldPt.y, app.doc.units, app.currentZ, app.doc.currentElevation)
   app.move(clampedX, clampedY, e.ctrlKey, e.shiftKey)
   if (app.cmd.active) {
     updatePrompt()

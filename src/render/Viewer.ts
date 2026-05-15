@@ -57,6 +57,9 @@ export class Viewer {
   private selectionBox: THREE.Line | null = null
   private shadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' = 'WIREFRAME';
   public target: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
+  public selectableMeshes: THREE.Mesh[] = [];
+  public edgeLines: THREE.Object3D[] = [];
+  public directionalLight: THREE.DirectionalLight | null = null;
 
   constructor(canvas:HTMLCanvasElement){
     this.canvas = canvas
@@ -78,13 +81,6 @@ export class Viewer {
     this.scene.add(this.boundaryGroup);
     this.scene.add(this.baseLineGroup);
 
-    // Add lights for shading
-    const ambientLight = new THREE.AmbientLight(0x666666);
-    this.scene.add(ambientLight);
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(1, 1, 1).normalize();
-    this.scene.add(directionalLight);
-
     this.gridRenderer = new GridRenderer(this.scene);
     
     // Setup Orthographic Camera with dummy bounds, resize() will set them correctly
@@ -93,6 +89,10 @@ export class Viewer {
     this.cursorRenderer = new CursorRenderer(this.scene, this.camera);
 
     this.renderer = new THREE.WebGLRenderer({canvas})
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    
+
     
     this.resize();
     this.camera.position.set(0, 0, 500);
@@ -307,14 +307,23 @@ export class Viewer {
   setShadingMode(mode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN') {
     this.shadingMode = mode;
     this.scene.traverse((obj) => {
-      if (obj instanceof THREE.Mesh && obj.userData.type !== 'Text') {
+      if (obj instanceof THREE.Mesh && obj.userData.type !== 'Text' && obj.userData.type !== 'Edge' && obj.userData.type !== 'Silhouette') {
         const material = obj.material as any;
         const color = material.color;
         if (color) {
           obj.material = this.getMeshMaterial(color.getHex());
         }
       }
+      if (obj.userData.type === 'Silhouette') {
+        obj.visible = (mode === 'SHADED');
+      }
     });
+    
+    // Show edges only in SHADED mode
+    this.edgeLines.forEach(edge => {
+      edge.visible = (mode === 'SHADED');
+    });
+    
     this.scheduleRender();
   }
 
@@ -328,11 +337,16 @@ export class Viewer {
       case 'SHADED':
         return new THREE.MeshLambertMaterial(offsetOptions);
       case 'PHONG':
-        return new THREE.MeshPhongMaterial({ ...offsetOptions, shininess: 30 });
+        return new THREE.MeshPhongMaterial({ 
+          ...offsetOptions, 
+          shininess: 40, 
+          specular: 0x444444,
+          emissive: 0x111111 // Subtle glow to match CATIA's soft shading
+        });
       case 'BLINN':
-        return new THREE.MeshStandardMaterial({ ...offsetOptions, roughness: 0.5, metalness: 0.5 });
+        return new THREE.MeshStandardMaterial({ ...offsetOptions, roughness: 0.2, metalness: 0.1 });
       default:
-        return new THREE.MeshPhongMaterial({ ...offsetOptions, shininess: 30 });
+        return new THREE.MeshPhongMaterial({ ...offsetOptions, shininess: 40, specular: 0x444444, emissive: 0x111111 });
     }
   }
 
@@ -1097,10 +1111,17 @@ export class Viewer {
     obj.quaternion.setFromEuler(euler);
     
     this.scene.add(obj);
+    const mesh = obj.children.find(child => child instanceof THREE.Mesh && child.userData.type === 'Solid3D') as THREE.Mesh;
+    if (mesh) {
+      this.selectableMeshes.push(mesh);
+    }
   }
 
   private createSolid3DObject(entity: Solid3D, colorIndex: number): THREE.Object3D {
-    const color = aciToRgb(colorIndex);
+    let color = aciToRgb(colorIndex);
+    if (color === 0xffffff) {
+      color = 0xebf2ff; // Very light bluish gray like CATIA
+    }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(entity.positions, 3));
     geometry.setIndex(entity.indices);
@@ -1109,14 +1130,19 @@ export class Viewer {
     // Compute bounding box and center
     geometry.computeBoundingBox();
     const center = geometry.boundingBox!.getCenter(new THREE.Vector3());
+    const size = new THREE.Vector3();
+    geometry.boundingBox!.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const edgeRadius = Math.max(0.02, maxDim * 0.002); // Adaptive thickness (thinner)
     
     // Translate geometry to be centered at (0,0,0) locally
     geometry.translate(-center.x, -center.y, -center.z);
     
     const material = this.getMeshMaterial(color);
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.userData = { type: 'Solid3D', faceMapping: entity.faceMapping };
-    mesh.name = entity.id;
+    mesh.userData = { type: 'Solid3D', faceMapping: entity.faceMapping, entityId: entity.id };
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
     
     // Create edges geometry
     let line: THREE.Object3D;
@@ -1135,8 +1161,13 @@ export class Viewer {
           pt.sub(center);
         }
         
-        const lineMat = new THREE.MeshBasicMaterial({ color: 0xa9a9a9 }); // Dark gray edges
-        const radius = 0.15; // Thicker radius in world units (was 0.05)
+        const lineMat = new THREE.MeshBasicMaterial({ 
+          color: 0x000000, // Pure black edges for maximum contrast
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1
+        });
+        const radius = edgeRadius; // Adaptive thickness
         
         for (let i = 0; i < pts.length - 1; i++) {
           const p1 = pts[i];
@@ -1156,20 +1187,61 @@ export class Viewer {
           
           cyl.userData.edgeIndex = edgeIdx;
           cyl.userData.entityId = entity.id;
+          cyl.userData.type = 'Edge';
           edgeGroup.add(cyl);
+          this.edgeLines.push(cyl);
         }
       }
       line = edgeGroup;
     } else {
-      // Fallback to EdgesGeometry
+      // Fallback to EdgesGeometry and create cylinders
       const edges = new THREE.EdgesGeometry(geometry, 1);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0xa9a9a9 }); // Dark gray edges
-      line = new THREE.LineSegments(edges, lineMat);
+      const posAttr = edges.attributes.position;
+      const edgeGroup = new THREE.Group();
+      
+      const fallbackLineMat = new THREE.MeshBasicMaterial({ 
+        color: 0x000000, 
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1
+      });
+      
+      for (let i = 0; i < posAttr.count; i += 2) {
+        const p1 = new THREE.Vector3().fromBufferAttribute(posAttr, i);
+        const p2 = new THREE.Vector3().fromBufferAttribute(posAttr, i + 1);
+        
+        const distance = p1.distanceTo(p2);
+        if (distance < 0.001) continue;
+        
+        const cylGeo = new THREE.CylinderGeometry(edgeRadius, edgeRadius, distance, 6);
+        const cyl = new THREE.Mesh(cylGeo, fallbackLineMat);
+        
+        cyl.position.copy(p1).add(p2).multiplyScalar(0.5);
+        const direction = p2.clone().sub(p1).normalize();
+        cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+        
+        cyl.userData.type = 'Edge';
+        cyl.userData.entityId = entity.id;
+        edgeGroup.add(cyl);
+        this.edgeLines.push(cyl);
+      }
+      line = edgeGroup;
     }
     
     const group = new THREE.Group();
     group.add(mesh);
     group.add(line);
+    
+    // Create silhouette (inverted hull)
+    const hullMat = new THREE.MeshBasicMaterial({ 
+      color: 0x000000, 
+      side: THREE.BackSide 
+    });
+    const hull = new THREE.Mesh(geometry.clone(), hullMat);
+    hull.scale.set(1.005, 1.005, 1.005); // Thinner silhouette
+    hull.userData.type = 'Silhouette';
+    group.add(hull);
+    
     group.userData = { type: 'Solid3D' };
     
     // Set group position to world center
@@ -1239,21 +1311,27 @@ export class Viewer {
     entityEdgeLines.forEach(line => {
       const mat = (line as any).material;
       if (mat && mat.color) {
-        mat.color.setHex(0xa9a9a9);
+        mat.color.setHex(0x000000); // Reset to black
+        mat.polygonOffset = false;
         mat.needsUpdate = true;
       }
+      line.scale.set(1, 1, 1);
     });
 
     // Highlight the specific edge
     if (edgeIndex !== null) {
-      const target = entityEdgeLines.find(l => l.userData.edgeIndex === edgeIndex);
-      if (target) {
+      const targets = entityEdgeLines.filter(l => l.userData.edgeIndex === edgeIndex);
+      targets.forEach(target => {
         const mat = (target as any).material;
         if (mat && mat.color) {
           mat.color.setHex(0xffa500); // Orange
+          mat.polygonOffset = true;
+          mat.polygonOffsetFactor = -2;
+          mat.polygonOffsetUnits = -2;
           mat.needsUpdate = true;
         }
-      }
+        target.scale.set(4, 1, 4); // Make it 4x thicker
+      });
     }
 
     this.scheduleRender();
@@ -2371,6 +2449,8 @@ export class Viewer {
     const obj = this.scene.getObjectByName(id);
     if (obj) {
       this.scene.remove(obj);
+      this.selectableMeshes = this.selectableMeshes.filter(m => m.name !== id);
+      this.edgeLines = this.edgeLines.filter(l => l.userData.entityId !== id);
       obj.traverse((child) => {
         if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
           child.geometry.dispose();
@@ -2385,6 +2465,8 @@ export class Viewer {
   }
 
   clear() {
+    this.selectableMeshes = [];
+    this.edgeLines = [];
     const toRemove: THREE.Object3D[] = [];
     this.scene.traverse((obj) => {
       if (obj.name && obj.name !== 'helperGroup' && obj.name !== 'boundaryGroup' && 
@@ -2494,31 +2576,52 @@ export class Viewer {
       const isHighlighted = ids.includes(obj.name!);
       
       if (obj instanceof THREE.Group) {
+        const isSolid3D = obj.userData && obj.userData.type === 'Solid3D';
         obj.traverse((child) => {
           if (child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Mesh) {
             const childName = obj.name + '_' + child.uuid;
             const originalColor = this.originalColors.get(childName);
             
             if (isHighlighted) {
-              const targetColor = highlightColor;
-              if (child.material) {
-                if (Array.isArray(child.material)) {
-                  child.material.forEach(m => {
-                    if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
-                  });
-                } else if ('color' in child.material) {
-                  (child.material as THREE.MeshBasicMaterial).color.set(targetColor);
+              if (isSolid3D) {
+                // For solid objects, don't change mesh color to yellow
+                // Instead, make edges black and thick
+                if (child instanceof THREE.Mesh && child.userData && child.userData.edgeIndex !== undefined) {
+                  if (child.material) {
+                    if ('color' in child.material) (child.material as THREE.MeshBasicMaterial).color.set(0x0000ff);
+                  }
+                  child.scale.set(2, 1, 2); // Make it thicker
+                }
+              } else {
+                const targetColor = highlightColor;
+                if (child.material) {
+                  if (Array.isArray(child.material)) {
+                    child.material.forEach(m => {
+                      if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
+                    });
+                  } else if ('color' in child.material) {
+                    (child.material as THREE.MeshBasicMaterial).color.set(targetColor);
+                  }
                 }
               }
             } else if (originalColor !== undefined) {
-              const targetColor = originalColor;
-              if (child.material) {
-                if (Array.isArray(child.material)) {
-                  child.material.forEach(m => {
-                    if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
-                  });
-                } else if ('color' in child.material) {
-                  (child.material as THREE.MeshBasicMaterial).color.set(targetColor);
+              if (isSolid3D) {
+                if (child instanceof THREE.Mesh && child.userData && child.userData.edgeIndex !== undefined) {
+                  if (child.material) {
+                    if ('color' in child.material) (child.material as THREE.MeshBasicMaterial).color.set(originalColor);
+                  }
+                  child.scale.set(1, 1, 1); // Restore scale
+                }
+              } else {
+                const targetColor = originalColor;
+                if (child.material) {
+                  if (Array.isArray(child.material)) {
+                    child.material.forEach(m => {
+                      if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(targetColor);
+                    });
+                  } else if ('color' in child.material) {
+                    (child.material as THREE.MeshBasicMaterial).color.set(targetColor);
+                  }
                 }
               }
             }
@@ -2555,17 +2658,25 @@ export class Viewer {
   clearHighlight() {
     this.scene.traverse((obj) => {
       if (obj instanceof THREE.Group) {
+        const isSolid3D = obj.userData && obj.userData.type === 'Solid3D';
         obj.traverse((child) => {
           if (child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Mesh) {
             const childName = obj.name + '_' + child.uuid;
             if (this.originalColors.has(childName) && child.material) {
               const originalColor = this.originalColors.get(childName)!;
-              if (Array.isArray(child.material)) {
-                child.material.forEach(m => {
-                  if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(originalColor);
-                });
-              } else if ('color' in child.material) {
-                (child.material as THREE.MeshBasicMaterial).color.set(originalColor);
+              if (isSolid3D) {
+                if (child instanceof THREE.Mesh && child.userData && child.userData.edgeIndex !== undefined) {
+                  if ('color' in child.material) (child.material as THREE.MeshBasicMaterial).color.set(originalColor);
+                  child.scale.set(1, 1, 1); // Restore scale
+                }
+              } else {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(m => {
+                    if (m && 'color' in m) (m as THREE.MeshBasicMaterial).color.set(originalColor);
+                  });
+                } else if ('color' in child.material) {
+                  (child.material as THREE.MeshBasicMaterial).color.set(originalColor);
+                }
               }
             }
           }

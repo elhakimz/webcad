@@ -1456,6 +1456,7 @@ export class Viewer {
   addEllipse(entity: Ellipse, layer?: string, color?: number, isVisible = true) {
     const obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle, entity.endAngle, entity.ccw, color || 7);
     obj.name = entity.id;
+    obj.position.z = entity.elevation || 0;
     if (layer) {
       obj.userData = { layer };
     }

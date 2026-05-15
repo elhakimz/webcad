@@ -1,21 +1,25 @@
 import { RibbonBar } from "./RibbonBar";
 
-export class DisplayRibbonBar extends RibbonBar {
-  private onAction: (action: string) => void;
-  constructor(onAction: (action: string) => void) {
-    super("Display");
-    this.onAction = onAction;
+export class SettingsRibbonBar extends RibbonBar {
+  constructor(private onThemeChange: (theme: 'dark' | 'light') => void) {
+    super("Settings");
     this.initContent();
   }
 
   private initContent() {
-    const panBtn = this.createButton("Pan", () => this.onAction("PAN"));
-    const zoomAllBtn = this.createButton("Zoom All", () => this.onAction("ZOOM_ALL"));
-    const zoomWindowBtn = this.createButton("Zoom Window", () => this.onAction("ZOOM_WINDOW"));
-    
-    this.content.appendChild(panBtn);
-    this.content.appendChild(zoomAllBtn);
-    this.content.appendChild(zoomWindowBtn);
+    const settingsBtn = this.createButton("Settings", () => {
+      // TODO: display app settings dialog
+      alert("Settings dialog not implemented yet.");
+    });
+
+    const themeBtn = this.createButton("Light Theme", () => {
+      const isLight = document.body.classList.toggle('light-theme');
+      themeBtn.textContent = isLight ? "Dark Theme" : "Light Theme";
+      this.onThemeChange(isLight ? 'light' : 'dark');
+    });
+
+    this.content.appendChild(settingsBtn);
+    this.content.appendChild(themeBtn);
   }
 
   private createButton(label: string, onClick: () => void): HTMLElement {

@@ -102,6 +102,27 @@ export class Viewer {
     this.loadFont()
   }
 
+  public setTheme(theme: 'dark' | 'light') {
+    const bgCanvas = document.createElement('canvas');
+    bgCanvas.width = 2;
+    bgCanvas.height = 512;
+    const bgCtx = bgCanvas.getContext('2d')!;
+    const bgGradient = bgCtx.createLinearGradient(0, 0, 0, 512);
+    
+    if (theme === 'light') {
+      bgGradient.addColorStop(0, '#023466'); // CATIA Dark Blue top
+      bgGradient.addColorStop(1, '#5C85AD'); // CATIA Light Blue bottom
+    } else {
+      bgGradient.addColorStop(0, '#000000'); // Pure black top
+      bgGradient.addColorStop(1, '#002222'); // Very dark cyan bottom
+    }
+    
+    bgCtx.fillStyle = bgGradient;
+    bgCtx.fillRect(0, 0, 2, 512);
+    this.scene.background = new THREE.CanvasTexture(bgCanvas);
+    this.scheduleRender();
+  }
+
   private loadFont() {
     const loader = new TTFLoader();
     loader.load('/fonts/osifont.ttf', (json: object) => {
@@ -540,7 +561,33 @@ export class Viewer {
       const sp = (entity instanceof Spline) ? entity : (entity as SplinePreview);
       const pts = tessellateSpline(sp.controlPoints, sp.degree, sp.knots);
       const geom = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, 0)));
-      obj = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: previewColor }));
+      const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: previewColor }));
+      
+      const group = new THREE.Group();
+      group.add(line);
+      
+      // Draw control hull (dashed lines)
+      const hullGeom = new THREE.BufferGeometry().setFromPoints(sp.controlPoints.map(p => new THREE.Vector3(p.x, p.y, 0)));
+      const hullMat = new THREE.LineDashedMaterial({ color: 0x888888, dashSize: 5, gapSize: 5 });
+      const hull = new THREE.Line(hullGeom, hullMat);
+      hull.computeLineDistances();
+      group.add(hull);
+      
+      // Draw control points as 'x' markers
+      const markerSize = 5 / this.camera.zoom;
+      sp.controlPoints.forEach(p => {
+        const markerGeom = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(p.x - markerSize, p.y - markerSize, 0),
+          new THREE.Vector3(p.x + markerSize, p.y + markerSize, 0),
+          new THREE.Vector3(p.x - markerSize, p.y + markerSize, 0),
+          new THREE.Vector3(p.x + markerSize, p.y - markerSize, 0)
+        ]);
+        const markerMat = new THREE.LineBasicMaterial({ color: 0x00ffff });
+        const marker = new THREE.LineSegments(markerGeom, markerMat);
+        group.add(marker);
+      });
+      
+      obj = group;
     } else if (entity instanceof Solid) {
       obj = this.createSolidObject(entity, previewColor);
     } else if (entity instanceof Donut) {
@@ -851,6 +898,26 @@ export class Viewer {
         }
       }
     }
+
+    // Add control points for PLINE
+    const markersGroup = new THREE.Group();
+    markersGroup.name = 'control_points';
+    markersGroup.visible = false; // Hide by default!
+    
+    const markerSize = 5 / this.camera.zoom;
+    entity.vertices.forEach(v => {
+      const markerGeom = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(v.x - markerSize, v.y - markerSize, elevation),
+        new THREE.Vector3(v.x + markerSize, v.y + markerSize, elevation),
+        new THREE.Vector3(v.x - markerSize, v.y + markerSize, elevation),
+        new THREE.Vector3(v.x + markerSize, v.y - markerSize, elevation)
+      ]);
+      const markerMat = new THREE.LineBasicMaterial({ color: 0x00ffff });
+      const marker = new THREE.LineSegments(markerGeom, markerMat);
+      markersGroup.add(marker);
+    });
+    
+    group.add(markersGroup);
     return group;
   }
 
@@ -1826,7 +1893,38 @@ export class Viewer {
       return group;
     } else {
       const geometry = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, 0)));
-      return new THREE.Line(geometry, material);
+      const line = new THREE.Line(geometry, material);
+      
+      const group = new THREE.Group();
+      group.add(line);
+      
+      const markersGroup = new THREE.Group();
+      markersGroup.name = 'control_points';
+      markersGroup.visible = false; // Hide by default!
+      
+      // Draw control hull (dashed lines)
+      const hullGeom = new THREE.BufferGeometry().setFromPoints(entity.controlPoints.map(p => new THREE.Vector3(p.x, p.y, 0)));
+      const hullMat = new THREE.LineDashedMaterial({ color: 0x888888, dashSize: 5, gapSize: 5 });
+      const hull = new THREE.Line(hullGeom, hullMat);
+      hull.computeLineDistances();
+      markersGroup.add(hull);
+      
+      // Draw control points as 'x' markers
+      const markerSize = 5 / this.camera.zoom;
+      entity.controlPoints.forEach(p => {
+        const markerGeom = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(p.x - markerSize, p.y - markerSize, 0),
+          new THREE.Vector3(p.x + markerSize, p.y + markerSize, 0),
+          new THREE.Vector3(p.x - markerSize, p.y + markerSize, 0),
+          new THREE.Vector3(p.x + markerSize, p.y - markerSize, 0)
+        ]);
+        const markerMat = new THREE.LineBasicMaterial({ color: 0x00ffff });
+        const marker = new THREE.LineSegments(markerGeom, markerMat);
+        markersGroup.add(marker);
+      });
+      
+      group.add(markersGroup);
+      return group;
     }
   }
 
@@ -2532,6 +2630,15 @@ export class Viewer {
         if (layerInfo) {
           obj.visible = layerInfo.isVisible && !layerInfo.isFrozen;
         }
+      }
+    });
+    this.render();
+  }
+
+  setControlPointsVisibility(visible: boolean) {
+    this.scene.traverse((obj) => {
+      if (obj.name === 'control_points') {
+        obj.visible = visible;
       }
     });
     this.render();

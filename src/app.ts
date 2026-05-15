@@ -366,6 +366,7 @@ export class App {
     }
 
     const res = this.cmd.execute(cmd, this.doc.units, selection, this.doc.entities);
+    this.viewer.setControlPointsVisibility(this.cmd.active !== null);
     return await this.handleResult(res);
   }
 
@@ -1174,6 +1175,7 @@ export class App {
 
   public terminateActiveCommand() {
     this.cmd.clearActive();
+    this.viewer.setControlPointsVisibility(false);
     this.doc.history.commitTransaction(); // Commit any dangling transaction (e.g. from PLINE)
     this.viewer.setHelpers(null);
     this.viewer.setPreview(null);

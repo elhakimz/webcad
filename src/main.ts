@@ -6,6 +6,7 @@ import { LayerInfoRibbonBar } from "./ui/LayerInfoRibbonBar"
 import { DraftingAidsRibbonBar } from "./ui/DraftingAidsRibbonBar"
 import { UnitsAndCoordRibbonBar } from "./ui/UnitsAndCoordRibbonBar"
 import { DisplayRibbonBar } from "./ui/DisplayRibbonBar"
+import { SettingsRibbonBar } from "./ui/SettingsRibbonBar"
 import { DazViewControl } from "./ui/DazViewControl"
 import { OpenCascadeService } from "./core/io/OpenCascadeService.js"
 import { FloatingToolbar } from "./ui/FloatingToolbar"
@@ -84,6 +85,11 @@ ribbonContainer.addBar(layerRibbon);
 ribbonContainer.addBar(draftingRibbon);
 ribbonContainer.addBar(unitsRibbon);
 ribbonContainer.addBar(displayRibbon);
+
+const settingsRibbon = new SettingsRibbonBar((theme) => {
+  viewer.setTheme(theme);
+});
+ribbonContainer.addBar(settingsRibbon);
 
 const dazControl = new DazViewControl(viewer, app);
 const vpContainer = document.getElementById('viewport-container');

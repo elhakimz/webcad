@@ -72,7 +72,6 @@ export class DynamicInput {
 
     document.body.appendChild(this.element);
 
-    // Event listeners
     this.inputElement.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         const text = this.inputElement.value;
@@ -83,6 +82,18 @@ export class DynamicInput {
         this.isMouseOver = false;
       } else if (e.key === 'Escape') {
         this.hide();
+      }
+    });
+
+    // Auto-submit for single-letter command options (A, L, C, U)
+    this.inputElement.addEventListener('input', () => {
+      const val = this.inputElement.value.trim().toUpperCase();
+      if (['A', 'L', 'C', 'U'].includes(val)) {
+        this.inputElement.value = '';
+        if (this.onInputSubmittedCallback) {
+          this.onInputSubmittedCallback(val);
+        }
+        this.isMouseOver = false;
       }
     });
 

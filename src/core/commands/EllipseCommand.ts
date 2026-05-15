@@ -13,7 +13,7 @@ export class EllipseCommand implements Command {
   majorX = 0
   majorY = 0
 
-  onPoint(x: number, y: number, id: string, _units: UnitsConfig): CommandResponse {
+  onPoint(x: number, y: number, id: string, _units: UnitsConfig, doc?: import('../model/Document').IDocument): CommandResponse {
     if (this.step === 0) {
       this.p1 = { x, y }
       this.step = 1
@@ -36,6 +36,8 @@ export class EllipseCommand implements Command {
       
       const ratio = dist / this.majorRadius
       const entity = new Ellipse(id, this.center.x, this.center.y, this.majorX, this.majorY, Math.min(1.0, ratio), 0, Math.PI * 2, true)
+      entity.elevation = doc?.currentElevation || 0
+      entity.thickness = doc?.currentThickness || 0
       this.step = 0
       return entity
     }

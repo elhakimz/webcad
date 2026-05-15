@@ -48,19 +48,27 @@ export class TextCommand implements Command {
     }
   }
 
-  getPreview(x: number, y: number, _units: UnitsConfig) {
+  getPreview(x: number, y: number, _units: UnitsConfig, doc?: IDocument) {
     this.currentMouseX = x;
     this.currentMouseY = y;
     
-    if (this.step === 1) {
+    if (this.step === 0) {
+      const text = new Text("PREVIEW", x, y, this.height, this.rotation, "TEXT");
+      text.elevation = doc?.currentElevation || 0;
+      return text;
+    } else if (this.step === 1) {
       const dx = x - this.startPt.x;
       const dy = y - this.startPt.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const h = dist > 0 ? dist : this.height;
-      return new Text("PREVIEW", this.startPt.x, this.startPt.y, h, 0, "TEXT");
+      const text = new Text("PREVIEW", this.startPt.x, this.startPt.y, h, 0, "TEXT");
+      text.elevation = doc?.currentElevation || 0;
+      return text;
     } else if (this.step === 2) {
       const angle = Math.atan2(y - this.startPt.y, x - this.startPt.x) * (180 / Math.PI);
-      return new Text("PREVIEW", this.startPt.x, this.startPt.y, this.height, angle, "TEXT");
+      const text = new Text("PREVIEW", this.startPt.x, this.startPt.y, this.height, angle, "TEXT");
+      text.elevation = doc?.currentElevation || 0;
+      return text;
     }
     return null;
   }

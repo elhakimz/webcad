@@ -545,7 +545,7 @@ export class App {
     }
 
     if (this.cmd.active && this.cmd.active.getPreview) {
-      const preview = this.cmd.active.getPreview(worldPt.x, worldPt.y, this.doc.units);
+      const preview = this.cmd.active.getPreview(worldPt.x, worldPt.y, this.doc.units, this.doc);
       this.viewer.setPreview(preview, this.doc.units);
     } else {
       this.viewer.setPreview(null);

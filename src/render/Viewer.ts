@@ -527,6 +527,12 @@ export class Viewer {
       obj = new THREE.Line(geo, mat);
     } else if (entity instanceof Text) {
       obj = this.createTextObject(entity.text, entity.height, previewColor, "Arial");
+      const mesh = obj.children[0] as THREE.Mesh;
+      const width = (mesh.geometry as THREE.PlaneGeometry).parameters.width;
+      const height = (mesh.geometry as THREE.PlaneGeometry).parameters.height;
+      obj.position.x = entity.x + width / 2;
+      obj.position.y = entity.y + height / 2;
+      obj.position.z = entity.elevation || 0;
     } else if (entity instanceof Note) {
       obj = this.createNoteObject(entity, previewColor);
     } else if (entity instanceof Spline || ('type' in entity && entity.type === 'spline_preview')) {

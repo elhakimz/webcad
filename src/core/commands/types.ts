@@ -108,7 +108,7 @@ export type PreviewObject = Entity | ZoomWindowPreview | SelectionBoxPreview | X
 export interface Command {
   onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument, z?: number): CommandResponse | Promise<CommandResponse>;
   onInput?(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | Promise<CommandResponse> | undefined;
-  getPreview?(x: number, y: number, units: UnitsConfig): PreviewObject | null;
+  getPreview?(x: number, y: number, units: UnitsConfig, doc?: IDocument): PreviewObject | null;
   getReferencePoints?(): { x: number, y: number }[];
   getPrompt?(doc?: IDocument): string;
   getDynamicInput?(x: number, y: number, units: UnitsConfig): string[] | null;

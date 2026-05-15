@@ -2976,7 +2976,16 @@ export class Viewer {
     const width = maxX - minX;
     const height = maxY - minY;
 
-    this.camera.position.set(minX + width / 2, minY + height / 2, 500);
+    const centerX = minX + width / 2;
+    const centerY = minY + height / 2;
+    const centerZ = 0;
+    
+    const center = new THREE.Vector3(centerX, centerY, centerZ);
+    const relPos = this.camera.position.clone().sub(this.target);
+    
+    this.target.copy(center);
+    this.camera.position.copy(center).add(relPos);
+    this.camera.lookAt(this.target);
 
     const rect = this.canvas.getBoundingClientRect();
     const aspect = rect.width / rect.height;
@@ -3014,7 +3023,33 @@ export class Viewer {
     const width = maxX - minX;
     const height = maxY - minY;
     const margin = Math.max(width, height) * 0.1 || 10;
-    this.zoomWindow({x: minX - margin, y: minY - margin}, {x: maxX + margin, y: maxY + margin});
+
+    const centerX = minX + width / 2;
+    const centerY = minY + height / 2;
+    const centerZ = 0;
+    
+    const center = new THREE.Vector3(centerX, centerY, centerZ);
+    const relPos = this.camera.position.clone().sub(this.target);
+    
+    this.target.copy(center);
+    this.camera.position.copy(center).add(relPos);
+    this.camera.lookAt(this.target);
+
+    const w = width + margin * 2;
+    const h = height + margin * 2;
+
+    const rect = this.canvas.getBoundingClientRect();
+    const aspect = rect.width / rect.height;
+    const boxAspect = w / h;
+
+    if (boxAspect > aspect) {
+      this.camera.zoom = rect.width / w;
+    } else {
+      this.camera.zoom = rect.height / h;
+    }
+
+    this.camera.updateProjectionMatrix();
+    this.render();
   }
 
   setLeftPanEnabled(enabled: boolean) {

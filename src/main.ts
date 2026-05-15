@@ -279,7 +279,7 @@ function updatePrompt() {
       prompt.startsWith("Enter note text");
 
     if (shouldFocus) {
-      cmdLine.focus();
+      // cmdLine.focus();
     }
   } else {
     cmdLine.setPrompt("Command:");
@@ -381,6 +381,17 @@ window.addEventListener("keydown", async (e) => {
         cmdInput.focus();
         // The browser will continue to propagate this event and type the char into the input
       }
+    }
+  } else if (app.cmd.active && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    // If command IS active, redirect typing to dynamic input
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+      return;
+    }
+
+    const key = e.key;
+    if (key.length === 1) {
+      app.focusDynamicInput();
+      // The browser will continue to propagate this event and type the char into the input
     }
   }
 

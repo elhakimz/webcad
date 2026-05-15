@@ -48,6 +48,7 @@ export class CommandLine {
         e.stopPropagation();
         const value = this.inputEl.value;
         this.inputEl.value = '';
+        this.inputEl.blur();
         
         // Echo command to log
         this.print(`Command: ${value}`);

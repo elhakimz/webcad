@@ -99,9 +99,12 @@ export class DynamicInput {
     });
   }
 
-  show(x: number, y: number, lines: string[], options: string[] = [], showInput: boolean = true, controls?: { type: 'select' | 'number', label: string, value: string | number, options?: string[] }[], footer?: string) {
-    if (this.isMouseOver) return;
-    this.inputElement.value = '';
+  show(x: number, y: number, lines: string[], options: string[] = [], showInput: boolean = true, controls?: { type: 'select' | 'number', label: string, value: string | number, options?: string[] }[], footer?: string, placeholder?: string, force: boolean = false) {
+    if (this.isMouseOver && !force) return;
+    if (this.inputElement.placeholder !== (placeholder || '')) {
+      this.inputElement.value = '';
+      this.inputElement.placeholder = placeholder || '';
+    }
     const textContainer = this.element.querySelector('#dynamic-input-text') as HTMLElement;
     if (textContainer) {
       textContainer.textContent = lines.join('\n');
@@ -213,7 +216,7 @@ export class DynamicInput {
 
     // Focus input if shown and not already focused
     if (showInput && document.activeElement !== this.inputElement) {
-      this.inputElement.focus();
+      setTimeout(() => this.inputElement.focus(), 0);
     }
   }
 
@@ -223,6 +226,12 @@ export class DynamicInput {
 
   onInputSubmitted(callback: (text: string) => void) {
     this.onInputSubmittedCallback = callback;
+  }
+
+  focus() {
+    if (this.inputElement) {
+      this.inputElement.focus();
+    }
   }
 
   onOptionClicked(callback: (option: string) => void) {

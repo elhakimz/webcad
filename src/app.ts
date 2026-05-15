@@ -99,6 +99,8 @@ export class App {
     this.promptUpdate = updateFn;
   }
   private dynamicInput: DynamicInput;
+  private lastScreenX: number = 0;
+  private lastScreenY: number = 0;
 
   setLayersWindowUpdate(updateFn: () => void) {
     this.layersWindowUpdate = updateFn;
@@ -369,8 +371,14 @@ export class App {
 
   async inputText(text:string){
     const callHandleResult = async (res: any) => {
+      // Update dynamic input after state change (before awaiting result)
+      const worldPt = this.viewer.screenToWorld(this.lastScreenX, this.lastScreenY);
+      const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
+      this.updateDynamicInput(snapped.x, snapped.y, this.lastScreenX, this.lastScreenY, true);
+
       const output = await this.handleResult(res);
       if (this.promptUpdate) this.promptUpdate();
+      
       return output;
     }
 
@@ -569,6 +577,12 @@ export class App {
       this.viewer.setBaseLine(null, null);
     }
 
+    this.lastScreenX = screenX;
+    this.lastScreenY = screenY;
+    this.updateDynamicInput(x, y, screenX, screenY);
+  }
+
+  updateDynamicInput(x: number, y: number, screenX: number, screenY: number, force: boolean = false) {
     if (this.cmd.active && this.cmd.active.getDynamicInput) {
       const lines = this.cmd.active.getDynamicInput(x, y, this.doc.units);
       if (lines) {
@@ -600,13 +614,18 @@ export class App {
           footer = "Esc to end hatch command";
         }
         
-        this.dynamicInput.show(screenX, screenY, lines, options, showInput, controls, footer);
+        const prompt = this.cmd.active.getPrompt ? this.cmd.active.getPrompt() : "";
+        this.dynamicInput.show(screenX, screenY, lines, options, showInput, controls, footer, prompt, force);
       } else {
         this.dynamicInput.hide();
       }
     } else {
       this.dynamicInput.hide();
     }
+  }
+
+  public focusDynamicInput() {
+    this.dynamicInput.focus();
   }
 
   pointerDown(screenX: number, screenY: number) {

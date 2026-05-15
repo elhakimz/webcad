@@ -110,6 +110,24 @@ export class MTextCommand implements Command {
     return null;
   }
 
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 0) {
+      return [`X:${FormatUtils.formatValue(x, units)}`, `Y:${FormatUtils.formatValue(y, units)}`];
+    } else if (this.step === 1) {
+      const width = Math.abs(x - this.firstCorner.x);
+      const height = Math.abs(y - this.firstCorner.y);
+      return [`W:${FormatUtils.formatValue(width, units)}`, `H:${FormatUtils.formatValue(height, units)}`];
+    } else if (this.step === 2) {
+      return [""];
+    } else if (this.step === 3) {
+      const dx = x - this.firstCorner.x;
+      const dy = y - this.firstCorner.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      return [`H:${FormatUtils.formatValue(dist, units)}`];
+    }
+    return null;
+  }
+
   getReferencePoints() {
     if (this.step === 1) {
       return [this.firstCorner];

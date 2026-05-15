@@ -73,6 +73,26 @@ export class TextCommand implements Command {
     return null;
   }
 
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 0) {
+      return [`X:${FormatUtils.formatValue(x, units)}`, `Y:${FormatUtils.formatValue(y, units)}`];
+    } else if (this.step === 1) {
+      const dx = x - this.startPt.x;
+      const dy = y - this.startPt.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      return [`H:${FormatUtils.formatValue(dist, units)}`];
+    } else if (this.step === 2) {
+      const dx = x - this.startPt.x;
+      const dy = y - this.startPt.y;
+      let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      if (angle < 0) angle += 360;
+      return [`A:${angle.toFixed(1)}`];
+    } else if (this.step === 3) {
+      return [""]; // Return non-null to keep dynamic input visible for text entry
+    }
+    return null;
+  }
+
   getReferencePoints() {
     if (this.step === 1 || this.step === 2) {
       return [this.startPt];

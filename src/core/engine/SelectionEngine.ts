@@ -10,6 +10,7 @@ import { Ellipse } from "../model/Ellipse";
 import { Dimension } from "../model/Dimension";
 import { Spline } from "../model/Spline";
 import { Solid3D } from "../model/Solid3D";
+import { Donut } from "../model/Donut";
 import { IDocument } from "../model/Document";
 import * as MathUtils from "./MathUtils";
 import { bulgeToArc } from "./MathUtils";
@@ -138,6 +139,10 @@ export class SelectionEngine {
       }
       return false;
     }
+    if (entity instanceof Donut) {
+      const dist = Math.sqrt((px - entity.cx) ** 2 + (py - entity.cy) ** 2);
+      return dist >= entity.innerRadius - tolerance && dist <= entity.outerRadius + tolerance;
+    }
     return false;
   }
 
@@ -242,6 +247,17 @@ export class SelectionEngine {
     if (entity instanceof Line) return this.isLineIntersectingBox(entity.x1, entity.y1, entity.x2, entity.y2, minX, minY, maxX, maxY);
     if (entity instanceof Circle) return this.isCircleIntersectingBox(entity.cx, entity.cy, entity.r, minX, minY, maxX, maxY);
     if (entity instanceof Arc) return this.isCircleIntersectingBox(entity.cx, entity.cy, entity.r, minX, minY, maxX, maxY);
+    if (entity instanceof Donut) {
+      if (!this.isCircleIntersectingBox(entity.cx, entity.cy, entity.outerRadius, minX, minY, maxX, maxY)) return false;
+      const d1 = Math.sqrt((minX - entity.cx)**2 + (minY - entity.cy)**2);
+      const d2 = Math.sqrt((maxX - entity.cx)**2 + (minY - entity.cy)**2);
+      const d3 = Math.sqrt((minX - entity.cx)**2 + (maxY - entity.cy)**2);
+      const d4 = Math.sqrt((maxX - entity.cx)**2 + (maxY - entity.cy)**2);
+      if (d1 < entity.innerRadius && d2 < entity.innerRadius && d3 < entity.innerRadius && d4 < entity.innerRadius) {
+         return false;
+      }
+      return true;
+    }
     if (entity instanceof Polyline) {
       for (let i = 0; i < entity.vertices.length - (entity.closed ? 0 : 1); i++) {
         const v1 = entity.vertices[i];

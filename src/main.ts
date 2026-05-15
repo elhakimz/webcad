@@ -307,7 +307,14 @@ window.addEventListener("mousemove", (e) => {
   lastMouseY = e.clientY;
 
   if (e.buttons & 2) {
-    viewer.orbit(dx, dy);
+    if (app.activeCenterGrip) {
+      const rect = viewer.canvas.getBoundingClientRect();
+      const clampedX = Math.max(rect.left, Math.min(rect.right, e.clientX));
+      const clampedY = Math.max(rect.top, e.clientY); 
+      app.move(clampedX, clampedY, e.ctrlKey, e.shiftKey);
+    } else {
+      viewer.orbit(dx, dy);
+    }
     return;
   }
 
@@ -440,19 +447,29 @@ window.addEventListener("keydown", async (e) => {
     return
   }
 
-  // Always handle ESC to cancel commands
-  if (e.key === 'Escape' && app.cmd.active) {
-    // If PAN is active, reset to original position
-    if (app.cmd.active.constructor.name === 'PanCommand') {
-      const startPos = viewer.getPanStartPosition()
-      viewer.camera.position.x = startPos.x
-      viewer.camera.position.y = startPos.y
+  // Always handle ESC to cancel commands or grip edits
+  if (e.key === 'Escape') {
+    if (app.activeGrip) {
+      app.activeGrip = null;
+      viewer.setPreview(null);
+      cmdLine.print("*Cancel Grip Edit*");
+      updatePrompt();
+      return;
     }
-    cmdLine.print("*Cancel*")
-    app.terminateActiveCommand()
-    viewer.setLeftPanEnabled(false)
-    updatePrompt()
-    return
+    
+    if (app.cmd.active) {
+      // If PAN is active, reset to original position
+      if (app.cmd.active.constructor.name === 'PanCommand') {
+        const startPos = viewer.getPanStartPosition()
+        viewer.camera.position.x = startPos.x
+        viewer.camera.position.y = startPos.y
+      }
+      cmdLine.print("*Cancel*")
+      app.terminateActiveCommand()
+      viewer.setLeftPanEnabled(false)
+      updatePrompt()
+      return
+    }
   }
 
   // Handle Enter to accept PAN
@@ -532,25 +549,24 @@ window.addEventListener('contextmenu', (e) => {
 
 // Support clicking on command bar to define points when a command is active
 window.addEventListener("pointerdown", (e) => {
-  if (e.button === 2) {
-    const selectedIds = Array.from(app.selectedEntityIds);
-    if (selectedIds.length > 0) {
-      const center = viewer.getCenterOfObjects(selectedIds);
-      if (center) {
-        viewer.target.copy(center);
-      }
-    }
-  }
-
   const target = e.target as HTMLElement;
   const isCanvas = target === canvas;
   const isCmdArea = document.getElementById('command-area')?.contains(target);
   
   if (isCanvas || (isCmdArea && app.cmd.active && target.tagName !== 'INPUT' && !target.classList.contains('control-btn'))) {
     const { clampedX, clampedY } = getClampedCoordinates(e);
-    app.pointerDown(clampedX, clampedY);
+    app.pointerDown(clampedX, clampedY, e.button, e.shiftKey);
     
-
+    // Only center target on right click if not clicking the center grip
+    if (e.button === 2 && !app.activeCenterGrip) {
+      const selectedIds = Array.from(app.selectedEntityIds);
+      if (selectedIds.length > 0) {
+        const center = viewer.getCenterOfObjects(selectedIds);
+        if (center) {
+          viewer.target.copy(center);
+        }
+      }
+    }
   }
 });
 

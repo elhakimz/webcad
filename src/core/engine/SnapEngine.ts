@@ -127,6 +127,7 @@ export class SnapEngine {
                 }
                 const midAngle = arc.startAngle + diff / 2;
                 snaps.push({ x: arc.cx + arc.r * Math.cos(midAngle), y: arc.cy + arc.r * Math.sin(midAngle), type: SnapType.MIDPOINT });
+                snaps.push({ x: arc.cx, y: arc.cy, type: SnapType.CENTER });
             }
           }
         }

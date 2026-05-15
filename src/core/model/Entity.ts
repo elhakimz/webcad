@@ -8,6 +8,12 @@ export interface BoundingBox {
   maxY: number;
 }
 
+export interface Grip {
+  id: string;
+  point: { x: number; y: number };
+  type: 'endpoint' | 'midpoint' | 'center' | 'custom';
+}
+
 export abstract class Entity {
   id: string
   layer: string = "0"
@@ -29,4 +35,6 @@ export abstract class Entity {
 
   hitTest?(px: number, py: number, tolerance: number): boolean;
   getSnapPoints?(): SnapPoint[];
+  getGrips?(): Grip[];
+  moveGrip?(gripId: string, newPosition: { x: number; y: number }): void;
 }

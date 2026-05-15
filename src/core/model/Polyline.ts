@@ -1,6 +1,6 @@
 
 import { Entity, BoundingBox } from "./Entity";
-import { rotatePoint, reflectPointAcrossLine } from "../engine/MathUtils"
+import { rotatePoint, reflectPointAcrossLine, bulgeToArc } from "../engine/MathUtils"
 
 export interface PolylineVertex {
   x: number;
@@ -93,6 +93,111 @@ export class Polyline extends Entity {
       copy.center = { ...this.center };
     }
     return copy;
+  }
+
+  getGrips(): import("./Entity").Grip[] {
+    const grips: import("./Entity").Grip[] = [];
+    
+    // Vertex grips
+    this.vertices.forEach((v, i) => {
+      grips.push({ id: `vertex_${i}`, point: { x: v.x, y: v.y }, type: 'endpoint' });
+    });
+    
+    const addSegmentGrips = (v1: PolylineVertex, v2: PolylineVertex, i: number) => {
+      if (Math.abs(v1.bulge) > 1e-6) {
+        const arc = bulgeToArc(v1, v2, v1.bulge);
+        if (arc) {
+          let diff = arc.endAngle - arc.startAngle;
+          if (arc.ccw) {
+            while (diff < 0) diff += Math.PI * 2;
+            while (diff >= Math.PI * 2) diff -= Math.PI * 2;
+          } else {
+            while (diff > 0) diff -= Math.PI * 2;
+            while (diff <= -Math.PI * 2) diff += Math.PI * 2;
+          }
+          const midAngle = arc.startAngle + diff / 2;
+          grips.push({ 
+            id: `midpoint_${i}`, 
+            point: { x: arc.cx + arc.r * Math.cos(midAngle), y: arc.cy + arc.r * Math.sin(midAngle) }, 
+            type: 'midpoint' 
+          });
+          grips.push({ 
+            id: `center_${i}`, 
+            point: { x: arc.cx, y: arc.cy }, 
+            type: 'center' 
+          });
+          return;
+        }
+      }
+      grips.push({ 
+        id: `midpoint_${i}`, 
+        point: { x: (v1.x + v2.x) / 2, y: (v1.y + v2.y) / 2 }, 
+        type: 'midpoint' 
+      });
+    };
+
+    // Midpoint & Center grips
+    for (let i = 0; i < this.vertices.length - 1; i++) {
+      addSegmentGrips(this.vertices[i], this.vertices[i + 1], i);
+    }
+    
+    // If closed, add grips for the closing segment
+    if (this.closed && this.vertices.length > 2) {
+      addSegmentGrips(this.vertices[this.vertices.length - 1], this.vertices[0], this.vertices.length - 1);
+    }
+    
+    return grips;
+  }
+
+  moveGrip(gripId: string, newPosition: { x: number; y: number }): void {
+    if (gripId.startsWith('vertex_')) {
+      const index = parseInt(gripId.split('_')[1]);
+      if (index >= 0 && index < this.vertices.length) {
+        this.vertices[index].x = newPosition.x;
+        this.vertices[index].y = newPosition.y;
+      }
+    } else if (gripId.startsWith('midpoint_') || gripId.startsWith('center_')) {
+      const index = parseInt(gripId.split('_')[1]);
+      if (index >= 0 && index < this.vertices.length) {
+        const v1 = this.vertices[index];
+        const v2 = (index === this.vertices.length - 1 && this.closed) ? this.vertices[0] : this.vertices[index + 1];
+        
+        if (v2) {
+          let refX = (v1.x + v2.x) / 2;
+          let refY = (v1.y + v2.y) / 2;
+
+          if (Math.abs(v1.bulge) > 1e-6) {
+            const arc = bulgeToArc(v1, v2, v1.bulge);
+            if (arc) {
+              if (gripId.startsWith('center_')) {
+                refX = arc.cx;
+                refY = arc.cy;
+              } else {
+                let diff = arc.endAngle - arc.startAngle;
+                if (arc.ccw) {
+                  while (diff < 0) diff += Math.PI * 2;
+                  while (diff >= Math.PI * 2) diff -= Math.PI * 2;
+                } else {
+                  while (diff > 0) diff -= Math.PI * 2;
+                  while (diff <= -Math.PI * 2) diff += Math.PI * 2;
+                }
+                const midAngle = arc.startAngle + diff / 2;
+                refX = arc.cx + arc.r * Math.cos(midAngle);
+                refY = arc.cy + arc.r * Math.sin(midAngle);
+              }
+            }
+          }
+
+          const dx = newPosition.x - refX;
+          const dy = newPosition.y - refY;
+          
+          v1.x += dx;
+          v1.y += dy;
+          v2.x += dx;
+          v2.y += dy;
+        }
+      }
+    }
   }
 }
 

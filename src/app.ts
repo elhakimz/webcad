@@ -26,7 +26,7 @@ import { Note } from "./core/model/Note"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
 import { Selection3DEngine } from "./core/engine/Selection3DEngine"
-import { SnapEngine, SnapPoint } from "./core/engine/SnapEngine"
+import { SnapEngine, SnapPoint, SnapType } from "./core/engine/SnapEngine"
 import * as THREE from "three"
 
 import { Layer } from "./core/model/Layer"
@@ -86,7 +86,8 @@ export class App {
   private promptUpdate: (() => void) | null = null;
   private propertiesWindow: any = null;
   private dispatcher: ResultDispatcher;
-
+  public activeGrip: { entityId: string, gripId: string, startPoint: { x: number, y: number } } | null = null;
+  public activeCenterGrip: { center: {x: number, y: number}, mode: 'move'|'scale'|'rotate', startMouse: {x: number, y: number}, startScreenMouse: {x: number, y: number}, originalEntities: import('./core/model/Entity').Entity[] } | null = null;
   public setPropertiesWindow(pw: any) {
     this.propertiesWindow = pw;
   }
@@ -230,7 +231,17 @@ export class App {
     const basePointCmd = this.cmd.active as unknown as HasBasePoint;
     const base = (typeof basePointCmd?.getBasePoint === 'function') ? basePointCmd.getBasePoint() : null;
     
-    const snap = SnapEngine.getSnapPointSpatial(worldX, worldY, this.doc, tolerance);
+    let snap = SnapEngine.getSnapPointSpatial(worldX, worldY, this.doc, tolerance);
+    
+    if (!snap && this.selectedEntityIds.size > 0 && !this.cmd.active) {
+      const center = this.viewer.getCenterOfObjects(Array.from(this.selectedEntityIds));
+      if (center) {
+        const dist = Math.sqrt((worldX - center.x) ** 2 + (worldY - center.y) ** 2);
+        if (dist <= tolerance) {
+          snap = { x: center.x, y: center.y, type: SnapType.CENTER };
+        }
+      }
+    }
     
     let x = snap ? snap.x : worldX;
     let y = snap ? snap.y : worldY;
@@ -421,6 +432,62 @@ export class App {
 
   move(screenX: number, screenY: number, ctrlKey = false, shiftKey = false) {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
+    
+    if (this.activeCenterGrip) {
+      const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
+      const { x, y } = snapped;
+      
+      const cx = this.activeCenterGrip.center.x;
+      const cy = this.activeCenterGrip.center.y;
+      const dx = x - this.activeCenterGrip.startMouse.x;
+      const dy = y - this.activeCenterGrip.startMouse.y;
+      
+      const clonedEntities: import('./core/model/Entity').Entity[] = [];
+
+      this.activeCenterGrip.originalEntities.forEach(orig => {
+        const cloned = orig.clone(orig.id + '_preview');
+        
+        if (this.activeCenterGrip!.mode === 'move') {
+          if (cloned.move) cloned.move(dx, dy);
+        } else if (this.activeCenterGrip!.mode === 'scale') {
+          const dyScreen = this.activeCenterGrip!.startScreenMouse.y - screenY;
+          const scaleFactor = Math.max(0.01, 1 + dyScreen * 0.01);
+          if (cloned.scale) {
+            cloned.scale(cx, cy, scaleFactor);
+          }
+        } else if (this.activeCenterGrip!.mode === 'rotate') {
+          const origAngle = Math.atan2(this.activeCenterGrip!.startMouse.y - cy, this.activeCenterGrip!.startMouse.x - cx);
+          const newAngle = Math.atan2(y - cy, x - cx);
+          if (cloned.rotate) {
+            cloned.rotate(cx, cy, newAngle - origAngle);
+          }
+        }
+        
+        clonedEntities.push(cloned);
+      });
+
+      this.viewer.setPreview({ type: 'entities', entities: clonedEntities } as any, this.doc.units);
+      this.updateDynamicInput(x, y, screenX, screenY, true);
+      return;
+    }
+
+    if (this.activeGrip) {
+      const entity = this.doc.getEntity(this.activeGrip.entityId);
+      if (entity && entity.moveGrip) {
+        const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
+        const { x, y } = snapped;
+        
+        // Create ghost preview
+        const cloned = entity.clone(entity.id + '_preview');
+        if (cloned.moveGrip) {
+          cloned.moveGrip(this.activeGrip.gripId, { x, y });
+        }
+        this.viewer.setPreview(cloned, this.doc.units);
+        
+        this.updateDynamicInput(x, y, screenX, screenY, true);
+        return;
+      }
+    }
     const actualPt = this.viewer.screenToWorldActual(screenX, screenY);
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
     const { x, y, snap } = snapped;
@@ -629,8 +696,53 @@ export class App {
     this.dynamicInput.focus();
   }
 
-  pointerDown(screenX: number, screenY: number) {
+  pointerDown(screenX: number, screenY: number, button: number = 0, shiftKey: boolean = false) {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
+    
+    // Check for grips first
+    if (this.selectedEntityIds.size > 0 && !this.cmd.active) {
+      const selectedEntities = Array.from(this.selectedEntityIds)
+        .map(id => this.doc.getEntity(id))
+        .filter((e): e is Entity => e !== undefined);
+
+      // 1. Check Center Grip
+      const center = this.viewer.getCenterOfObjects(selectedEntities.map(e => e.id));
+      if (center) {
+        const dist = Math.sqrt((worldPt.x - center.x) ** 2 + (worldPt.y - center.y) ** 2);
+        const centerGripTolerance = 15 / this.viewer.camera.zoom;
+        if (dist <= centerGripTolerance) {
+          let mode: 'move' | 'scale' | 'rotate' = 'move';
+          if (button === 2) mode = 'rotate';
+          else if (shiftKey) mode = 'scale';
+
+          this.activeCenterGrip = {
+            center: { x: center.x, y: center.y },
+            mode,
+            startMouse: { x: worldPt.x, y: worldPt.y },
+            startScreenMouse: { x: screenX, y: screenY },
+            originalEntities: selectedEntities.map(e => e.clone(e.id))
+          };
+          return;
+        }
+      }
+
+      // 2. Check Entity Grips
+      for (const entity of selectedEntities) {
+        if (entity && entity.getGrips) {
+          const grips = entity.getGrips();
+          for (const grip of grips) {
+            const dist = Math.sqrt((worldPt.x - grip.point.x) ** 2 + (worldPt.y - grip.point.y) ** 2);
+            const gripTolerance = 10 / this.viewer.camera.zoom; // 10 pixels
+            if (dist <= gripTolerance) {
+              this.activeGrip = { entityId: entity.id, gripId: grip.id, startPoint: { ...grip.point } };
+              console.log(`[app.pointerDown] Active grip set:`, this.activeGrip);
+              return; // Stop processing, start dragging
+            }
+          }
+        }
+      }
+    }
+
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
     const { x, y } = snapped;
 
@@ -645,6 +757,85 @@ export class App {
   }
 
   async pointerUp(screenX: number, screenY: number, isShift = false, isCtrl = false): Promise<CommandResponse | undefined> {
+    if (this.activeCenterGrip) {
+      const worldPt = this.viewer.screenToWorld(screenX, screenY);
+      const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
+      const { x, y } = snapped;
+      
+      const cx = this.activeCenterGrip.center.x;
+      const cy = this.activeCenterGrip.center.y;
+      const dx = x - this.activeCenterGrip.startMouse.x;
+      const dy = y - this.activeCenterGrip.startMouse.y;
+      
+      this.doc.history.startTransaction();
+      
+      this.activeCenterGrip.originalEntities.forEach(orig => {
+        const entity = this.doc.getEntity(orig.id);
+        if (entity) {
+          const beforeState = entity.clone(entity.id);
+          
+          if (this.activeCenterGrip!.mode === 'move') {
+            if (entity.move) entity.move(dx, dy);
+          } else if (this.activeCenterGrip!.mode === 'scale') {
+            const dyScreen = this.activeCenterGrip!.startScreenMouse.y - screenY;
+            const scaleFactor = Math.max(0.01, 1 + dyScreen * 0.01);
+            if (entity.scale) {
+              entity.scale(cx, cy, scaleFactor);
+            }
+          } else if (this.activeCenterGrip!.mode === 'rotate') {
+            const origAngle = Math.atan2(this.activeCenterGrip!.startMouse.y - cy, this.activeCenterGrip!.startMouse.x - cx);
+            const newAngle = Math.atan2(y - cy, x - cx);
+            if (entity.rotate) {
+              entity.rotate(cx, cy, newAngle - origAngle);
+            }
+          }
+          
+          this.doc.recordTransform(beforeState, entity);
+          this.addEntity(entity, true, false);
+        }
+      });
+      
+      this.doc.history.commitTransaction();
+      
+      this.activeCenterGrip = null;
+      this.viewer.setPreview(null);
+      
+      // Refresh grips
+      const selectedEntities = Array.from(this.selectedEntityIds)
+        .map(id => this.doc.getEntity(id))
+        .filter((e): e is Entity => e !== undefined);
+      this.viewer.renderGrips(selectedEntities);
+      
+      return "Center grip edit completed.";
+    }
+
+    if (this.activeGrip) {
+      const entity = this.doc.getEntity(this.activeGrip.entityId);
+      if (entity && entity.moveGrip) {
+        const worldPt = this.viewer.screenToWorld(screenX, screenY);
+        const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
+        const { x, y } = snapped;
+        
+        this.doc.history.startTransaction();
+        const beforeState = entity.clone(entity.id);
+        entity.moveGrip(this.activeGrip.gripId, { x, y });
+        this.doc.recordTransform(beforeState, entity);
+        this.addEntity(entity, true, false); // Update entity in doc
+        this.doc.history.commitTransaction();
+        
+        this.activeGrip = null;
+        this.viewer.setPreview(null);
+        
+        // Refresh grips
+        const selectedEntities = Array.from(this.selectedEntityIds)
+          .map(id => this.doc.getEntity(id))
+          .filter((e): e is Entity => e !== undefined);
+        this.viewer.renderGrips(selectedEntities);
+        
+        return "Grip edit completed.";
+      }
+    }
+
     const sketchCmd = this.cmd.active as unknown as HasFinishSketch;
     if (sketchCmd && typeof sketchCmd.finishSketch === 'function') {
       const id = this.doc.getNextId("SK");
@@ -709,6 +900,11 @@ export class App {
         this.selectionBoxEl = null;
     }
     this.viewer.setHighlight(Array.from(this.selectedEntityIds));
+    
+    const selectedEntitiesForGrips = Array.from(this.selectedEntityIds)
+        .map(id => this.doc.getEntity(id))
+        .filter((e): e is Entity => e !== undefined);
+    this.viewer.renderGrips(selectedEntitiesForGrips);
     
     if (this.propertiesWindow) {
         const selectedEntities = Array.from(this.selectedEntityIds)
@@ -915,6 +1111,11 @@ export class App {
             this.selectedEntityIds.clear();
             this.selectedEdge = null; // Clear edge selection on empty space click
         }
+
+        const selectedEntitiesForGrips = Array.from(this.selectedEntityIds)
+            .map(id => this.doc.getEntity(id))
+            .filter((e): e is Entity => e !== undefined);
+        this.viewer.renderGrips(selectedEntitiesForGrips);
 
         // If there's an active edit command at step 0 and user has selected entities, re-run command with selection
         if (this.cmd.active && this.cmd.active.step === 0 && isEditCommand && this.selectedEntityIds.size > 0) {

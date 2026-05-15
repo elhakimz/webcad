@@ -59,4 +59,26 @@ export class Line extends Entity {
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }
+
+  getGrips(): import("./Entity").Grip[] {
+    return [
+      { id: 'start', point: { x: this.x1, y: this.y1 }, type: 'endpoint' },
+      { id: 'end', point: { x: this.x2, y: this.y2 }, type: 'endpoint' },
+      { id: 'mid', point: { x: (this.x1 + this.x2) / 2, y: (this.y1 + this.y2) / 2 }, type: 'midpoint' }
+    ];
+  }
+
+  moveGrip(gripId: string, newPosition: { x: number; y: number }): void {
+    if (gripId === 'start') {
+      this.x1 = newPosition.x;
+      this.y1 = newPosition.y;
+    } else if (gripId === 'end') {
+      this.x2 = newPosition.x;
+      this.y2 = newPosition.y;
+    } else if (gripId === 'mid') {
+      const dx = newPosition.x - (this.x1 + this.x2) / 2;
+      const dy = newPosition.y - (this.y1 + this.y2) / 2;
+      this.move(dx, dy);
+    }
+  }
 }

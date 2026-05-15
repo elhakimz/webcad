@@ -54,5 +54,25 @@ export class Circle extends Entity {
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }
+
+  getGrips(): import("./Entity").Grip[] {
+    return [
+      { id: 'center', point: { x: this.cx, y: this.cy }, type: 'center' },
+      { id: 'quad_0', point: { x: this.cx + this.r, y: this.cy }, type: 'custom' },
+      { id: 'quad_90', point: { x: this.cx, y: this.cy + this.r }, type: 'custom' },
+      { id: 'quad_180', point: { x: this.cx - this.r, y: this.cy }, type: 'custom' },
+      { id: 'quad_270', point: { x: this.cx, y: this.cy - this.r }, type: 'custom' }
+    ];
+  }
+
+  moveGrip(gripId: string, newPosition: { x: number; y: number }): void {
+    if (gripId === 'center') {
+      this.cx = newPosition.x;
+      this.cy = newPosition.y;
+    } else if (gripId.startsWith('quad_')) {
+      const dist = Math.sqrt((newPosition.x - this.cx) ** 2 + (newPosition.y - this.cy) ** 2);
+      this.r = dist;
+    }
+  }
 }
 

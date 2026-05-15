@@ -77,4 +77,23 @@ export class Spline extends Entity {
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }
+
+  getGrips(): import("./Entity").Grip[] {
+    return this.controlPoints.map((p, i) => ({
+      id: `cp_${i}`,
+      point: { x: p.x, y: p.y },
+      type: 'custom'
+    }));
+  }
+
+  moveGrip(gripId: string, newPosition: { x: number; y: number }): void {
+    if (gripId.startsWith('cp_')) {
+      const index = parseInt(gripId.split('_')[1]);
+      if (index >= 0 && index < this.controlPoints.length) {
+        this.controlPoints[index].x = newPosition.x;
+        this.controlPoints[index].y = newPosition.y;
+        this.sampledPoints = this.updateSampledPoints();
+      }
+    }
+  }
 }

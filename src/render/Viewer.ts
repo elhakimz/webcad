@@ -2380,7 +2380,7 @@ export class Viewer {
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ext1Points), extMat));
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ext2Points), extMat));
 
-    let value = entity.computeValue();
+    const value = entity.computeValue();
     const text = FormatUtils.formatValue(value, units);
 
     const textMesh = this.createTextObject(text, style.textHeight, colorIndex, "osifont");
@@ -2642,6 +2642,99 @@ export class Viewer {
       }
     });
     this.render();
+  }
+
+  renderGrips(entities: Entity[]) {
+    // Clear existing grips
+    const existing = this.scene.getObjectByName("grips_marker");
+    if (existing) {
+      this.scene.remove(existing);
+    }
+    const existingCenter = this.scene.getObjectByName("center_grip_marker");
+    if (existingCenter) {
+      this.scene.remove(existingCenter);
+    }
+
+    // Create new grips
+    const points: THREE.Vector3[] = [];
+    const gripInfos: { entityId: string, gripId: string }[] = [];
+
+    const size = 5 / this.camera.zoom; // Half size of grip box
+
+    entities.forEach(entity => {
+      if (entity.getGrips) {
+        const grips = entity.getGrips();
+        grips.forEach(grip => {
+          const x = grip.point.x;
+          const y = grip.point.y;
+          
+          // Create a small box for each grip
+          const p1 = new THREE.Vector3(x - size, y - size, 0);
+          const p2 = new THREE.Vector3(x + size, y - size, 0);
+          const p3 = new THREE.Vector3(x + size, y + size, 0);
+          const p4 = new THREE.Vector3(x - size, y + size, 0);
+          
+          points.push(p1, p2);
+          points.push(p2, p3);
+          points.push(p3, p4);
+          points.push(p4, p1);
+
+          gripInfos.push({ entityId: entity.id, gripId: grip.id });
+        });
+      }
+    });
+
+    if (points.length > 0) {
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const mat = new THREE.LineBasicMaterial({ 
+        color: 0x00AAFF, // Bright blue
+        depthTest: false,
+        depthWrite: false
+      });
+
+      const mesh = new THREE.LineSegments(geo, mat);
+      mesh.name = 'grips_marker'; // Use plural name to identify the whole group
+      mesh.renderOrder = 1000; // Render on top
+      mesh.userData = { gripInfos }; // Store all grip infos
+      
+      this.scene.add(mesh); // Add directly to scene
+    }
+
+    // Render Center Grip
+    if (entities.length > 0) {
+      const center = this.getCenterOfObjects(entities.map(e => e.id));
+      if (center) {
+        const centerPoints: THREE.Vector3[] = [];
+        const x = center.x;
+        const y = center.y;
+        
+        // Create a larger, distinct box with a cross for the center grip
+        const centerSize = 8 / this.camera.zoom;
+        const p1 = new THREE.Vector3(x - centerSize, y - centerSize, 0);
+        const p2 = new THREE.Vector3(x + centerSize, y - centerSize, 0);
+        const p3 = new THREE.Vector3(x + centerSize, y + centerSize, 0);
+        const p4 = new THREE.Vector3(x - centerSize, y + centerSize, 0);
+        
+        centerPoints.push(p1, p2, p2, p3, p3, p4, p4, p1);
+        centerPoints.push(p1, p3, p2, p4); // Inner cross
+
+        const centerGeo = new THREE.BufferGeometry().setFromPoints(centerPoints);
+        const centerMat = new THREE.LineBasicMaterial({ 
+          color: 0xFF00FF, // Magenta
+          depthTest: false,
+          depthWrite: false
+        });
+
+        const centerMesh = new THREE.LineSegments(centerGeo, centerMat);
+        centerMesh.name = 'center_grip_marker';
+        centerMesh.renderOrder = 1001; // Render on top of normal grips
+        centerMesh.userData = { centerGrip: { x, y } };
+        
+        this.scene.add(centerMesh);
+      }
+    }
+
+    this.scheduleRender();
   }
 
   private originalColors: Map<string, number> = new Map();

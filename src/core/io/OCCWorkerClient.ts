@@ -11,7 +11,18 @@ export class OCCWorkerClient {
     this.worker = new Worker(new URL('./OCCWorker.ts', import.meta.url), { type: 'module' });
     
     this.worker.onmessage = (e) => {
-      const { id, success, payload, error } = e.data;
+      const { id, type, success, payload, error, message } = e.data;
+      
+      // Handle generic logs from worker
+      if (type === 'log') {
+        console.log(`[WorkerLog] ${message}`);
+        return;
+      }
+      if (type === 'error' && id === undefined) {
+        console.error(`[WorkerError] ${error}`);
+        return;
+      }
+
       const resolver = this.resolvers.get(id);
       const rejecter = this.rejecters.get(id);
       
@@ -36,63 +47,63 @@ export class OCCWorkerClient {
     return this.send('clearCache', {});
   }
 
-  createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createBox', { x, y, z, dx, dy, dz, deflection, entityId });
   }
 
-  createCylinder(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  createCylinder(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createCylinder', { x, y, z, r, h, deflection, entityId });
   }
 
-  createSphere(x: number, y: number, z: number, r: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  createSphere(x: number, y: number, z: number, r: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createSphere', { x, y, z, r, deflection, entityId });
   }
 
-  createCone(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  createCone(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createCone', { x, y, z, r, h, deflection, entityId });
   }
 
-  filletSolid(entityId: string, edgeIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  filletSolid(entityId: string, edgeIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('filletSolid', { entityId, edgeIndex, radius });
   }
 
-  chamferSolid(entityId: string, edgeIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  chamferSolid(entityId: string, edgeIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('chamferSolid', { entityId, edgeIndex, radius });
   }
 
-  filletSolidFace(entityId: string, faceIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  filletSolidFace(entityId: string, faceIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('filletSolidFace', { entityId, faceIndex, radius });
   }
 
-  chamferSolidFace(entityId: string, faceIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  chamferSolidFace(entityId: string, faceIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('chamferSolidFace', { entityId, faceIndex, radius });
   }
 
-  makeThickSolid(entityId: string, faceIndices: number[], thickness: number, removeFaces?: boolean): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  makeThickSolid(entityId: string, faceIndices: number[], thickness: number, removeFaces?: boolean): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('makeThickSolid', { entityId, faceIndices, thickness, removeFaces });
   }
 
-  createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createTorus', { x, y, z, r1, r2, deflection, entityId });
   }
 
-  createExtrude(points: {x: number, y: number, z: number}[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  createExtrude(points: {x: number, y: number, z: number}[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createExtrude', { points, height, thickness, deflection, isClosed, entityId });
   }
 
-  createSweep(profilePoints: {x: number, y: number, z: number}[], spinePoints: {x: number, y: number, z: number}[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number, cornerMode?: string, isEllipse?: boolean): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  createSweep(profilePoints: {x: number, y: number, z: number}[], spinePoints: {x: number, y: number, z: number}[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number, cornerMode?: string, isEllipse?: boolean): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createSweep', { profilePoints, spinePoints, isSolid, deflection, entityId, profileCount, cornerMode, isEllipse });
   }
 
-  createLoft(profiles: {id: string, points: {x: number, y: number, z: number}[], closed: boolean}[], isSolid: boolean, isRuled: boolean, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  createLoft(profiles: {id: string, points: {x: number, y: number, z: number}[], closed: boolean}[], isSolid: boolean, isRuled: boolean, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createLoft', { profiles, isSolid, isRuled, deflection, entityId });
   }
 
-  createRevolve(points: {x: number, y: number, z: number}[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  createRevolve(points: {x: number, y: number, z: number}[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createRevolve', { points, axisPoint, axisDir, angle, thickness, deflection, isClosed, entityId });
   }
 
-  createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number, rotA?: {x:number, y:number, z:number}, rotB?: {x:number, y:number, z:number}, centerA?: {x:number, y:number, z:number}, centerB?: {x:number, y:number, z:number}): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][] }> {
+  createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number, rotA?: {x:number, y:number, z:number}, rotB?: {x:number, y:number, z:number}, centerA?: {x:number, y:number, z:number}, centerB?: {x:number, y:number, z:number}): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createBoolean', { operation, idA, idB, entityId, deflection, rotA, rotB, centerA, centerB });
   }
 

@@ -187,6 +187,7 @@ export class RevolveCommand implements Command {
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
       
       const solid = new Solid3D(id, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
+      solid.brepSnapshot = geometry.userData?.brepSnapshot;
       solid.creationParams = {
         type: 'revolve',
         params: { points, axisPoint: this.axisPt1!, axisDir, angle: this.angle,

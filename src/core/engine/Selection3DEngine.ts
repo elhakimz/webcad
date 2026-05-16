@@ -4,10 +4,11 @@ import { Entity } from '../model/Entity';
 import { IDocument } from '../model/Document';
 import * as MathUtils from './MathUtils';
 
-const raycaster = new THREE.Raycaster();
-raycaster.params.Mesh.threshold = 0; // exact triangle intersection only
-
 export class Selection3DEngine {
+  private static raycaster = new THREE.Raycaster();
+  static {
+    Selection3DEngine.raycaster.params.Mesh.threshold = 0;
+  }
   static lastClickedId: string | null = null;
   static lastClickWorldX: number = Infinity;
   static lastClickWorldY: number = Infinity;
@@ -39,12 +40,12 @@ export class Selection3DEngine {
     doc: IDocument,
     selectableEntities: Entity[]
   ): Solid3D | null {
-    raycaster.setFromCamera(ndc, camera);
+    Selection3DEngine.raycaster.setFromCamera(ndc, camera);
 
     const meshes = this.getSolid3DMeshes(selectableMeshes, selectableEntities);
     if (meshes.length === 0) return null;
 
-    const intersects = raycaster.intersectObjects(meshes, false);
+    const intersects = Selection3DEngine.raycaster.intersectObjects(meshes, false);
     if (intersects.length === 0) return null;
 
     const hit = intersects[0];
@@ -64,7 +65,7 @@ export class Selection3DEngine {
     doc: IDocument,
     selectableEntities: Entity[]
   ): Solid3D | null {
-    raycaster.setFromCamera(ndc, camera);
+    Selection3DEngine.raycaster.setFromCamera(ndc, camera);
 
     const meshes = this.getSolid3DMeshes(selectableMeshes, selectableEntities);
     if (meshes.length === 0) {
@@ -72,7 +73,7 @@ export class Selection3DEngine {
       return null;
     }
 
-    const intersects = raycaster.intersectObjects(meshes, false);
+    const intersects = Selection3DEngine.raycaster.intersectObjects(meshes, false);
     if (intersects.length === 0) {
       this.lastClickedId = null;
       return null;
@@ -85,7 +86,7 @@ export class Selection3DEngine {
 
     let hit;
     if (isSamePosition && this.lastClickedId !== null) {
-      const ids = intersects.map(i => i.object.name);
+      const ids = intersects.map((i: THREE.Intersection) => i.object.name);
       const lastIdx = ids.indexOf(this.lastClickedId);
       const nextIdx = (lastIdx + 1) % intersects.length;
       hit = intersects[nextIdx];
@@ -112,9 +113,9 @@ export class Selection3DEngine {
     mode: 'EDGE' | 'FACE'
   ): { entity: Solid3D, faceIndex?: number, edgeIndex?: number } | null {
     if (mode === 'FACE') {
-      raycaster.setFromCamera(ndc, camera);
+      Selection3DEngine.raycaster.setFromCamera(ndc, camera);
       const meshes = this.getSolid3DMeshes(selectableMeshes, selectableEntities);
-      const intersects = raycaster.intersectObjects(meshes, false);
+      const intersects = Selection3DEngine.raycaster.intersectObjects(meshes, false);
       
       if (intersects.length === 0) return null;
       
@@ -194,9 +195,9 @@ export class Selection3DEngine {
     }
 
     // 2. Fallback to faces if no edge is hit
-    raycaster.setFromCamera(ndc, camera);
+    Selection3DEngine.raycaster.setFromCamera(ndc, camera);
     const meshes = this.getSolid3DMeshes(selectableMeshes, selectableEntities);
-    const intersects = raycaster.intersectObjects(meshes, false);
+    const intersects = Selection3DEngine.raycaster.intersectObjects(meshes, false);
     
     if (intersects.length > 0) {
       const hit = intersects[0];

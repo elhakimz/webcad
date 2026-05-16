@@ -31,7 +31,7 @@ export class LoftHandler implements ActionHandler {
       if (deleteIds.length > 0) {
         try {
           await OpenCascadeService.getInstance().releaseShapes(deleteIds);
-          console.log(`[LoftHandler] Released shapes from worker:`, deleteIds);
+
         } catch (err) {
           console.error(`[LoftHandler] Failed to release shapes from worker:`, err);
         }

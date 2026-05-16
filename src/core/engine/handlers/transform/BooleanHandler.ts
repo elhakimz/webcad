@@ -15,7 +15,7 @@ export class BooleanHandler implements ActionHandler {
     if (action.action === 'boolean_result' && action.result && action.deleteIds) {
       const solid = action.result as Solid3D;
       const deleteIds = action.deleteIds as string[];
-      
+
       // Delete old solids
       for (const id of deleteIds) {
         const entity = doc.getEntity(id);
@@ -26,7 +26,7 @@ export class BooleanHandler implements ActionHandler {
           await PersistenceService.getInstance().onEntityErased(id, entity);
         }
       }
-      
+
       // Release shapes from worker
       try {
         await OpenCascadeService.getInstance().releaseShapes(deleteIds);
@@ -34,14 +34,22 @@ export class BooleanHandler implements ActionHandler {
       } catch (err) {
         console.error(`[BooleanHandler] Failed to release shapes from worker:`, err);
       }
-      
+
       // Add new solid
       addEntity(solid, true, false); // recordHistory=true, useCurrentLayer=false
-      
-      // Automatic REGEN to clean up residue
-      context.syncFromDocument();
-      
-      return `3D Solid created.`;
+
+      if (solid.brepSnapshot != undefined) {
+        // Persist BREP and update entity metadata immediately
+        await PersistenceService.getInstance().persistBRepNow(solid, doc);
+        // Automatic REGEN to clean up residue
+        context.syncFromDocument();
+        return `3D Solid created.`;
+      } else {
+        console.error("[BooleanHandler] Failed to create 3D Solid: brepSnapshot is missing. This solid cannot be persisted.");
+        throw new Error("Failed to create 3D Solid. No brepSnapshot available for persistence.");
+      }
+
+     
     }
     return undefined;
   }

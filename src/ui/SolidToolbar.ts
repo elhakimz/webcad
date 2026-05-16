@@ -84,6 +84,8 @@ export class SolidToolbar {
       { cmd: 'SWEEP', icon: 'sweep.svg' },
       { cmd: 'LOFT', icon: 'loft.svg' },
       { cmd: 'SFILLET', icon: 'sfillet.svg' },
+      { cmd: 'SCHAMFER', icon: 'schamfer.svg' },
+      { cmd: 'SHELL', icon: 'shell.svg' },
       { type: 'separator' },
       { cmd: 'UNION', icon: 'union.svg' },
       { cmd: 'SUBTRACT', icon: 'subtract.svg' },

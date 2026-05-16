@@ -121,6 +121,7 @@ export class LoftCommand implements Command {
       const indices = Array.from(geometry.index.array as Uint16Array | Uint32Array);
       
       const solid = new Solid3D(newId, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
+      solid.brepSnapshot = geometry.userData?.brepSnapshot;
       
       // Carry layer from the first profile
       if (this.profiles.length > 0) {

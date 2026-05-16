@@ -29,7 +29,7 @@ export class BooleanCommand implements Command {
 
   onInput(text: string, id: string, units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | Promise<CommandResponse> | undefined {
     const val = text.trim()
-    
+
     if (val.toUpperCase() === "E" || val.toUpperCase() === "EXIT") {
       return { action: "finish" }
     }
@@ -49,7 +49,7 @@ export class BooleanCommand implements Command {
       }
       return "Solid A not found. Select first solid (A):"
     }
-    
+
     if (this.step === 1) {
       if (doc) {
         const entity = doc.getEntity(val)
@@ -67,12 +67,10 @@ export class BooleanCommand implements Command {
 
   private executeBoolean(id: string, doc?: IDocument): Promise<CommandResponse> {
     if (!this.idA || !this.idB) return Promise.resolve("Missing required parameters.")
-    
+
     const facetres = doc ? doc.facetres : 5.0
     const deflection = 0.1 / facetres
-    
 
-    
     const entityA = doc?.getEntity(this.idA!) as any;
     const entityB = doc?.getEntity(this.idB!) as any;
     const rotA = entityA?.rotation || { x: 0, y: 0, z: 0 };
@@ -86,7 +84,6 @@ export class BooleanCommand implements Command {
       geo.setAttribute('position', new THREE.Float32BufferAttribute(entityA.positions, 3));
       geo.computeBoundingBox();
       const c = geo.boundingBox!.getCenter(new THREE.Vector3());
-      
       const posA = entityA.position || { x: 0, y: 0, z: 0 };
       centerA.x = c.x + posA.x;
       centerA.y = c.y + posA.y;
@@ -98,50 +95,40 @@ export class BooleanCommand implements Command {
       geo.setAttribute('position', new THREE.Float32BufferAttribute(entityB.positions, 3));
       geo.computeBoundingBox();
       const c = geo.boundingBox!.getCenter(new THREE.Vector3());
-      
       const posB = entityB.position || { x: 0, y: 0, z: 0 };
       centerB.x = c.x + posB.x;
       centerB.y = c.y + posB.y;
       centerB.z = c.z + posB.z;
     }
 
-    return (this.occService as any).createBoolean(this.operation, this.idA, this.idB, id, deflection, rotA, rotB, centerA, centerB).then((geometry: any) => {
-      const positions = Array.from(geometry.getAttribute('position').array) as number[]
-      const indices = Array.from(geometry.getIndex()?.array || []) as number[]
-      
-      const solid = new Solid3D(id, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
-      
-      // Inherit layer from A
-      if (doc) {
-        const entityA = doc.getEntity(this.idA!)
-        if (entityA) {
-          solid.layer = entityA.layer
+    return (this.occService as any).createBoolean(this.operation, this.idA, this.idB, id, deflection, rotA, rotB, centerA, centerB)
+      .then((geometry: any) => {
+        const positions = Array.from(geometry.getAttribute('position').array) as number[];
+        const indices = Array.from(geometry.getIndex()?.array || []) as number[];
+        const solid = new Solid3D(id, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
+
+        if (doc) {
+          const entA = doc.getEntity(this.idA!);
+          if (entA) solid.layer = entA.layer;
         }
-      }
-      
-      this.step = 0 // Reset
-      
-      // Export BREP for rehydration!
-      return this.occService.exportBRep(id).then((brepBytes) => {
-        solid.brepSnapshot = brepBytes;
+
+        this.step = 0;
+        if (!geometry.userData?.brepSnapshot) {
+          console.warn("[BooleanCommand] BREP snapshot missing from worker response.");
+        } else {
+          solid.brepSnapshot = geometry.userData.brepSnapshot;
+        }
+
         return {
           action: "boolean_result",
           result: solid,
           deleteIds: [this.idA!, this.idB!]
         } as unknown as CommandResponse;
-      }).catch((err) => {
-        console.error("Failed to export BREP for new boolean result:", err);
-        // Still return the solid!
-        return {
-          action: "boolean_result",
-          result: solid,
-          deleteIds: [this.idA!, this.idB!]
-        } as unknown as CommandResponse;
+      })
+      .catch((err: any) => {
+        this.step = 0;
+        return `Error performing boolean: ${err.message || err.toString()}`;
       });
-    }).catch((err: any) => {
-      this.step = 0
-      return `Error performing boolean: ${err.message || err.toString()}`
-    })
   }
 
   getPrompt() {

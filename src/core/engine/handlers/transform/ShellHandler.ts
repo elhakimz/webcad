@@ -40,8 +40,7 @@ export class ShellHandler implements ActionHandler {
         
         addEntity(newSolid, true, false);
         
-        // Automatic REGEN to clean up residue
-        context.syncFromDocument();
+
         
         const msg = faceIndices.length > 0 
           ? `Shell created with thickness ${thickness} (removed faces: ${faceIndices.join(', ')}).`

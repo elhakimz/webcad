@@ -66,6 +66,7 @@ import { DraftingState } from "./core/engine/DraftingState"
 import { HasBasePoint, HasUpdateSketch, HasStartSketch, HasFinishSketch, HasSelectedIds } from "./core/commands/types"
 import { GizmoManager } from "./core/engine/GizmoManager"
 import { PersistenceService } from "./core/persistence/PersistenceService"
+import { OpenCascadeService } from "./core/io/OpenCascadeService"
 
 export class App {
   viewer:Viewer
@@ -128,6 +129,14 @@ export class App {
     this.gizmoManager = new GizmoManager(this.viewer, this);
     this.viewer.onBeforeRender = () => this.gizmoManager.update();
     this.persistence = PersistenceService.getInstance();
+    
+    // Wire up error reporting from OCC and Persistence services to the command line log
+    OpenCascadeService.getInstance().onError((msg: string) => {
+      if (this.commandLinePrint) this.commandLinePrint(msg);
+    });
+    this.persistence.setOnErrorMessage((msg: string) => {
+      if (this.commandLinePrint) this.commandLinePrint(msg);
+    });
 
     // Add lighting for 3D meshes
     const ambient = new THREE.HemisphereLight(0xffffff, 0x888888, 1.1); // Much brighter ambient to wash out shadows
@@ -326,20 +335,22 @@ export class App {
     const activeName = active.constructor.name;
     const isEditCommand = this.isEditCommand(activeName);
 
+    const step = active.step ?? -1;
+
     return (activeName === 'ListCommand') ||
-        (active.step === 0 && isEditCommand) ||
-        ((active.step === 0 || active.step === 1) && activeName === 'DimAngularCommand') ||
-        (active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
-        (active.step === 0 && (activeName === 'ExtrudeCommand' || activeName === 'RevolveCommand')) ||
-        ((active.step === 1 || active.step === 2) && activeName === 'SweepCommand') ||
-        ('operation' in active && (active.step === 0 || active.step === 1)) ||
-        (active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
-        ((active.step === 0 || active.step === 1) && activeName === 'FilletCommand') ||
-        ((active.step === 0 || active.step === 1) && activeName === 'ChamferCommand') ||
-        (active.step >= 2 && (activeName === 'SFilletCommand' || activeName === 'SChamferCommand')) ||
-        ((active.step === 0 || active.step === 1 || active.step === 2) && activeName === 'BreakCommand') ||
-        (active.step === 2 && activeName === 'BlockCommand') ||
-        (active.step === 2 && activeName === 'LengthenCommand');
+        (step === 0 && isEditCommand) ||
+        ((step === 0 || step === 1) && activeName === 'DimAngularCommand') ||
+        (step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
+        (step === 0 && (activeName === 'ExtrudeCommand' || activeName === 'RevolveCommand')) ||
+        ((step === 1 || step === 2) && activeName === 'SweepCommand') ||
+        ('operation' in active && (step === 0 || step === 1)) ||
+        (step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
+        ((step === 0 || step === 1) && activeName === 'FilletCommand') ||
+        ((step === 0 || step === 1) && activeName === 'ChamferCommand') ||
+        (step >= 2 && (activeName === 'SFilletCommand' || activeName === 'SChamferCommand')) ||
+        ((step === 0 || step === 1 || step === 2) && activeName === 'BreakCommand') ||
+        (step === 2 && activeName === 'BlockCommand') ||
+        (step === 2 && activeName === 'LengthenCommand');
   }
 
   private getSelectableEntities(): Entity[] {
@@ -542,9 +553,9 @@ export class App {
         if (subEntity) {
           hoveredEntity = subEntity.entity;
           if (subEntity.faceIndex !== undefined) {
-            console.log("[Face Hover] Detected face index:", subEntity.faceIndex);
+            // console.log("[Face Hover] Detected face index:", subEntity.faceIndex);
           } else if (subEntity.edgeIndex !== undefined) {
-            console.log("[Edge Hover] Detected edge index:", subEntity.edgeIndex);
+            // console.log("[Edge Hover] Detected edge index:", subEntity.edgeIndex);
           }
         } else {
           // Fallback to full object hover if no sub-entity is found
@@ -741,7 +752,7 @@ export class App {
             const gripTolerance = 10 / this.viewer.camera.zoom; // 10 pixels
             if (dist <= gripTolerance) {
               this.activeGrip = { entityId: entity.id, gripId: grip.id, startPoint: { ...grip.point } };
-              console.log(`[app.pointerDown] Active grip set:`, this.activeGrip);
+
               return; // Stop processing, start dragging
             }
           }
@@ -938,7 +949,7 @@ export class App {
           obj = obj.parent;
         }
         
-        console.log("Gizmo attachment - entity id:", id, "found obj:", obj);
+
         
         if (obj) {
           this.gizmoManager.attachToObject(obj, entity);
@@ -959,7 +970,7 @@ export class App {
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
     const ndc = this.viewer.getNormalizedDeviceCoordinates(screenX, screenY);
     const subEntity = Selection3DEngine.getSubEntityAtSmart(ndc, this.viewer.camera, this.viewer.selectableMeshes, this.viewer.edgeLines, this.doc, this.getSolid3DSelectables());
-    console.log(`[app.click] getSubEntityAtSmart result:`, subEntity);
+
     
     if (subEntity) {
       // Point directional light to selected object
@@ -992,7 +1003,7 @@ export class App {
           this.selectedFaces.shift();
         }
         
-        console.log(`[app.click] Selected faces:`, this.selectedFaces);
+
         
         // Highlight the clicked face
         this.viewer.highlightFace(subEntity.entity.id, subEntity.faceIndex);
@@ -1005,19 +1016,17 @@ export class App {
              if (sharedEdgeResult !== null) {
                this.selectedEdge = { entityId: f1.entityId, edgeIndex: sharedEdgeResult.edgeIndex };
                this.viewer.highlightEdge(f1.entityId, sharedEdgeResult.edgeIndex);
-               console.log(`[app.click] Found shared edge: ${sharedEdgeResult.edgeIndex}`);
-               console.log(`[app.click] p1: [${sharedEdgeResult.p1.x.toFixed(3)}, ${sharedEdgeResult.p1.y.toFixed(3)}, ${sharedEdgeResult.p1.z.toFixed(3)}]`);
-               console.log(`[app.click] p2: [${sharedEdgeResult.p2.x.toFixed(3)}, ${sharedEdgeResult.p2.y.toFixed(3)}, ${sharedEdgeResult.p2.z.toFixed(3)}]`);
+
                
                // Clear face highlights
               this.viewer.highlightFace(f1.entityId, null);
               
               this.selectedFaces = []; // Clear for next pair
             } else {
-              console.log(`[app.click] No shared edge between face ${f1.faceIndex} and ${f2.faceIndex}`);
+
             }
           } else {
-            console.log(`[app.click] Faces belong to different entities`);
+
           }
         }
       }
@@ -1091,15 +1100,16 @@ export class App {
 
             // For commands that pick a target for immediate action (Trim, Extend, Offset at Step 1, Fillet at Step 0/1, Lengthen at Step 2)       
             const active = this.cmd.active;
-            const isImmediatePick = active && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && active.step === 1;
-            const isFilletPick = (activeName === 'FilletCommand' && active && (active.step === 0 || active.step === 1)) || (activeName === 'SFilletCommand' && active && active.step === 2);
-            const isChamferPick = (activeName === 'ChamferCommand' && active && (active.step === 0 || active.step === 1)) || (activeName === 'SChamferCommand' && active && active.step === 2);
-            const isBreakPick = activeName === 'BreakCommand' && active && (active.step === 0 || active.step === 1 || active.step === 2);
-            const isLengthenPick = activeName === 'LengthenCommand' && active && active.step === 2;
-            const isDimRadiusPick = (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand') && active && active.step === 0;
-            const isDimAngularPick = activeName === 'DimAngularCommand' && active && (active.step === 0 || active.step === 1);
+            const step = active ? (active.step ?? -1) : -1;
+            const isImmediatePick = active && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && step === 1;
+            const isFilletPick = (activeName === 'FilletCommand' && active && (step === 0 || step === 1)) || (activeName === 'SFilletCommand' && active && step === 2);
+            const isChamferPick = (activeName === 'ChamferCommand' && active && (step === 0 || step === 1)) || (activeName === 'SChamferCommand' && active && step === 2);
+            const isBreakPick = activeName === 'BreakCommand' && active && (step === 0 || step === 1 || step === 2);
+            const isLengthenPick = activeName === 'LengthenCommand' && active && step === 2;
+            const isDimRadiusPick = (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand') && active && step === 0;
+            const isDimAngularPick = activeName === 'DimAngularCommand' && active && (step === 0 || step === 1);
             const isListPick = activeName === 'ListCommand';
-            const isBooleanPick = active && 'operation' in active && (active.step === 0 || active.step === 1);
+            const isBooleanPick = active && 'operation' in active && (step === 0 || step === 1);
             const hasSetEntity = active && 'setEntity' in active;
 
             if (active && (hasSetEntity || isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isBooleanPick)) {       
@@ -1126,7 +1136,7 @@ export class App {
 
         // If there's an active edit command at step 0 and user has selected entities, re-run command with selection
         const activeForEdit = this.cmd.active;
-        if (activeForEdit && activeForEdit.step === 0 && isEditCommand && this.selectedEntityIds.size > 0) {
+        if (activeForEdit && (activeForEdit.step ?? -1) === 0 && isEditCommand && this.selectedEntityIds.size > 0) {
             const ids = Array.from(this.selectedEntityIds).filter(id => {
                 const e = this.doc.getEntity(id);
                 if (!e) return false;
@@ -1290,6 +1300,13 @@ export class App {
     }
 
     this.doc.addEntity(entity);
+    
+    // Trigger immediate BREP persistence for 3D solids with snapshots (Bug fix)
+    // This avoids data loss if the user refreshes within the 2-second auto-save debounce window.
+    if (entity instanceof Solid3D && entity.brepSnapshot) {
+      this.persistence.persistBRepNow(entity, this.doc);
+    }
+
     this.persistence.scheduleAutoSave(
       this.doc,
       () => this.viewer.canvas.toDataURL('image/jpeg', 0.5)

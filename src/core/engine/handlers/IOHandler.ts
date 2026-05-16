@@ -4,6 +4,7 @@ import { DXFExporter } from "../../io/dxfExport";
 import { DXFImporter } from "../../io/dxfImport";
 import { Solid3D } from "../../model/Solid3D";
 import { OpenCascadeService } from "../../io/OpenCascadeService";
+import { PersistenceService } from "../../persistence/PersistenceService";
 
 export class IOHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -24,6 +25,9 @@ export class IOHandler implements ActionHandler {
       doc.facetres = 5.0;
       doc.currentElevation = 0;
       viewer.setCameraView('TOP');
+
+      // Ensure persistence service knows we have a new project ID
+      PersistenceService.getInstance().newProject(doc);
       
       syncFromDocument();
       terminateActiveCommand();

@@ -172,6 +172,7 @@ export class ExtrudeCommand implements Command {
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
       
       const solid = new Solid3D(id, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
+      solid.brepSnapshot = geometry.userData?.brepSnapshot;
       solid.creationParams = {
         type: 'extrude',
         params: { points, height: this.height, thickness: this.thickness, isClosed }

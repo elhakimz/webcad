@@ -13,6 +13,7 @@ export class PersistenceService {
   private occ: OpenCascadeService;
 
   private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  private isLoading: boolean = false;
   public activeProjectId: string | null = null;
   public activeProjectName: string = 'Untitled';
 
@@ -20,6 +21,21 @@ export class PersistenceService {
     this.db = DatabaseService.getInstance();
     this.cache = ShapeCacheDB.getInstance();
     this.occ = OpenCascadeService.getInstance();
+
+    // Wire up error reporting to command line
+    this.occ.onError((msg) => {
+      if (this.onErrorMessage) this.onErrorMessage(msg);
+    });
+  }
+
+  private onErrorMessage: ((msg: string) => void) | null = null;
+  public setOnErrorMessage(callback: (msg: string) => void) {
+    this.onErrorMessage = callback;
+  }
+
+  private reportError(msg: string) {
+    console.error(msg);
+    if (this.onErrorMessage) this.onErrorMessage(msg);
   }
 
   static getInstance(): PersistenceService {
@@ -77,21 +93,56 @@ export class PersistenceService {
       entityRows.push(EntitySerializer.serialize(ent, projectId))
 
       // If it's a 3D solid without creation params (e.g. boolean result),
-      // we must save its BREP data to the cache DB.
+      // save its BREP data to the cache DB.
       if (ent instanceof Solid3D && !(ent as any).creationParams) {
-        try {
-          const brepBytes = await this.occ.exportBRep(ent.id)
+        // Bug 3 fix: use the in-memory brepSnapshot on the entity first —
+        // avoids a worker round-trip and works even if the shape is not
+        // currently registered in the worker (e.g. right after loadProject).
+        const existingSnapshot = (ent as any).brepSnapshot as Uint8Array | undefined;
+        if (existingSnapshot && existingSnapshot.length > 0) {
           if (this.cache.isInMemory()) {
-            await this.db.saveBRep(ent.id, projectId, brepBytes)
+            await this.db.saveBRep(ent.id, projectId, existingSnapshot);
           } else {
-            this.cache.saveBRep(ent.id, projectId, brepBytes)
+            this.cache.saveBRep(ent.id, projectId, existingSnapshot);
           }
-        } catch (e) {
-          const errorMsg = e instanceof Error ? e.message : String(e);
-          if (!errorMsg.includes("No cached shape")) {
-            console.error(`[Persistence] Failed to export BREP for ${ent.id}:`, e);
+        } else {
+          // Check if already in cache DB (persisted by persistBRepNow earlier)
+          let cachedBRep: Uint8Array | null = null;
+          if (this.cache.isInMemory()) {
+            cachedBRep = await this.db.loadBRep(ent.id, projectId);
           } else {
-            console.log(`[Persistence] Skipping BREP export for ${ent.id} (not in worker cache - likely imported raw mesh).`);
+            cachedBRep = this.cache.loadBRep(ent.id, projectId);
+          }
+
+          if (cachedBRep && cachedBRep.length > 0) {
+            console.log(`[Persistence] Using cached BREP for ${ent.id} (size: ${cachedBRep.length} bytes)`);
+          } else {
+            console.log(`[Persistence] BREP not in cache for ${ent.id}, exporting from worker...`);
+            try {
+              const brepBytes = await this.occ.exportBRep(ent.id);
+              if (brepBytes && brepBytes.length > 50) { // Valid STEP is >100 bytes
+                console.log(`[Persistence] Successfully exported BREP for ${ent.id} (${brepBytes.length} bytes)`);
+                if (this.cache.isInMemory()) {
+                  await this.db.saveBRep(ent.id, projectId, brepBytes);
+                } else {
+                  this.cache.saveBRep(ent.id, projectId, brepBytes);
+                }
+              } else {
+                console.warn(`[Persistence] Skipping save for ${ent.id} — export returned empty/invalid bytes (${brepBytes?.length ?? 0} bytes)`);
+              }
+            } catch (e) {
+              const errorMsg = e instanceof Error ? e.message : String(e);
+              // Bug 1 fix: worker throws "No valid cached shape …" — the old check
+              // for "No cached shape" never matched that string (the word "valid"
+              // breaks the substring), so every unregistered entity was incorrectly
+              // reported as an error instead of being silently skipped.
+              const isNotInWorker = errorMsg.toLowerCase().includes('cached shape');
+              if (!isNotInWorker) {
+                this.reportError(`[Persistence] Failed to export BREP for ${ent.id}: ${errorMsg}`);
+              } else {
+                console.log(`[Persistence] Skipping BREP export for ${ent.id} (not in worker cache — likely imported raw mesh).`);
+              }
+            }
           }
         }
       }
@@ -110,6 +161,10 @@ export class PersistenceService {
   }
 
   async loadProject(projectId: string, doc: Document, app: any): Promise<void> {
+    // Bug 2 fix: suppress auto-save while loading so that syncFromDocument()
+    // at the end of this method does not trigger a premature save before all
+    // shapes are registered in the OCC worker.
+    this.isLoading = true;
     const proj = await this.db.getProject(projectId)
     if (!proj) throw new Error(`Project ${projectId} not found`)
 
@@ -170,13 +225,18 @@ export class PersistenceService {
             brep = this.cache.loadBRep(ent.id, projectId)
           }
           if (brep) {
+            console.log(`[Persistence] Loading BREP for ${ent.id} (${brep.length} bytes)`);
             try {
               const deflection = 0.1 / (doc.facetres || 5.0);
               const geometryData = await this.occ.importBRep(ent.id, brep, deflection);
               ent.positions = geometryData.positions;
               ent.indices = geometryData.indices;
+              ent.faceMapping = geometryData.faceMapping;
+              ent.edgeLines = geometryData.edgeLines;
+              ent.brepSnapshot = brep; // Keep the snapshot in memory for fast saves
+              console.log(`[Persistence] Re-hydrated solid ${ent.id} from BREP`);
             } catch (e) {
-              console.error(`[Persistence] Failed to import BREP for ${ent.id}:`, e)
+              this.reportError(`[Persistence] Failed to export BREP for ${ent.id}: ${e instanceof Error ? e.message : String(e)}`);
             }
           }
         }
@@ -186,6 +246,9 @@ export class PersistenceService {
     }
 
     // Single re-render
+    // Bug 2 fix: clear isLoading BEFORE syncFromDocument so any
+    // scheduleAutoSave triggered by syncFromDocument is suppressed during load.
+    this.isLoading = false;
     app.syncFromDocument()
   }
 
@@ -195,22 +258,77 @@ export class PersistenceService {
     try {
       let geoData;
       switch (type) {
-        case 'box':      geoData = await this.occ.createBox(params.x, params.y, params.z, params.dx, params.dy, params.dz, deflection, entity.id); break
+        case 'box': geoData = await this.occ.createBox(params.x, params.y, params.z, params.dx, params.dy, params.dz, deflection, entity.id); break
         case 'cylinder': geoData = await this.occ.createCylinder(params.x, params.y, params.z, params.radius, params.height, deflection, entity.id); break
-        case 'sphere':   geoData = await this.occ.createSphere(params.x, params.y, params.z, params.r, deflection, entity.id); break
-        case 'cone':     geoData = await this.occ.createCone(params.x, params.y, params.z, params.r, params.h, deflection, entity.id); break
-        case 'torus':    geoData = await this.occ.createTorus(params.x, params.y, params.z, params.r1, params.r2, deflection, entity.id); break
-        case 'extrude':  geoData = await this.occ.createExtrude(params.points, params.height, params.thickness, deflection, params.isClosed, entity.id); break
-        case 'revolve':  geoData = await this.occ.createRevolve(params.points, params.axisPoint, params.axisDir, params.angle, params.thickness, deflection, params.isClosed, entity.id); break
+        case 'sphere': geoData = await this.occ.createSphere(params.x, params.y, params.z, params.r, deflection, entity.id); break
+        case 'cone': geoData = await this.occ.createCone(params.x, params.y, params.z, params.r, params.h, deflection, entity.id); break
+        case 'torus': geoData = await this.occ.createTorus(params.x, params.y, params.z, params.r1, params.r2, deflection, entity.id); break
+        case 'extrude': geoData = await this.occ.createExtrude(params.points, params.height, params.thickness, deflection, params.isClosed, entity.id); break
+        case 'revolve': geoData = await this.occ.createRevolve(params.points, params.axisPoint, params.axisDir, params.angle, params.thickness, deflection, params.isClosed, entity.id); break
         default: console.warn(`[PersistenceService] Unknown creationParams type: ${type}`)
       }
       if (geoData) {
         const attr = geoData.getAttribute('position') as any;
         entity.positions = Array.from(attr.array);
         entity.indices = Array.from(geoData.getIndex()!.array);
+        entity.faceMapping = geoData.userData?.faceMapping;
+        entity.edgeLines = geoData.userData?.edgeLines;
+        if (geoData.userData?.brepSnapshot) {
+          entity.brepSnapshot = geoData.userData.brepSnapshot;
+        }
       }
     } catch (err) {
-      console.error(`[PersistenceService] Failed to rebuild cache for ${entity.id}:`, err)
+      this.reportError(`[PersistenceService] Failed to rebuild cache for ${entity.id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Immediately persists BREP bytes and entity metadata to the database.
+   * Call this right after a complex operation (Boolean, Fillet, etc.)
+   * to avoid loss during page refreshes before auto-save fires.
+   */
+  async persistBRepNow(entity: Solid3D, doc: Document): Promise<void> {
+    if (!this.activeProjectId) return;
+    console.log("[PersistenceService] [persistBRepNow] BREP SNAPSHOT EXISTS? ", (entity as any).brepSnapshot)
+    const brepBytes = (entity as any).brepSnapshot;
+    if (!brepBytes || brepBytes.length < 50) {
+      console.warn(`[Persistence] persistBRepNow: skipping ${entity.id} — snapshot is empty or too small (${brepBytes?.length ?? 0} bytes)`);
+      return;
+    }
+    console.log("[PersistenceService] persistBRepNow", entity.id, brepBytes.length);
+    try {
+      // 1. Save BREP data to the cache DB
+      if (this.cache.isInMemory()) {
+        await this.db.saveBRep(entity.id, this.activeProjectId, brepBytes);
+      } else {
+        this.cache.saveBRep(entity.id, this.activeProjectId, brepBytes);
+      }
+
+      // 2. Save Entity metadata immediately so it appears on reload
+      const row = EntitySerializer.serialize(entity, this.activeProjectId);
+      await this.db.bulkUpsertEntities([row]);
+
+      // 3. Save Project settings to keep ID counters and other states in sync
+      await this.db.upsertProject({
+        id: this.activeProjectId,
+        name: this.activeProjectName,
+        createdAt: Date.now(), // Fallback, though typically already exists
+        updatedAt: Date.now(),
+        settings: {
+          units: doc.units,
+          facetres: doc.facetres,
+          dimtoh: doc.dimtoh,
+          dimtad: doc.dimtad,
+          currentLayer: doc.layers.getCurrentLayer().name,
+          currentElevation: doc.currentElevation,
+          currentThickness: doc.currentThickness,
+          idCounters: doc.getIdCounters()
+        }
+      });
+
+      console.log(`[PersistenceService] Immediately persisted ${entity.id} and updated project metadata.`);
+    } catch (err) {
+      console.error(`[PersistenceService] Failed immediate persistence for ${entity.id}:`, err);
     }
   }
 
@@ -255,12 +373,16 @@ export class PersistenceService {
     this.cache.deleteHistory(projectId);
 
     if (this.activeProjectId === projectId) {
-      this.activeProjectId   = null;
+      this.activeProjectId = null;
       this.activeProjectName = 'Untitled';
     }
   }
 
   scheduleAutoSave(doc: Document, getThumbnail?: () => string): void {
+    // Bug 2 fix: do not schedule auto-save while a project is being loaded.
+    // loadProject → syncFromDocument → scheduleAutoSave would otherwise fire
+    // 2 s later when shapes may not yet be registered in the OCC worker.
+    if (this.isLoading) return;
     if (this.autoSaveTimer) clearTimeout(this.autoSaveTimer)
     this.autoSaveTimer = setTimeout(async () => {
       await this.saveProject(doc, this.activeProjectName, getThumbnail?.())

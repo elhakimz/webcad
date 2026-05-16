@@ -52,8 +52,7 @@ export class SChamferHandler implements ActionHandler {
         
         addEntity(newSolid, true, false);
         
-        // Automatic REGEN to clean up residue
-        context.syncFromDocument();
+
         
         if (action.close) {
           return { action: 'close', entity: newSolid } as any;

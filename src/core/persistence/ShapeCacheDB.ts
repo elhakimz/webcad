@@ -85,13 +85,18 @@ export class ShapeCacheDB {
 
   // BREP
   saveBRep(eid: string, pid: string, brepBytes: Uint8Array): void {
+    console.log(`[ShapeCacheDB] Saving BREP for ${eid} to PID ${pid} (${brepBytes.length} bytes)`);
     this.db.exec({ sql: `INSERT OR REPLACE INTO brep_cache VALUES (?,?,?,?)`,
       bind: [eid, pid, brepBytes, Date.now()] })
   }
   loadBRep(eid: string, pid: string): Uint8Array | null {
     const rows = this.db.exec({ sql: `SELECT brep_data FROM brep_cache WHERE entity_id=? AND project_id=?`,
       bind: [eid, pid], returnValue: 'resultRows', rowMode: 'array' })
-    return rows.length ? rows[0][0] : null
+    if (rows.length) {
+      console.log(`[ShapeCacheDB] Loaded BREP for ${eid} (${rows[0][0].length} bytes)`);
+      return rows[0][0];
+    }
+    return null;
   }
   deleteBRep(eid: string, pid: string): void {
     this.db.exec({ sql: 'DELETE FROM brep_cache WHERE entity_id=? AND project_id=?', bind: [eid, pid] })

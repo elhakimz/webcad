@@ -6,14 +6,23 @@ const shapeCache = new Map<string, any>();
 
 function cacheShape(entityId: string, shape: any) {
   if (shapeCache.has(entityId)) {
-    shapeCache.get(entityId).delete();
+    const oldShape = shapeCache.get(entityId);
+    if (oldShape && !oldShape.IsNull()) {
+      oldShape.delete();
+    }
   }
-  shapeCache.set(entityId, shape);
+
+  // Use the robust detachShape helper to ensure the cached shape is independent
+  const copy = detachShape(oc, shape);
+  shapeCache.set(entityId, copy);
 }
 
 function releaseShape(entityId: string) {
   if (shapeCache.has(entityId)) {
-    shapeCache.get(entityId).delete();
+    const shape = shapeCache.get(entityId);
+    if (shape && !shape.IsNull()) {
+      try { shape.delete(); } catch (_) { }
+    }
     shapeCache.delete(entityId);
   }
 }
@@ -28,63 +37,63 @@ function decodeOCCError(label: string, e: unknown): string {
     }
   }
   if (typeof e === 'string') return `[${label}] Binding error: ${e}`;
-  if (e instanceof Error)    return `[${label}] ${e.message}`;
+  if (e instanceof Error) return `[${label}] ${e.message}`;
   return `[${label}] Unknown error: ${String(e)}`;
 }
 
-function applyRotation(shape: any, rot: {x:number, y:number, z:number}, oc: any, center?: {x:number, y:number, z:number}) {
+function applyRotation(shape: any, rot: { x: number, y: number, z: number }, oc: any, center?: { x: number, y: number, z: number }) {
   if (!rot || (rot.x === 0 && rot.y === 0 && rot.z === 0)) return shape;
-  
+
   const transform = new oc.gp_Trsf_1();
-  
+
   // 1. Translate to origin
   const toOrigin = new oc.gp_Trsf_1();
   const centerPt = center ? center : { x: 0, y: 0, z: 0 };
   const vecToOrigin = new oc.gp_Vec_4(-centerPt.x, -centerPt.y, -centerPt.z);
   toOrigin.SetTranslation_1(vecToOrigin);
-  
+
   // 2. Rotate around origin
   const rotTrsf = new oc.gp_Trsf_1();
-  
+
   const rotX = new oc.gp_Trsf_1();
-  const originPnt = new oc.gp_Pnt_3(0,0,0);
+  const originPnt = new oc.gp_Pnt_3(0, 0, 0);
   const dirX = new oc.gp_Dir_4(1, 0, 0);
-  const axX  = new oc.gp_Ax1_2(originPnt, dirX);
+  const axX = new oc.gp_Ax1_2(originPnt, dirX);
   rotX.SetRotation_1(axX, rot.x);
   axX.delete();
   dirX.delete();
-  
+
   const rotY = new oc.gp_Trsf_1();
   const dirY = new oc.gp_Dir_4(0, 1, 0);
-  const axY  = new oc.gp_Ax1_2(originPnt, dirY);
+  const axY = new oc.gp_Ax1_2(originPnt, dirY);
   rotY.SetRotation_1(axY, rot.y);
   axY.delete();
   dirY.delete();
-  
+
   const rotZ = new oc.gp_Trsf_1();
   const dirZ = new oc.gp_Dir_4(0, 0, 1);
-  const axZ  = new oc.gp_Ax1_2(originPnt, dirZ);
+  const axZ = new oc.gp_Ax1_2(originPnt, dirZ);
   rotZ.SetRotation_1(axZ, rot.z);
   axZ.delete();
   dirZ.delete();
-  
+
   rotTrsf.Multiply(rotZ);
   rotTrsf.Multiply(rotY);
   rotTrsf.Multiply(rotX);
-  
+
   // 3. Translate back
   const toBack = new oc.gp_Trsf_1();
   const vecToBack = new oc.gp_Vec_4(centerPt.x, centerPt.y, centerPt.z);
   toBack.SetTranslation_1(vecToBack);
-  
+
   // Combine: toBack * rotTrsf * toOrigin
   transform.Multiply(toBack);
   transform.Multiply(rotTrsf);
   transform.Multiply(toOrigin);
-  
+
   const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
   const newShape = brepTransform.Shape();
-  
+
   // Cleanup
   vecToOrigin.delete();
   toOrigin.delete();
@@ -97,13 +106,13 @@ function applyRotation(shape: any, rot: {x:number, y:number, z:number}, oc: any,
   toBack.delete();
   transform.delete();
   brepTransform.delete();
-  
+
   return newShape;
 }
 
 function configureBooleanOp(op: any) {
   if (!op) return;
-  
+
   if (op.SetFuzzyValue) {
     op.SetFuzzyValue(1e-6);
   }
@@ -118,6 +127,180 @@ function configureBooleanOp(op: any) {
   }
 }
 
+let STEP_Writer_Ctor: any = null;
+let STEP_Reader_Ctor: any = null;
+
+function findStepConstructors(oc: any) {
+  // Find Writer
+  for (const k of ['STEPControl_Writer_1', 'STEPControl_Writer', 'STEPControl_Writer_2']) {
+    if (typeof oc[k] !== 'function') continue;
+    try {
+      const t = new oc[k]();
+      t.delete();
+      STEP_Writer_Ctor = oc[k];
+      self.postMessage({ type: 'log', message: `[Worker] Found working Writer: ${k}` });
+      break;
+    } catch (_) { }
+  }
+
+  // Find Reader
+  for (const k of ['STEPControl_Reader_1', 'STEPControl_Reader', 'STEPControl_Reader_2']) {
+    if (typeof oc[k] !== 'function') continue;
+    try {
+      const t = new oc[k]();
+      t.delete();
+      STEP_Reader_Ctor = oc[k];
+      self.postMessage({ type: 'log', message: `[Worker] Found working Reader: ${k}` });
+      break;
+    } catch (_) { }
+  }
+
+  if (!STEP_Writer_Ctor || !STEP_Reader_Ctor) {
+    self.postMessage({ type: 'log', message: '[Worker] WARNING: Could not find working STEP constructors.' });
+  }
+}
+
+// ─── shape copy helper — call this on every maker.Shape() result ──────────
+function detachShape(oc: any, shape: any): any {
+  // Primary: Located(identity)
+  try {
+    const loc = new (oc.TopLoc_Location_1 || oc.TopLoc_Location)();
+    const copy = shape.Located(loc);
+    loc.delete();
+    return copy;
+  } catch (_) { }
+
+  // Fallback A: BRepBuilderAPI_Copy
+  try {
+    const copier = new (oc.BRepBuilderAPI_Copy_2 || oc.BRepBuilderAPI_Copy_1 || oc.BRepBuilderAPI_Copy)(shape, true, false);
+    const copy = copier.Shape();
+    copier.delete();
+    return copy;
+  } catch (_) { }
+
+  // Fallback B: wrap in a compound
+  try {
+    const builder = new oc.BRep_Builder();
+    const compound = new oc.TopoDS_Compound();
+    builder.MakeCompound(compound);
+    builder.Add(compound, shape);
+    builder.delete();
+    return compound;
+  } catch (_) { }
+
+  // Fallback C: original reference
+  console.warn('[Worker] detachShape: all copy strategies failed, using original reference');
+  return shape;
+}
+
+function shapeInfo(oc: any, shape: any): string {
+  if (!shape) return 'null';
+  try {
+    const TYPE_NAMES = [
+      'COMPOUND', 'COMPSOLID', 'SOLID', 'SHELL',
+      'FACE', 'WIRE', 'EDGE', 'VERTEX', 'SHAPE'
+    ];
+    const isNull = shape.IsNull();
+    const typeVal = shape.ShapeType()?.value ?? shape.ShapeType();
+    const typeName = TYPE_NAMES[typeVal] ?? `unknown(${typeVal})`;
+
+    // Count faces via explorer
+    let faceCount = 0;
+    try {
+      const exp = new oc.TopExp_Explorer_2(
+        shape,
+        oc.TopAbs_ShapeEnum.TopAbs_FACE,
+        oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+      );
+      while (exp.More()) { faceCount++; exp.Next(); }
+      exp.delete();
+    } catch (_) { faceCount = -1; }
+
+    return `ShapeType=${typeName} IsNull=${isNull} faces=${faceCount}`;
+  } catch (e: any) {
+    return `[shapeInfo error]`;
+  }
+}
+
+
+function exportShapeToBytes(oc: any, shape: any, entityId: string): Uint8Array | undefined {
+  if (!oc || !shape || shape.IsNull()) return undefined;
+
+  const path = `/exp.step`;
+
+  try {
+    const WriterCtor = STEP_Writer_Ctor || oc.STEPControl_Writer_1 || oc.STEPControl_Writer;
+    if (!WriterCtor) {
+      throw new Error("No STEPControl_Writer constructor found");
+    }
+
+    const writer = new WriterCtor();
+
+    const transferStatus = writer.Transfer(shape, 0, true);
+    const writeResult = writer.Write(path);
+    writer.delete();
+
+    if (!oc.FS.analyzePath(path).exists) {
+      throw new Error(`STEP write produced no file (Transfer=${transferStatus?.value ?? transferStatus}, Write=${writeResult?.value ?? writeResult})`);
+    }
+
+    const bytes = oc.FS.readFile(path) as Uint8Array;
+    try { oc.FS.unlink(path); } catch (_) { }
+
+    self.postMessage({ type: 'log', message: `[Worker] Export SUCCESS for ${entityId}: ${shapeInfo(oc, shape)} (${bytes.length} bytes)` });
+    return bytes;
+  } catch (e: any) {
+    self.postMessage({ type: 'log', message: `[Worker] STEP export failed for ${entityId}: ${e.message}` });
+  }
+
+  return undefined;
+}
+
+function importShapeFromBytes(oc: any, entityId: string, bytes: Uint8Array): any {
+  const path = `/imp.step`;
+  try { oc.FS.unlink(path); } catch (_) { }
+  oc.FS.writeFile(path, new Uint8Array(bytes));
+
+  try {
+    const ReaderCtor = STEP_Reader_Ctor || oc.STEPControl_Reader_1 || oc.STEPControl_Reader;
+    if (!ReaderCtor) throw new Error('No STEPControl_Reader constructor found');
+
+    const reader = new ReaderCtor();
+    const readStatus = reader.ReadFile(path);
+    const readVal = readStatus?.value ?? readStatus;
+
+    const nbRoots = reader.NbRootsForTransfer();
+
+    if (nbRoots === 0) {
+      try { oc.FS.unlink(path); } catch (_) { }
+      reader.delete();
+      throw new Error(`STEP file has no transferable roots for ${entityId} (ReadStatus=${readVal}, bytes=${bytes.length})`);
+    }
+
+    // TransferRoots may or may not accept args depending on build
+    try {
+      reader.TransferRoots();
+    } catch (_) {
+      for (let i = 1; i <= nbRoots; i++) {
+        try { reader.TransferRoot(i); } catch (e2) { }
+      }
+    }
+
+    const shape = reader.OneShape();
+    reader.delete();
+    try { oc.FS.unlink(path); } catch (_) { }
+
+    if (!shape || (shape.IsNull && shape.IsNull())) {
+      throw new Error(`STEP import produced null shape for ${entityId}`);
+    }
+
+    return shape;
+  } catch (e: any) {
+    try { oc.FS.unlink(path); } catch (_) { }
+    throw e;
+  }
+}
+
 self.onmessage = async (e) => {
   const { type, payload, id } = e.data;
 
@@ -126,7 +309,28 @@ self.onmessage = async (e) => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         oc = await (initOpenCascade as any)();
-        self.postMessage({ type: 'init', success: true, id });
+        (self as any).oc = oc;
+
+        // Discover working STEP constructors
+        findStepConstructors(oc);
+
+        try {
+          // 1. Sanity Check for oc.FS
+          if (oc && oc.FS) {
+            const testFile = "/fs_test.txt";
+            const testData = new Uint8Array([72, 101, 108, 108, 111]); // "Hello"
+            oc.FS.writeFile(testFile, testData);
+            const readData = oc.FS.readFile(testFile);
+            oc.FS.unlink(testFile);
+            if (readData[0] === 72) {
+              self.postMessage({ type: 'log', message: '[Worker] Virtual FS (oc.FS) is functional.' });
+            }
+          }
+
+          self.postMessage({ type: 'init', success: true, id });
+        } catch (error: any) {
+          self.postMessage({ type: 'init', success: false, error: error.message, id });
+        }
       } catch (error: any) {
         self.postMessage({ type: 'init', success: false, error: error.message, id });
       }
@@ -154,27 +358,47 @@ self.onmessage = async (e) => {
     }
     const { x, y, z, dx, dy, dz, deflection, entityId } = payload;
     try {
-      const pt = new oc.gp_Pnt_3(x, y, z);
-      const box = new oc.BRepPrimAPI_MakeBox_2(pt, dx, dy, dz);
-      const shape = box.Shape();
-      
-      if (entityId) {
-        cacheShape(entityId, shape);
+      // ✅ Use robust "create at origin then translate" approach
+      const maker = new oc.BRepPrimAPI_MakeBox_1(dx, dy, dz);
+      let shape = maker.Shape();
+
+      let translation: any = null;
+      let transform: any = null;
+      let brepTransform: any = null;
+
+      if (x !== 0 || y !== 0 || z !== 0) {
+        translation = new oc.gp_Vec_4(x, y, z);
+        transform = new oc.gp_Trsf_1();
+        transform.SetTranslation_1(translation);
+        brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+        const transformedShape = brepTransform.Shape();
+        shape = detachShape(oc, transformedShape);
+      } else {
+        shape = detachShape(oc, shape);
       }
 
-      // Tessellate and get geometry data
-      const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
+      // Update cache
+      cacheShape(entityId, shape);
 
-      pt.delete();
-      box.delete();
+      // Export BRep Bytes inline
+      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+
+      // Tessellate and get geometry data
+      const geometryData = shapeToBufferGeometryData(shape, oc, deflection || 0.1);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
       }
 
-      self.postMessage({ type: 'createBox', success: true, payload: geometryData, id });
+      // Cleanup
+      if (translation) translation.delete();
+      if (transform) transform.delete();
+      if (brepTransform) brepTransform.delete();
+      maker.delete();
+
+      self.postMessage({ type: 'createBox', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
-      const errorMessage = error.message || error.toString() || 'Unknown error';
+      const errorMessage = decodeOCCError('createBox', error);
       self.postMessage({ type: 'createBox', success: false, error: errorMessage, id });
     }
   } else if (type === 'filletSolid') {
@@ -210,7 +434,7 @@ self.onmessage = async (e) => {
       // Perform fillet
       const fillet = new oc.BRepFilletAPI_MakeFillet(shape, oc.ChFi3d_FilletShape.ChFi3d_Rational);
       fillet.Add_2(radius, foundEdge);
-      const newShape = fillet.Shape();
+      const newShape = detachShape(oc, fillet.Shape());
 
       foundEdge.delete();
 
@@ -220,13 +444,16 @@ self.onmessage = async (e) => {
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
 
+      // Export BRep Bytes
+      const brepBytes = exportShapeToBytes(oc, newShape, entityId);
+
       fillet.delete();
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
       }
 
-      self.postMessage({ type: 'filletSolid', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'filletSolid', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'filletSolid', success: false, error: errorMessage, id });
@@ -269,7 +496,7 @@ self.onmessage = async (e) => {
       } catch (e) {
         chamfer.Add(distance, foundEdge);
       }
-      const newShape = chamfer.Shape();
+      const newShape = detachShape(oc, chamfer.Shape());
 
       foundEdge.delete();
 
@@ -279,13 +506,16 @@ self.onmessage = async (e) => {
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
 
+      // Export BRep Bytes
+      const brepBytes = exportShapeToBytes(oc, newShape, entityId);
+
       chamfer.delete();
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
       }
 
-      self.postMessage({ type: 'chamferSolid', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'chamferSolid', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'chamferSolid', success: false, error: errorMessage, id });
@@ -321,7 +551,7 @@ self.onmessage = async (e) => {
       }
 
       const fillet = new oc.BRepFilletAPI_MakeFillet(shape, oc.ChFi3d_FilletShape.ChFi3d_Rational);
-      
+
       // Explore edges of the face
       const edgeExplorer = new oc.TopExp_Explorer_2(foundFace, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
       let edgesAdded = 0;
@@ -339,7 +569,7 @@ self.onmessage = async (e) => {
         throw new Error(`No edges found for face ${faceIndex}.`);
       }
 
-      const newShape = fillet.Shape();
+      const newShape = detachShape(oc, fillet.Shape());
 
       // Update cache
       cacheShape(entityId, newShape);
@@ -347,13 +577,16 @@ self.onmessage = async (e) => {
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
 
+      // Export BRep Bytes
+      const brepBytes = exportShapeToBytes(oc, newShape, entityId);
+
       fillet.delete();
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
       }
 
-      self.postMessage({ type: 'filletSolidFace', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'filletSolidFace', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'filletSolidFace', success: false, error: errorMessage, id });
@@ -379,6 +612,19 @@ self.onmessage = async (e) => {
       // Ensure the shape is triangulated so we can find mesh nodes (required for analytical shapes like cylinders)
       const linearDeflection = deflection || 0.1;
       const mesher = new oc.BRepMesh_IncrementalMesh_2(shape, linearDeflection, false, 0.5, false);
+
+      const progress = (oc.Message_ProgressRange_1 && typeof oc.Message_ProgressRange_1 === 'function') ? new oc.Message_ProgressRange_1() : null;
+      if (progress) {
+        mesher.Perform(progress);
+      } else {
+        (mesher as any).Perform();
+      }
+
+      if (mesher.IsDone && !mesher.IsDone()) {
+        console.warn("[OCC] Meshing for center calculation might be incomplete.");
+      }
+
+      if (progress) progress.delete();
       mesher.delete();
 
       // Iterate over faces to find center and bounding box via triangulation
@@ -395,15 +641,18 @@ self.onmessage = async (e) => {
             const x = p.X();
             const y = p.Y();
             const z = p.Z();
-            
+
             sumX += x; sumY += y; sumZ += z;
             nodeCount++;
-            
+
             if (x < minX) minX = x; if (x > maxX) maxX = x;
             if (y < minY) minY = y; if (y > maxY) maxY = y;
             if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+            p.delete();
           }
         }
+        loc.delete();
+        face.delete();
         faceExplorer.Next();
       }
       faceExplorer.delete();
@@ -415,7 +664,7 @@ self.onmessage = async (e) => {
       const centerX = (minX + maxX) / 2;
       const centerY = (minY + maxY) / 2;
       const centerZ = (minZ + maxZ) / 2;
-      
+
       const sizeX = maxX - minX;
       const sizeY = maxY - minY;
       const sizeZ = maxZ - minZ;
@@ -430,7 +679,7 @@ self.onmessage = async (e) => {
       const trsf = new oc.gp_Trsf_1();
       const centerPnt = new oc.gp_Pnt_3(centerX, centerY, centerZ);
       trsf.SetScale(centerPnt, scaleFactor);
-      
+
       const transformer = new oc.BRepBuilderAPI_Transform_2(shape, trsf, true);
       const scaledShape = transformer.Shape();
 
@@ -438,41 +687,42 @@ self.onmessage = async (e) => {
       const cutter = new oc.BRepAlgoAPI_Cut_3(shape, scaledShape);
       configureBooleanOp(cutter);
       cutter.Build();
-      
+
       if (!cutter.IsDone()) {
         cutter.delete();
         throw new Error(`Boolean cut failed for shell`);
       }
-      
+
       newShape = cutter.Shape();
-      
-    // [SIGNED PORTION: DO NOT CHANGE WITHOUT REQUEST]
-    // Stable face removal for shell (Supports Box, Cylinder, Polylines, and Polygons).
-    // NO CHANGES ALLOWED UNLESS EXPLICITLY ASKED.
+      const initialShellShape = newShape;
+
+      // [SIGNED PORTION: DO NOT CHANGE WITHOUT REQUEST]
+      // Stable face removal for shell (Supports Box, Cylinder, Polylines, and Polygons).
+      // NO CHANGES ALLOWED UNLESS EXPLICITLY ASKED.
       if (removeFaces && faceIndices && faceIndices.length > 0) {
         const indicesSet = new Set(faceIndices);
         let currentIndex = 0;
-        
+
         let nbFaces = 0;
         const countExp = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
         while (countExp.More()) { nbFaces++; countExp.Next(); }
         countExp.delete();
-        
+
         const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
-        
+
         while (explorer.More()) {
           if (indicesSet.has(currentIndex)) {
             const face = oc.TopoDS.Face_1(explorer.Current());
-            
+
             // Calculate face center and bounding box
             let fSumX = 0, fSumY = 0, fSumZ = 0;
             let fNodeCount = 0;
             let fMinX = Infinity, fMinY = Infinity, fMinZ = Infinity;
             let fMaxX = -Infinity, fMaxY = -Infinity, fMaxZ = -Infinity;
-            
-            const loc = new oc.TopLoc_Location_1();
-            const triangulation = oc.BRep_Tool.Triangulation(face, loc);
-            
+
+            const innerLoc = new oc.TopLoc_Location_1();
+            const triangulation = oc.BRep_Tool.Triangulation(face, innerLoc);
+
             if (!triangulation.IsNull()) {
               const tri = triangulation.get();
               const nbNodes = tri.NbNodes();
@@ -484,37 +734,38 @@ self.onmessage = async (e) => {
                 fMinY = Math.min(fMinY, y); fMaxY = Math.max(fMaxY, y);
                 fMinZ = Math.min(fMinZ, z); fMaxZ = Math.max(fMaxZ, z);
                 fNodeCount++;
+                p.delete();
               }
-              
+
               const fCenterX = fSumX / fNodeCount;
               const fCenterY = fSumY / fNodeCount;
               const fCenterZ = fSumZ / fNodeCount;
-              
+
               // Vector from shape center to face center
               const dx = fCenterX - centerX;
               const dy = fCenterY - centerY;
               const dz = fCenterZ - centerZ;
-              const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+              const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
               let nx = 0, ny = 0, nz = 1;
               if (len > 0.001) {
                 nx = dx / len; ny = dy / len; nz = dz / len;
               }
-              
+
               // Vector points INWARD (opposite to normal)
               // Make it VERY LONG (e.g., 20 times thickness) to ensure it reaches the cavity!
               const vec = new oc.gp_Vec_4(-nx * targetThickness * 20, -ny * targetThickness * 20, -nz * targetThickness * 20);
-              
+
               let faceToExtrude = face;
               let faceTransformer: any = null;
               let faceTrsf: any = null;
-              
+
               // For complex shapes like extruded polylines (more than 6 faces),
               // we scale the face DOWN slightly so the prism doesn't remove the side walls!
               if (nbFaces > 6) {
                 const faceMaxSize = Math.max(fMaxX - fMinX, fMaxY - fMinY);
                 let faceScale = (faceMaxSize - 2 * targetThickness) / faceMaxSize;
                 if (faceScale <= 0.1) faceScale = 0.9;
-                
+
                 faceTrsf = new oc.gp_Trsf_1();
                 const fCenterPnt = new oc.gp_Pnt_3(fCenterX, fCenterY, fCenterZ);
                 faceTrsf.SetScale(fCenterPnt, faceScale);
@@ -522,36 +773,54 @@ self.onmessage = async (e) => {
                 faceToExtrude = faceTransformer.Shape();
                 fCenterPnt.delete();
               }
-              
+
               // Create prism from the face (scaled or unscaled)
               const prismBuilder = new oc.BRepPrimAPI_MakePrism_1(faceToExtrude, vec, false, true);
               if (prismBuilder.IsDone()) {
-                 const cuttingShape = prismBuilder.Shape();
-                 const faceCutter = new oc.BRepAlgoAPI_Cut_3(newShape, cuttingShape);
-                 configureBooleanOp(faceCutter);
-                 faceCutter.Build();
-                 
-                 if (faceCutter.IsDone()) {
-                   newShape = faceCutter.Shape();
-                 }
-               }
-               prismBuilder.delete();
+                const cuttingShape = prismBuilder.Shape();
+                const faceCutter = new oc.BRepAlgoAPI_Cut_3(newShape, cuttingShape);
+                configureBooleanOp(faceCutter);
+                faceCutter.Build();
+
+                if (faceCutter.IsDone()) {
+                  const oldShape = newShape;
+                  newShape = faceCutter.Shape();
+                  // Delete intermediate shapes, but not the first one which is from the initial cutter
+                  if (oldShape && oldShape !== initialShellShape) {
+                    oldShape.delete();
+                  }
+                }
+                faceCutter.delete();
+                cuttingShape.delete();
+              }
+              prismBuilder.delete();
               if (faceTransformer) faceTransformer.delete();
               if (faceTrsf) faceTrsf.delete();
               vec.delete();
             }
+            innerLoc.delete();
+            face.delete();
           }
           currentIndex++;
           explorer.Next();
         }
         explorer.delete();
       }
-      
+
       // Cleanup
       cutter.delete();
       transformer.delete();
+      if (initialShellShape && initialShellShape !== newShape) {
+        initialShellShape.delete();
+      }
+      scaledShape.delete();
       trsf.delete();
       centerPnt.delete();
+
+      // Final detach
+      const detached = detachShape(oc, newShape);
+      newShape.delete();
+      newShape = detached;
 
       // Update cache
       cacheShape(entityId, newShape);
@@ -559,11 +828,14 @@ self.onmessage = async (e) => {
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
 
+      // Export BRep Bytes
+      const brepBytes = exportShapeToBytes(oc, newShape, entityId);
+
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
       }
 
-      self.postMessage({ type: 'makeThickSolid', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'makeThickSolid', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'makeThickSolid', success: false, error: errorMessage, id });
@@ -599,7 +871,7 @@ self.onmessage = async (e) => {
       }
 
       const chamfer = new oc.BRepFilletAPI_MakeChamfer(shape);
-      
+
       // Explore edges of the face
       const edgeExplorer = new oc.TopExp_Explorer_2(foundFace, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
       let edgesAdded = 0;
@@ -621,7 +893,7 @@ self.onmessage = async (e) => {
         throw new Error(`No edges found for face ${faceIndex}.`);
       }
 
-      const newShape = chamfer.Shape();
+      const newShape = detachShape(oc, chamfer.Shape());
 
       // Update cache
       cacheShape(entityId, newShape);
@@ -629,13 +901,16 @@ self.onmessage = async (e) => {
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
 
+      // Export BRep Bytes
+      const brepBytes = exportShapeToBytes(oc, newShape, entityId);
+
       chamfer.delete();
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
       }
 
-      self.postMessage({ type: 'chamferSolidFace', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'chamferSolidFace', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'chamferSolidFace', success: false, error: errorMessage, id });
@@ -650,7 +925,7 @@ self.onmessage = async (e) => {
       // Use constructor with radius and height and translate (most reliable overload)
       const cylinder = new oc.BRepPrimAPI_MakeCylinder_2(r, h, 2 * Math.PI);
       let shape = cylinder.Shape();
-      
+
       let translation: any = null;
       let transform: any = null;
       let brepTransform: any = null;
@@ -663,12 +938,15 @@ self.onmessage = async (e) => {
         shape = brepTransform.Shape();
       }
 
+      shape = detachShape(oc, shape);
+
       if (entityId) {
         cacheShape(entityId, shape);
       }
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
+      const brepBytes = exportShapeToBytes(oc, shape, entityId);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
@@ -680,7 +958,7 @@ self.onmessage = async (e) => {
       if (brepTransform) brepTransform.delete();
       cylinder.delete();
 
-      self.postMessage({ type: 'createCylinder', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'createCylinder', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'createCylinder', success: false, error: errorMessage, id });
@@ -695,7 +973,7 @@ self.onmessage = async (e) => {
       // Use constructor with radius and translate (most reliable overload)
       const sphere = new oc.BRepPrimAPI_MakeSphere_1(r);
       let shape = sphere.Shape();
-      
+
       let translation: any = null;
       let transform: any = null;
       let brepTransform: any = null;
@@ -708,12 +986,15 @@ self.onmessage = async (e) => {
         shape = brepTransform.Shape();
       }
 
+      shape = detachShape(oc, shape);
+
       if (entityId) {
         cacheShape(entityId, shape);
       }
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
+      const brepBytes = exportShapeToBytes(oc, shape, entityId);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
@@ -725,7 +1006,7 @@ self.onmessage = async (e) => {
       if (brepTransform) brepTransform.delete();
       sphere.delete();
 
-      self.postMessage({ type: 'createSphere', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'createSphere', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'createSphere', success: false, error: errorMessage, id });
@@ -740,7 +1021,7 @@ self.onmessage = async (e) => {
       // Use constructor with radii and height and translate (most reliable overload)
       const cone = new oc.BRepPrimAPI_MakeCone_1(r, 0, h);
       let shape = cone.Shape();
-      
+
       let translation: any = null;
       let transform: any = null;
       let brepTransform: any = null;
@@ -753,12 +1034,15 @@ self.onmessage = async (e) => {
         shape = brepTransform.Shape();
       }
 
+      shape = detachShape(oc, shape);
+
       if (entityId) {
         cacheShape(entityId, shape);
       }
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
+      const brepBytes = exportShapeToBytes(oc, shape, entityId);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
@@ -770,7 +1054,7 @@ self.onmessage = async (e) => {
       if (brepTransform) brepTransform.delete();
       cone.delete();
 
-      self.postMessage({ type: 'createCone', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'createCone', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'createCone', success: false, error: errorMessage, id });
@@ -785,7 +1069,7 @@ self.onmessage = async (e) => {
       // Use constructor with radii and translate (most reliable overload)
       const torus = new oc.BRepPrimAPI_MakeTorus_1(r1, r2);
       let shape = torus.Shape();
-      
+
       let translation: any = null;
       let transform: any = null;
       let brepTransform: any = null;
@@ -798,12 +1082,15 @@ self.onmessage = async (e) => {
         shape = brepTransform.Shape();
       }
 
+      shape = detachShape(oc, shape);
+
       if (entityId) {
         cacheShape(entityId, shape);
       }
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
+      const brepBytes = exportShapeToBytes(oc, shape, entityId);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
@@ -815,7 +1102,7 @@ self.onmessage = async (e) => {
       if (brepTransform) brepTransform.delete();
       torus.delete();
 
-      self.postMessage({ type: 'createTorus', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'createTorus', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'createTorus', success: false, error: errorMessage, id });
@@ -844,38 +1131,38 @@ self.onmessage = async (e) => {
 
           const nx = -dy / len;
           const ny = dx / len;
-          
+
           const pts = [
-            new oc.gp_Pnt_3(p1.x - nx * thickness/2, p1.y - ny * thickness/2, p1.z),
-            new oc.gp_Pnt_3(p2.x - nx * thickness/2, p2.y - ny * thickness/2, p2.z),
-            new oc.gp_Pnt_3(p2.x + nx * thickness/2, p2.y + ny * thickness/2, p2.z),
-            new oc.gp_Pnt_3(p1.x + nx * thickness/2, p1.y + ny * thickness/2, p1.z)
+            new oc.gp_Pnt_3(p1.x - nx * thickness / 2, p1.y - ny * thickness / 2, p1.z),
+            new oc.gp_Pnt_3(p2.x - nx * thickness / 2, p2.y - ny * thickness / 2, p2.z),
+            new oc.gp_Pnt_3(p2.x + nx * thickness / 2, p2.y + ny * thickness / 2, p2.z),
+            new oc.gp_Pnt_3(p1.x + nx * thickness / 2, p1.y + ny * thickness / 2, p1.z)
           ];
-          
+
           const e0 = new oc.BRepBuilderAPI_MakeEdge_3(pts[0], pts[1]);
           const makeWire = new oc.BRepBuilderAPI_MakeWire_2(e0.Edge());
           e0.delete();
- 
+
           for (let j = 1; j < 4; j++) {
-            const e = new oc.BRepBuilderAPI_MakeEdge_3(pts[j], pts[(j+1)%4]);
+            const e = new oc.BRepBuilderAPI_MakeEdge_3(pts[j], pts[(j + 1) % 4]);
             makeWire.Add_1(e.Edge());
             e.delete();
           }
- 
+
           const wire = makeWire.Wire();
           const faceMaker = new oc.BRepBuilderAPI_MakeFace_15(wire, false);
           if (!faceMaker.IsDone()) {
-             faceMaker.delete();
-             makeWire.delete();
-             throw new Error("Failed to create face for segment.");
+            faceMaker.delete();
+            makeWire.delete();
+            throw new Error("Failed to create face for segment.");
           }
           const realFace = faceMaker.Face();
 
- 
+
           const dirVec = new oc.gp_Vec_4(0, 0, height);
           const builder = new oc.BRepPrimAPI_MakePrism_1(realFace, dirVec, false, true);
           shapes.push(builder.Shape());
- 
+
           pts.forEach(p => p.delete());
           makeWire.delete();
           wire.delete();
@@ -909,8 +1196,8 @@ self.onmessage = async (e) => {
         const makeWire = new oc.BRepBuilderAPI_MakeWire_1();
 
         for (let i = 0; i < points.length - 1; i++) {
-          const pi  = new oc.gp_Pnt_3(points[i].x,   points[i].y,   points[i].z);
-          const pi1 = new oc.gp_Pnt_3(points[i+1].x, points[i+1].y, points[i+1].z);
+          const pi = new oc.gp_Pnt_3(points[i].x, points[i].y, points[i].z);
+          const pi1 = new oc.gp_Pnt_3(points[i + 1].x, points[i + 1].y, points[i + 1].z);
           const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pi, pi1);
           if (makeEdge.IsDone()) {
             makeWire.Add_1(makeEdge.Edge());
@@ -922,7 +1209,7 @@ self.onmessage = async (e) => {
 
         // For closed profiles: add the closing edge from last point back to first
         if (isClosed) {
-          const pLast  = new oc.gp_Pnt_3(points[points.length-1].x, points[points.length-1].y, points[points.length-1].z);
+          const pLast = new oc.gp_Pnt_3(points[points.length - 1].x, points[points.length - 1].y, points[points.length - 1].z);
           const pFirst = new oc.gp_Pnt_3(points[0].x, points[0].y, points[0].z);
           const closeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pLast, pFirst);
           if (closeEdge.IsDone()) {
@@ -939,7 +1226,7 @@ self.onmessage = async (e) => {
         }
 
         const dirVec = new oc.gp_Vec_4(0, 0, height);
-        
+
         if (isClosed) {
           const faceMaker = new oc.BRepBuilderAPI_MakeFace_15(makeWire.Wire(), false);
           if (!faceMaker.IsDone()) {
@@ -951,7 +1238,7 @@ self.onmessage = async (e) => {
           const face = faceMaker.Face();
           const builder = new oc.BRepPrimAPI_MakePrism_1(face, dirVec, false, true);
           resultShape = builder.Shape();
-          
+
           faceMaker.delete();
           // builder.delete() moved to cleanup section
           buildersToCleanup.push(builder);
@@ -962,13 +1249,13 @@ self.onmessage = async (e) => {
           const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
           const makeSpine = new oc.BRepBuilderAPI_MakeWire_2(makeEdge.Edge());
           const spine = makeSpine.Wire();
-          
+
           const sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spine);
           sweepBuilder.Add_1(makeWire.Wire(), false, false);
           sweepBuilder.Build();
-          
+
           resultShape = sweepBuilder.Shape();
-          
+
           p1.delete();
           p2.delete();
           makeEdge.delete();
@@ -976,7 +1263,7 @@ self.onmessage = async (e) => {
           // sweepBuilder.delete() moved to cleanup section
           buildersToCleanup.push(sweepBuilder);
         }
-        
+
         makeWire.delete();
         dirVec.delete();
 
@@ -989,13 +1276,16 @@ self.onmessage = async (e) => {
         throw new Error("Failed to create extrude shape.");
       }
 
+      resultShape = detachShape(oc, resultShape);
+
       if (entityId) {
         cacheShape(entityId, resultShape);
       }
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      
+      const brepBytes = exportShapeToBytes(oc, resultShape, entityId || "temp");
+
       if (!entityId) {
         resultShape.delete();
       }
@@ -1003,7 +1293,7 @@ self.onmessage = async (e) => {
       // Final cleanup
       buildersToCleanup.forEach(b => b.delete());
 
-      self.postMessage({ type: 'createExtrude', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'createExtrude', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       buildersToCleanup.forEach(b => b.delete());
       const errorMessage = decodeOCCError('createExtrude', error);
@@ -1023,7 +1313,7 @@ self.onmessage = async (e) => {
       const spineWireMaker = new oc.BRepBuilderAPI_MakeWire_1();
       for (let i = 0; i < spinePoints.length - 1; i++) {
         const p1 = new oc.gp_Pnt_3(spinePoints[i].x, spinePoints[i].y, spinePoints[i].z);
-        const p2 = new oc.gp_Pnt_3(spinePoints[i+1].x, spinePoints[i+1].y, spinePoints[i+1].z);
+        const p2 = new oc.gp_Pnt_3(spinePoints[i + 1].x, spinePoints[i + 1].y, spinePoints[i + 1].z);
         const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
         if (makeEdge.IsDone()) {
           spineWireMaker.Add_1(makeEdge.Edge());
@@ -1037,7 +1327,7 @@ self.onmessage = async (e) => {
       // Build profile wire(s)
       const count = profileCount || 1;
       const ptsPerProfile = Math.floor(profilePoints.length / count);
-      
+
       // Detect if the spine is flat in the XY plane
       let isFlat = true;
       const firstZ = spinePoints[0]?.z || 0;
@@ -1064,18 +1354,18 @@ self.onmessage = async (e) => {
         const tx = spinePoints[1].x - spinePoints[0].x;
         const ty = spinePoints[1].y - spinePoints[0].y;
         const len = Math.sqrt(tx * tx + ty * ty);
-        
+
         if (len > 1e-6) {
           transformedProfilePts = profilePoints.map((p: any) => {
             const x = p.x - cx;
             const y = p.y - cy;
             const z = p.z - cz;
-            
+
             // Map to frame: X' = (-ty, tx, 0), Y' = (0, 0, 1), Z' = (tx, ty, 0)
             const rx = -(ty / len) * x + (tx / len) * z;
             const ry = (tx / len) * x + (ty / len) * z;
             const rz = y;
-            
+
             return {
               x: rx + spinePoints[0].x,
               y: ry + spinePoints[0].y,
@@ -1098,12 +1388,12 @@ self.onmessage = async (e) => {
 
         const M = profilePoints.length;
         const N = spinePoints.length;
-        
+
         const positions: number[] = [];
         const indices: number[] = [];
-        
+
         // Compute tangents at spine points
-        const tangents: {x:number, y:number, z:number}[] = [];
+        const tangents: { x: number, y: number, z: number }[] = [];
         for (let i = 0; i < N; i++) {
           let tx = 0, ty = 0, tz = 0;
           if (i === 0) {
@@ -1111,21 +1401,21 @@ self.onmessage = async (e) => {
             ty = spinePoints[1].y - spinePoints[0].y;
             tz = spinePoints[1].z - spinePoints[0].z;
           } else if (i === N - 1) {
-            tx = spinePoints[N-1].x - spinePoints[N-2].x;
-            ty = spinePoints[N-1].y - spinePoints[N-2].y;
-            tz = spinePoints[N-1].z - spinePoints[N-2].z;
+            tx = spinePoints[N - 1].x - spinePoints[N - 2].x;
+            ty = spinePoints[N - 1].y - spinePoints[N - 2].y;
+            tz = spinePoints[N - 1].z - spinePoints[N - 2].z;
           } else {
-            tx = spinePoints[i+1].x - spinePoints[i-1].x;
-            ty = spinePoints[i+1].y - spinePoints[i-1].y;
-            tz = spinePoints[i+1].z - spinePoints[i-1].z;
+            tx = spinePoints[i + 1].x - spinePoints[i - 1].x;
+            ty = spinePoints[i + 1].y - spinePoints[i - 1].y;
+            tz = spinePoints[i + 1].z - spinePoints[i - 1].z;
           }
-          const len = Math.sqrt(tx*tx + ty*ty + tz*tz);
-          tangents.push({ x: tx/len, y: ty/len, z: tz/len });
+          const len = Math.sqrt(tx * tx + ty * ty + tz * tz);
+          tangents.push({ x: tx / len, y: ty / len, z: tz / len });
         }
-        
+
         // Compute frames using Double Reflection Method (RMF)
-        const frames: { T: {x:number,y:number,z:number}, X: {x:number,y:number,z:number}, Y: {x:number,y:number,z:number} }[] = [];
-        
+        const frames: { T: { x: number, y: number, z: number }, X: { x: number, y: number, z: number }, Y: { x: number, y: number, z: number } }[] = [];
+
         // Initial frame at P0
         const T0 = tangents[0];
         let N0 = { x: 0, y: 0, z: 1 }; // Default up vector
@@ -1133,112 +1423,112 @@ self.onmessage = async (e) => {
           N0 = { x: 1, y: 0, z: 0 };
         }
         // X = cross(N0, T0)
-        let xx = N0.y*T0.z - N0.z*T0.y;
-        let xy = N0.z*T0.x - N0.x*T0.z;
-        let xz = N0.x*T0.y - N0.y*T0.x;
-        const xlen = Math.sqrt(xx*xx + xy*xy + xz*xz);
+        let xx = N0.y * T0.z - N0.z * T0.y;
+        let xy = N0.z * T0.x - N0.x * T0.z;
+        let xz = N0.x * T0.y - N0.y * T0.x;
+        const xlen = Math.sqrt(xx * xx + xy * xy + xz * xz);
         xx /= xlen; xy /= xlen; xz /= xlen;
-        
+
         // Y = cross(T0, X)
-        const yx = T0.y*xz - T0.z*xy;
-        const yy = T0.z*xx - T0.x*xz;
-        const yz = T0.x*xy - T0.y*xx;
-        
-        frames.push({ T: T0, X: {x:xx, y:xy, z:xz}, Y: {x:yx, y:yy, z:yz} });
+        const yx = T0.y * xz - T0.z * xy;
+        const yy = T0.z * xx - T0.x * xz;
+        const yz = T0.x * xy - T0.y * xx;
+
+        frames.push({ T: T0, X: { x: xx, y: xy, z: xz }, Y: { x: yx, y: yy, z: yz } });
 
         for (let i = 1; i < N; i++) {
-          const Pprev = spinePoints[i-1];
+          const Pprev = spinePoints[i - 1];
           const Pcurr = spinePoints[i];
-          const Tprev = frames[i-1].T;
+          const Tprev = frames[i - 1].T;
           const Tcurr = tangents[i];
-          const Xprev = frames[i-1].X;
-          const Yprev = frames[i-1].Y;
-          
+          const Xprev = frames[i - 1].X;
+          const Yprev = frames[i - 1].Y;
+
           // Step 1: v1 = Pcurr - Pprev
           const v1x = Pcurr.x - Pprev.x;
           const v1y = Pcurr.y - Pprev.y;
           const v1z = Pcurr.z - Pprev.z;
-          const c1 = v1x*v1x + v1y*v1y + v1z*v1z;
-          
+          const c1 = v1x * v1x + v1y * v1y + v1z * v1z;
+
           if (c1 < 1e-12) {
             frames.push({ T: Tcurr, X: Xprev, Y: Yprev });
             continue;
           }
-          
+
           // Step 3: XprevL = Xprev - (2/c1) * (v1 . Xprev) * v1
-          const dot1 = v1x*Xprev.x + v1y*Xprev.y + v1z*Xprev.z;
+          const dot1 = v1x * Xprev.x + v1y * Xprev.y + v1z * Xprev.z;
           const factor1 = 2 / c1 * dot1;
           const XprevLx = Xprev.x - factor1 * v1x;
           const XprevLy = Xprev.y - factor1 * v1y;
           const XprevLz = Xprev.z - factor1 * v1z;
-          
+
           // Step 4: TprevL = Tprev - (2/c1) * (v1 . Tprev) * v1
-          const dot2 = v1x*Tprev.x + v1y*Tprev.y + v1z*Tprev.z;
+          const dot2 = v1x * Tprev.x + v1y * Tprev.y + v1z * Tprev.z;
           const factor2 = 2 / c1 * dot2;
           const TprevLx = Tprev.x - factor2 * v1x;
           const TprevLy = Tprev.y - factor2 * v1y;
           const TprevLz = Tprev.z - factor2 * v1z;
-          
+
           // Step 5: v2 = Tcurr - TprevL
           const v2x = Tcurr.x - TprevLx;
           const v2y = Tcurr.y - TprevLy;
           const v2z = Tcurr.z - TprevLz;
-          const c2 = v2x*v2x + v2y*v2y + v2z*v2z;
-          
+          const c2 = v2x * v2x + v2y * v2y + v2z * v2z;
+
           const Xcurr = { x: XprevLx, y: XprevLy, z: XprevLz };
           if (c2 > 1e-12) {
             // Step 7: Xcurr = XprevL - (2/c2) * (v2 . XprevL) * v2
-            const dot3 = v2x*XprevLx + v2y*XprevLy + v2z*XprevLz;
+            const dot3 = v2x * XprevLx + v2y * XprevLy + v2z * XprevLz;
             const factor3 = 2 / c2 * dot3;
             Xcurr.x -= factor3 * v2x;
             Xcurr.y -= factor3 * v2y;
             Xcurr.z -= factor3 * v2z;
           }
-          
+
           // Normalize Xcurr
-          const xlen2 = Math.sqrt(Xcurr.x*Xcurr.x + Xcurr.y*Xcurr.y + Xcurr.z*Xcurr.z);
+          const xlen2 = Math.sqrt(Xcurr.x * Xcurr.x + Xcurr.y * Xcurr.y + Xcurr.z * Xcurr.z);
           Xcurr.x /= xlen2; Xcurr.y /= xlen2; Xcurr.z /= xlen2;
-          
+
           // Step 8: Ycurr = cross(Tcurr, Xcurr)
           const Ycurr = {
-            x: Tcurr.y*Xcurr.z - Tcurr.z*Xcurr.y,
-            y: Tcurr.z*Xcurr.x - Tcurr.x*Xcurr.z,
-            z: Tcurr.x*Xcurr.y - Tcurr.y*Xcurr.x
+            x: Tcurr.y * Xcurr.z - Tcurr.z * Xcurr.y,
+            y: Tcurr.z * Xcurr.x - Tcurr.x * Xcurr.z,
+            z: Tcurr.x * Xcurr.y - Tcurr.y * Xcurr.x
           };
-          
+
           frames.push({ T: Tcurr, X: Xcurr, Y: Ycurr });
         }
-        
+
         // Generate vertices
         for (let i = 0; i < N; i++) {
           const frame = frames[i];
           const T = frame.T;
           const X = frame.X;
           const Y = frame.Y;
-          
+
           let nx = 0, ny = 0, scaleFactor = 1.0;
           let applyMiter = false;
-          
+
           // STABLE: Pure JS Bisector Scaling Miter for Ellipse. Do not change unless allowed.
           if (isEllipse && cornerMode === 'MITER' && i > 0 && i < N - 1) {
-            const T1 = { x: spinePoints[i].x - spinePoints[i-1].x, y: spinePoints[i].y - spinePoints[i-1].y, z: spinePoints[i].z - spinePoints[i-1].z };
-            const T2 = { x: spinePoints[i+1].x - spinePoints[i].x, y: spinePoints[i+1].y - spinePoints[i].y, z: spinePoints[i+1].z - spinePoints[i].z };
-            const l1 = Math.sqrt(T1.x*T1.x + T1.y*T1.y + T1.z*T1.z);
-            const l2 = Math.sqrt(T2.x*T2.x + T2.y*T2.y + T2.z*T2.z);
+            const T1 = { x: spinePoints[i].x - spinePoints[i - 1].x, y: spinePoints[i].y - spinePoints[i - 1].y, z: spinePoints[i].z - spinePoints[i - 1].z };
+            const T2 = { x: spinePoints[i + 1].x - spinePoints[i].x, y: spinePoints[i + 1].y - spinePoints[i].y, z: spinePoints[i + 1].z - spinePoints[i].z };
+            const l1 = Math.sqrt(T1.x * T1.x + T1.y * T1.y + T1.z * T1.z);
+            const l2 = Math.sqrt(T2.x * T2.x + T2.y * T2.y + T2.z * T2.z);
             if (l1 > 1e-6 && l2 > 1e-6) {
               T1.x /= l1; T1.y /= l1; T1.z /= l1;
               T2.x /= l2; T2.y /= l2; T2.z /= l2;
-              
-              const dot = T1.x*T2.x + T1.y*T2.y + T1.z*T2.z;
+
+              const dot = T1.x * T2.x + T1.y * T2.y + T1.z * T2.z;
               if (dot < 0.999 && dot > -0.999) { // Only if it's a real corner
                 const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
                 const halfAngle = angle / 2;
                 scaleFactor = 1 / Math.cos(halfAngle);
-                
+
                 const B = { x: T2.x - T1.x, y: T2.y - T1.y, z: T2.z - T1.z };
                 const bx = B.x * X.x + B.y * X.y + B.z * X.z;
                 const by = B.x * Y.x + B.y * Y.y + B.z * Y.z;
-                const blen = Math.sqrt(bx*bx + by*by);
+                const blen = Math.sqrt(bx * bx + by * by);
                 if (blen > 1e-6) {
                   nx = bx / blen;
                   ny = by / blen;
@@ -1247,43 +1537,43 @@ self.onmessage = async (e) => {
               }
             }
           }
-          
+
           for (let j = 0; j < M; j++) {
             const p = profilePoints[j];
             let x = p.x - cx;
             let y = p.y - cy;
             const z = p.z - cz;
-            
+
             if (applyMiter) {
               const proj = x * nx + y * ny;
               const scaledProj = proj * scaleFactor;
               x = x + (scaledProj - proj) * nx;
               y = y + (scaledProj - proj) * ny;
             }
-            
+
             const px = spinePoints[i].x + x * X.x + y * Y.x + z * T.x;
             const py = spinePoints[i].y + x * X.y + y * Y.y + z * T.y;
             const pz = spinePoints[i].z + x * X.z + y * Y.z + z * T.z;
-            
+
             positions.push(px, py, pz);
           }
         }
-        
+
         // Generate indices for faces
         for (let i = 0; i < N - 1; i++) {
           for (let j = 0; j < M; j++) {
             const next_j = (j + 1) % M;
-            
+
             const v1 = i * M + j;
             const v2 = (i + 1) * M + j;
             const v3 = (i + 1) * M + next_j;
             const v4 = i * M + next_j;
-            
+
             indices.push(v1, v2, v3);
             indices.push(v1, v3, v4);
           }
         }
-        
+
         // Add caps if solid is requested
         if (isSolid) {
           // Start cap
@@ -1292,23 +1582,23 @@ self.onmessage = async (e) => {
           for (let j = 0; j < M; j++) {
             indices.push(startCenterIdx, (j + 1) % M, j); // Counter-clockwise
           }
-          
+
           // End cap
           const endCenterIdx = positions.length / 3;
-          positions.push(spinePoints[N-1].x, spinePoints[N-1].y, spinePoints[N-1].z);
+          positions.push(spinePoints[N - 1].x, spinePoints[N - 1].y, spinePoints[N - 1].z);
           for (let j = 0; j < M; j++) {
             const v1 = (N - 1) * M + j;
             const v2 = (N - 1) * M + (j + 1) % M;
             indices.push(endCenterIdx, v1, v2); // Counter-clockwise
           }
         }
-        
+
         const geometryData = {
           positions: positions,
           indices: indices,
           normal: [] // Three.js can compute normals
         };
-        
+
         // Cache DUMMY shape for persistence!
         if (entityId) {
           const p1 = new oc.gp_Pnt_3(0, 0, 0);
@@ -1320,13 +1610,14 @@ self.onmessage = async (e) => {
           p2.delete();
           makeEdge.delete();
         }
-        
-        self.postMessage({ type: 'createSweep', success: true, payload: geometryData, id });
+
+        // Note: No BRep available for this specific path
+        self.postMessage({ type: 'createSweep', success: true, payload: { ...geometryData, brepBytes: null }, id });
         return;
       } else {
         // Use MakePipeShell for multiple profiles
         sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spineWire);
-        
+
         // Set mode to Frenet to make profile rotate with spine
         sweepBuilder.SetMode_1(true); // true = Frenet mode
 
@@ -1337,16 +1628,16 @@ self.onmessage = async (e) => {
         } else {
           sweepBuilder.SetTransitionMode(oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_Transformed);
         }
-        
+
         for (let j = 0; j < count; j++) {
           const startIdx = j * ptsPerProfile;
           const endIdx = (j === count - 1) ? transformedProfilePts.length : (j + 1) * ptsPerProfile;
           const currentProfilePts = transformedProfilePts.slice(startIdx, endIdx);
-          
+
           const profileWireMaker = new oc.BRepBuilderAPI_MakeWire_1();
           for (let i = 0; i < currentProfilePts.length - 1; i++) {
             const p1 = new oc.gp_Pnt_3(currentProfilePts[i].x, currentProfilePts[i].y, currentProfilePts[i].z);
-            const p2 = new oc.gp_Pnt_3(currentProfilePts[i+1].x, currentProfilePts[i+1].y, currentProfilePts[i+1].z);
+            const p2 = new oc.gp_Pnt_3(currentProfilePts[i + 1].x, currentProfilePts[i + 1].y, currentProfilePts[i + 1].z);
             const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
             if (makeEdge.IsDone()) {
               profileWireMaker.Add_1(makeEdge.Edge());
@@ -1356,36 +1647,39 @@ self.onmessage = async (e) => {
             makeEdge.delete();
           }
           const profileWire = profileWireMaker.Wire();
-          
+
           sweepBuilder.Add_1(profileWire, false, false);
-          
+
           profileWireMaker.delete();
         }
-        
+
         sweepBuilder.Build();
-        
+
         if (!sweepBuilder.IsDone()) {
           sweepBuilder.delete();
           throw new Error("Failed to build sweep.");
         }
-        
+
         if (isSolid) {
           const success = sweepBuilder.MakeSolid();
           if (!success) {
             console.warn("MakeSolid returned false, might still be a shell.");
           }
         }
-        
+
         resultShape = sweepBuilder.Shape();
         // sweepBuilder.delete(); // Moved to end
       }
+
+      resultShape = detachShape(oc, resultShape);
 
       if (entityId) {
         cacheShape(entityId, resultShape);
       }
 
       const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      
+      const brepBytes = exportShapeToBytes(oc, resultShape, entityId || "temp");
+
       if (!entityId) {
         resultShape.delete();
       }
@@ -1395,7 +1689,7 @@ self.onmessage = async (e) => {
         sweepBuilder.delete();
       }
 
-      self.postMessage({ type: 'createSweep', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'createSweep', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = decodeOCCError('createSweep', error);
       self.postMessage({ type: 'createSweep', success: false, error: errorMessage, id });
@@ -1408,12 +1702,12 @@ self.onmessage = async (e) => {
     const { profiles, isSolid, isRuled, deflection, entityId } = payload;
     try {
       const loftBuilder = new oc.BRepOffsetAPI_ThruSections(isSolid, isRuled, 1e-6);
-      
+
       const profilesArray = profiles || [];
-      
+
       for (const profile of profilesArray) {
         let shape: any = null;
-        
+
         if (shapeCache.has(profile.id)) {
           shape = shapeCache.get(profile.id);
         } else if (profile.points && profile.points.length === 1) {
@@ -1428,37 +1722,37 @@ self.onmessage = async (e) => {
         } else if (profile.points && profile.points.length > 1) {
           // Create wire from points on the fly!
           const pts = profile.points.map((p: any) => new oc.gp_Pnt_3(p.x, p.y, p.z));
-          
+
           const e0 = new oc.BRepBuilderAPI_MakeEdge_3(pts[0], pts[1]);
           const makeWire = new oc.BRepBuilderAPI_MakeWire_2(e0.Edge());
           e0.delete();
-          
+
           for (let i = 1; i < pts.length - 1; i++) {
-            const e = new oc.BRepBuilderAPI_MakeEdge_3(pts[i], pts[i+1]);
+            const e = new oc.BRepBuilderAPI_MakeEdge_3(pts[i], pts[i + 1]);
             makeWire.Add_1(e.Edge());
             e.delete();
           }
-          
+
           if (profile.closed) {
             const e = new oc.BRepBuilderAPI_MakeEdge_3(pts[pts.length - 1], pts[0]);
             makeWire.Add_1(e.Edge());
             e.delete();
           }
-          
+
           shape = makeWire.Wire();
           // Cache it so it's available next time!
           cacheShape(profile.id, shape);
-          
+
           makeWire.delete();
           pts.forEach((p: any) => p.delete());
         }
-        
+
         if (!shape) {
           throw new Error(`Shape not cached and no points provided for profile (id: ${profile.id}).`);
         }
-        
+
         const shapeType = shape.ShapeType();
-        
+
         if (shapeType === oc.TopAbs_ShapeEnum.TopAbs_WIRE) {
           loftBuilder.AddWire(shape);
         } else if (shapeType === oc.TopAbs_ShapeEnum.TopAbs_FACE) {
@@ -1475,16 +1769,16 @@ self.onmessage = async (e) => {
           throw new Error(`Unsupported shape type for loft: ${shapeType}`);
         }
       }
-      
+
       loftBuilder.Build();
-      
+
       if (!loftBuilder.IsDone()) {
         loftBuilder.delete();
         throw new Error("Failed to build loft.");
       }
-      
+
       let resultShape = loftBuilder.Shape();
-      
+
       // If user requested a solid but the result is not a solid, try to close it!
       if (isSolid && resultShape.ShapeType() !== oc.TopAbs_ShapeEnum.TopAbs_SOLID) {
         const shapes: any[] = [];
@@ -1493,25 +1787,25 @@ self.onmessage = async (e) => {
             shapes.push(shapeCache.get(profile.id));
           }
         }
-        
+
         if (shapes.length >= 2) {
           const firstShape = shapes[0];
           const lastShape = shapes[shapes.length - 1];
-          
-          if (firstShape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_WIRE && 
-              lastShape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_WIRE) {
-            
+
+          if (firstShape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_WIRE &&
+            lastShape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_WIRE) {
+
             const makeFace1 = new oc.BRepBuilderAPI_MakeFace_15(firstShape, false);
             const makeFace2 = new oc.BRepBuilderAPI_MakeFace_15(lastShape, false);
-            
+
             if (makeFace1.IsDone() && makeFace2.IsDone()) {
               const face1 = makeFace1.Face();
               const face2 = makeFace2.Face();
-              
+
               const builder = new oc.BRep_Builder();
               const newShell = new oc.TopoDS_Shell();
               builder.MakeShell(newShell);
-              
+
               // Add faces from the loft result
               const explorer = new oc.TopExp_Explorer_2(resultShape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
               while (explorer.More()) {
@@ -1520,21 +1814,21 @@ self.onmessage = async (e) => {
                 explorer.Next();
               }
               explorer.delete();
-              
+
               // Add end caps
               builder.Add(newShell, face1);
               builder.Add(newShell, face2);
-              
+
               const makeSolid = new oc.BRepBuilderAPI_MakeSolid_1();
               makeSolid.Add(newShell);
-              
+
               if (makeSolid.IsDone()) {
                 resultShape = makeSolid.Solid();
                 console.log("[Worker] Successfully closed loft end caps to create a solid.");
               } else {
                 console.warn("[Worker] Failed to make solid from closed shell.");
               }
-              
+
               newShell.delete();
               face1.delete();
               face2.delete();
@@ -1545,21 +1839,22 @@ self.onmessage = async (e) => {
           }
         }
       }
-      
+
       if (entityId) {
         cacheShape(entityId, resultShape);
       }
-      
+
       const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      
+      const brepBytes = exportShapeToBytes(oc, resultShape, entityId || "temp");
+
       if (!entityId) {
         resultShape.delete();
       }
-      
+
       loftBuilder.delete();
-      
-      self.postMessage({ type: 'createLoft', success: true, payload: geometryData, id });
-      
+
+      self.postMessage({ type: 'createLoft', success: true, payload: { ...geometryData, brepBytes }, id });
+
     } catch (error: any) {
       const errorMessage = decodeOCCError('createLoft', error);
       self.postMessage({ type: 'createLoft', success: false, error: errorMessage, id });
@@ -1576,71 +1871,71 @@ self.onmessage = async (e) => {
       const angleRad = angle * Math.PI / 180;
       const revAxis = new oc.gp_Ax1_2(new oc.gp_Pnt_3(axisPoint.x, axisPoint.y, axisPoint.z), new oc.gp_Dir_4(axisDir.x, axisDir.y, axisDir.z));
 
-        // Build wire from all profile points
-        const makeWire = new oc.BRepBuilderAPI_MakeWire_1();
+      // Build wire from all profile points
+      const makeWire = new oc.BRepBuilderAPI_MakeWire_1();
 
 
-        for (let i = 0; i < points.length - 1; i++) {
+      for (let i = 0; i < points.length - 1; i++) {
 
-          const pi  = new oc.gp_Pnt_3(points[i].x,   points[i].y,   points[i].z);
-          const pi1 = new oc.gp_Pnt_3(points[i+1].x, points[i+1].y, points[i+1].z);
-          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pi, pi1);
-          if (makeEdge.IsDone()) {
-            makeWire.Add_1(makeEdge.Edge());
+        const pi = new oc.gp_Pnt_3(points[i].x, points[i].y, points[i].z);
+        const pi1 = new oc.gp_Pnt_3(points[i + 1].x, points[i + 1].y, points[i + 1].z);
+        const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pi, pi1);
+        if (makeEdge.IsDone()) {
+          makeWire.Add_1(makeEdge.Edge());
+        }
+        pi.delete();
+        pi1.delete();
+        makeEdge.delete();
+      }
+
+      // For closed profiles: add the closing edge from last point back to first if not already closed
+      if (isClosed) {
+        const p0 = points[0];
+        const pN = points[points.length - 1];
+        const dist = Math.sqrt((p0.x - pN.x) ** 2 + (p0.y - pN.y) ** 2 + (p0.z - pN.z) ** 2);
+
+        if (dist >= 1e-5) {
+          const pLast = new oc.gp_Pnt_3(pN.x, pN.y, pN.z);
+          const pFirst = new oc.gp_Pnt_3(p0.x, p0.y, p0.z);
+          const closeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pLast, pFirst);
+          if (closeEdge.IsDone()) {
+            makeWire.Add_1(closeEdge.Edge());
           }
-          pi.delete();
-          pi1.delete();
-          makeEdge.delete();
+          pLast.delete();
+          pFirst.delete();
+          closeEdge.delete();
         }
+      }
 
-        // For closed profiles: add the closing edge from last point back to first if not already closed
-        if (isClosed) {
-          const p0 = points[0];
-          const pN = points[points.length - 1];
-          const dist = Math.sqrt((p0.x - pN.x)**2 + (p0.y - pN.y)**2 + (p0.z - pN.z)**2);
-          
-          if (dist >= 1e-5) {
-            const pLast  = new oc.gp_Pnt_3(pN.x, pN.y, pN.z);
-            const pFirst = new oc.gp_Pnt_3(p0.x, p0.y, p0.z);
-            const closeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pLast, pFirst);
-            if (closeEdge.IsDone()) {
-              makeWire.Add_1(closeEdge.Edge());
-            }
-            pLast.delete();
-            pFirst.delete();
-            closeEdge.delete();
-          }
-        }
-
-        if (!makeWire.IsDone()) {
-          makeWire.delete();
-          throw new Error("Failed to build wire from profile points.");
-        }
-
-        let profile: any;
-        let faceMaker: any;
-        if (isClosed) {
-          faceMaker = new oc.BRepBuilderAPI_MakeFace_15(makeWire.Wire(), false);
-          if (!faceMaker.IsDone()) {
-            faceMaker.delete();
-            makeWire.delete();
-            throw new Error("Failed to create face from closed profile.");
-          }
-        } else {
-          profile = makeWire.Wire();
-        }
-
-        builder = new oc.BRepPrimAPI_MakeRevol_1(isClosed ? faceMaker.Face() : profile, revAxis, angleRad, false);
-
-        resultShape = builder.Shape();
-
+      if (!makeWire.IsDone()) {
         makeWire.delete();
-        if (isClosed) {
+        throw new Error("Failed to build wire from profile points.");
+      }
+
+      let profile: any;
+      let faceMaker: any;
+      if (isClosed) {
+        faceMaker = new oc.BRepBuilderAPI_MakeFace_15(makeWire.Wire(), false);
+        if (!faceMaker.IsDone()) {
           faceMaker.delete();
-        } else {
-          profile.delete();
+          makeWire.delete();
+          throw new Error("Failed to create face from closed profile.");
         }
-        // builder.delete(); // Moved to end
+      } else {
+        profile = makeWire.Wire();
+      }
+
+      builder = new oc.BRepPrimAPI_MakeRevol_1(isClosed ? faceMaker.Face() : profile, revAxis, angleRad, false);
+
+      resultShape = builder.Shape();
+
+      makeWire.delete();
+      if (isClosed) {
+        faceMaker.delete();
+      } else {
+        profile.delete();
+      }
+      // builder.delete(); // Moved to end
 
 
       revAxis.delete();
@@ -1652,16 +1947,12 @@ self.onmessage = async (e) => {
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      
-      if (!entityId) {
-        resultShape.delete();
-      }
+      const brepBytes = exportShapeToBytes(oc, resultShape, entityId || "temp");
 
-      if (typeof builder !== 'undefined' && builder.delete) {
-        builder.delete();
-      }
+      resultShape.delete();
+      builder.delete();
 
-      self.postMessage({ type: 'createRevolve', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'createRevolve', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = decodeOCCError('createRevolve', error);
       self.postMessage({ type: 'createRevolve', success: false, error: errorMessage, id });
@@ -1707,16 +1998,19 @@ self.onmessage = async (e) => {
         throw new Error(`Boolean ${operation} failed — shapes may not intersect or be invalid`);
       }
 
-      const resultShape = boolBuilder.Shape();
+      const resultShape = detachShape(oc, boolBuilder.Shape());
       if (resultShape.IsNull()) {
         boolBuilder.delete();
+        resultShape.delete();
         throw new Error(`Boolean ${operation} produced an empty result`);
       }
+
       // Fallback check: ensure the shape has faces
       const exp = new oc.TopExp_Explorer_2(resultShape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
       const hasFaces = exp.More();
       exp.delete();
       if (!hasFaces) {
+        resultShape.delete();
         boolBuilder.delete();
         throw new Error(`Boolean ${operation} produced a shape with no faces — shapes may not intersect`);
       }
@@ -1725,16 +2019,14 @@ self.onmessage = async (e) => {
       if (oc.BRepCheck_Analyzer) {
         const analyzer = new oc.BRepCheck_Analyzer(resultShape, true);
         try {
-          // Check if method exists and is a function
           const isValidFn = analyzer.IsValid || (analyzer as any).isValid;
           if (typeof isValidFn === 'function') {
             if (!isValidFn.call(analyzer)) {
               analyzer.delete();
+              resultShape.delete();
               boolBuilder.delete();
               throw new Error(`Boolean ${operation} produced an invalid/degenerate shape`);
             }
-          } else {
-            console.warn(`BRepCheck_Analyzer exists but IsValid is not a function. Methods:`, Object.getOwnPropertyNames(Object.getPrototypeOf(analyzer)));
           }
         } catch (e: any) {
           console.warn(`BRepCheck validation skipped due to error:`, e.message);
@@ -1747,8 +2039,21 @@ self.onmessage = async (e) => {
         cacheShape(entityId, resultShape);
       }
 
-      const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      
+      // ✅ Use the cached (deep-copied) shape for everything from here on.
+      // This ensures stability and avoids issues with builder-owned handles.
+      const stableShape = entityId ? shapeCache.get(entityId) : resultShape;
+
+      console.log(`[Worker] Boolean ${operation} success. ${shapeInfo(oc, stableShape)}`);
+
+      const geometryData = shapeToBufferGeometryData(stableShape, oc, deflection);
+      const brepBytes = exportShapeToBytes(oc, stableShape, entityId);
+
+      if (brepBytes) {
+        self.postMessage({ type: 'log', message: `[Worker] Boolean snapshot generated: ${brepBytes.length} bytes.` });
+      } else {
+        self.postMessage({ type: 'log', message: '[Worker] Boolean snapshot generation FAILED (result is undefined).' });
+      }
+
       if (!entityId) {
         resultShape.delete();
       }
@@ -1756,7 +2061,7 @@ self.onmessage = async (e) => {
       if (shapeA !== originalShapeA) shapeA.delete();
       if (shapeB !== originalShapeB) shapeB.delete();
 
-      self.postMessage({ type: 'createBoolean', success: true, payload: geometryData, id });
+      self.postMessage({ type: 'createBoolean', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = decodeOCCError('createBoolean', error);
       self.postMessage({ type: 'createBoolean', success: false, error: errorMessage, id });
@@ -1772,19 +2077,19 @@ self.onmessage = async (e) => {
         throw new Error(`Shape not cached for entity ${entityId}`);
       }
       const shape = shapeCache.get(entityId);
-      
+
       const translation = new oc.gp_Vec_4(dx, dy, dz);
       const transform = new oc.gp_Trsf_1();
       transform.SetTranslation_1(translation);
       const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
       const newShape = brepTransform.Shape();
-      
+
       cacheShape(entityId, newShape); // Update cache
-      
+
       translation.delete();
       transform.delete();
       brepTransform.delete();
-      
+
       self.postMessage({ type: 'transformShape', success: true, id });
     } catch (error: any) {
       const errorMessage = decodeOCCError('transformShape', error);
@@ -1801,11 +2106,11 @@ self.onmessage = async (e) => {
         throw new Error(`Shape not cached for entity ${entityId}`);
       }
       const shape = shapeCache.get(entityId);
-      
+
       const rotatedShape = applyRotation(shape, { x: rx, y: ry, z: rz }, oc, { x: cx, y: cy, z: cz });
-      
+
       cacheShape(entityId, rotatedShape); // Update cache
-      
+
       self.postMessage({ type: 'rotateShape', success: true, id });
     } catch (error: any) {
       const errorMessage = decodeOCCError('rotateShape', error);
@@ -1821,115 +2126,34 @@ self.onmessage = async (e) => {
     const { entityId } = payload;
     try {
       const shape = shapeCache.get(entityId);
-      if (!shape) {
-        throw new Error(`No cached shape for entityId: ${entityId}`);
+      if (!shape || shape.IsNull()) {
+        throw new Error(`No valid cached shape for entityId: ${entityId}`);
       }
-      
-      const brepFilename = `${entityId}.brep`;
-      let success = false;
-      
-      // Try BinTools first (binary BRep - compact and fast)
-      if (oc.BinTools && typeof oc.BinTools.Write_2 === 'function') {
-        try {
-          oc.BinTools.Write_2(shape, brepFilename);
-          success = true;
-        } catch(e) { }
-      }
-      
-      // Fallback to text BRep
-      if (!success) {
-        if (typeof oc.BRepTools.Write_3 === 'function') {
-          success = oc.BRepTools.Write_3(shape, brepFilename);
-        } else if (typeof oc.BRepTools.Write_2 === 'function') {
-          try { oc.BRepTools.Write_2(shape, brepFilename); success = true; } catch(e) { }
-        }
-      }
-      
-      // Final fallback to STEP if BRep fails
-      if (!success && (typeof oc.STEPControl_Writer_1 === 'function' || typeof oc.STEPControl_Writer === 'function')) {
-        const stepFilename = `${entityId}.stp`;
-        try {
-          const writer = typeof oc.STEPControl_Writer_1 === 'function' ? new oc.STEPControl_Writer_1() : new oc.STEPControl_Writer();
-          try {
-            writer.Transfer(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true);
-          } catch(e) {
-            writer.Transfer(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true, new oc.Message_ProgressRange_1());
-          }
-          writer.Write(stepFilename);
-          const stepBytes = oc.FS.readFile(stepFilename);
-          oc.FS.unlink(stepFilename);
-          (self as any).postMessage({ type: 'exportBRep', success: true, id, payload: stepBytes }, [stepBytes.buffer]);
-          return;
-        } catch(e) { }
-      }
-      
-      if (success) {
-        const brepBytes = oc.FS.readFile(brepFilename);
-        oc.FS.unlink(brepFilename);
-        (self as any).postMessage({ type: 'exportBRep', success: true, id, payload: brepBytes }, [brepBytes.buffer]);
+
+      const bytes = exportShapeToBytes(oc, shape, entityId); // STEP bytes
+      if (bytes) {
+        (self as any).postMessage({ type: 'exportBRepResult', success: true, id, payload: bytes }, [bytes.buffer]);
       } else {
-        throw new Error("Failed to export shape using BinTools, BRepTools, or STEP.");
+        throw new Error(`Export failed for ${entityId}`);
       }
     } catch (err: any) {
-      self.postMessage({ type: 'exportBRep', success: false, error: err.message, id });
+      self.postMessage({ type: 'exportBRepResult', success: false, error: err.message, id });
     }
-
   } else if (type === 'importBRep') {
     const { entityId, brepBytes, deflection } = payload;
     try {
-      const filename = `${entityId}.brep`;
-      oc.FS.writeFile(filename, new Uint8Array(brepBytes));
-      
-      let success = false;
-      const shape = new oc.TopoDS_Shape();
-      const builder = new oc.BRep_Builder();
-      
-      // Try BinTools first (most likely for our snapshots)
-      if (oc.BinTools && typeof oc.BinTools.Read_2 === 'function') {
-        try {
-          oc.BinTools.Read_2(shape, filename);
-          success = true;
-        } catch(e) { }
-      }
-      
-      // Try BRepTools Read
-      if (!success) {
-        if (typeof oc.BRepTools.Read_1 === 'function') {
-          success = oc.BRepTools.Read_1(shape, filename, builder);
-        } else if (typeof oc.BRepTools.Read === 'function') {
-          success = oc.BRepTools.Read(shape, filename, builder);
-        }
-      }
-      
-      // Fallback to STEP
-      if (!success && (typeof oc.STEPControl_Reader_1 === 'function' || typeof oc.STEPControl_Reader === 'function')) {
-        try {
-          const reader = typeof oc.STEPControl_Reader_1 === 'function' ? new oc.STEPControl_Reader_1() : new oc.STEPControl_Reader();
-          if (reader.ReadFile(filename) === oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
-            reader.TransferRoots();
-            shape.TShape(reader.OneShape().TShape());
-            success = true;
-          }
-        } catch(e) { }
-      }
-      
-      oc.FS.unlink(filename);
-      
-      if (!success) {
-        throw new Error("Failed to import BRep/STEP data.");
-      }
-      
-      // CRITICAL: Clean old tessellation to force REGEN to use new deflection
-      oc.BRepTools.Clean(shape);
-      
+      const shape = importShapeFromBytes(oc, entityId, brepBytes); // reads STEP bytes
+
+      // Re-mesh after import
+      if (oc.BRepTools && oc.BRepTools.Clean) oc.BRepTools.Clean(shape);
       cacheShape(entityId, shape);
-      
+
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection || 0.01);
-      
-      self.postMessage({ type: 'importBRep', success: true, payload: geometryData, id });
+
+      self.postMessage({ type: 'importBRepResult', success: true, payload: geometryData, id });
     } catch (err: any) {
-      self.postMessage({ type: 'importBRep', success: false, error: err.message, id });
+      self.postMessage({ type: 'importBRepResult', success: false, error: err.message, id });
     }
   }
 }
@@ -1942,7 +2166,21 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
     oc.BRepTools.Clean(shape);
   }
   // Triangulate the shape
-  new oc.BRepMesh_IncrementalMesh_2(shape, linearDeflection, false, 0.5, false);
+  const mesher = new oc.BRepMesh_IncrementalMesh_2(shape, linearDeflection, false, 0.5, false);
+
+  const progress = (oc.Message_ProgressRange_1 && typeof oc.Message_ProgressRange_1 === 'function') ? new oc.Message_ProgressRange_1() : null;
+  if (progress) {
+    mesher.Perform(progress);
+  } else {
+    (mesher as any).Perform();
+  }
+
+  if (mesher.IsDone && !mesher.IsDone()) {
+    console.warn("[OCC] Meshing for geometry extraction might be incomplete.");
+  }
+
+  if (progress) progress.delete();
+  mesher.delete();
 
   const positions: number[] = [];
   const indices: number[] = [];
@@ -1952,7 +2190,7 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
 
   // Explore all faces
   const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
-  
+
   while (explorer.More()) {
     const faceShape = explorer.Current();
 
@@ -1968,19 +2206,20 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
     if (!triangulation.IsNull()) {
       const trsf = location.Transformation();
       const tri = triangulation.get();
-      
+
       // Extract Nodes (Vertices)
       const nbNodes = tri.NbNodes();
       for (let i = 1; i <= nbNodes; i++) {
         const pnt = tri.Node(i);
         pnt.Transform(trsf); // Apply face transformation
         positions.push(pnt.X(), pnt.Y(), pnt.Z());
+        pnt.delete();
       }
 
       // Extract Triangles
       const nbTriangles = tri.NbTriangles();
       const orientation = face.Orientation_1();
-      
+
       for (let i = 1; i <= nbTriangles; i++) {
         const triangle = tri.Triangle(i);
         const n1 = triangle.Value(1);
@@ -1998,30 +2237,34 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
       vertexOffset += nbNodes;
       faceCounter++;
     }
+    location.delete();
+    face.delete();
     explorer.Next();
   }
+  explorer.delete();
 
   // Extract edges
   // Extract edges using pre-existing mesh (BRep_Tool.Polygon3D)
   const edgeLines: number[][] = [];
   const edgeExplorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
-  
+
   while (edgeExplorer.More()) {
     const edgeShape = edgeExplorer.Current();
     if (edgeShape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_EDGE) {
       const edge = oc.TopoDS.Edge_1(edgeShape);
       const loc = new oc.TopLoc_Location_1();
       const poly = oc.BRep_Tool.Polygon3D(edge, loc);
-      
+
       if (!poly.IsNull()) {
         const nodes = poly.get().Nodes();
         const edgePoints: number[] = [];
         const trsf = loc.Transformation();
-        
+
         for (let i = nodes.Lower(); i <= nodes.Upper(); i++) {
           const pnt = nodes.Value(i);
           pnt.Transform(trsf); // Apply transformation
           edgePoints.push(pnt.X(), pnt.Y(), pnt.Z());
+          pnt.delete();
         }
         edgeLines.push(edgePoints);
       } else {
@@ -2032,7 +2275,7 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
           const last = adaptor.LastParameter();
           const numSamples = 10;
           const edgePoints: number[] = [];
-          
+
           const pnt = new oc.gp_Pnt_1();
           for (let i = 0; i <= numSamples; i++) {
             const u = first + (last - first) * (i / numSamples);
@@ -2041,7 +2284,7 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
           }
           pnt.delete();
           adaptor.delete();
-          
+
           edgeLines.push(edgePoints);
         } catch (e) {
           console.warn("Failed to extract curve points for edge.", e);
@@ -2051,6 +2294,7 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
     }
     edgeExplorer.Next();
   }
+  edgeExplorer.delete();
 
   return { positions, indices, faceMapping, edgeLines };
 }

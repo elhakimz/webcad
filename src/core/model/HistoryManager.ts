@@ -53,7 +53,7 @@ export class HistoryManager {
     })
   }
 
-  recordTransform(entityBefore: Entity, entityAfter: Entity) {
+  recordTransform(entityBefore: Entity, _entityAfter: Entity) {
     this.currentTransaction.push({
       action: HistoryAction.TRANSFORM,
       entityId: entityBefore.id,
@@ -65,7 +65,8 @@ export class HistoryManager {
     getEntity: (id: string) => Entity | undefined,
     removeEntity: (id: string) => void,
     addEntity: (entity: Entity) => void,
-    onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => void
+    onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => void,
+    onSolidBRepRestore?: (id: string, brep: Uint8Array) => void
   ) {
     const transaction = this.undoStack.pop()
     if (!transaction) return
@@ -108,6 +109,10 @@ export class HistoryManager {
               onSolidTransform(entity.id, dx, dy, dz);
             }
           }
+
+          if (onSolidBRepRestore && record.entity instanceof Solid3D && record.entity.brepSnapshot) {
+            onSolidBRepRestore(record.entityId, record.entity.brepSnapshot);
+          }
           
           removeEntity(record.entityId)
           addEntity(record.entity.clone(record.entityId))
@@ -122,7 +127,8 @@ export class HistoryManager {
     getEntity: (id: string) => Entity | undefined,
     removeEntity: (id: string) => void,
     addEntity: (entity: Entity) => void,
-    onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => void
+    onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => void,
+    onSolidBRepRestore?: (id: string, brep: Uint8Array) => void
   ) {
     const transaction = this.redoStack.pop()
     if (!transaction) return
@@ -162,6 +168,10 @@ export class HistoryManager {
                 if (dx !== 0 || dy !== 0 || dz !== 0) {
                   onSolidTransform(entity.id, dx, dy, dz);
                 }
+              }
+
+              if (onSolidBRepRestore && record.entity instanceof Solid3D && record.entity.brepSnapshot) {
+                onSolidBRepRestore(record.entityId, record.entity.brepSnapshot);
               }
               
               removeEntity(record.entityId)

@@ -30,6 +30,7 @@ export class ShellHandler implements ActionHandler {
         const edgeLines = geometry.userData.edgeLines;
         
         const newSolid = new Solid3D(entityId, positions, indices, faceMapping, edgeLines);
+        newSolid.brepSnapshot = geometry.userData?.brepSnapshot;
         newSolid.layer = entity.layer;
         
         // Update entity in document

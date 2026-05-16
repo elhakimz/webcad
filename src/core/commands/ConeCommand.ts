@@ -1,9 +1,10 @@
-import { Command, CommandResponse } from "./types";
-import { UnitsConfig } from "../model/Document";
+import { Command, CommandResponse, PreviewObject } from "./types";
+import { UnitsConfig, IDocument } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 import { Solid3D } from "../model/Solid3D";
-import { OpenCascadeService } from "../io/OpenCascadeService.js";
+import { OpenCascadeService } from "../io/OpenCascadeService";
 import { Circle } from "../model/Circle";
+import { Line } from "../model/Line";
 import * as THREE from "three";
 
 export class ConeCommand implements Command {
@@ -28,15 +29,17 @@ export class ConeCommand implements Command {
       const dx = x - this.center.x;
       const dy = y - this.center.y;
       this.radius = Math.sqrt(dx * dx + dy * dy);
+      
+      if (this.radius < 1e-6) {
+        return "Radius must be non-zero. Specify radius:";
+      }
+      
       this.step = 2;
-      return `Radius: ${FormatUtils.formatDistance(this.radius, units)}. Specify height:`;
+      return `Radius: ${FormatUtils.formatDistance(this.radius, units)}. Specify height (move mouse up/down):`;
     } else if (this.step === 2) {
       if (!this.center || this.radius === null) return "Error: Center or radius not set.";
-      const height = z !== undefined ? z - this.center.z : 0;
-      if (height === 0) return "Specify height:";
-      const facetres = doc ? doc.facetres : 0.5;
-      const deflection = 0.1 / facetres;
-      return this.executeCreate(id, this.radius, height, deflection);
+      const height = y - this.center.y; // Interaction: up increases, down decreases
+      return this.finishWithHeight(height, id, doc);
     }
     return "Specify height:";
   }
@@ -63,27 +66,28 @@ export class ConeCommand implements Command {
       if (isNaN(height) || height === 0) {
         return "Invalid height. Specify height:";
       }
-
-      if (!this.center || this.radius === null) return "Error: Center or radius not set.";
-
-      const rx = this.radius;
-      const h = height;
-      const facetres = doc ? doc.facetres : 0.5;
-      const deflection = 0.1 / facetres;
-
-      return this.executeCreate(id, rx, h, deflection);
+      return this.finishWithHeight(height, id, doc);
     }
   }
 
-  private executeCreate(id: string, radius: number, height: number, deflection: number): Promise<CommandResponse> {
-    return this.occService.createCone(this.center!.x, this.center!.y, this.center!.z, radius, height, deflection, id).then((geometry: THREE.BufferGeometry) => {
+  private finishWithHeight(height: number, id: string, doc: any) {
+    if (!this.center || this.radius === null) {
+      this.step = 0;
+      return "Error: Center or radius not set.";
+    }
+
+    const facetres = doc ? doc.facetres : 5.0;
+    const deflection = 0.1 / facetres;
+    
+    return this.occService.createCone(this.center.x, this.center.y, this.center.z, this.radius, height, deflection, id).then((geometry: THREE.BufferGeometry) => {
       const positions = Array.from(geometry.getAttribute('position').array) as number[];
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
       
       const solid = new Solid3D(id, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
+      solid.brepSnapshot = geometry.userData?.brepSnapshot;
       solid.creationParams = {
         type: 'cone',
-        params: { x: this.center!.x, y: this.center!.y, z: this.center!.z, r: radius, h: height }
+        params: { x: this.center!.x, y: this.center!.y, z: this.center!.z, r: this.radius!, h: height }
       };
       this.step = 0; // Reset
       return solid;
@@ -93,14 +97,36 @@ export class ConeCommand implements Command {
     });
   }
 
-  getPreview(x: number, y: number, units: UnitsConfig) {
+  getPreview(x: number, y: number, _units: UnitsConfig, _doc?: IDocument): PreviewObject | null {
     if (this.step === 1 && this.center) {
       const dx = x - this.center.x;
       const dy = y - this.center.y;
       const r = Math.sqrt(dx * dx + dy * dy);
       if (r > 0) {
-        return new Circle("preview", this.center.x, this.center.y, r);
+        const circle = new Circle("preview", this.center.x, this.center.y, r);
+        circle.elevation = this.center.z;
+        return circle;
       }
+    }
+    if (this.step === 2 && this.center && this.radius !== null) {
+      const h = y - this.center.y;
+      const z = this.center.z;
+      const r = this.radius;
+      const cx = this.center.x;
+      const cy = this.center.y;
+
+      const circleBottom = new Circle("cb", cx, cy, r);
+      circleBottom.elevation = z;
+
+      const entities = [
+        circleBottom,
+        // 4 lines to apex
+        new Line("v1", cx + r, cy, cx, cy, z, h),
+        new Line("v2", cx - r, cy, cx, cy, z, h),
+        new Line("v3", cx, cy + r, cx, cy, z, h),
+        new Line("v4", cx, cy - r, cx, cy, z, h),
+      ];
+      return { type: 'entities' as const, entities };
     }
     return null;
   }
@@ -117,12 +143,13 @@ export class ConeCommand implements Command {
       const dy = y - this.center.y;
       const r = Math.sqrt(dx * dx + dy * dy);
       return [
-        `R: (${FormatUtils.formatDistance(r, units)})`
+        `R: ${FormatUtils.formatDistance(r, units)} (enter value)`
       ];
     }
-    if (this.step === 2) {
+    if (this.step === 2 && this.center) {
+      const h = y - this.center.y;
       return [
-        `H: (enter value)`
+        `H: ${FormatUtils.formatDistance(h, units)} (enter value)`
       ];
     }
     return null;
@@ -131,6 +158,6 @@ export class ConeCommand implements Command {
   getPrompt() {
     if (this.step === 0) return "CONE specify center point:";
     if (this.step === 1) return "Specify radius:";
-    return "Specify height:";
+    return "Specify height (move mouse up/down or enter value):";
   }
 }

@@ -4,6 +4,7 @@ import { Circle } from "../model/Circle";
 import { Arc } from "../model/Arc";
 import { Polyline } from "../model/Polyline";
 import { Spline } from "../model/Spline";
+import { Donut } from "../model/Donut";
 import { Document } from "../model/Document";
 import { distancePointToPoint, bulgeToArc } from "./MathUtils";
 
@@ -146,6 +147,8 @@ export class SnapEngine {
       for (const cp of entity.controlPoints) {
         snaps.push({ x: cp.x, y: cp.y, type: SnapType.ENDPOINT });
       }
+    } else if (entity instanceof Donut) {
+      snaps.push({ x: entity.cx, y: entity.cy, type: SnapType.CENTER });
     }
     
     return snaps;

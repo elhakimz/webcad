@@ -4,14 +4,12 @@ import { Solid3D } from "../model/Solid3D";
 import { Selection3DEngine } from "../engine/Selection3DEngine";
 
 export class SChamferCommand implements Command {
-  step = 1;
+  step = 1; // 1: distance, 2: select edge/face
   static lastDistance = 5.0;
   distance = SChamferCommand.lastDistance;
   entityId: string | null = null;
   edgeIndex: number | null = null;
   face1: number | null = null;
-  face2: number | null = null;
-  mode: 'EDGE' | 'FACE' = 'EDGE';
 
   constructor(selection?: string[]) {
     if (selection && selection.length > 0) {
@@ -22,107 +20,83 @@ export class SChamferCommand implements Command {
   onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
-    // Handle Distance option at any time if we are in edge selection or mode selection
-    if (val === "D" || val === "DISTANCE") {
-      this.step = 10; // State for entering distance
-      return `Enter chamfer distance <${this.distance}>:`;
-    }
-
-    if (this.step === 10) {
-      const d = parseFloat(val);
-      this.distance = isNaN(d) ? SChamferCommand.lastDistance : d;
-      SChamferCommand.lastDistance = this.distance;
-      this.step = 1; // Go back to edge selection mode
-      return "Select edge by [E]dge or [F]aces <Edge>:";
-    }
-
+    // Step 1: Enter Distance
     if (this.step === 1) {
-      if (val === "F" || val === "FACES") {
-        this.mode = 'FACE';
-        this.step = 2;
-        return "Select first face (Ctrl+Shift+Click):";
-      } else if (val === "E" || val === "EDGE" || val === "") {
-        this.mode = 'EDGE';
-        this.step = 3;
-        return "Select edge (Ctrl+Click):";
-      }
-    }
-
-    if (this.step === 2) {
-      if (text.startsWith("FACE:")) {
-        const parts = text.split(":");
-        if (parts.length === 3) {
-          this.entityId = parts[1];
-          this.face1 = parseInt(parts[2]);
-          this.step = 5;
-          return "Select second face to find shared edge, or press Enter to apply to all edges of this face:";
-        }
-      }
-      return "Please select a face using Ctrl+Shift+Click.";
-    }
-
-    if (this.step === 5) {
       if (val === "" || val === "ENTER") {
-        this.step = 4;
-        return `Applying to all edges of face ${this.face1}. Enter chamfer distance <${this.distance}>:`;
+        this.step = 2;
+        return this.getPrompt();
       }
-      if (text.startsWith("FACE:")) {
-        const parts = text.split(":");
-        if (parts.length === 3) {
-          this.face2 = parseInt(parts[2]);
-          
-          if (this.face1 !== null && doc && this.entityId) {
-            const entity = doc.getEntity(this.entityId);
-            if (entity instanceof Solid3D) {
-              const sharedEdgeRes = Selection3DEngine.getSharedEdge(entity, this.face1, this.face2);
-              if (sharedEdgeRes) {
-                this.edgeIndex = sharedEdgeRes.edgeIndex;
-                this.step = 4;
-                return `Shared edge found: ${this.edgeIndex}. Enter chamfer distance <${this.distance}>:`;
-              } else {
-                this.step = 2;
-                return "Faces do not share an edge. Select first face again:";
-              }
-            }
-          }
-        }
+      const d = parseFloat(val);
+      if (!isNaN(d)) {
+        this.distance = d;
+        SChamferCommand.lastDistance = this.distance;
+        this.step = 2;
+        return this.getPrompt();
       }
-      return "Please select a face using Ctrl+Shift+Click.";
+      return "Invalid distance. Enter chamfer distance <" + this.distance.toFixed(2) + ">:";
     }
 
-    if (this.step === 3) {
+    // Step 2: Select Edge or Face
+    if (this.step === 2 || this.step === 5) {
+      if (val === "" || val === "ENTER") {
+        return { action: 'close' }; // Finish continuous selection
+      }
+
       if (text.startsWith("EDGE:")) {
         const parts = text.split(":");
         if (parts.length === 3) {
           this.entityId = parts[1];
           this.edgeIndex = parseInt(parts[2]);
-          this.step = 4;
-          return `Edge ${this.edgeIndex} selected. Enter chamfer distance <${this.distance}>:`;
-        }
-      }
-      return "Please select an edge using Ctrl+Click.";
-    }
-
-    if (this.step === 4) {
-      const d = parseFloat(val);
-      this.distance = isNaN(d) ? this.distance : d;
-      SChamferCommand.lastDistance = this.distance;
-
-      if (this.entityId) {
-        if (this.edgeIndex !== null) {
+          this.face1 = null; // Clear face selection if edge clicked
+          
           return {
             action: "chamfer_solid",
             id: this.entityId,
             value: this.edgeIndex,
-            radius: this.distance
+            radius: this.distance // OCC uses 'radius' internally for some chamfer calls or we map it
           } as CommandAction;
-        } else if (this.face1 !== null) {
-          return {
-            action: "chamfer_solid_face",
-            id: this.entityId,
-            faceIndex: this.face1,
-            radius: this.distance
-          } as CommandAction;
+        }
+      }
+
+      if (text.startsWith("FACE:")) {
+        const parts = text.split(":");
+        if (parts.length === 3) {
+          const newEntityId = parts[1];
+          const faceIdx = parseInt(parts[2]);
+
+          if (this.face1 === null || newEntityId !== this.entityId) {
+            this.entityId = newEntityId;
+            this.face1 = faceIdx;
+            this.step = 5; // Waiting for second face
+            return "Select adjacent face to chamfer shared edge:";
+          } else {
+            // Second face selected
+            const face2 = faceIdx;
+            if (this.face1 === face2) return "Select a different, adjacent face:";
+            
+            if (doc && this.entityId) {
+              const entity = doc.getEntity(this.entityId);
+              if (entity instanceof Solid3D) {
+                const sharedEdgeRes = Selection3DEngine.getSharedEdge(entity, this.face1, face2);
+                if (sharedEdgeRes) {
+                  this.edgeIndex = sharedEdgeRes.edgeIndex;
+                  this.face1 = null; // Reset for next selection loop
+                  this.step = 2;
+
+                  return {
+                    action: "chamfer_solid",
+                    id: this.entityId,
+                    value: this.edgeIndex,
+                    radius: this.distance
+                  } as CommandAction;
+                } else {
+                  this.face1 = null;
+                  this.step = 2;
+                  return "Faces do not share an edge. Select first face again:";
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -131,17 +105,21 @@ export class SChamferCommand implements Command {
   }
 
   onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse {
+    if (this.step >= 2) {
+      return { action: 'close' }; // Terminate on background click during selection
+    }
     return this.getPrompt();
   }
 
   getPrompt(): string {
-    if (this.step === 0) return "SCHAMFER Select solid:";
-    if (this.step === 1) return "Select edge by [E]dge or [F]aces <Edge>:";
-    if (this.step === 2) return "Select first face:";
-    if (this.step === 3) return "Select edge (Ctrl+Click):";
-    if (this.step === 4) return `Enter chamfer distance <${this.distance.toFixed(2)}>:`;
-    if (this.step === 5) return "Select second face:";
-    if (this.step === 10) return `Enter chamfer distance <${this.distance.toFixed(2)}>:`;
+    if (this.step === 1) return `Enter chamfer distance <${this.distance.toFixed(2)}>:`;
+    if (this.step === 2) return "Select edges or faces to chamfer (Enter to finish):";
+    if (this.step === 5) return "Select second (adjacent) face:";
     return "SCHAMFER Command";
+  }
+
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 1) return [`Distance: ${this.distance.toFixed(2)} (enter value)`];
+    return null;
   }
 }

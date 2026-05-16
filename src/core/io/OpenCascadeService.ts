@@ -54,9 +54,19 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    let brepSnapshot: Uint8Array | undefined;
+    if (entityId) {
+      try {
+        brepSnapshot = await this.client.exportBRep(entityId);
+      } catch (e) {
+        console.warn(`[OCC] Failed to export BRep for ${entityId}:`, e);
+      }
+    }
+    
     geometry.userData = {
       faceMapping: data.faceMapping,
-      edgeLines: data.edgeLines
+      edgeLines: data.edgeLines,
+      brepSnapshot: brepSnapshot
     };
     
     return geometry;
@@ -91,9 +101,19 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    let brepSnapshot: Uint8Array | undefined;
+    if (entityId) {
+      try {
+        brepSnapshot = await this.client.exportBRep(entityId);
+      } catch (e) {
+        console.warn(`[OCC] Failed to export BRep for ${entityId}:`, e);
+      }
+    }
+    
     geometry.userData = {
       faceMapping: data.faceMapping,
-      edgeLines: data.edgeLines
+      edgeLines: data.edgeLines,
+      brepSnapshot: brepSnapshot
     };
     
     return geometry;
@@ -111,9 +131,19 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    let brepSnapshot: Uint8Array | undefined;
+    if (entityId) {
+      try {
+        brepSnapshot = await this.client.exportBRep(entityId);
+      } catch (e) {
+        console.warn(`[OCC] Failed to export BRep for ${entityId}:`, e);
+      }
+    }
+    
     geometry.userData = {
       faceMapping: data.faceMapping,
-      edgeLines: data.edgeLines
+      edgeLines: data.edgeLines,
+      brepSnapshot: brepSnapshot
     };
     
     return geometry;
@@ -151,9 +181,19 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    let brepSnapshot: Uint8Array | undefined;
+    if (entityId) {
+      try {
+        brepSnapshot = await this.client.exportBRep(entityId);
+      } catch (e) {
+        console.warn(`[OCC] Failed to export BRep for ${entityId}:`, e);
+      }
+    }
+    
     geometry.userData = {
       faceMapping: data.faceMapping,
-      edgeLines: data.edgeLines
+      edgeLines: data.edgeLines,
+      brepSnapshot: brepSnapshot
     };
     
     return geometry;
@@ -171,9 +211,19 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    let brepSnapshot: Uint8Array | undefined;
+    if (entityId) {
+      try {
+        brepSnapshot = await this.client.exportBRep(entityId);
+      } catch (e) {
+        console.warn(`[OCC] Failed to export BRep for ${entityId}:`, e);
+      }
+    }
+    
     geometry.userData = {
       faceMapping: data.faceMapping,
-      edgeLines: data.edgeLines
+      edgeLines: data.edgeLines,
+      brepSnapshot: brepSnapshot
     };
     
     return geometry;
@@ -187,9 +237,19 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    let brepSnapshot: Uint8Array | undefined;
+    if (entityId) {
+      try {
+        brepSnapshot = await this.client.exportBRep(entityId);
+      } catch (e) {
+        console.warn(`[OCC] Failed to export BRep for ${entityId}:`, e);
+      }
+    }
+    
     geometry.userData = {
       faceMapping: data.faceMapping,
-      edgeLines: data.edgeLines
+      edgeLines: data.edgeLines,
+      brepSnapshot: brepSnapshot
     };
     
     return geometry;
@@ -223,9 +283,19 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    let brepSnapshot: Uint8Array | undefined;
+    if (entityId) {
+      try {
+        brepSnapshot = await this.client.exportBRep(entityId);
+      } catch (e) {
+        console.warn(`[OCC] Failed to export BRep for ${entityId}:`, e);
+      }
+    }
+    
     geometry.userData = {
       faceMapping: data.faceMapping,
-      edgeLines: data.edgeLines
+      edgeLines: data.edgeLines,
+      brepSnapshot: brepSnapshot
     };
     
     return geometry;
@@ -238,9 +308,19 @@ export class OpenCascadeService {
     geometry.setIndex(data.indices);
     geometry.computeVertexNormals();
     
+    let brepSnapshot: Uint8Array | undefined;
+    if (entityId) {
+      try {
+        brepSnapshot = await this.client.exportBRep(entityId);
+      } catch (e) {
+        console.warn(`[OCC] Failed to export BRep for ${entityId}:`, e);
+      }
+    }
+    
     geometry.userData = {
       faceMapping: data.faceMapping,
-      edgeLines: data.edgeLines
+      edgeLines: data.edgeLines,
+      brepSnapshot: brepSnapshot
     };
     
     return geometry;
@@ -334,14 +414,21 @@ export class OpenCascadeService {
     if (!this.workerClient) return;
     
     console.log("[OCC] Re-hydrating worker with current solids...");
-    for (const entity of doc.getEntities()) {
+    const entities = doc.getEntities ? doc.getEntities() : (doc.entities ? Array.from(doc.entities.values()) : []);
+    for (const entity of entities) {
       if ((entity as any).type === "Solid3D") {
         const solid = entity as any;
         if (solid.brepSnapshot) {
           try {
             const deflection = 0.1 / (doc.facetres || 5.0);
-            await this.workerClient.importBRep(solid.id, solid.brepSnapshot, deflection);
-            console.log(`[OCC] Re-hydrated solid ${solid.id}`);
+            const data = await this.workerClient.importBRep(solid.id, solid.brepSnapshot, deflection);
+            if (data && data.positions) {
+                solid.positions = data.positions;
+                solid.indices = data.indices;
+                solid.faceMapping = data.faceMapping;
+                solid.edgeLines = data.edgeLines;
+                console.log(`[OCC] Re-hydrated and re-tessellated solid ${solid.id} (Facetres: ${doc.facetres})`);
+            }
           } catch (e) {
             console.error(`[OCC] Failed to re-hydrate solid ${solid.id}:`, e);
           }

@@ -174,8 +174,9 @@ export class Selection3DEngine {
 
     if (filteredEdgeLines.length > 0) {
       const edgeRaycaster = new THREE.Raycaster();
-      const screenTolerance = 15; // 15 pixels tolerance for smart mode
+      const screenTolerance = 50; // 50 pixels tolerance for easier edge picking (matches stable history)
       const worldTolerance = screenTolerance / camera.zoom;
+      
       edgeRaycaster.params.Line = { threshold: worldTolerance };
       edgeRaycaster.setFromCamera(ndc, camera);
 

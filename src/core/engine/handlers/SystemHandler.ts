@@ -42,8 +42,10 @@ export class SystemHandler implements ActionHandler {
     }
 
     if (action.action === 'regen') {
+      await OpenCascadeService.getInstance().rehydrate(doc);
       context.syncFromDocument(); 
-      return "Regenerating drawing...";
+      const msg = (action as any)._echo ? `${(action as any)._echo}\nRegenerating drawing...` : "Regenerating drawing...";
+      return msg;
     }
 
     if (action.action === 'delete' && action.ids) {

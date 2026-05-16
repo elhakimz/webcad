@@ -1,6 +1,6 @@
 import { Polyline } from "../model/Polyline"
 import { Command, CommandResponse, PreviewObject } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { FormatUtils } from "../engine/FormatUtils"
 import { calculatePolygonVerticesByCenter, calculatePolygonVerticesByEdge, Point } from "../engine/MathUtils"
 

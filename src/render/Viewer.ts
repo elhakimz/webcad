@@ -4,6 +4,7 @@ import { TTFLoader } from 'three/examples/jsm/loaders/TTFLoader.js'
 import { Line2 } from 'three/examples/jsm/lines/Line2.js'
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
+import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { Entity } from "../core/model/Entity"
 import { UnitsConfig } from "../core/model/Document"
 import { FormatUtils } from "../core/engine/FormatUtils"
@@ -60,6 +61,7 @@ export class Viewer {
   public selectableMeshes: THREE.Mesh[] = [];
   public edgeLines: THREE.Object3D[] = [];
   public directionalLight: THREE.DirectionalLight | null = null;
+  private highlightedEntityIds: string[] = [];
 
   constructor(canvas:HTMLCanvasElement){
     this.canvas = canvas
@@ -356,13 +358,18 @@ export class Viewer {
       case 'WIREFRAME':
         return new THREE.MeshBasicMaterial({ ...options, wireframe: true });
       case 'SHADED':
-        return new THREE.MeshLambertMaterial(offsetOptions);
+        return new THREE.MeshPhongMaterial({ 
+          ...offsetOptions, 
+          shininess: 60, 
+          specular: 0x888888,
+          emissive: 0x222222 
+        });
       case 'PHONG':
         return new THREE.MeshPhongMaterial({ 
           ...offsetOptions, 
-          shininess: 40, 
-          specular: 0x444444,
-          emissive: 0x111111 // Subtle glow to match CATIA's soft shading
+          shininess: 60, 
+          specular: 0x888888,
+          emissive: 0x222222 
         });
       case 'BLINN':
         return new THREE.MeshStandardMaterial({ ...offsetOptions, roughness: 0.2, metalness: 0.1 });
@@ -420,7 +427,8 @@ export class Viewer {
     this.scene.traverse(obj => {
       const anyObj = obj as any;
       if (anyObj.material && anyObj.material.isLineMaterial) {
-        anyObj.material.resolution.set(w, h);
+        // No-op for now as we are moving away from Line2, 
+        // but keeping the loop if we have other line materials
       }
     });
     
@@ -441,22 +449,26 @@ export class Viewer {
   private createPreviewObject(entity: PreviewObject, previewColor: number, units: UnitsConfig): THREE.Object3D | null {
     let obj: THREE.Object3D | null = null;
     if (entity instanceof Line) {
+      const z1 = entity.elevation || 0;
+      const z2 = z1 + (entity.thickness || 0);
       const geo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(entity.x1, entity.y1, 0),
-        new THREE.Vector3(entity.x2, entity.y2, 0)
+        new THREE.Vector3(entity.x1, entity.y1, z1),
+        new THREE.Vector3(entity.x2, entity.y2, z2)
       ]);
       const mat = new THREE.LineBasicMaterial({ color: previewColor });
       obj = new THREE.Line(geo, mat);
     } else if (entity instanceof Circle) {
+      const z = entity.elevation || 0;
       const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, 0, 2 * Math.PI, false, 0);
       const points = curve.getPoints(50);
-      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const geo = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, z)));
       const mat = new THREE.LineBasicMaterial({ color: previewColor });
       obj = new THREE.LineLoop(geo, mat);
     } else if (entity instanceof Arc) {
+      const z = entity.elevation || 0;
       const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, entity.startAngle, entity.endAngle, !entity.ccw, 0);
       const points = curve.getPoints(50);
-      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const geo = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, z)));
       const mat = new THREE.LineBasicMaterial({ color: previewColor });
       obj = new THREE.Line(geo, mat);
     } else if (entity instanceof Point) {
@@ -1190,6 +1202,15 @@ export class Viewer {
     if (mesh) {
       this.selectableMeshes.push(mesh);
     }
+    
+    // Add profile lines to edgeLines for shading mode toggling
+    const profileLines = obj.children.filter(child => child.userData && child.userData.isEdge) as THREE.Object3D[];
+    profileLines.forEach(line => {
+      line.userData.entityId = entity.id; // Ensure link for removal
+      this.edgeLines.push(line);
+      // Synchronize visibility with current shading mode
+      line.visible = (this.shadingMode === 'SHADED');
+    });
   }
 
   private createSolid3DObject(entity: Solid3D, colorIndex: number): THREE.Object3D {
@@ -1208,123 +1229,62 @@ export class Viewer {
     const size = new THREE.Vector3();
     geometry.boundingBox!.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z);
-    const edgeRadius = Math.max(0.02, maxDim * 0.002); // Adaptive thickness (thinner)
-    
-    // Translate geometry to be centered at (0,0,0) locally
-    geometry.translate(-center.x, -center.y, -center.z);
+    // Use the geometry directly, as mergeVertices can sometimes cause index corruption on complex sweeps
+    const weldedGeo = geometry.clone(); 
+    weldedGeo.translate(-center.x, -center.y, -center.z);
     
     const material = this.getMeshMaterial(color);
-    const mesh = new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(weldedGeo, material);
     mesh.userData = { type: 'Solid3D', faceMapping: entity.faceMapping, entityId: entity.id };
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     
-    // Create edges geometry
-    let line: THREE.Object3D;
-    console.log(`[createSolid3DObject] entity ${entity.id} has edgeLines:`, !!entity.edgeLines, entity.edgeLines?.length);
+    const group = new THREE.Group();
+    group.add(mesh);
+
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const edgeRadius = Math.max(0.05, maxDim * 0.001); // Adaptive radius for the selection cylinders
+    
+    // 1. Prioritize BRep edges using Cylinder geometry for robust 3D selection (matches stable history)
     if (entity.edgeLines && entity.edgeLines.length > 0) {
-      const edgeGroup = new THREE.Group();
-      
-      for (let edgeIdx = 0; edgeIdx < entity.edgeLines.length; edgeIdx++) {
-        const edgePoints = entity.edgeLines[edgeIdx];
-        const pts: THREE.Vector3[] = [];
-        for (let i = 0; i < edgePoints.length; i += 3) {
-          pts.push(new THREE.Vector3(edgePoints[i], edgePoints[i+1], edgePoints[i+2]));
-        }
-        // Translate points to local space (relative to center)
-        for (const pt of pts) {
-          pt.sub(center);
-        }
+      entity.edgeLines.forEach((pts, idx) => {
+        if (pts.length < 6) return;
         
-        const lineMat = new THREE.MeshBasicMaterial({ 
-          color: 0x000000, // Pure black edges for maximum contrast
-          polygonOffset: true,
-          polygonOffsetFactor: -1,
-          polygonOffsetUnits: -1
-        });
-        const radius = edgeRadius; // Adaptive thickness
-        
-        for (let i = 0; i < pts.length - 1; i++) {
-          const p1 = pts[i];
-          const p2 = pts[i+1];
-          const distance = p1.distanceTo(p2);
-          if (distance < 0.001) continue;
-          
-          const cylGeo = new THREE.CylinderGeometry(radius, radius, distance, 6);
-          const cyl = new THREE.Mesh(cylGeo, lineMat);
+        for (let i = 0; i < pts.length - 3; i += 3) {
+          const p1 = new THREE.Vector3(pts[i] - center.x, pts[i+1] - center.y, pts[i+2] - center.z);
+          const p2 = new THREE.Vector3(pts[i+3] - center.x, pts[i+4] - center.y, pts[i+5] - center.z);
+          const dist = p1.distanceTo(p2);
+          if (dist < 0.001) continue;
+
+          const cylGeo = new THREE.CylinderGeometry(edgeRadius, edgeRadius, dist, 6);
+          const cyl = new THREE.Mesh(cylGeo, lineMat.clone()); // Clone material so we can highlight individually
           
           // Position at midpoint
           cyl.position.copy(p1).add(p2).multiplyScalar(0.5);
-          
           // Rotate to align with direction
           const direction = p2.clone().sub(p1).normalize();
           cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
           
-          cyl.userData.edgeIndex = edgeIdx;
-          cyl.userData.entityId = entity.id;
-          cyl.userData.type = 'Edge';
-          edgeGroup.add(cyl);
-          this.edgeLines.push(cyl);
+          cyl.userData = { isEdge: true, type: 'Profile', entityId: entity.id, edgeIndex: idx };
+          group.add(cyl);
         }
-      }
-      line = edgeGroup;
-    } else {
-      // Fallback to EdgesGeometry and create cylinders
-      const edges = new THREE.EdgesGeometry(geometry, 1);
-      const posAttr = edges.attributes.position;
-      const edgeGroup = new THREE.Group();
-      
-      const fallbackLineMat = new THREE.MeshBasicMaterial({ 
-        color: 0x000000, 
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1
       });
-      
-      for (let i = 0; i < posAttr.count; i += 2) {
-        const p1 = new THREE.Vector3().fromBufferAttribute(posAttr, i);
-        const p2 = new THREE.Vector3().fromBufferAttribute(posAttr, i + 1);
-        
-        const distance = p1.distanceTo(p2);
-        if (distance < 0.001) continue;
-        
-        const cylGeo = new THREE.CylinderGeometry(edgeRadius, edgeRadius, distance, 6);
-        const cyl = new THREE.Mesh(cylGeo, fallbackLineMat);
-        
-        cyl.position.copy(p1).add(p2).multiplyScalar(0.5);
-        const direction = p2.clone().sub(p1).normalize();
-        cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-        
-        cyl.userData.type = 'Edge';
-        cyl.userData.entityId = entity.id;
-        edgeGroup.add(cyl);
-        this.edgeLines.push(cyl);
+    } else {
+      // 2. Fallback to standard EdgesGeometry if BRep edges are missing
+      const edgesGeo = new THREE.EdgesGeometry(weldedGeo, 1.0);
+      if (edgesGeo.attributes.position && edgesGeo.attributes.position.count > 0) {
+        const lineMatBasic = new THREE.LineBasicMaterial({ color: 0x000000 });
+        const line = new THREE.LineSegments(edgesGeo, lineMatBasic);
+        line.userData = { isEdge: true, type: 'Profile', entityId: entity.id };
+        group.add(line);
       }
-      line = edgeGroup;
     }
     
-    const group = new THREE.Group();
-    group.add(mesh);
-    group.add(line);
-    
-    // Create silhouette (inverted hull)
-    const hullMat = new THREE.MeshBasicMaterial({ 
-      color: 0x000000, 
-      side: THREE.BackSide 
-    });
-    const hull = new THREE.Mesh(geometry.clone(), hullMat);
-    hull.scale.set(1.005, 1.005, 1.005); // Thinner silhouette
-    hull.userData.type = 'Silhouette';
-    group.add(hull);
-    
     group.userData = { type: 'Solid3D' };
-    
-    // Set group position to world center
     group.position.copy(center);
     
     return group;
   }
-
   highlightFace(entityId: string, faceIndex: number | null) {
     const obj = this.scene.getObjectByName(entityId);
     if (!obj || !(obj instanceof THREE.Group)) return;

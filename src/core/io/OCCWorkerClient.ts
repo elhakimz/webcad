@@ -121,8 +121,22 @@ export class OCCWorkerClient {
   private send(type: string, payload: any): Promise<any> {
     const id = this.messageId++;
     return new Promise((resolve, reject) => {
-      this.resolvers.set(id, resolve);
-      this.rejecters.set(id, reject);
+      const timeout = setTimeout(() => {
+        if (this.resolvers.has(id)) {
+          this.resolvers.delete(id);
+          this.rejecters.delete(id);
+          reject(new Error(`Worker request timed out after 15s: ${type}`));
+        }
+      }, 15000);
+
+      this.resolvers.set(id, (val) => {
+        clearTimeout(timeout);
+        resolve(val);
+      });
+      this.rejecters.set(id, (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
       this.worker.postMessage({ type, payload, id });
     });
   }

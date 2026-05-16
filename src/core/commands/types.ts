@@ -82,6 +82,7 @@ export type CommandAction = {
   };
   plotSettings?: PlotSettings;
   plotAreaWindow?: { x1: number; y1: number; x2: number; y2: number };
+  close?: boolean;
 };
 
 export type TaggedPrompt = { type: 'prompt'; text: string };

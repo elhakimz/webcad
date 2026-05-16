@@ -21,6 +21,7 @@ import { RectangCommand } from "../commands/RectangCommand"
 import { BoxCommand } from "../commands/BoxCommand"
 import { CylinderCommand } from "../commands/CylinderCommand"
 import { SphereCommand } from "../commands/SphereCommand"
+import { Sphere2Command } from "../commands/Sphere2Command"
 import { FacetresCommand } from "../commands/FacetresCommand"
 import { ConeCommand } from "../commands/ConeCommand"
 import { TorusCommand } from "../commands/TorusCommand"
@@ -76,6 +77,7 @@ import { RevolveCommand } from "../commands/RevolveCommand.js"
 import { BooleanCommand } from "../commands/BooleanCommand.js"
 import { LoftCommand } from "../commands/LoftCommand.js"
 import { Entity } from "../model/Entity.js"
+import { RegenCommand } from "../commands/RegenCommand"
 
 
 type CommandFactory = (selection?: string[]) => Command | CommandResponse;
@@ -90,9 +92,11 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["ELEV", () => new ElevCommand()],
   ["CYLINDER", () => new CylinderCommand()],
   ["SPHERE", () => new SphereCommand()],
+  ["SPHERE2", () => new Sphere2Command()],
   ["CONE", () => new ConeCommand()],
   ["TORUS", () => new TorusCommand()],
   ["FACETRES", () => new FacetresCommand()],
+  ["REGEN", () => new RegenCommand()],
   ["EXTRUDE", () => new ExtrudeCommand()],
   ["REVOLVE", () => new RevolveCommand()],
   ["SWEEP", () => new SweepCommand()],
@@ -164,8 +168,8 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["FILLET", () => new FilletCommand()],
   ["SFILLET", (selection) => new SFilletCommand(selection)],
   ["SCHAMFER", (selection) => new SChamferCommand(selection)],
-  ["SHELL", (selection) => new ShellCommand(selection)],
-  ["HOLLOW", (selection) => new ShellCommand(selection)],
+  ["SHELL", () => new ShellCommand()],
+  ["HOLLOW", () => new ShellCommand()],
   ["CHAMFER", () => new ChamferCommand()],
   ["BREAK", () => new BreakCommand()],
   ["JOIN", (selection) => {
@@ -202,7 +206,7 @@ export class CommandManager {
     return Array.from(commandRegistry.keys());
   }
 
-  execute(cmd:string, units: UnitsConfig, selection?: string[], entities?: Map<string, Entity>): CommandResponse | Promise<CommandResponse> {
+  execute(cmd:string, units: UnitsConfig, selection?: string[], entities?: Map<string, Entity>, doc?: Document): CommandResponse | Promise<CommandResponse> {
     const parts = cmd.trim().split(/\s+/);
     const cmdName = parts[0].toUpperCase();
     const args = parts.slice(1);
@@ -219,13 +223,21 @@ export class CommandManager {
       this.active = result as Command;
       response = cmdName;
     } else {
+      // If it's a direct action or string, we still might need to pass doc if we feed args
+      if (typeof result === 'string' && args.length > 0) {
+          // This case handles commands that return a string immediately but might have args
+      }
+      if (args.length === 0) return result as CommandResponse;
+      
+      // If it's a command that can take args but is not a stateful Command object,
+      // we might need a different handling. But for now, most are stateful.
       return result as CommandResponse;
     }
 
     // Feed additional arguments if provided
     for (const arg of args) {
       if (this.active) {
-        const nextRes = this.inputString(arg, units);
+        const nextRes = this.inputString(arg, units, undefined, undefined, doc);
         if (nextRes) response = nextRes;
       }
     }

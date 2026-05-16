@@ -647,20 +647,20 @@ self.onmessage = async (e) => {
     }
     const { x, y, z, r, h, deflection, entityId } = payload;
     try {
-      // Use constructor with 3 parameters: Radius, Height, Angle
+      // Use constructor with radius and height and translate (most reliable overload)
       const cylinder = new oc.BRepPrimAPI_MakeCylinder_2(r, h, 2 * Math.PI);
       let shape = cylinder.Shape();
+      
+      let translation: any = null;
+      let transform: any = null;
+      let brepTransform: any = null;
 
-      // Translate to (x, y, z)
       if (x !== 0 || y !== 0 || z !== 0) {
-        const translation = new oc.gp_Vec_4(x, y, z);
-        const transform = new oc.gp_Trsf_1();
+        translation = new oc.gp_Vec_4(x, y, z);
+        transform = new oc.gp_Trsf_1();
         transform.SetTranslation_1(translation);
-        const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+        brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
         shape = brepTransform.Shape();
-        translation.delete();
-        transform.delete();
-        brepTransform.delete();
       }
 
       if (entityId) {
@@ -670,11 +670,15 @@ self.onmessage = async (e) => {
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
 
-      cylinder.delete();
-
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
       }
+
+      // Cleanup at the very end
+      if (translation) translation.delete();
+      if (transform) transform.delete();
+      if (brepTransform) brepTransform.delete();
+      cylinder.delete();
 
       self.postMessage({ type: 'createCylinder', success: true, payload: geometryData, id });
     } catch (error: any) {
@@ -688,20 +692,20 @@ self.onmessage = async (e) => {
     }
     const { x, y, z, r, deflection, entityId } = payload;
     try {
-      // Use constructor with 1 parameter: Radius (creates at origin)
+      // Use constructor with radius and translate (most reliable overload)
       const sphere = new oc.BRepPrimAPI_MakeSphere_1(r);
       let shape = sphere.Shape();
+      
+      let translation: any = null;
+      let transform: any = null;
+      let brepTransform: any = null;
 
-      // Translate to (x, y, z)
       if (x !== 0 || y !== 0 || z !== 0) {
-        const translation = new oc.gp_Vec_4(x, y, z);
-        const transform = new oc.gp_Trsf_1();
+        translation = new oc.gp_Vec_4(x, y, z);
+        transform = new oc.gp_Trsf_1();
         transform.SetTranslation_1(translation);
-        const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+        brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
         shape = brepTransform.Shape();
-        translation.delete();
-        transform.delete();
-        brepTransform.delete();
       }
 
       if (entityId) {
@@ -711,11 +715,15 @@ self.onmessage = async (e) => {
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
 
-      sphere.delete();
-
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
       }
+
+      // Cleanup at the very end
+      if (translation) translation.delete();
+      if (transform) transform.delete();
+      if (brepTransform) brepTransform.delete();
+      sphere.delete();
 
       self.postMessage({ type: 'createSphere', success: true, payload: geometryData, id });
     } catch (error: any) {
@@ -729,20 +737,20 @@ self.onmessage = async (e) => {
     }
     const { x, y, z, r, h, deflection, entityId } = payload;
     try {
-      // Try BRepPrimAPI_MakeCone_1
+      // Use constructor with radii and height and translate (most reliable overload)
       const cone = new oc.BRepPrimAPI_MakeCone_1(r, 0, h);
       let shape = cone.Shape();
+      
+      let translation: any = null;
+      let transform: any = null;
+      let brepTransform: any = null;
 
-      // Translate to (x, y, z)
       if (x !== 0 || y !== 0 || z !== 0) {
-        const translation = new oc.gp_Vec_4(x, y, z);
-        const transform = new oc.gp_Trsf_1();
+        translation = new oc.gp_Vec_4(x, y, z);
+        transform = new oc.gp_Trsf_1();
         transform.SetTranslation_1(translation);
-        const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+        brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
         shape = brepTransform.Shape();
-        translation.delete();
-        transform.delete();
-        brepTransform.delete();
       }
 
       if (entityId) {
@@ -752,11 +760,15 @@ self.onmessage = async (e) => {
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
 
-      cone.delete();
-
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
       }
+
+      // Cleanup at the very end
+      if (translation) translation.delete();
+      if (transform) transform.delete();
+      if (brepTransform) brepTransform.delete();
+      cone.delete();
 
       self.postMessage({ type: 'createCone', success: true, payload: geometryData, id });
     } catch (error: any) {
@@ -770,20 +782,20 @@ self.onmessage = async (e) => {
     }
     const { x, y, z, r1, r2, deflection, entityId } = payload;
     try {
-      // Try BRepPrimAPI_MakeTorus_1
+      // Use constructor with radii and translate (most reliable overload)
       const torus = new oc.BRepPrimAPI_MakeTorus_1(r1, r2);
       let shape = torus.Shape();
+      
+      let translation: any = null;
+      let transform: any = null;
+      let brepTransform: any = null;
 
-      // Translate to (x, y, z)
       if (x !== 0 || y !== 0 || z !== 0) {
-        const translation = new oc.gp_Vec_4(x, y, z);
-        const transform = new oc.gp_Trsf_1();
+        translation = new oc.gp_Vec_4(x, y, z);
+        transform = new oc.gp_Trsf_1();
         transform.SetTranslation_1(translation);
-        const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+        brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
         shape = brepTransform.Shape();
-        translation.delete();
-        transform.delete();
-        brepTransform.delete();
       }
 
       if (entityId) {
@@ -793,11 +805,15 @@ self.onmessage = async (e) => {
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
 
-      torus.delete();
-
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
       }
+
+      // Cleanup at the very end
+      if (translation) translation.delete();
+      if (transform) transform.delete();
+      if (brepTransform) brepTransform.delete();
+      torus.delete();
 
       self.postMessage({ type: 'createTorus', success: true, payload: geometryData, id });
     } catch (error: any) {
@@ -810,6 +826,7 @@ self.onmessage = async (e) => {
       return;
     }
     const { points, height, thickness, deflection, isClosed, entityId } = payload;
+    const buildersToCleanup: any[] = [];
     try {
       let resultShape: any = null;
 
@@ -936,7 +953,8 @@ self.onmessage = async (e) => {
           resultShape = builder.Shape();
           
           faceMaker.delete();
-          builder.delete();
+          // builder.delete() moved to cleanup section
+          buildersToCleanup.push(builder);
         } else {
           // Open profile: sweep along a line to create a shell
           const p1 = new oc.gp_Pnt_3(0, 0, 0);
@@ -955,7 +973,8 @@ self.onmessage = async (e) => {
           p2.delete();
           makeEdge.delete();
           makeSpine.delete();
-          sweepBuilder.delete();
+          // sweepBuilder.delete() moved to cleanup section
+          buildersToCleanup.push(sweepBuilder);
         }
         
         makeWire.delete();
@@ -981,8 +1000,12 @@ self.onmessage = async (e) => {
         resultShape.delete();
       }
 
+      // Final cleanup
+      buildersToCleanup.forEach(b => b.delete());
+
       self.postMessage({ type: 'createExtrude', success: true, payload: geometryData, id });
     } catch (error: any) {
+      buildersToCleanup.forEach(b => b.delete());
       const errorMessage = decodeOCCError('createExtrude', error);
       self.postMessage({ type: 'createExtrude', success: false, error: errorMessage, id });
     }
@@ -992,6 +1015,7 @@ self.onmessage = async (e) => {
       return;
     }
     const { profilePoints, spinePoints, isSolid, deflection, entityId, profileCount, cornerMode, isEllipse } = payload;
+    let sweepBuilder: any = undefined;
     try {
       let resultShape: any = null;
 
@@ -1301,7 +1325,7 @@ self.onmessage = async (e) => {
         return;
       } else {
         // Use MakePipeShell for multiple profiles
-        const sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spineWire);
+        sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spineWire);
         
         // Set mode to Frenet to make profile rotate with spine
         sweepBuilder.SetMode_1(true); // true = Frenet mode
@@ -1353,7 +1377,7 @@ self.onmessage = async (e) => {
         }
         
         resultShape = sweepBuilder.Shape();
-        sweepBuilder.delete();
+        // sweepBuilder.delete(); // Moved to end
       }
 
       if (entityId) {
@@ -1367,6 +1391,9 @@ self.onmessage = async (e) => {
       }
 
       spineWireMaker.delete();
+      if (typeof sweepBuilder !== 'undefined' && sweepBuilder.delete) {
+        sweepBuilder.delete();
+      }
 
       self.postMessage({ type: 'createSweep', success: true, payload: geometryData, id });
     } catch (error: any) {
@@ -1545,6 +1572,7 @@ self.onmessage = async (e) => {
     const { points, axisPoint, axisDir, angle, thickness, deflection, isClosed, entityId } = payload;
     try {
       let resultShape: any = null;
+      let builder: any = undefined;
       const angleRad = angle * Math.PI / 180;
       const revAxis = new oc.gp_Ax1_2(new oc.gp_Pnt_3(axisPoint.x, axisPoint.y, axisPoint.z), new oc.gp_Dir_4(axisDir.x, axisDir.y, axisDir.z));
 
@@ -1602,7 +1630,7 @@ self.onmessage = async (e) => {
           profile = makeWire.Wire();
         }
 
-        const builder = new oc.BRepPrimAPI_MakeRevol_1(isClosed ? faceMaker.Face() : profile, revAxis, angleRad, false);
+        builder = new oc.BRepPrimAPI_MakeRevol_1(isClosed ? faceMaker.Face() : profile, revAxis, angleRad, false);
 
         resultShape = builder.Shape();
 
@@ -1612,7 +1640,7 @@ self.onmessage = async (e) => {
         } else {
           profile.delete();
         }
-        builder.delete();
+        // builder.delete(); // Moved to end
 
 
       revAxis.delete();
@@ -1627,6 +1655,10 @@ self.onmessage = async (e) => {
       
       if (!entityId) {
         resultShape.delete();
+      }
+
+      if (typeof builder !== 'undefined' && builder.delete) {
+        builder.delete();
       }
 
       self.postMessage({ type: 'createRevolve', success: true, payload: geometryData, id });
@@ -1790,83 +1822,54 @@ self.onmessage = async (e) => {
     try {
       const shape = shapeCache.get(entityId);
       if (!shape) {
-        const keys = Array.from(shapeCache.keys());
-        self.postMessage({ type: 'exportBRep', success: false,
-          error: `No cached shape for entityId: ${entityId}. Cached keys: ${keys.join(', ')}`, id });
-        return;
+        throw new Error(`No cached shape for entityId: ${entityId}`);
       }
-      const filename = `${entityId}.stp`;
       
-      let stepError = null;
-      if (typeof oc.STEPControl_Writer_1 === 'function' || typeof oc.STEPControl_Writer === 'function') {
+      const brepFilename = `${entityId}.brep`;
+      let success = false;
+      
+      // Try BinTools first (binary BRep - compact and fast)
+      if (oc.BinTools && typeof oc.BinTools.Write_2 === 'function') {
         try {
-          const writer = typeof oc.STEPControl_Writer_1 === 'function' 
-            ? new oc.STEPControl_Writer_1() 
-            : new oc.STEPControl_Writer();
-            
+          oc.BinTools.Write_2(shape, brepFilename);
+          success = true;
+        } catch(e) { }
+      }
+      
+      // Fallback to text BRep
+      if (!success) {
+        if (typeof oc.BRepTools.Write_3 === 'function') {
+          success = oc.BRepTools.Write_3(shape, brepFilename);
+        } else if (typeof oc.BRepTools.Write_2 === 'function') {
+          try { oc.BRepTools.Write_2(shape, brepFilename); success = true; } catch(e) { }
+        }
+      }
+      
+      // Final fallback to STEP if BRep fails
+      if (!success && (typeof oc.STEPControl_Writer_1 === 'function' || typeof oc.STEPControl_Writer === 'function')) {
+        const stepFilename = `${entityId}.stp`;
+        try {
+          const writer = typeof oc.STEPControl_Writer_1 === 'function' ? new oc.STEPControl_Writer_1() : new oc.STEPControl_Writer();
           try {
             writer.Transfer(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true);
           } catch(e) {
             writer.Transfer(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true, new oc.Message_ProgressRange_1());
           }
-          
-          writer.Write(filename);
-          
-          const stepBytes = oc.FS.readFile(filename);
-          oc.FS.unlink(filename);
-          
-          (self as any).postMessage(
-            { type: 'exportBRep', success: true, id, payload: stepBytes },
-            [stepBytes.buffer]
-          );
+          writer.Write(stepFilename);
+          const stepBytes = oc.FS.readFile(stepFilename);
+          oc.FS.unlink(stepFilename);
+          (self as any).postMessage({ type: 'exportBRep', success: true, id, payload: stepBytes }, [stepBytes.buffer]);
           return;
-        } catch(e: any) {
-          stepError = e.message || e.toString();
-          console.log("[Worker] STEP export failed, falling back:", e);
-        }
+        } catch(e) { }
       }
       
-      // Fallback to BinTools or BRepTools
-      const brepFilename = `${entityId}.brep`;
-      let success = false;
-      if (oc.BinTools && typeof oc.BinTools.Write_2 === 'function') {
-        try {
-          oc.BinTools.Write_2(shape, brepFilename);
-          success = true;
-        } catch(e) { console.log("[Worker] BinTools.Write_2 failed:", e); }
-      } else if (oc.BinTools && typeof oc.BinTools.Write === 'function') {
-        try {
-          oc.BinTools.Write(shape, brepFilename);
-          success = true;
-        } catch(e) { console.log("[Worker] BinTools.Write failed:", e); }
+      if (success) {
+        const brepBytes = oc.FS.readFile(brepFilename);
+        oc.FS.unlink(brepFilename);
+        (self as any).postMessage({ type: 'exportBRep', success: true, id, payload: brepBytes }, [brepBytes.buffer]);
+      } else {
+        throw new Error("Failed to export shape using BinTools, BRepTools, or STEP.");
       }
-      
-      if (!success) {
-        if (typeof oc.BRepTools.Write_3 === 'function') {
-          success = oc.BRepTools.Write_3(shape, brepFilename);
-        } else if (typeof oc.BRepTools.Write_2 === 'function') {
-          try { oc.BRepTools.Write_2(shape, brepFilename); success = true; } catch(e) { console.log("[Worker] BRepTools.Write_2 failed:", e); }
-        } else if (typeof oc.BRepTools.Write_1 === 'function') {
-          try { oc.BRepTools.Write_1(shape, brepFilename); success = true; } catch(e) { console.log("[Worker] BRepTools.Write_1 failed:", e); }
-        } else if (typeof oc.BRepTools.Write === 'function') {
-          try { success = oc.BRepTools.Write(shape, brepFilename); } catch(e) { }
-        }
-      }
-      
-      if (!success) {
-        const binKeys = oc.BinTools ? Object.keys(oc.BinTools).filter(k => k.startsWith('Write')) : [];
-        const brepKeys = Object.keys(oc.BRepTools).filter(k => k.startsWith('Write'));
-        const stepWriterExists = typeof oc.STEPControl_Writer_1 === 'function' || typeof oc.STEPControl_Writer === 'function';
-        throw new Error(`Failed to export shape. STEP error: ${stepError}. BinTools keys: [${binKeys.join(', ')}]. BRepTools keys: [${brepKeys.join(', ')}]. STEPWriter exists: ${stepWriterExists}`);
-      }
-      
-      const brepBytes = oc.FS.readFile(brepFilename);
-      oc.FS.unlink(brepFilename);
-      
-      (self as any).postMessage(
-        { type: 'exportBRep', success: true, id, payload: brepBytes },
-        [brepBytes.buffer]
-      );
     } catch (err: any) {
       self.postMessage({ type: 'exportBRep', success: false, error: err.message, id });
     }
@@ -1874,70 +1877,55 @@ self.onmessage = async (e) => {
   } else if (type === 'importBRep') {
     const { entityId, brepBytes, deflection } = payload;
     try {
-      const filename = `${entityId}.stp`;
+      const filename = `${entityId}.brep`;
       oc.FS.writeFile(filename, new Uint8Array(brepBytes));
       
       let success = false;
-      let loadedShape: any = null;
-      
-      if (typeof oc.STEPControl_Reader_1 === 'function' || typeof oc.STEPControl_Reader === 'function') {
-        try {
-          const reader = typeof oc.STEPControl_Reader_1 === 'function' 
-            ? new oc.STEPControl_Reader_1() 
-            : new oc.STEPControl_Reader();
-            
-          const status = reader.ReadFile(filename);
-          if (status === oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
-            reader.TransferRoots();
-            loadedShape = reader.OneShape();
-            success = true;
-          }
-        } catch(e) {
-          console.log("[Worker] STEP import failed, falling back:", e);
-        }
-      }
-      
       const shape = new oc.TopoDS_Shape();
       const builder = new oc.BRep_Builder();
       
-      if (!success) {
-        const brepFilename = `${entityId}.brep`;
-        oc.FS.writeFile(brepFilename, new Uint8Array(brepBytes));
-        
-        if (oc.BinTools && typeof oc.BinTools.Read_2 === 'function') {
-          try {
-            oc.BinTools.Read_2(shape, brepFilename);
-            success = true;
-          } catch(e) { }
-        } else if (oc.BinTools && typeof oc.BinTools.Read === 'function') {
-          try {
-            oc.BinTools.Read(shape, brepFilename);
-            success = true;
-          } catch(e) { }
-        }
-        
-        if (!success) {
-          if (typeof oc.BRepTools.Read === 'function') {
-            success = oc.BRepTools.Read(shape, brepFilename, builder);
-          } else if (typeof oc.BRepTools.Read_1 === 'function') {
-            success = oc.BRepTools.Read_1(shape, brepFilename, builder);
-          }
-        }
-        
-        oc.FS.unlink(brepFilename);
-        loadedShape = shape;
+      // Try BinTools first (most likely for our snapshots)
+      if (oc.BinTools && typeof oc.BinTools.Read_2 === 'function') {
+        try {
+          oc.BinTools.Read_2(shape, filename);
+          success = true;
+        } catch(e) { }
       }
       
+      // Try BRepTools Read
       if (!success) {
-        throw new Error("Failed to import shape using STEP, BinTools, or BRepTools.");
+        if (typeof oc.BRepTools.Read_1 === 'function') {
+          success = oc.BRepTools.Read_1(shape, filename, builder);
+        } else if (typeof oc.BRepTools.Read === 'function') {
+          success = oc.BRepTools.Read(shape, filename, builder);
+        }
+      }
+      
+      // Fallback to STEP
+      if (!success && (typeof oc.STEPControl_Reader_1 === 'function' || typeof oc.STEPControl_Reader === 'function')) {
+        try {
+          const reader = typeof oc.STEPControl_Reader_1 === 'function' ? new oc.STEPControl_Reader_1() : new oc.STEPControl_Reader();
+          if (reader.ReadFile(filename) === oc.IFSelect_ReturnStatus.IFSelect_RetDone) {
+            reader.TransferRoots();
+            shape.TShape(reader.OneShape().TShape());
+            success = true;
+          }
+        } catch(e) { }
       }
       
       oc.FS.unlink(filename);
       
-      cacheShape(entityId, loadedShape);    // now available for boolean ops
+      if (!success) {
+        throw new Error("Failed to import BRep/STEP data.");
+      }
+      
+      // CRITICAL: Clean old tessellation to force REGEN to use new deflection
+      oc.BRepTools.Clean(shape);
+      
+      cacheShape(entityId, shape);
       
       // Tessellate and get geometry data
-      const geometryData = shapeToBufferGeometryData(loadedShape, oc, deflection || 0.01);
+      const geometryData = shapeToBufferGeometryData(shape, oc, deflection || 0.01);
       
       self.postMessage({ type: 'importBRep', success: true, payload: geometryData, id });
     } catch (err: any) {
@@ -1949,6 +1937,10 @@ self.onmessage = async (e) => {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number = 0.01) {
+  // Clean existing triangulation to force re-tessellation at new deflection
+  if (oc.BRepTools && oc.BRepTools.Clean) {
+    oc.BRepTools.Clean(shape);
+  }
   // Triangulate the shape
   new oc.BRepMesh_IncrementalMesh_2(shape, linearDeflection, false, 0.5, false);
 

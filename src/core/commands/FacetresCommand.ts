@@ -24,14 +24,16 @@ export class FacetresCommand implements Command {
     if (doc) {
       doc.facetres = facetres;
     }
-    return `FACETRES set to ${facetres.toFixed(2)}`;
+    // Return action to trigger automatic regeneration
+    return { action: 'regen', _echo: `FACETRES set to ${facetres.toFixed(2)}` };
   }
 
   getPreview() {
     return null;
   }
 
-  getPrompt() {
-    return "Enter new value for FACETRES:";
+  getPrompt(doc?: IDocument) {
+    const current = doc ? doc.facetres : 0.5;
+    return `Enter new value for FACETRES <${current.toFixed(2)}>:`;
   }
 }

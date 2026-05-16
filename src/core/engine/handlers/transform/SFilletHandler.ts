@@ -42,6 +42,7 @@ export class SFilletHandler implements ActionHandler {
         const edgeLines = geometry.userData.edgeLines;
         
         const newSolid = new Solid3D(entityId, positions, indices, faceMapping, edgeLines);
+        newSolid.brepSnapshot = geometry.userData?.brepSnapshot;
         newSolid.layer = entity.layer;
         
         // Update entity in document
@@ -54,6 +55,10 @@ export class SFilletHandler implements ActionHandler {
         // Automatic REGEN to clean up residue
         context.syncFromDocument();
         
+        if (action.close) {
+          return { action: 'close', entity: newSolid } as any;
+        }
+
         return msg;
       } catch (err: any) {
         return `Error applying fillet: ${err.message || err.toString()}`;

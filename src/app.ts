@@ -130,12 +130,15 @@ export class App {
     this.persistence = PersistenceService.getInstance();
 
     // Add lighting for 3D meshes
-    const ambient = new THREE.AmbientLight(0xffffff, 1.0); // Brighter ambient light
+    const ambient = new THREE.HemisphereLight(0xffffff, 0x888888, 1.1); // Much brighter ambient to wash out shadows
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.7); // Stronger fill light from opposite side
+    fillLight.position.set(-200, -100, -100);
+    this.viewer.scene.add(fillLight);
     const camLight = new THREE.PointLight(0xffffff, 0.8, 0, 0.5); // Point light attached to camera
     this.viewer.camera.add(camLight);
     this.viewer.scene.add(this.viewer.camera);
     
-    this.viewer.directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    this.viewer.directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // Softer main light to reduce shadow contrast
     this.viewer.directionalLight.position.set(200, 400, 500);
     this.viewer.directionalLight.castShadow = true;
     this.viewer.directionalLight.shadow.mapSize.width = 2048;
@@ -311,29 +314,32 @@ export class App {
 
   private isEditCommand(name?: string): boolean {
     if (!name) return false;
-    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand', 'ArrayCommand', 'OffsetCommand', 'BlockCommand', 'JoinCommand', 'LengthenCommand'];
+    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand', 'ArrayCommand', 'OffsetCommand', 'BlockCommand', 'JoinCommand', 'LengthenCommand', 'SFilletCommand', 'SChamferCommand'];
     const cmdName = name.endsWith('Command') ? name : name.charAt(0).toUpperCase() + name.slice(1).toLowerCase() + 'Command';
     return editCommands.includes(cmdName);
   }
 
   private isInSelectionStep(): boolean {
-    const activeName = this.cmd.active?.constructor.name;
-    const isEditCommand = this.isEditCommand(activeName);
-    return !this.cmd.active || 
-        (activeName === 'ListCommand') ||
-        (this.cmd.active && this.cmd.active.step === 0 && isEditCommand) ||
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'DimAngularCommand') ||
-        (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
-        (this.cmd.active && this.cmd.active.step === 0 && (activeName === 'ExtrudeCommand' || activeName === 'RevolveCommand')) ||
-        (this.cmd.active && (this.cmd.active.step === 1 || this.cmd.active.step === 2) && activeName === 'SweepCommand') ||
-        (this.cmd.active && 'operation' in this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1)) ||
-        (this.cmd.active && this.cmd.active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
+    const active = this.cmd.active;
+    if (!active) return true;
 
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'FilletCommand') ||
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1) && activeName === 'ChamferCommand') ||
-        (this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1 || this.cmd.active.step === 2) && activeName === 'BreakCommand') ||
-        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'BlockCommand') ||
-        (this.cmd.active && this.cmd.active.step === 2 && activeName === 'LengthenCommand');
+    const activeName = active.constructor.name;
+    const isEditCommand = this.isEditCommand(activeName);
+
+    return (activeName === 'ListCommand') ||
+        (active.step === 0 && isEditCommand) ||
+        ((active.step === 0 || active.step === 1) && activeName === 'DimAngularCommand') ||
+        (active.step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
+        (active.step === 0 && (activeName === 'ExtrudeCommand' || activeName === 'RevolveCommand')) ||
+        ((active.step === 1 || active.step === 2) && activeName === 'SweepCommand') ||
+        ('operation' in active && (active.step === 0 || active.step === 1)) ||
+        (active.step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
+        ((active.step === 0 || active.step === 1) && activeName === 'FilletCommand') ||
+        ((active.step === 0 || active.step === 1) && activeName === 'ChamferCommand') ||
+        (active.step >= 2 && (activeName === 'SFilletCommand' || activeName === 'SChamferCommand')) ||
+        ((active.step === 0 || active.step === 1 || active.step === 2) && activeName === 'BreakCommand') ||
+        (active.step === 2 && activeName === 'BlockCommand') ||
+        (active.step === 2 && activeName === 'LengthenCommand');
   }
 
   private getSelectableEntities(): Entity[] {
@@ -376,7 +382,7 @@ export class App {
       });
     }
 
-    const res = this.cmd.execute(cmd, this.doc.units, selection, this.doc.entities);
+    const res = this.cmd.execute(cmd, this.doc.units, selection, this.doc.entities, this.doc);
     this.viewer.setControlPointsVisibility(this.cmd.active !== null);
     return await this.handleResult(res);
   }
@@ -410,7 +416,7 @@ export class App {
         });
         const cmdName = activeName?.replace('Command', '').toUpperCase();
         if (cmdName && ids.length > 0) {
-          const res = this.cmd.execute(cmdName, this.doc.units, ids, this.doc.entities);
+          const res = this.cmd.execute(cmdName, this.doc.units, ids, this.doc.entities, this.doc);
           return await callHandleResult(res);
         }
       }
@@ -1084,20 +1090,21 @@ export class App {
             this.reportSelectionDimensions();
 
             // For commands that pick a target for immediate action (Trim, Extend, Offset at Step 1, Fillet at Step 0/1, Lengthen at Step 2)       
-            const isImmediatePick = (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && this.cmd.active?.step === 1;
-            const isFilletPick = activeName === 'FilletCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
-            const isChamferPick = activeName === 'ChamferCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
-            const isBreakPick = activeName === 'BreakCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1 || this.cmd.active?.step === 2);
-            const isLengthenPick = activeName === 'LengthenCommand' && this.cmd.active?.step === 2;
-            const isDimRadiusPick = (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand') && this.cmd.active?.step === 0;
-            const isDimAngularPick = activeName === 'DimAngularCommand' && (this.cmd.active?.step === 0 || this.cmd.active?.step === 1);
+            const active = this.cmd.active;
+            const isImmediatePick = active && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && active.step === 1;
+            const isFilletPick = (activeName === 'FilletCommand' && active && (active.step === 0 || active.step === 1)) || (activeName === 'SFilletCommand' && active && active.step === 2);
+            const isChamferPick = (activeName === 'ChamferCommand' && active && (active.step === 0 || active.step === 1)) || (activeName === 'SChamferCommand' && active && active.step === 2);
+            const isBreakPick = activeName === 'BreakCommand' && active && (active.step === 0 || active.step === 1 || active.step === 2);
+            const isLengthenPick = activeName === 'LengthenCommand' && active && active.step === 2;
+            const isDimRadiusPick = (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand') && active && active.step === 0;
+            const isDimAngularPick = activeName === 'DimAngularCommand' && active && (active.step === 0 || active.step === 1);
             const isListPick = activeName === 'ListCommand';
-            const isBooleanPick = this.cmd.active && 'operation' in this.cmd.active && (this.cmd.active.step === 0 || this.cmd.active.step === 1);
-            const hasSetEntity = this.cmd.active && 'setEntity' in this.cmd.active;
+            const isBooleanPick = active && 'operation' in active && (active.step === 0 || active.step === 1);
+            const hasSetEntity = active && 'setEntity' in active;
 
-            if (this.cmd.active && (hasSetEntity || isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isBooleanPick)) {       
+            if (active && (hasSetEntity || isImmediatePick || isFilletPick || isChamferPick || isBreakPick || isLengthenPick || isBooleanPick)) {       
                 if (hasSetEntity) {
-                  (this.cmd.active as unknown as any).setEntity(entity);
+                  (active as unknown as any).setEntity(entity);
                 }
                 const res = await this.cmd.inputString(entity.id, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);
 
@@ -1118,7 +1125,8 @@ export class App {
         this.viewer.renderGrips(selectedEntitiesForGrips);
 
         // If there's an active edit command at step 0 and user has selected entities, re-run command with selection
-        if (this.cmd.active && this.cmd.active.step === 0 && isEditCommand && this.selectedEntityIds.size > 0) {
+        const activeForEdit = this.cmd.active;
+        if (activeForEdit && activeForEdit.step === 0 && isEditCommand && this.selectedEntityIds.size > 0) {
             const ids = Array.from(this.selectedEntityIds).filter(id => {
                 const e = this.doc.getEntity(id);
                 if (!e) return false;
@@ -1128,7 +1136,7 @@ export class App {
             });
             const cmdName = activeName?.replace('Command', '').toUpperCase();
             if (cmdName && ids.length > 0) {
-                const res = this.cmd.execute(cmdName, this.doc.units, ids, this.doc.entities);
+                const res = this.cmd.execute(cmdName, this.doc.units, ids, this.doc.entities, this.doc);
                 return await this.handleResult(res);
             }
         }
@@ -1189,7 +1197,7 @@ export class App {
             this.doc.history.commitTransaction();
         }
 
-        const isContinuous = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand' || activeName === 'LayerCommand' || activeName === 'OffsetCommand' || activeName === 'TrimCommand' || activeName === 'ExtendCommand';
+        const isContinuous = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand' || activeName === 'LayerCommand' || activeName === 'OffsetCommand' || activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'SFilletCommand' || activeName === 'SChamferCommand';
 
         if (!isContinuous || isCloseAction) {
           this.terminateActiveCommand();
@@ -1252,7 +1260,7 @@ export class App {
       if (actionResult !== undefined) {
         // If the action resulted in clearing the active command, ensure markers are cleared too
         const activeName = this.cmd.active?.constructor.name;
-        const isContinuous = activeName === 'LayerCommand' || activeName === 'OffsetCommand' || activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'LengthenCommand'; // Actions that keep command active
+        const isContinuous = activeName === 'LayerCommand' || activeName === 'OffsetCommand' || activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'LengthenCommand' || activeName === 'SFilletCommand' || activeName === 'SChamferCommand'; // Actions that keep command active
 
         if (!this.cmd.active || (this.cmd.active && !isContinuous)) {
             this.terminateActiveCommand();

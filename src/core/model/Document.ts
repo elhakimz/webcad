@@ -51,7 +51,7 @@ export class Document implements IDocument {
   units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 }
   dimtoh: boolean = false;
   dimtad: boolean = false;
-  facetres: number = 0.5;
+  facetres: number = 5.0;
   currentElevation: number = 0;
   currentThickness: number = 0;
   private spatialIndex: Quadtree

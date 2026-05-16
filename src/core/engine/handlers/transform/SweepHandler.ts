@@ -63,7 +63,7 @@ export class SweepHandler implements ActionHandler {
               } else {
                 if (sweep > 0) sweep -= 2 * Math.PI;
               }
-              const segments = 16;
+              const segments = Math.max(8, Math.floor(8 * facetres));
               for (let j = 0; j < segments; j++) {
                 const angle = startAngle + (j / segments) * sweep;
                 spinePoints.push({
@@ -88,11 +88,12 @@ export class SweepHandler implements ActionHandler {
           spinePoints.push(spinePoints[0]);
         }
       } else if (spineEntity instanceof Spline) {
-        // Reduce segments for sweep to avoid too many vertices
-        spinePoints = tessellateSpline(spineEntity.controlPoints, spineEntity.degree, spineEntity.knots, 30)
+        // Reduce segments for sweep based on facetres
+        const segments = Math.max(10, Math.floor(6 * facetres));
+        spinePoints = tessellateSpline(spineEntity.controlPoints, spineEntity.degree, spineEntity.knots, segments)
           .map(v => ({ x: v.x, y: v.y, z: spineElevation }));
       } else if (spineEntity instanceof Arc) {
-        const segments = 128;
+        const segments = Math.max(16, Math.floor(16 * facetres));
         const startAngle = spineEntity.startAngle;
         const endAngle = spineEntity.endAngle;
         let sweep = endAngle - startAngle;
@@ -116,16 +117,16 @@ export class SweepHandler implements ActionHandler {
       // Extract points from profile
       let profilePoints: {x: number, y: number, z: number}[] = [];
       const elevation = profileEntity.elevation || 0;
-
+ 
       let profileCount = 1;
-
+ 
       if (profileEntity instanceof Polyline) {
         profilePoints = profileEntity.vertices.map(v => ({ x: v.x, y: v.y, z: elevation }));
       } else if (profileEntity instanceof Circle) {
-        const segments = 32;
+        const segments = Math.max(12, Math.floor(6 * facetres));
         
         if (spineEntity instanceof Arc) {
-          profileCount = 3;
+          profileCount = Math.max(3, Math.floor(1 * facetres));
           const profiles = [];
           const startAngle = spineEntity.startAngle;
           const endAngle = spineEntity.endAngle;
@@ -174,7 +175,7 @@ export class SweepHandler implements ActionHandler {
       } else if (profileEntity instanceof Spline) {
         profilePoints = profileEntity.sampledPoints.map(v => ({ x: v.x, y: v.y, z: elevation }));
       } else if (profileEntity instanceof Ellipse) {
-        const segments = 32;
+        const segments = Math.max(12, Math.floor(6 * facetres));
         const a = Math.sqrt(profileEntity.majorX**2 + profileEntity.majorY**2);
         const b = a * profileEntity.ratio;
         const angle = Math.atan2(profileEntity.majorY, profileEntity.majorX);
@@ -194,10 +195,10 @@ export class SweepHandler implements ActionHandler {
           });
         }
       }
-
+ 
       try {
         let geometry: THREE.BufferGeometry;
-
+ 
         if (spineEntity instanceof Arc && profileEntity instanceof Circle) {
           // Compute profile points at START of arc
           const startAngle = spineEntity.startAngle;
@@ -211,8 +212,9 @@ export class SweepHandler implements ActionHandler {
           const alpha = Math.atan2(dy, dx);
           
           const profilePts = [];
-          const segments = 32;
-          for (let i = 0; i < segments; i++) {
+          const facetres = doc.facetres || 5.0;
+          const segments = Math.max(8, Math.floor(8 * facetres));
+          for (let i = 0; i <= segments; i++) {
             const t = (i / segments) * 2 * Math.PI;
             profilePts.push({
               x: p.x + profileEntity.r * Math.cos(t) * (-Math.sin(alpha)),
@@ -243,7 +245,7 @@ export class SweepHandler implements ActionHandler {
             const allIndices: number[] = [];
             const sphereCenters: THREE.Vector3[] = [];
             
-            const segments = 32; // Radial segments
+            const segments = Math.max(12, Math.floor(6 * facetres)); // Radial segments
             
             // We need a normal vector for the first point
             const normal = new THREE.Vector3(0, 0, 1); // Default up vector
@@ -342,10 +344,11 @@ export class SweepHandler implements ActionHandler {
                 allIndices.push(endCenterIdx, lastRingOffset + k + 1, lastRingOffset + k);
               }
             }
-
+ 
             // If cornerMode is Round, add spheres at collected sharp corners!
             for (const center of sphereCenters) {
-              const sphereGeom = new THREE.SphereGeometry(profileEntity.r, 16, 16);
+              const sphereSegments = Math.max(8, Math.floor(3 * facetres));
+              const sphereGeom = new THREE.SphereGeometry(profileEntity.r, sphereSegments, sphereSegments);
               const spherePos = Array.from(sphereGeom.getAttribute('position').array) as number[];
               const sphereIdx = Array.from(sphereGeom.getIndex()?.array || []) as number[];
               
@@ -372,7 +375,12 @@ export class SweepHandler implements ActionHandler {
             const indices = Array.from(geometry.getIndex()?.array || []) as number[];
             
             const solid = new Solid3D(solidId, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
-            addEntity(solid, true, false);
+            solid.brepSnapshot = geometry.userData?.brepSnapshot;
+            solid.creationParams = {
+              type: 'sweep',
+              params: { profileId: action.id1, spineId: action.id2, isSolid }
+            };
+            addEntity(solid, true, true); // Use current layer to ensure correct color
             
             viewer.clearHighlight();
             context.syncFromDocument();
@@ -386,7 +394,8 @@ export class SweepHandler implements ActionHandler {
         const indices = Array.from(geometry.getIndex()?.array || []) as number[];
         
         const solid = new Solid3D(solidId, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
-        addEntity(solid, true, false);
+        solid.brepSnapshot = geometry.userData?.brepSnapshot;
+        addEntity(solid, true, true);
         
         viewer.clearHighlight();
         context.syncFromDocument();

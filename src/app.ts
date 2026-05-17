@@ -931,34 +931,8 @@ export class App {
     }
     
     // Attach/detach gizmo based on selection
-    if (this.selectedEntityIds.size === 1 && !isCtrl) {
-      const id = Array.from(this.selectedEntityIds)[0];
-      const entity = this.doc.getEntity(id);
-      if (entity instanceof Solid3D) {
-        let obj = this.viewer.scene.getObjectByName(id);
-        if (!obj) {
-          // Fallback: traverse scene to find object with matching name
-          this.viewer.scene.traverse(child => {
-            if (child.name === id) obj = child;
-          });
-        }
-        
-        // If the found object is a child of a group with the same name,
-        // use the parent group so that Gizmo reads the correct world position!
-        if (obj && obj.parent && obj.parent.name === id) {
-          obj = obj.parent;
-        }
-        
-
-        
-        if (obj) {
-          this.gizmoManager.attachToObject(obj, entity);
-        } else {
-          this.gizmoManager.detach();
-        }
-      } else {
-        this.gizmoManager.detach();
-      }
+    if (!isCtrl) {
+      this.updateGizmoAttachment();
     } else {
       this.gizmoManager.detach();
     }
@@ -1380,6 +1354,31 @@ export class App {
           .filter((e): e is Entity => e !== undefined);
       this.propertiesWindow.update(selectedEntities);
     }
+
+    this.updateGizmoAttachment();
+  }
+
+  public updateGizmoAttachment() {
+    if (this.selectedEntityIds.size === 1) {
+      const id = Array.from(this.selectedEntityIds)[0];
+      const entity = this.doc.getEntity(id);
+      if (entity instanceof Solid3D) {
+        let obj = this.viewer.scene.getObjectByName(id);
+        if (!obj) {
+          this.viewer.scene.traverse(child => {
+            if (child.name === id) obj = child;
+          });
+        }
+        if (obj && obj.parent && obj.parent.name === id) {
+          obj = obj.parent;
+        }
+        if (obj) {
+          this.gizmoManager.attachToObject(obj, entity);
+          return;
+        }
+      }
+    }
+    this.gizmoManager.detach();
   }
 
   public updatePropertiesWindow() {

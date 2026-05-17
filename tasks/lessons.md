@@ -39,3 +39,11 @@ function shapeInfo(oc, shape) {
 ## 6. Path Sensitivity in Emscripten FS
 **Pattern**: Long or special-character paths in the virtual filesystem can cause silent failures in some OCC bindings.
 **Correction**: Use simple, hardcoded paths for temporary operations (e.g., `/exp.step`, `/imp.step`) and clear them immediately after use.
+
+## 7. UI Docked Panel Layout & Ergonomics
+**Pattern**: Rotating docked panel/toolbar headers (e.g., using `writing-mode: vertical-rl` and `transform: rotate(180deg)`) on side docks to save horizontal space might seem ergonomic but negatively impacts readability and visual appeal.
+**Correction**: Keep docked toolbar/panel headers horizontal on top of the toolbar grid, using a standard stacking layout (`flex-direction: column` and standard horizontal text header) to maintain high readability, consistency, and professional CAD aesthetics.
+
+## 8. Three.js Scene Graph Lifecycle & Group Removal
+**Pattern**: In hierarchical 3D scene graphs, temporary or preview objects are often nested under a specific sub-group (e.g., `mainGroup`) to support mode-toggling and geometric grouping.
+**Correction**: Never use `this.scene.remove(obj)` to delete nested/grouped objects. In Three.js, `scene.remove(obj)` is a silent no-op if `obj` is not a direct child of the scene. Always use `obj.parent?.remove(obj)` to ensure robust, parent-relative removal regardless of where the object resides in the hierarchy. This prevents "hall of mirrors" rendering duplicates, memory leaks, and trailing outline artifacts.

@@ -2071,7 +2071,7 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { entityId, dx, dy, dz } = payload;
+    const { entityId, dx, dy, dz, targetEntityId, deflection } = payload;
     try {
       if (!shapeCache.has(entityId)) {
         throw new Error(`Shape not cached for entity ${entityId}`);
@@ -2084,13 +2084,22 @@ self.onmessage = async (e) => {
       const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
       const newShape = brepTransform.Shape();
 
-      cacheShape(entityId, newShape); // Update cache
+      const resultId = targetEntityId || entityId;
+      cacheShape(resultId, newShape);
+
+      // If we are creating a new shape, we might want the geometry back
+      let geometryData = null;
+      let brepBytes = null;
+      if (targetEntityId) {
+        geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
+        brepBytes = exportShapeToBytes(oc, newShape, resultId);
+      }
 
       translation.delete();
       transform.delete();
       brepTransform.delete();
 
-      self.postMessage({ type: 'transformShape', success: true, id });
+      self.postMessage({ type: 'transformShape', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = decodeOCCError('transformShape', error);
       self.postMessage({ type: 'transformShape', success: false, error: errorMessage, id });
@@ -2100,18 +2109,26 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { entityId, rx, ry, rz, cx, cy, cz } = payload;
+    const { entityId, rx, ry, rz, cx, cy, cz, targetEntityId, deflection } = payload;
     try {
       if (!shapeCache.has(entityId)) {
         throw new Error(`Shape not cached for entity ${entityId}`);
       }
       const shape = shapeCache.get(entityId);
 
-      const rotatedShape = applyRotation(shape, { x: rx, y: ry, z: rz }, oc, { x: cx, y: cy, z: cz });
+      const newShape = applyRotation(shape, { x: rx, y: ry, z: rz }, oc, { x: cx, y: cy, z: cz });
 
-      cacheShape(entityId, rotatedShape); // Update cache
+      const resultId = targetEntityId || entityId;
+      cacheShape(resultId, newShape);
 
-      self.postMessage({ type: 'rotateShape', success: true, id });
+      let geometryData = null;
+      let brepBytes = null;
+      if (targetEntityId) {
+        geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
+        brepBytes = exportShapeToBytes(oc, newShape, resultId);
+      }
+
+      self.postMessage({ type: 'rotateShape', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = decodeOCCError('rotateShape', error);
       self.postMessage({ type: 'rotateShape', success: false, error: errorMessage, id });

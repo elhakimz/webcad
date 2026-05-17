@@ -8,7 +8,7 @@ export class DazViewControl {
   private cubeEl: HTMLElement | null = null;
   private currentView = 'TOP';
   private viewSelectorEl: HTMLSelectElement | null = null;
-  private currentShadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' = 'WIREFRAME';
+  private currentShadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' = 'SHADED';
 
   constructor(viewer: Viewer, app: App) {
     this.viewer = viewer;
@@ -28,7 +28,8 @@ export class DazViewControl {
     const shaderBtn = document.createElement('div');
     shaderBtn.className = 'daz-shader-btn';
     shaderBtn.innerHTML = '&#127761;'; // Sphere icon placeholder
-    shaderBtn.title = "Shader Options";
+    shaderBtn.title = "Shader: Shaded";
+    shaderBtn.style.color = '#00ff00';
     
     const popup = document.createElement('div');
     popup.className = 'daz-shader-popup';
@@ -69,7 +70,7 @@ export class DazViewControl {
     const viewSelector = document.createElement('select');
     viewSelector.className = 'daz-view-selector';
     this.viewSelectorEl = viewSelector;
-    const views = ['Perspective View', 'Top View', 'Bottom View', 'Left View', 'Right View', 'Front View', 'Back View'];
+    const views = ['Orthogonal View', 'Top View', 'Bottom View', 'Left View', 'Right View', 'Front View', 'Back View'];
     views.forEach(v => {
       const option = document.createElement('option');
       option.value = v.toUpperCase().replace(' ', '_').replace('_VIEW', '');
@@ -175,11 +176,11 @@ export class DazViewControl {
     console.log(`Cube face clicked: ${face}`);
     
     if (this.currentView === face) {
-      // Clicked the active face! Switch to perspective view for that face!
-      const perspectiveView = `PERSPECTIVE_${face}`;
-      this.rotateCubeToFace('PERSPECTIVE'); // Show cube in perspective
-      this.viewer.setCameraView(perspectiveView);
-      this.currentView = perspectiveView;
+      // Clicked the active face! Switch to orthogonal view for that face!
+      const orthogonalView = `ORTHOGONAL_${face}`;
+      this.rotateCubeToFace('ORTHOGONAL'); // Show cube in orthogonal 3D orientation
+      this.viewer.setCameraView(orthogonalView);
+      this.currentView = orthogonalView;
     } else {
       this.rotateCubeToFace(face);
       this.viewer.setCameraView(face);
@@ -200,12 +201,12 @@ export class DazViewControl {
       this.viewer.orbit(0, -step);
     }
 
-    this.rotateCubeToFace('PERSPECTIVE');
-    this.currentView = 'PERSPECTIVE';
+    this.rotateCubeToFace('ORTHOGONAL');
+    this.currentView = 'ORTHOGONAL';
     
     // Update dropdown
     if (this.viewSelectorEl) {
-      this.viewSelectorEl.value = 'PERSPECTIVE';
+      this.viewSelectorEl.value = 'ORTHOGONAL';
     }
   }
 
@@ -237,6 +238,7 @@ export class DazViewControl {
       case 'BOTTOM': transform = 'rotateX(90deg) rotateY(0deg)'; break;
       case 'LEFT': transform = 'rotateX(0deg) rotateY(90deg)'; break;
       case 'RIGHT': transform = 'rotateX(0deg) rotateY(-90deg)'; break;
+      case 'ORTHOGONAL':
       case 'PERSPECTIVE': transform = 'rotateX(-30deg) rotateY(45deg)'; break;
       default: transform = 'rotateX(-30deg) rotateY(45deg)'; // Default iso view
     }

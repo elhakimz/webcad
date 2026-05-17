@@ -77,6 +77,12 @@ export class GizmoManager {
     const center = bbox.getCenter(new THREE.Vector3());
     this.renderer.root.position.copy(center);
 
+    // Apply rotation from the target entity's rotation properties!
+    if (this.targetEntity) {
+      const rot = this.targetEntity.rotation;
+      this.renderer.root.quaternion.setFromEuler(new THREE.Euler(rot.x, rot.y, rot.z));
+    }
+
     // Calculate size of object to scale gizmo proportionally
     const size = bbox.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
@@ -219,6 +225,11 @@ export class GizmoManager {
       z: euler.z
     };
 
+    const oldRot = { ...before.rotation };
+    const drx = this.targetEntity.rotation.x - oldRot.x;
+    const dry = this.targetEntity.rotation.y - oldRot.y;
+    const drz = this.targetEntity.rotation.z - oldRot.z;
+
     const dx = this.targetEntity.position.x - oldPos.x;
     const dy = this.targetEntity.position.y - oldPos.y;
     const dz = this.targetEntity.position.z - oldPos.z;
@@ -272,12 +283,27 @@ export class GizmoManager {
         }
         this.targetEntity.edgeLines = newEdgeLines;
       }
-    } else if (dx !== 0 || dy !== 0 || dz !== 0) {
-      try {
-        await OpenCascadeService.getInstance().transformShape(this.targetEntity.id, dx, dy, dz);
-        console.log(`Synced transform to worker for ${this.targetEntity.id}: dx=${dx}, dy=${dy}, dz=${dz}`);
-      } catch (err) {
-        console.error(`Failed to transform shape in worker for ${this.targetEntity.id}:`, err);
+    } else {
+      if (drx !== 0 || dry !== 0 || drz !== 0) {
+        try {
+          const rotCenter = {
+            x: before.position.x + center.x,
+            y: before.position.y + center.y,
+            z: before.position.z + center.z
+          };
+          await OpenCascadeService.getInstance().rotateShape(this.targetEntity.id, drx, dry, drz, rotCenter.x, rotCenter.y, rotCenter.z);
+          console.log(`Synced rotation to worker for ${this.targetEntity.id}: drx=${drx}, dry=${dry}, drz=${drz}`);
+        } catch (err) {
+          console.error(`Failed to rotate shape in worker for ${this.targetEntity.id}:`, err);
+        }
+      }
+      if (dx !== 0 || dy !== 0 || dz !== 0) {
+        try {
+          await OpenCascadeService.getInstance().transformShape(this.targetEntity.id, dx, dy, dz);
+          console.log(`Synced transform to worker for ${this.targetEntity.id}: dx=${dx}, dy=${dy}, dz=${dz}`);
+        } catch (err) {
+          console.error(`Failed to transform shape in worker for ${this.targetEntity.id}:`, err);
+        }
       }
     }
 

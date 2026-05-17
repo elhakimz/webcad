@@ -91,9 +91,44 @@ body {
 
 #app {
   display: grid;
-  grid-template-rows: 48px 1fr auto;
+  grid-template-rows: 32px 48px 1fr auto;
   height: 100vh;
   width: 100vw;
+}
+
+#app-tabs {
+  display: flex;
+  background-color: #1a1a1a;
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 10px;
+  gap: 2px;
+}
+
+.light-theme #app-tabs {
+  background-color: #e0e0e0;
+}
+
+.app-tab {
+  padding: 8px 20px;
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #888;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.app-tab:hover {
+  color: var(--text-color);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.app-tab.active {
+  color: var(--accent-color);
+  border-bottom-color: var(--accent-color);
+  background-color: rgba(59, 130, 246, 0.1);
 }
 
 #status-bar {
@@ -161,6 +196,96 @@ body {
   border: 1px dashed var(--accent-color);
 }
 
+/* SCAD Editor Styles */
+.scad-editor-window {
+  min-width: 400px;
+  background-color: var(--panel-bg);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+}
+
+.scad-editor-window.docked {
+  flex-grow: 1;
+  min-width: unset;
+  border: none;
+}
+
+.scad-run-btn:hover {
+  background-color: #28a74544;
+}
+
+.scad-dialog-overlay {
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(2px);
+}
+
+.light-theme .scad-dialog-overlay {
+  background-color: rgba(255, 255, 255, 0.7);
+}
+
+.scad-dialog {
+  background-color: var(--panel-bg);
+  color: var(--text-color);
+}
+
+.scad-dialog h2 {
+  color: var(--accent-color);
+  font-family: var(--font-mono);
+}
+
+.scad-btn-run { background-color: #28a745; color: white; }
+.scad-btn-eval { background-color: #007bff; color: white; }
+.scad-btn-cancel { 
+  background-color: transparent; 
+  border: 1px solid var(--border-color) !important; 
+  color: var(--text-color); 
+}
+
+.scad-editor-window .window-header {
+  padding: 5px 10px;
+  background-color: var(--bg-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: move;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.scad-cm-container {
+  flex-grow: 1;
+  background-color: var(--bg-color);
+}
+
+.scad-editor-window .window-header {
+  padding: 5px 10px;
+  background: #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: move;
+}
+
+.scad-run-btn {
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.scad-run-btn:hover {
+  background: #218838;
+}
+
+.scad-cm-container {
+  flex-grow: 1;
+  border-top: 1px solid #444;
+}
+
 #main-area {
   display: flex;
   overflow: hidden;
@@ -168,16 +293,28 @@ body {
 }
 
 #docking-pane {
-  width: 160px;
-  background-color: transparent; /* Transparent background */
+  position: relative;
+  width: 180px;
+  background-color: var(--panel-bg);
   border-left: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  resize: horizontal;
+  overflow: visible;
+}
+
+.pane-resizer {
+  position: absolute;
+  left: -4px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 1000;
+}
+
+.pane-resizer:hover {
+  background-color: var(--accent-color);
+  opacity: 0.3;
 }
 
 #main-area, #main-area * {
@@ -357,6 +494,8 @@ body {
   position: relative;
   width: 100% !important;
   height: auto !important;
+  display: flex;
+  flex-direction: column;
 }
 
 .menu-header {
@@ -492,11 +631,18 @@ body {
   font-size: 10px;
   text-transform: uppercase;
   border-bottom: 1px solid var(--border-color);
+  transition: all 0.2s;
 }
+
 
 .toolbar-controls {
   display: flex;
   gap: 8px;
+}
+
+.toolbar-grid {
+  flex: 1;
+  padding: 4px;
 }
 
 .control-btn {

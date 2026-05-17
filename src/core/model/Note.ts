@@ -110,8 +110,8 @@ export class Note extends Entity {
     const textGap = 0.1;
     let textMinX = 0;
     let textMaxX = 0;
-    let textMinY = p2.y;
-    let textMaxY = p2.y + this.height;
+    const textMinY = p2.y;
+    const textMaxY = p2.y + this.height;
 
     if (this.targetEntityId !== null) {
       const shelfDir = p2.x >= p1.x ? 1 : -1;

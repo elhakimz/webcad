@@ -107,12 +107,12 @@ export class OCCWorkerClient {
     return this.send('createBoolean', { operation, idA, idB, entityId, deflection, rotA, rotB, centerA, centerB });
   }
 
-  transformShape(entityId: string, dx: number, dy: number, dz: number): Promise<void> {
-    return this.send('transformShape', { entityId, dx, dy, dz });
+  transformShape(entityId: string, dx: number, dy: number, dz: number, targetEntityId?: string, deflection?: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('transformShape', { entityId, dx, dy, dz, targetEntityId, deflection });
   }
 
-  rotateShape(entityId: string, rx: number, ry: number, rz: number, cx: number, cy: number, cz: number): Promise<void> {
-    return this.send('rotateShape', { entityId, rx, ry, rz, cx, cy, cz });
+  rotateShape(entityId: string, rx: number, ry: number, rz: number, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('rotateShape', { entityId, rx, ry, rz, cx, cy, cz, targetEntityId, deflection });
   }
 
   releaseShapes(entityIds: string[]): Promise<void> {

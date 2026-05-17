@@ -39,6 +39,7 @@ export class Viewer {
   renderer: THREE.WebGLRenderer
   canvas: HTMLCanvasElement
   font: InstanceType<typeof Font> | null = null
+  public directionalLight: THREE.DirectionalLight | null = null;
 
   private isPanning = false
   private isLeftPanEnabled = false
@@ -56,32 +57,66 @@ export class Viewer {
   private textQueue: Text[] = []
   private noteQueue: Note[] = []
   private selectionBox: THREE.Line | null = null
-  private shadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' = 'WIREFRAME';
+  private shadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' = 'SHADED';
   public target: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   public selectableMeshes: THREE.Mesh[] = [];
   public edgeLines: THREE.Object3D[] = [];
-  public directionalLight: THREE.DirectionalLight | null = null;
   private highlightedEntityIds: string[] = [];
+  public selectedIds: string[] = [];
+  private currentMode: 'modelling' | 'scripting' = 'modelling';
+
+  private modellingCameraState = {
+    position: new THREE.Vector3(0, 0, 500),
+    zoom: 1,
+    up: new THREE.Vector3(0, 1, 0),
+    target: new THREE.Vector3(0, 0, 0)
+  };
+
+  private scriptingCameraState = {
+    position: new THREE.Vector3(-300, -300, 300),
+    zoom: 1,
+    up: new THREE.Vector3(0, 0, 1),
+    target: new THREE.Vector3(0, 0, 0)
+  };
+
+  private mainGroup: THREE.Group = new THREE.Group();
+  private temporaryMeshGroup: THREE.Group = new THREE.Group();
+  private modellingBg: THREE.Texture;
+  private scriptingBg: THREE.Texture;
 
   constructor(canvas:HTMLCanvasElement){
     this.canvas = canvas
     this.scene = new THREE.Scene()
     
-    // Create gradient background (Skybox effect)
-    const bgCanvas = document.createElement('canvas');
-    bgCanvas.width = 2;
-    bgCanvas.height = 512;
-    const bgCtx = bgCanvas.getContext('2d')!;
-    const bgGradient = bgCtx.createLinearGradient(0, 0, 0, 512);
-    bgGradient.addColorStop(0, '#000000'); // Pure black top
-    bgGradient.addColorStop(1, '#002222'); // Very dark cyan bottom
-    bgCtx.fillStyle = bgGradient;
-    bgCtx.fillRect(0, 0, 2, 512);
-    this.scene.background = new THREE.CanvasTexture(bgCanvas);
+    // Create modelling background (Deep Cyan)
+    const mCanvas = document.createElement('canvas');
+    mCanvas.width = 2; mCanvas.height = 512;
+    const mCtx = mCanvas.getContext('2d')!;
+    const mGrad = mCtx.createLinearGradient(0, 0, 0, 512);
+    mGrad.addColorStop(0, '#000000');
+    mGrad.addColorStop(1, '#002222');
+    mCtx.fillStyle = mGrad;
+    mCtx.fillRect(0, 0, 2, 512);
+    this.modellingBg = new THREE.CanvasTexture(mCanvas);
+
+    // Create scripting background (Darker / Deep Space)
+    const sCanvas = document.createElement('canvas');
+    sCanvas.width = 2; sCanvas.height = 512;
+    const sCtx = sCanvas.getContext('2d')!;
+    const sGrad = sCtx.createLinearGradient(0, 0, 0, 512);
+    sGrad.addColorStop(0, '#020205');
+    sGrad.addColorStop(1, '#0c0c14');
+    sCtx.fillStyle = sGrad;
+    sCtx.fillRect(0, 0, 2, 512);
+    this.scriptingBg = new THREE.CanvasTexture(sCanvas);
+
+    this.scene.background = this.modellingBg;
 
     this.scene.add(this.helperGroup);
     this.scene.add(this.boundaryGroup);
     this.scene.add(this.baseLineGroup);
+    this.scene.add(this.mainGroup);
+    this.scene.add(this.temporaryMeshGroup);
 
     this.gridRenderer = new GridRenderer(this.scene);
     
@@ -187,6 +222,53 @@ export class Viewer {
     this.scheduleRender();
   }
 
+
+  public setViewContext(mode: 'modelling' | 'scripting') {
+    // 1. Save current camera state to the slot of the mode we are switching FROM
+    if (this.currentMode === 'scripting') {
+      this.scriptingCameraState.position.copy(this.camera.position);
+      this.scriptingCameraState.zoom = this.camera.zoom;
+      this.scriptingCameraState.up.copy(this.camera.up);
+      this.scriptingCameraState.target.copy(this.target);
+    } else {
+      this.modellingCameraState.position.copy(this.camera.position);
+      this.modellingCameraState.zoom = this.camera.zoom;
+      this.modellingCameraState.up.copy(this.camera.up);
+      this.modellingCameraState.target.copy(this.target);
+    }
+
+    this.currentMode = mode;
+
+    // 2. Load the camera state for the mode we are switching TO
+    if (mode === 'scripting') {
+      this.camera.position.copy(this.scriptingCameraState.position);
+      this.camera.zoom = this.scriptingCameraState.zoom;
+      this.camera.up.copy(this.scriptingCameraState.up);
+      this.target.copy(this.scriptingCameraState.target);
+
+      this.mainGroup.visible = false;
+      this.temporaryMeshGroup.visible = true;
+      this.helperGroup.visible = false;
+      this.boundaryGroup.visible = false;
+      this.scene.background = this.scriptingBg;
+    } else {
+      this.camera.position.copy(this.modellingCameraState.position);
+      this.camera.zoom = this.modellingCameraState.zoom;
+      this.camera.up.copy(this.modellingCameraState.up);
+      this.target.copy(this.modellingCameraState.target);
+
+      this.mainGroup.visible = true;
+      this.temporaryMeshGroup.visible = false;
+      this.helperGroup.visible = true;
+      this.boundaryGroup.visible = true;
+      this.scene.background = this.modellingBg;
+    }
+
+    this.camera.updateProjectionMatrix();
+    this.camera.lookAt(this.target);
+    this.scheduleRender();
+  }
+
   setDraftingAxisVisible(visible: boolean) {
     this.cursorRenderer.setAxisVisible(visible);
     this.scheduleRender();
@@ -249,21 +331,28 @@ export class Viewer {
       case 'PERSPECTIVE_FRONT':
       case 'PERSPECTIVE_TOP':
       case 'PERSPECTIVE_BOTTOM':
+      case 'ORTHOGONAL':
+      case 'ORTHOGONAL_FRONT':
+      case 'ORTHOGONAL_TOP':
+      case 'ORTHOGONAL_BOTTOM':
         this.camera.up.set(0, 0, 1);
         this.camera.position.set(size, -size, size);
         this.camera.lookAt(0, 0, 0);
         break;
       case 'PERSPECTIVE_LEFT':
+      case 'ORTHOGONAL_LEFT':
         this.camera.up.set(0, 0, 1);
         this.camera.position.set(-size, -size, size);
         this.camera.lookAt(0, 0, 0);
         break;
       case 'PERSPECTIVE_BACK':
+      case 'ORTHOGONAL_BACK':
         this.camera.up.set(0, 0, 1);
         this.camera.position.set(-size, size, size);
         this.camera.lookAt(0, 0, 0);
         break;
       case 'PERSPECTIVE_RIGHT':
+      case 'ORTHOGONAL_RIGHT':
         this.camera.up.set(0, 0, 1);
         this.camera.position.set(size, size, size);
         this.camera.lookAt(0, 0, 0);
@@ -379,6 +468,13 @@ export class Viewer {
   }
 
   orbit(deltaX: number, deltaY: number) {
+    if (this.selectedIds && this.selectedIds.length > 0) {
+      const center = this.getCenterOfObjects(this.selectedIds);
+      if (center) {
+        this.target.copy(center);
+      }
+    }
+
     const relPos = this.camera.position.clone().sub(this.target);
     const radius = relPos.length();
     let theta = Math.atan2(relPos.y, relPos.x);
@@ -432,6 +528,38 @@ export class Viewer {
       }
     });
     
+    this.scheduleRender();
+  }
+
+  public addTemporaryMesh(geometry: THREE.BufferGeometry, color: number = 0x888888) {
+    const material = this.getMeshMaterial(color);
+    const mesh = new THREE.Mesh(geometry, material);
+    this.temporaryMeshGroup.add(mesh);
+    
+    // Add edges for the temporary mesh
+    const edges = new THREE.EdgesGeometry(geometry);
+    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5 });
+    const edgeLines = new THREE.LineSegments(edges, edgeMaterial);
+    this.temporaryMeshGroup.add(edgeLines);
+
+    this.scheduleRender();
+  }
+
+  public clearTemporaryMeshes() {
+    this.temporaryMeshGroup.children.forEach(child => {
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      } else if (child instanceof THREE.LineSegments) {
+        child.geometry.dispose();
+        (child.material as THREE.Material).dispose();
+      }
+    });
+    this.temporaryMeshGroup.clear();
     this.scheduleRender();
   }
 
@@ -614,7 +742,7 @@ export class Viewer {
 
   setPreview(entity: PreviewObject | null, units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 }) {
     if (this.previewObject) {
-      this.scene.remove(this.previewObject);
+      this.previewObject.parent?.remove(this.previewObject);
       if (this.previewObject instanceof THREE.Line || this.previewObject instanceof THREE.LineLoop || this.previewObject instanceof THREE.Points || this.previewObject instanceof THREE.Group || this.previewObject instanceof THREE.Mesh) {
         this.previewObject.traverse((obj) => {
           if (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points || obj instanceof THREE.Mesh) {
@@ -644,7 +772,7 @@ export class Viewer {
       }
 
       if (this.previewObject) {
-        this.scene.add(this.previewObject);
+        this.mainGroup.add(this.previewObject);
       }
     }
 
@@ -1134,7 +1262,7 @@ export class Viewer {
     if (id) obj.name = id;
     if (layer) obj.userData = { layer };
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
   }
 
   addCircle(cx:number, cy:number, r:number, id?: string, layer?: string, color?: number, isVisible = true, linetype?: string, elevation = 0, thickness = 0){
@@ -1143,7 +1271,7 @@ export class Viewer {
     if (id) obj.name = id;
     if (layer) obj.userData = { layer };
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
   }
 
   addArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean, id?: string, layer?: string, color?: number, isVisible = true, linetype?: string, elevation = 0, thickness = 0) {
@@ -1152,7 +1280,7 @@ export class Viewer {
     if (id) obj.name = id;
     if (layer) obj.userData = { layer };
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
   }
 
   addPoint(x: number, y: number, id?: string, layer?: string, color?: number, isVisible = true, elevation = 0, thickness = 0) {
@@ -1183,7 +1311,7 @@ export class Viewer {
       lines.userData = { layer };
     }
     lines.visible = isVisible;
-    this.scene.add(lines);
+    this.mainGroup.add(lines);
   }
 
   addSolid3D(entity: Solid3D, layer?: string, color?: number, isVisible = true) {
@@ -1197,7 +1325,7 @@ export class Viewer {
     const euler = new THREE.Euler(entity.rotation.x, entity.rotation.y, entity.rotation.z);
     obj.quaternion.setFromEuler(euler);
     
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
     const mesh = obj.children.find(child => child instanceof THREE.Mesh && child.userData.type === 'Solid3D') as THREE.Mesh;
     if (mesh) {
       this.selectableMeshes.push(mesh);
@@ -1374,7 +1502,7 @@ export class Viewer {
 
   drawDebugLine(p1: {x:number,y:number,z:number}, p2: {x:number,y:number,z:number}, color: number = 0xffa500) {
     const prev = this.scene.getObjectByName('debugLine');
-    if (prev) this.scene.remove(prev);
+    if (prev) prev.parent?.remove(prev);
 
     const v1 = new THREE.Vector3(p1.x, p1.y, p1.z);
     const v2 = new THREE.Vector3(p2.x, p2.y, p2.z);
@@ -1396,7 +1524,7 @@ export class Viewer {
     cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
     
     cyl.name = 'debugLine';
-    this.scene.add(cyl);
+    this.mainGroup.add(cyl);
     this.scheduleRender();
   }
 
@@ -1407,7 +1535,7 @@ export class Viewer {
       obj.userData = { layer };
     }
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
   }
 
 
@@ -1439,13 +1567,13 @@ export class Viewer {
       if (lineChild) topObj.remove(lineChild);
       
       topObj.position.z = (entity.elevation || 0) + entity.thickness;
-      this.scene.add(topObj);
+    this.mainGroup.add(topObj);
     }
 
     obj.name = entity.id;
     obj.userData = { layer, type: 'Text' };
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
     this.render();
   }
   
@@ -1454,7 +1582,7 @@ export class Viewer {
     obj.name = entity.id;
     obj.userData = { layer, type: 'Text' };
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
     this.render();
   }
 
@@ -1465,7 +1593,7 @@ export class Viewer {
       obj.userData = { layer };
     }
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
   }
 
   addDonut(entity: Donut, layer?: string, color?: number, isVisible = true) {
@@ -1475,7 +1603,7 @@ export class Viewer {
       obj.userData = { layer };
     }
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
   }
 
   addSpline(entity: Spline, layer?: string, color?: number, isVisible = true, linetype = 'CONTINUOUS') {
@@ -1485,7 +1613,7 @@ export class Viewer {
       obj.userData = { layer };
     }
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
   }
 
   addEllipse(entity: Ellipse, layer?: string, color?: number, isVisible = true) {
@@ -1496,7 +1624,7 @@ export class Viewer {
       obj.userData = { layer };
     }
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
   }
 
   addDimension(entity: Dimension, units: UnitsConfig, layer?: string, color?: number, isVisible = true) {
@@ -1506,7 +1634,7 @@ export class Viewer {
       obj.userData = { layer };
     }
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
   }
 
   addTrace(entity: Trace, layer?: string, color?: number, isVisible = true) {
@@ -1542,7 +1670,7 @@ export class Viewer {
       mesh.userData = { layer };
     }
     mesh.visible = isVisible;
-    this.scene.add(mesh);
+    this.mainGroup.add(mesh);
   }
 
   addShape(entity: Shape, layer?: string, color?: number, isVisible = true) {
@@ -1590,7 +1718,7 @@ export class Viewer {
       lines.userData = { layer };
     }
     lines.visible = isVisible;
-    this.scene.add(lines);
+    this.mainGroup.add(lines);
   }
 
   private createArcGeometry(cx: number, cy: number, r: number, startAngle: number, endAngle: number): { x: number; y: number }[] {
@@ -1678,7 +1806,7 @@ export class Viewer {
       mesh.userData = { layer };
     }
     mesh.visible = isVisible;
-    this.scene.add(mesh);
+    this.mainGroup.add(mesh);
   }
 
   addInsert(entity: Insert, block: BlockDefinition, layerProperties: Map<string, {color: number, linetype: string}>, insertLayer: string, isVisible = true) {
@@ -1716,7 +1844,7 @@ export class Viewer {
 
     if (insertLayer) group.userData = { layer: insertLayer };
     group.visible = isVisible;
-    this.scene.add(group);
+    this.mainGroup.add(group);
   }
 
   private createLineObject(x1: number, y1: number, x2: number, y2: number, color: number, linetype?: string, elevation = 0, thickness = 0): THREE.Object3D {
@@ -2509,13 +2637,13 @@ export class Viewer {
     });
     const mesh = new THREE.Mesh(geometry, mat);
     if (id) mesh.name = id;
-    this.scene.add(mesh);
+    this.mainGroup.add(mesh);
   }
 
   removeObject(id: string) {
     const obj = this.scene.getObjectByName(id);
     if (obj) {
-      this.scene.remove(obj);
+      obj.parent?.remove(obj);
       this.selectableMeshes = this.selectableMeshes.filter(m => m.name !== id);
       this.edgeLines = this.edgeLines.filter(l => l.userData.entityId !== id);
       obj.traverse((child) => {
@@ -2542,7 +2670,7 @@ export class Viewer {
       }
     });
     for (const obj of toRemove) {
-      this.scene.remove(obj);
+      obj.parent?.remove(obj);
       obj.traverse((child) => {
         if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
           child.geometry.dispose();
@@ -2608,11 +2736,11 @@ export class Viewer {
     // Clear existing grips
     const existing = this.scene.getObjectByName("grips_marker");
     if (existing) {
-      this.scene.remove(existing);
+      existing.parent?.remove(existing);
     }
     const existingCenter = this.scene.getObjectByName("center_grip_marker");
     if (existingCenter) {
-      this.scene.remove(existingCenter);
+      existingCenter.parent?.remove(existingCenter);
     }
 
     // Create new grips
@@ -2657,7 +2785,7 @@ export class Viewer {
       mesh.renderOrder = 1000; // Render on top
       mesh.userData = { gripInfos }; // Store all grip infos
       
-      this.scene.add(mesh); // Add directly to scene
+    this.mainGroup.add(mesh);
     }
 
     // Render Center Grip
@@ -2700,6 +2828,7 @@ export class Viewer {
   private originalColors: Map<string, number> = new Map();
 
   setHighlight(ids: string[]) {
+    this.selectedIds = ids;
     const highlightColor = 0xddc040; // Neutral Yellow/Gold
 
     const objectsToProcess: THREE.Object3D[] = [];
@@ -2868,7 +2997,7 @@ export class Viewer {
 
   setSelectionBox(p1: {x: number, y: number} | null, p2?: {x: number, y: number}) {
     if (this.selectionBox) {
-        this.scene.remove(this.selectionBox);
+        this.selectionBox.parent?.remove(this.selectionBox);
         this.selectionBox.geometry.dispose();
         (this.selectionBox.material as THREE.Material).dispose();
         this.selectionBox = null;
@@ -2922,7 +3051,7 @@ export class Viewer {
         line.renderOrder = 1000;
         
         this.selectionBox = line;
-        this.scene.add(this.selectionBox);
+    this.mainGroup.add(this.selectionBox);
     }
     this.render();
   }
@@ -3057,7 +3186,7 @@ export class Viewer {
     if (entity.id) obj.name = entity.id;
     if (layer) obj.userData = { layer };
     obj.visible = isVisible;
-    this.scene.add(obj);
+    this.mainGroup.add(obj);
   }
 
   private createNoteObject(entity: Note, colorIndex: number): THREE.Object3D {

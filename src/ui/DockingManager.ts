@@ -17,6 +17,7 @@ export class DockingManager {
     }
 
     this.pane.innerHTML = `
+      <div id="pane-resizer" class="pane-resizer"></div>
       <div class="pane-header">
         <span class="pane-title">Dock</span>
         <span class="control-btn" id="pane-minimize">_</span>
@@ -30,6 +31,28 @@ export class DockingManager {
     minimizeBtn.addEventListener('click', () => {
       this.pane.classList.toggle('minimized');
       minimizeBtn.textContent = this.pane.classList.contains('minimized') ? '[' : '_';
+    });
+
+    const resizer = this.pane.querySelector('#pane-resizer') as HTMLElement;
+    resizer.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startWidth = this.pane.offsetWidth;
+      
+      const onMouseMove = (moveEvent: MouseEvent) => {
+        const delta = startX - moveEvent.clientX;
+        const newWidth = Math.max(50, startWidth + delta);
+        this.pane.style.width = `${newWidth}px`;
+        window.dispatchEvent(new Event('resize'));
+      };
+      
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+      
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
     });
 
     this.setupDragAndDrop();
@@ -107,6 +130,16 @@ export class DockingManager {
     } else {
       this.dock(id);
     }
+  }
+
+  public showWindow(id: string) {
+    const el = this.windows.get(id);
+    if (el) el.style.display = 'flex';
+  }
+
+  public hideWindow(id: string) {
+    const el = this.windows.get(id);
+    if (el) el.style.display = 'none';
   }
 
   private setupDragAndDrop() {

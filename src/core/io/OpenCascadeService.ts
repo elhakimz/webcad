@@ -154,12 +154,14 @@ export class OpenCascadeService {
     return this.buildGeometry(data);
   }
 
-  async transformShape(entityId: string, dx: number, dy: number, dz: number): Promise<void> {
-    await this.client.transformShape(entityId, dx, dy, dz);
+  async transformShape(entityId: string, dx: number, dy: number, dz: number, targetEntityId?: string, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.transformShape(entityId, dx, dy, dz, targetEntityId, deflection);
+    return this.buildGeometry(data);
   }
 
-  async rotateShape(entityId: string, rx: number, ry: number, rz: number, cx: number, cy: number, cz: number): Promise<void> {
-    await this.client.rotateShape(entityId, rx, ry, rz, cx, cy, cz);
+  async rotateShape(entityId: string, rx: number, ry: number, rz: number, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.rotateShape(entityId, rx, ry, rz, cx, cy, cz, targetEntityId, deflection);
+    return this.buildGeometry(data);
   }
 
   async releaseShapes(entityIds: string[]): Promise<void> {

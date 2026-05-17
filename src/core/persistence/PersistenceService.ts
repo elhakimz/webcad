@@ -265,6 +265,8 @@ export class PersistenceService {
         case 'cylinder': geoData = await this.occ.createCylinder(params.x, params.y, params.z, params.radius, params.height, deflection, entity.id); break
         case 'sphere': geoData = await this.occ.createSphere(params.x, params.y, params.z, params.r, deflection, entity.id); break
         case 'cone': geoData = await this.occ.createCone(params.x, params.y, params.z, params.r, params.h, deflection, entity.id); break
+        case 'polyhedron': geoData = await this.occ.createPolyhedron(params.points, params.faces, deflection, entity.id); break
+        case 'hull': geoData = await this.occ.createConvexHull(params.points, params.shapeIds, deflection, entity.id); break
         case 'torus': geoData = await this.occ.createTorus(params.x, params.y, params.z, params.r1, params.r2, deflection, entity.id); break
         case 'extrude': geoData = await this.occ.createExtrude(params.points, params.height, params.thickness, deflection, params.isClosed, entity.id); break
         case 'revolve': geoData = await this.occ.createRevolve(params.points, params.axisPoint, params.axisDir, params.angle, params.thickness, deflection, params.isClosed, entity.id); break

@@ -24,6 +24,8 @@ import { SphereCommand } from "../commands/SphereCommand"
 import { Sphere2Command } from "../commands/Sphere2Command"
 import { FacetresCommand } from "../commands/FacetresCommand"
 import { ConeCommand } from "../commands/ConeCommand"
+import { PolyhedronCommand } from "../commands/PolyhedronCommand"
+import { HullCommand } from "../commands/HullCommand"
 import { TorusCommand } from "../commands/TorusCommand"
 import { TextCommand } from "../commands/TextCommand"
 import { MTextCommand } from "../commands/MTextCommand"
@@ -94,6 +96,8 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["SPHERE", () => new SphereCommand()],
   ["SPHERE2", () => new Sphere2Command()],
   ["CONE", () => new ConeCommand()],
+  ["POLYHEDRON", () => new PolyhedronCommand()],
+  ["HULL", () => new HullCommand()],
   ["TORUS", () => new TorusCommand()],
   ["FACETRES", () => new FacetresCommand()],
   ["REGEN", () => new RegenCommand()],
@@ -279,6 +283,8 @@ export class CommandManager {
       'TraceCommand': 'TR',
       'HatchCommand': 'H',
       'BoxCommand': 'S3D',
+      'PolyhedronCommand': 'S3D',
+      'HullCommand': 'S3D',
       'CylinderCommand': 'S3D',
       'ExtrudeCommand': 'S3D'
     };

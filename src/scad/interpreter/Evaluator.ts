@@ -54,18 +54,18 @@ export class ScadEvaluator {
     const args = this.evaluateArguments(node.arguments, scope);
 
     // Check for built-in primitives
-    if (["cube", "sphere", "cylinder", "torus", "cone"].includes(node.name)) {
+    if (["cube", "sphere", "cylinder", "torus", "cone", "polyhedron"].includes(node.name)) {
       return [{ type: "Primitive", name: node.name, params: args }];
     }
 
     // Check for built-in transforms
-    if (["translate", "rotate", "scale", "mirror", "color"].includes(node.name)) {
+    if (["translate", "rotate", "scale", "mirror", "multmatrix", "color"].includes(node.name)) {
       const children = this.evaluateBody(node.children, scope);
       return [{ type: "Transform", name: node.name, params: args, children }];
     }
 
     // Check for built-in booleans
-    if (["union", "difference", "intersection"].includes(node.name)) {
+    if (["union", "difference", "intersection", "hull"].includes(node.name)) {
       const children = this.evaluateBody(node.children, scope);
       return [{ type: "Boolean", name: node.name, children }];
     }

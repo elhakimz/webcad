@@ -583,7 +583,8 @@ export class Viewer {
         new THREE.Vector3(entity.x1, entity.y1, z1),
         new THREE.Vector3(entity.x2, entity.y2, z2)
       ]);
-      const mat = new THREE.LineBasicMaterial({ color: previewColor });
+      const color = (entity.properties && entity.properties.color !== undefined) ? (entity.properties.color as number) : previewColor;
+      const mat = new THREE.LineBasicMaterial({ color });
       obj = new THREE.Line(geo, mat);
     } else if (entity instanceof Circle) {
       const z = entity.elevation || 0;

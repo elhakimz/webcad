@@ -22,6 +22,18 @@ Creates a cylinder or a cone.
 *   **`r1`, `r2`**: Bottom and top radii (for cones/tapered cylinders).
 *   **`center`**: If `true`, the cylinder is centered vertically. Default: `false`.
 
+### `cone(r | d, h, center)`
+Creates a cone at the origin.
+*   **`r`**: Radius of the base. Default: `1`.
+*   **`d`**: Diameter of the base (overrides `r`).
+*   **`h`**: Height. Default: `1`.
+*   **`center`**: If `true`, the cone is centered vertically. Default: `false`.
+
+### `polyhedron(points, faces)`
+Creates a custom 3D polyhedron shape from a list of 3D vertices and a list of polygonal faces.
+*   **`points`**: An array of 3D coordinate arrays `[[x1,y1,z1], [x2,y2,z2], ...]`.
+*   **`faces`**: An array of index lists mapping vertices to form faces (e.g., `[[0,1,2], [0,2,3], ...]`).
+
 ---
 
 ## Boolean Operations
@@ -30,6 +42,10 @@ All boolean operations support an arbitrary number of children. Multiple childre
 
 ### `union() { ... }`
 Combines all child shapes into a single manifold solid.
+
+### `hull() { ... }`
+Computes the 3D Convex Hull (minimal convex bounding volume) enclosing all child geometries.
+*   **Note**: Requires at least 4 non-coplanar points total across children.
 
 ### `difference() { ... }`
 Subtracts all subsequent children from the first child.

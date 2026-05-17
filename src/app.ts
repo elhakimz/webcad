@@ -684,7 +684,7 @@ export class App {
         const cmdName = this.cmd.active.constructor.name;
         const lastLine = lines[lines.length - 1];
         const needsInput = !!(lastLine && lastLine.includes("(enter value)"));
-        const isSolidCmd = ['BoxCommand', 'CylinderCommand', 'ConeCommand', 'SphereCommand'].includes(cmdName);
+        const isSolidCmd = ['BoxCommand', 'CylinderCommand', 'ConeCommand', 'SphereCommand', 'PolyhedronCommand', 'HullCommand'].includes(cmdName);
         
         const showInput = isSolidCmd ? needsInput : !['LineCommand', 'CircleCommand', 'ArcCommand', 'EllipseCommand', 'HatchCommand', 'RectangCommand'].includes(cmdName);
         

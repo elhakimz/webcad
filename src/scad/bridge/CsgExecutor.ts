@@ -53,6 +53,15 @@ export class CsgExecutor {
       case "Boolean": {
         const children = await this.evaluateNodes(node.children);
         if (children.length === 0) return null;
+        if (node.name === "hull") {
+          const shapeIds = children.map(c => (c.userData as any).entityId).filter(Boolean);
+          const deflection = 0.1;
+          const geo = await this.occ.createConvexHull(undefined, shapeIds, deflection, id);
+          if (geo) {
+            geo.userData = { ...geo.userData, entityId: id };
+          }
+          return geo;
+        }
         return this.applyBoolean(node.name, children, id);
       }
 
@@ -107,11 +116,21 @@ export class CsgExecutor {
         const r2 = p.r2 !== undefined ? p.r2 : (p.r !== undefined ? p.r : (p.d2 !== undefined ? p.d2 / 2 : (p.d !== undefined ? p.d / 2 : (p[2] ?? 1))));
         const center = p.center ?? p[3] ?? false;
         const z = center ? -h/2 : 0;
-        if (r1 === r2) {
-          geo = await this.occ.createCylinder(0, 0, z, r1, h, deflection, id);
-        } else {
-          geo = await this.occ.createCone(0, 0, z, r1, h, deflection, id);
-        }
+        geo = await this.occ.createFrustum(0, 0, z, r1, r2, h, deflection, id);
+        break;
+      }
+      case "cone": {
+        const r = p.r !== undefined ? p.r : (p.d !== undefined ? p.d / 2 : (p[0] ?? 1));
+        const h = p.h ?? p[1] ?? 1;
+        const center = p.center ?? p[2] ?? false;
+        const z = center ? -h/2 : 0;
+        geo = await this.occ.createCone(0, 0, z, r, h, deflection, id);
+        break;
+      }
+      case "polyhedron": {
+        const points = p.points ?? p[0] ?? [];
+        const faces = p.faces ?? p.triangles ?? p[1] ?? [];
+        geo = await this.occ.createPolyhedron(points, faces, deflection, id);
         break;
       }
     }
@@ -169,8 +188,61 @@ export class CsgExecutor {
         break;
       }
       case "scale": {
-        // Scale still missing in OCC, returning null for now
-        return null;
+        const v = p.v ?? p[0] ?? [1, 1, 1];
+        let fx = 1, fy = 1, fz = 1;
+        if (Array.isArray(v)) {
+          fx = v[0] ?? 1;
+          fy = v[1] ?? 1;
+          fz = v[2] ?? 1;
+        } else if (typeof v === 'number') {
+          fx = fy = fz = v;
+        }
+        geo = await this.occ.scaleShape(sourceId, undefined, 0, 0, 0, targetId, deflection, fx, fy, fz);
+        break;
+      }
+      case "mirror": {
+        const v = p.v ?? p[0] ?? [1, 0, 0];
+        let mx = 1, my = 0, mz = 0;
+        if (Array.isArray(v)) {
+          mx = v[0] ?? 1;
+          my = v[1] ?? 0;
+          mz = v[2] ?? 0;
+        }
+        geo = await this.occ.mirrorShape(sourceId, undefined, undefined, targetId, deflection, { x: mx, y: my, z: mz });
+        break;
+      }
+      case "multmatrix": {
+        const m = p.m ?? p[0] ?? [
+          1, 0, 0, 0,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          0, 0, 0, 1
+        ];
+        let flatMatrix: number[] = [];
+        if (Array.isArray(m)) {
+          if (Array.isArray(m[0])) {
+            for (let r = 0; r < 4; r++) {
+              const row = m[r] ?? [0, 0, 0, 0];
+              for (let c = 0; c < 4; c++) {
+                flatMatrix.push(row[c] ?? (r === c ? 1 : 0));
+              }
+            }
+          } else {
+            flatMatrix = [...m];
+            while (flatMatrix.length < 16) {
+              flatMatrix.push(0);
+            }
+          }
+        } else {
+          flatMatrix = [
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            0, 0, 0, 1
+          ];
+        }
+        geo = await this.occ.multMatrixShape(sourceId, flatMatrix, targetId, deflection);
+        break;
       }
     }
     if (geo) {

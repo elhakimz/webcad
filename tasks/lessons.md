@@ -47,3 +47,15 @@ function shapeInfo(oc, shape) {
 ## 8. Three.js Scene Graph Lifecycle & Group Removal
 **Pattern**: In hierarchical 3D scene graphs, temporary or preview objects are often nested under a specific sub-group (e.g., `mainGroup`) to support mode-toggling and geometric grouping.
 **Correction**: Never use `this.scene.remove(obj)` to delete nested/grouped objects. In Three.js, `scene.remove(obj)` is a silent no-op if `obj` is not a direct child of the scene. Always use `obj.parent?.remove(obj)` to ensure robust, parent-relative removal regardless of where the object resides in the hierarchy. This prevents "hall of mirrors" rendering duplicates, memory leaks, and trailing outline artifacts.
+
+## 9. Non-Uniform Scaling & Analytic Surface Integrity
+**Pattern**: Applying `BRepBuilderAPI_GTransform` to standard CAD shapes (e.g., cylinders, spheres, cones) converts their analytic algebraic surfaces into complex, computationally expensive BSpline representations.
+**Correction**: Always check if scaling factors are uniform (`fx === fy === fz`) with a small tolerance. If uniform, fall back to `BRepBuilderAPI_Transform` and `gp_Trsf.SetScale` to retain primitive properties, keeping geometry lightweight and performant.
+
+## 10. Handedness-Aware Mirroring of Solids
+**Pattern**: Applying direct mirror transforms can invert the coordinate system orientation, resulting in negative volumes or mathematically "inside-out" solids that cause downstream boolean operations to fail.
+**Correction**: Upgrade mirroring to convert `gp_Trsf.SetMirror` matrices into `gp_GTrsf` applied with `copyGeometry = true` (via `BRepBuilderAPI_GTransform(shape, gTrsf, true)`). This correctly updates the face/normal orientation and determinant properties of the solid.
+
+## 11. Mathematical Singularity Prevention on Affine Transformations
+**Pattern**: Arbitrary user-defined custom transform matrices (`multmatrix`) can contain degenerate scale factors or zero scaling on one axis, collapsing 3D volumes into 2D planes and causing infinite loops in the solver.
+**Correction**: Always implement strict determinant calculation validation guards ($\vert \det(M) \vert \ge 10^{-9}$) to reject singular affine matrices before they reach the OpenCascade geometric kernel.

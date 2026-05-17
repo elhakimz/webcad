@@ -63,6 +63,18 @@ export class OCCWorkerClient {
     return this.send('createCone', { x, y, z, r, h, deflection, entityId });
   }
 
+  createFrustum(x: number, y: number, z: number, r1: number, r2: number, h: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('createFrustum', { x, y, z, r1, r2, h, deflection, entityId });
+  }
+
+  createPolyhedron(points: any[], faces: number[][], deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array, nakedLines?: number[][], isSolid?: boolean }> {
+    return this.send('createPolyhedron', { points, faces, deflection, entityId });
+  }
+
+  createConvexHull(points?: any[], shapeIds?: string[], deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array, isSolid?: boolean }> {
+    return this.send('createConvexHull', { points, shapeIds, deflection, entityId });
+  }
+
   filletSolid(entityId: string, edgeIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('filletSolid', { entityId, edgeIndex, radius });
   }
@@ -115,12 +127,16 @@ export class OCCWorkerClient {
     return this.send('rotateShape', { entityId, rx, ry, rz, cx, cy, cz, targetEntityId, deflection });
   }
 
-  mirrorShape(entityId: string, p1: { x: number, y: number, z?: number }, p2: { x: number, y: number, z?: number }, targetEntityId?: string, deflection?: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
-    return this.send('mirrorShape', { entityId, p1, p2, targetEntityId, deflection });
+  mirrorShape(entityId: string, p1: { x: number, y: number, z?: number } | undefined, p2: { x: number, y: number, z?: number } | undefined, targetEntityId?: string, deflection?: number, normal?: { x: number, y: number, z?: number }): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('mirrorShape', { entityId, p1, p2, targetEntityId, deflection, normal });
   }
 
-  scaleShape(entityId: string, factor: number, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
-    return this.send('scaleShape', { entityId, factor, cx, cy, cz, targetEntityId, deflection });
+  scaleShape(entityId: string, factor: number | undefined, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number, factorX?: number, factorY?: number, factorZ?: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('scaleShape', { entityId, factor, cx, cy, cz, targetEntityId, deflection, factorX, factorY, factorZ });
+  }
+
+  multMatrixShape(entityId: string, m: number[], targetEntityId?: string, deflection?: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('multMatrixShape', { entityId, m, targetEntityId, deflection });
   }
 
   releaseShapes(entityIds: string[]): Promise<void> {

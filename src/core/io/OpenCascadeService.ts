@@ -113,6 +113,38 @@ export class OpenCascadeService {
   }
 
   /**
+   * Creates a variable-radius frustum/cone/cylinder shape.
+   * Returns a Promise that resolves to THREE.BufferGeometry.
+   */
+  async createFrustum(x: number, y: number, z: number, r1: number, r2: number, h: number, deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createFrustum(x, y, z, r1, r2, h, deflection, entityId);
+    return this.buildGeometry(data);
+  }
+
+  /**
+   * Creates a polyhedron shape from points and face indices.
+   * Returns a Promise that resolves to THREE.BufferGeometry.
+   */
+  async createPolyhedron(points: any[], faces: number[][], deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createPolyhedron(points, faces, deflection, entityId);
+    const geom = this.buildGeometry(data);
+    geom.userData.nakedLines = data.nakedLines;
+    geom.userData.isSolid = data.isSolid;
+    return geom;
+  }
+
+  /**
+   * Creates a convex hull shape from points and/or child shape ids.
+   * Returns a Promise that resolves to THREE.BufferGeometry.
+   */
+  async createConvexHull(points?: any[], shapeIds?: string[], deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createConvexHull(points, shapeIds, deflection, entityId);
+    const geom = this.buildGeometry(data);
+    geom.userData.isSolid = data.isSolid;
+    return geom;
+  }
+
+  /**
    * Creates a basic 3D torus shape.
    * Returns a Promise that resolves to THREE.BufferGeometry.
    */
@@ -164,13 +196,18 @@ export class OpenCascadeService {
     return this.buildGeometry(data);
   }
 
-  async mirrorShape(entityId: string, p1: { x: number, y: number, z?: number }, p2: { x: number, y: number, z?: number }, targetEntityId?: string, deflection?: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.mirrorShape(entityId, p1, p2, targetEntityId, deflection);
+  async mirrorShape(entityId: string, p1: { x: number, y: number, z?: number } | undefined, p2: { x: number, y: number, z?: number } | undefined, targetEntityId?: string, deflection?: number, normal?: { x: number, y: number, z?: number }): Promise<THREE.BufferGeometry> {
+    const data = await this.client.mirrorShape(entityId, p1, p2, targetEntityId, deflection, normal);
     return this.buildGeometry(data);
   }
 
-  async scaleShape(entityId: string, factor: number, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.scaleShape(entityId, factor, cx, cy, cz, targetEntityId, deflection);
+  async scaleShape(entityId: string, factor: number | undefined, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number, factorX?: number, factorY?: number, factorZ?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.scaleShape(entityId, factor, cx, cy, cz, targetEntityId, deflection, factorX, factorY, factorZ);
+    return this.buildGeometry(data);
+  }
+
+  async multMatrixShape(entityId: string, m: number[], targetEntityId?: string, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.multMatrixShape(entityId, m, targetEntityId, deflection);
     return this.buildGeometry(data);
   }
 

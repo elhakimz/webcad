@@ -1107,6 +1107,328 @@ self.onmessage = async (e) => {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'createTorus', success: false, error: errorMessage, id });
     }
+  } else if (type === 'createPolyhedron') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { points, faces, deflection, entityId } = payload;
+    try {
+      const vertices: any[] = [];
+      for (const pt of points) {
+        const x = pt.x !== undefined ? pt.x : (pt[0] ?? 0);
+        const y = pt.y !== undefined ? pt.y : (pt[1] ?? 0);
+        const z = pt.z !== undefined ? pt.z : (pt[2] ?? 0);
+        const gpPnt = new oc.gp_Pnt_3(x, y, z);
+        const makeVertex = new oc.BRepBuilderAPI_MakeVertex(gpPnt);
+        vertices.push(detachShape(oc, makeVertex.Vertex()));
+        makeVertex.delete();
+        gpPnt.delete();
+      }
+
+      const faceShapes: any[] = [];
+      for (const faceIndices of faces) {
+        if (faceIndices.length < 3) continue;
+        const makeWire = new oc.BRepBuilderAPI_MakeWire();
+        let wireDone = true;
+        for (let j = 0; j < faceIndices.length; j++) {
+          const idx1 = faceIndices[j];
+          const idx2 = faceIndices[(j + 1) % faceIndices.length];
+          const v1 = vertices[idx1];
+          const v2 = vertices[idx2];
+          if (!v1 || !v2) {
+            wireDone = false;
+            break;
+          }
+          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_1(v1, v2);
+          if (makeEdge.IsDone()) {
+            makeWire.Add_1(makeEdge.Edge());
+          } else {
+            wireDone = false;
+          }
+          makeEdge.delete();
+        }
+
+        if (wireDone && makeWire.IsDone()) {
+          const makeFace = new oc.BRepBuilderAPI_MakeFace_1(makeWire.Wire(), true);
+          if (makeFace.IsDone()) {
+            faceShapes.push(detachShape(oc, makeFace.Face()));
+          }
+          makeFace.delete();
+        }
+        makeWire.delete();
+      }
+
+      if (faceShapes.length === 0) {
+        throw new Error("No valid faces could be created from the polyhedron specification.");
+      }
+
+      const sewing = new oc.BRepOffsetAPI_Sewing(1e-4);
+      for (const face of faceShapes) {
+        sewing.Add(face);
+      }
+      sewing.Perform();
+      let shape = sewing.SewedShape();
+
+      const nakedLines: number[][] = [];
+      try {
+        const edgeFaceMap = new oc.TopTools_IndexedDataMapOfShapeListOfShape();
+        oc.TopExp.MapShapesAndAncestors(
+          shape, 
+          oc.TopAbs_ShapeEnum.TopAbs_EDGE, 
+          oc.TopAbs_ShapeEnum.TopAbs_FACE, 
+          edgeFaceMap
+        );
+        const nbEdges = edgeFaceMap.Extent();
+        for (let i = 1; i <= nbEdges; i++) {
+          const faceList = edgeFaceMap.FindFromIndex(i);
+          if (faceList.Extent() === 1) {
+            const edge = oc.TopoDS.Edge_1(edgeFaceMap.FindKey(i));
+            const firstVertex = oc.TopExp.FirstVertex(edge);
+            const lastVertex = oc.TopExp.LastVertex(edge);
+            if (!firstVertex.IsNull() && !lastVertex.IsNull()) {
+              const p1 = oc.BRep_Tool.Pnt(firstVertex);
+              const p2 = oc.BRep_Tool.Pnt(lastVertex);
+              nakedLines.push([p1.X(), p1.Y(), p1.Z(), p2.X(), p2.Y(), p2.Z()]);
+              p1.delete();
+              p2.delete();
+            }
+            firstVertex.delete();
+            lastVertex.delete();
+            edge.delete();
+          }
+          faceList.delete();
+        }
+        edgeFaceMap.delete();
+      } catch (e) {
+        console.warn("Error finding naked edges:", e);
+      }
+
+      let isSolid = false;
+      if (nakedLines.length === 0) {
+        const makeSolid = new oc.BRepBuilderAPI_MakeSolid_1();
+        try {
+          if (shape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_SHELL) {
+            const shell = oc.TopoDS.Shell_1(shape);
+            makeSolid.Add(shell);
+            if (makeSolid.IsDone()) {
+              shape = makeSolid.Solid();
+              isSolid = true;
+            }
+          } else {
+            const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_SHELL, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+            let shellCount = 0;
+            while (explorer.More()) {
+              const shell = oc.TopoDS.Shell_1(explorer.Current());
+              makeSolid.Add(shell);
+              shellCount++;
+              explorer.Next();
+            }
+            explorer.delete();
+            if (shellCount > 0 && makeSolid.IsDone()) {
+              shape = makeSolid.Solid();
+              isSolid = true;
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to solidify shell:", e);
+        }
+        makeSolid.delete();
+      }
+
+      shape = detachShape(oc, shape);
+
+      if (entityId) {
+        cacheShape(entityId, shape);
+      }
+
+      const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
+      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+
+      if (geometryData.positions.length === 0) {
+        throw new Error("No geometry generated from shape. Positions array is empty.");
+      }
+
+      sewing.delete();
+      for (const v of vertices) v.delete();
+      for (const f of faceShapes) f.delete();
+
+      self.postMessage({ type: 'createPolyhedron', success: true, payload: { ...geometryData, brepBytes, nakedLines, isSolid }, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'createPolyhedron', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'createConvexHull') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { points: inputPoints, shapeIds, deflection, entityId } = payload;
+    try {
+      const points: { x: number, y: number, z: number }[] = [];
+      // 1. Extract input points
+      if (inputPoints) {
+        for (const pt of inputPoints) {
+          const px = pt.x !== undefined ? pt.x : (pt[0] ?? 0);
+          const py = pt.y !== undefined ? pt.y : (pt[1] ?? 0);
+          const pz = pt.z !== undefined ? pt.z : (pt[2] ?? 0);
+          points.push({ x: px, y: py, z: pz });
+        }
+      }
+      // 2. Extract points from shapes
+      if (shapeIds) {
+        for (const sId of shapeIds) {
+          const shape = shapeCache.get(sId);
+          if (shape && !shape.IsNull()) {
+            const mesh = new oc.BRepMesh_IncrementalMesh(shape, deflection || 0.5, false, 0.5, false);
+            mesh.delete();
+
+            const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+            while (explorer.More()) {
+              const face = oc.TopoDS.Face_1(explorer.Current());
+              const loc = new oc.TopLoc_Location_1();
+              const triangulation = oc.BRep_Tool.Triangulation(face, loc);
+              if (triangulation && !triangulation.IsNull()) {
+                const trans = loc.Transformation();
+                const nbNodes = triangulation.NbNodes();
+                for (let i = 1; i <= nbNodes; i++) {
+                  const node = triangulation.Node(i);
+                  const pnt = node.Transformed(trans);
+                  points.push({ x: pnt.X(), y: pnt.Y(), z: pnt.Z() });
+                  pnt.delete();
+                  node.delete();
+                }
+                triangulation.delete();
+              }
+              loc.delete();
+              face.delete();
+              explorer.Next();
+            }
+            explorer.delete();
+          }
+        }
+      }
+
+      // Deduplicate points that are extremely close
+      const uniquePoints: { x: number, y: number, z: number }[] = [];
+      const seen = new Set<string>();
+      for (const p of points) {
+        const key = `${Math.round(p.x * 10000)},${Math.round(p.y * 10000)},${Math.round(p.z * 10000)}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniquePoints.push(p);
+        }
+      }
+
+      if (uniquePoints.length < 4) {
+        throw new Error("Convex hull requires at least 4 unique points.");
+      }
+
+      // Compute convex hull faces
+      const faces = computeConvexHull3D(uniquePoints);
+
+      // Build B-Rep solid from the points and faces
+      const vertices: any[] = [];
+      for (const pt of uniquePoints) {
+        const gpPnt = new oc.gp_Pnt_3(pt.x, pt.y, pt.z);
+        const makeVertex = new oc.BRepBuilderAPI_MakeVertex(gpPnt);
+        vertices.push(detachShape(oc, makeVertex.Vertex()));
+        makeVertex.delete();
+        gpPnt.delete();
+      }
+
+      const faceShapes: any[] = [];
+      for (const faceIndices of faces) {
+        const makeWire = new oc.BRepBuilderAPI_MakeWire();
+        let wireDone = true;
+        for (let j = 0; j < 3; j++) {
+          const idx1 = faceIndices[j];
+          const idx2 = faceIndices[(j + 1) % 3];
+          const v1 = vertices[idx1];
+          const v2 = vertices[idx2];
+          if (!v1 || !v2) {
+            wireDone = false;
+            break;
+          }
+          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_1(v1, v2);
+          if (makeEdge.IsDone()) {
+            makeWire.Add_1(makeEdge.Edge());
+          } else {
+            wireDone = false;
+          }
+          makeEdge.delete();
+        }
+
+        if (wireDone && makeWire.IsDone()) {
+          const makeFace = new oc.BRepBuilderAPI_MakeFace_1(makeWire.Wire(), true);
+          if (makeFace.IsDone()) {
+            faceShapes.push(detachShape(oc, makeFace.Face()));
+          }
+          makeFace.delete();
+        }
+        makeWire.delete();
+      }
+
+      if (faceShapes.length === 0) {
+        throw new Error("No BRep faces could be built from the convex hull triangulation.");
+      }
+
+      const sewing = new oc.BRepOffsetAPI_Sewing(1e-4);
+      for (const face of faceShapes) {
+        sewing.Add(face);
+      }
+      sewing.Perform();
+      let shape = sewing.SewedShape();
+
+      // Solidify
+      let isSolid = false;
+      const makeSolid = new oc.BRepBuilderAPI_MakeSolid_1();
+      try {
+        if (shape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_SHELL) {
+          const shell = oc.TopoDS.Shell_1(shape);
+          makeSolid.Add(shell);
+          if (makeSolid.IsDone()) {
+            shape = makeSolid.Solid();
+            isSolid = true;
+          }
+        } else {
+          const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_SHELL, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+          let shellCount = 0;
+          while (explorer.More()) {
+            const shell = oc.TopoDS.Shell_1(explorer.Current());
+            makeSolid.Add(shell);
+            shellCount++;
+            explorer.Next();
+          }
+          explorer.delete();
+          if (shellCount > 0 && makeSolid.IsDone()) {
+            shape = makeSolid.Solid();
+            isSolid = true;
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to solidify convex hull shell:", e);
+      }
+      makeSolid.delete();
+
+      shape = detachShape(oc, shape);
+
+      if (entityId) {
+        cacheShape(entityId, shape);
+      }
+
+      const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
+      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+
+      sewing.delete();
+      for (const v of vertices) v.delete();
+      for (const f of faceShapes) f.delete();
+
+      self.postMessage({ type: 'createConvexHull', success: true, payload: { ...geometryData, brepBytes, isSolid }, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'createConvexHull', success: false, error: errorMessage, id });
+    }
   } else if (type === 'createExtrude') {
     if (!oc) {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
@@ -2388,4 +2710,177 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
   edgeExplorer.delete();
 
   return { positions, indices, faceMapping, edgeLines };
+}
+
+interface Plane3D {
+  normal: { x: number, y: number, z: number };
+  offset: number;
+}
+
+function computeConvexHull3D(pts: { x: number, y: number, z: number }[]): number[][] {
+  if (pts.length < 4) {
+    throw new Error("Convex hull requires at least 4 points.");
+  }
+
+  // Jitter points slightly to prevent coplanar/collinear degeneracies
+  const points = pts.map(p => ({
+    x: p.x + (Math.random() - 0.5) * 1e-7,
+    y: p.y + (Math.random() - 0.5) * 1e-7,
+    z: p.z + (Math.random() - 0.5) * 1e-7
+  }));
+
+  const getSignedDistance = (plane: Plane3D, p: { x: number, y: number, z: number }) => {
+    return plane.normal.x * p.x + plane.normal.y * p.y + plane.normal.z * p.z - plane.offset;
+  };
+
+  const makePlane = (i0: number, i1: number, i2: number): Plane3D => {
+    const p0 = points[i0];
+    const p1 = points[i1];
+    const p2 = points[i2];
+    
+    const ux = p1.x - p0.x, uy = p1.y - p0.y, uz = p1.z - p0.z;
+    const vx = p2.x - p0.x, vy = p2.y - p0.y, vz = p2.z - p0.z;
+    
+    let nx = uy * vz - uz * vy;
+    let ny = uz * vx - ux * vz;
+    let nz = ux * vy - uy * vx;
+    
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    nx /= len; ny /= len; nz /= len;
+    
+    return {
+      normal: { x: nx, y: ny, z: nz },
+      offset: nx * p0.x + ny * p0.y + nz * p0.z
+    };
+  };
+
+  let i0 = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].x < points[i0].x) i0 = i;
+  }
+
+  let i1 = 0;
+  let maxDistSq = -1;
+  for (let i = 0; i < points.length; i++) {
+    if (i === i0) continue;
+    const dx = points[i].x - points[i0].x;
+    const dy = points[i].y - points[i0].y;
+    const dz = points[i].z - points[i0].z;
+    const dSq = dx * dx + dy * dy + dz * dz;
+    if (dSq > maxDistSq) {
+      maxDistSq = dSq;
+      i1 = i;
+    }
+  }
+
+  let i2 = -1;
+  let maxLineDistSq = -1;
+  const p0 = points[i0], p1 = points[i1];
+  const ux = p1.x - p0.x, uy = p1.y - p0.y, uz = p1.z - p0.z;
+  const uLenSq = ux * ux + uy * uy + uz * uz;
+  for (let i = 0; i < points.length; i++) {
+    if (i === i0 || i === i1) continue;
+    const px = points[i].x - p0.x, py = points[i].y - p0.y, pz = points[i].z - p0.z;
+    const t = (px * ux + py * uy + pz * uz) / uLenSq;
+    const dx = px - t * ux;
+    const dy = py - t * uy;
+    const dz = pz - t * uz;
+    const dSq = dx * dx + dy * dy + dz * dz;
+    if (dSq > maxLineDistSq) {
+      maxLineDistSq = dSq;
+      i2 = i;
+    }
+  }
+
+  let i3 = -1;
+  let maxPlaneDist = -1;
+  const basePlane = makePlane(i0, i1, i2);
+  for (let i = 0; i < points.length; i++) {
+    if (i === i0 || i === i1 || i === i2) continue;
+    const dist = Math.abs(getSignedDistance(basePlane, points[i]));
+    if (dist > maxPlaneDist) {
+      maxPlaneDist = dist;
+      i3 = i;
+    }
+  }
+
+  if (i2 === -1 || i3 === -1 || maxPlaneDist < 1e-9) {
+    throw new Error("Points are collinear or coplanar; cannot build 3D hull.");
+  }
+
+  const cx = (points[i0].x + points[i1].x + points[i2].x + points[i3].x) / 4;
+  const cy = (points[i0].y + points[i1].y + points[i2].y + points[i3].y) / 4;
+  const cz = (points[i0].z + points[i1].z + points[i2].z + points[i3].z) / 4;
+  const center = { x: cx, y: cy, z: cz };
+
+  interface Face {
+    v: [number, number, number];
+    plane: Plane3D;
+  }
+
+  let faces: Face[] = [];
+  const createFace = (v0: number, v1: number, v2: number) => {
+    const plane = makePlane(v0, v1, v2);
+    if (getSignedDistance(plane, center) > 0) {
+      plane.normal.x *= -1;
+      plane.normal.y *= -1;
+      plane.normal.z *= -1;
+      plane.offset *= -1;
+      return { v: [v2, v1, v0] as [number, number, number], plane };
+    }
+    return { v: [v0, v1, v2] as [number, number, number], plane };
+  };
+
+  faces.push(createFace(i0, i1, i2));
+  faces.push(createFace(i0, i2, i3));
+  faces.push(createFace(i0, i3, i1));
+  faces.push(createFace(i1, i3, i2));
+
+  const processed = new Set<number>([i0, i1, i2, i3]);
+  for (let i = 0; i < points.length; i++) {
+    if (processed.has(i)) continue;
+    const pt = points[i];
+
+    const visible: number[] = [];
+    for (let f = 0; f < faces.length; f++) {
+      if (getSignedDistance(faces[f].plane, pt) > 1e-9) {
+        visible.push(f);
+      }
+    }
+
+    if (visible.length === 0) continue;
+
+    const edgeCounts = new Map<string, { v1: number, v2: number, count: number }>();
+    for (const fIdx of visible) {
+      const f = faces[fIdx];
+      for (let j = 0; j < 3; j++) {
+        const v1 = f.v[j];
+        const v2 = f.v[(j + 1) % 3];
+        const key = `${v1}-${v2}`;
+        const keyRev = `${v2}-${v1}`;
+        if (edgeCounts.has(keyRev)) {
+          edgeCounts.get(keyRev)!.count++;
+        } else if (edgeCounts.has(key)) {
+          edgeCounts.get(key)!.count++;
+        } else {
+          edgeCounts.set(key, { v1, v2, count: 1 });
+        }
+      }
+    }
+
+    const horizon: { v1: number, v2: number }[] = [];
+    for (const edge of edgeCounts.values()) {
+      if (edge.count === 1) {
+        horizon.push(edge);
+      }
+    }
+
+    faces = faces.filter((_, idx) => !visible.includes(idx));
+
+    for (const edge of horizon) {
+      faces.push(createFace(edge.v1, edge.v2, i));
+    }
+  }
+
+  return faces.map(f => f.v);
 }

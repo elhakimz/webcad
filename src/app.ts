@@ -84,8 +84,9 @@ export class App {
   private currentControls: any[] | null | undefined = null;
   private statusBarUpdate: ((layer: Layer) => void) | null = null
   private layersWindowUpdate: (() => void) | null = null
+  private objectsWindowUpdate: (() => void) | null = null
   private promptUpdate: (() => void) | null = null;
-  private propertiesWindow: any = null;
+  public propertiesWindow: any = null;
   private dispatcher: ResultDispatcher;
   public activeGrip: { entityId: string, gripId: string, startPoint: { x: number, y: number } } | null = null;
   public activeCenterGrip: { center: {x: number, y: number}, mode: 'move'|'scale'|'rotate', startMouse: {x: number, y: number}, startScreenMouse: {x: number, y: number}, originalEntities: import('./core/model/Entity').Entity[] } | null = null;
@@ -110,6 +111,14 @@ export class App {
 
   triggerLayersWindowUpdate() {
     if (this.layersWindowUpdate) this.layersWindowUpdate();
+  }
+
+  setObjectsWindowUpdate(updateFn: () => void) {
+    this.objectsWindowUpdate = updateFn;
+  }
+
+  triggerObjectsWindowUpdate() {
+    if (this.objectsWindowUpdate) this.objectsWindowUpdate();
   }
 
   setCommandLine(printFn: (msg: string) => void) {
@@ -1231,7 +1240,8 @@ export class App {
         updateLayerVisibility: () => this.updateLayerVisibility(),
         terminateActiveCommand: () => this.terminateActiveCommand(),
         onStatusBarUpdate: (l) => { if (this.statusBarUpdate) this.statusBarUpdate(l); },
-        onLayersChange: () => { if (this.layersWindowUpdate) this.layersWindowUpdate(); }
+        onLayersChange: () => { if (this.layersWindowUpdate) this.layersWindowUpdate(); },
+        onEntitiesChange: () => { if (this.objectsWindowUpdate) this.objectsWindowUpdate(); }
       };
 
       const actionResult = await (async () => {
@@ -1339,6 +1349,7 @@ export class App {
       }
     }
     this.viewer.render();
+    this.triggerObjectsWindowUpdate();
   }
 
   public syncFromDocument() {
@@ -1356,13 +1367,14 @@ export class App {
     }
 
     this.updateGizmoAttachment();
+    this.triggerObjectsWindowUpdate();
   }
 
   public updateGizmoAttachment() {
     if (this.selectedEntityIds.size === 1) {
       const id = Array.from(this.selectedEntityIds)[0];
       const entity = this.doc.getEntity(id);
-      if (entity instanceof Solid3D) {
+      if (entity instanceof Solid3D || (entity && entity.constructor.name === "Insert")) {
         let obj = this.viewer.scene.getObjectByName(id);
         if (!obj) {
           this.viewer.scene.traverse(child => {
@@ -1373,7 +1385,7 @@ export class App {
           obj = obj.parent;
         }
         if (obj) {
-          this.gizmoManager.attachToObject(obj, entity);
+          this.gizmoManager.attachToObject(obj, entity as any);
           return;
         }
       }

@@ -256,19 +256,29 @@ export class ScadParser {
     }
 
     if (this.match(TokenType.LSQUARE)) {
-      const elements: AST.Expression[] = [];
-      if (!this.check(TokenType.RSQUARE)) {
-        do {
-          elements.push(this.expression());
-        } while (this.match(TokenType.COMMA));
+      if (this.check(TokenType.RSQUARE)) {
+        this.advance();
+        return { type: "ArrayExpression", elements: [] };
+      }
+      
+      const first = this.expression();
+      if (this.match(TokenType.COLON)) {
+        const second = this.expression();
+        if (this.match(TokenType.COLON)) {
+          const third = this.expression();
+          this.consume(TokenType.RSQUARE, "Expect ']' after range expression.");
+          return { type: "RangeExpression", start: first, step: second, end: third };
+        } else {
+          this.consume(TokenType.RSQUARE, "Expect ']' after range expression.");
+          return { type: "RangeExpression", start: first, end: second };
+        }
+      }
+      
+      const elements: AST.Expression[] = [first];
+      while (this.match(TokenType.COMMA)) {
+        elements.push(this.expression());
       }
       this.consume(TokenType.RSQUARE, "Expect ']' after array.");
-      
-      // Handle range [start:step:end] or [start:end]
-      if (elements.length === 1 && this.match(TokenType.COLON)) {
-         // This logic is slightly wrong because SCAD ranges are [start:end] or [start:step:end]
-         // Actually [start:end] is common.
-      }
       return { type: "ArrayExpression", elements };
     }
 

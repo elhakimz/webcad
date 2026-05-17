@@ -55,6 +55,13 @@ export class ToolWindowBar {
     });
   }
 
+  public setVisible(id: string, visible: boolean) {
+    const item = this.items.get(id);
+    if (item) {
+      item.btn.style.display = visible ? 'flex' : 'none';
+    }
+  }
+
   public setActive(id: string, active: boolean) {
     const item = this.items.get(id);
     if (!item) return;

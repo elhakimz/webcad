@@ -115,6 +115,14 @@ export class OCCWorkerClient {
     return this.send('rotateShape', { entityId, rx, ry, rz, cx, cy, cz, targetEntityId, deflection });
   }
 
+  mirrorShape(entityId: string, p1: { x: number, y: number, z?: number }, p2: { x: number, y: number, z?: number }, targetEntityId?: string, deflection?: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('mirrorShape', { entityId, p1, p2, targetEntityId, deflection });
+  }
+
+  scaleShape(entityId: string, factor: number, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('scaleShape', { entityId, factor, cx, cy, cz, targetEntityId, deflection });
+  }
+
   releaseShapes(entityIds: string[]): Promise<void> {
     return this.send('releaseShapes', { entityIds });
   }

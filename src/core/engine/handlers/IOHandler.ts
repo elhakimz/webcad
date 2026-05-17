@@ -5,6 +5,7 @@ import { DXFImporter } from "../../io/dxfImport";
 import { Solid3D } from "../../model/Solid3D";
 import { OpenCascadeService } from "../../io/OpenCascadeService";
 import { PersistenceService } from "../../persistence/PersistenceService";
+import { rebuildSweepGeometry } from "./transform/SweepGeometryUtil";
 
 export class IOHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -151,6 +152,20 @@ export class IOHandler implements ActionHandler {
               params.points, params.axisPoint, params.axisDir,
               params.angle, params.thickness, deflection, params.isClosed, entity.id
             );
+          } else if (type === 'sweep') {
+            const profileEntity = doc.getEntity(params.profileId);
+            const spineEntity = doc.getEntity(params.spineId);
+            if (profileEntity && spineEntity) {
+              await rebuildSweepGeometry(
+                profileEntity,
+                spineEntity,
+                params.isSolid,
+                facetres,
+                deflection,
+                entity.id,
+                params.cornerMode
+              );
+            }
           }
           console.log(`Rebuilt worker cache for ${entity.id} (${type})`);
         } catch (err) {

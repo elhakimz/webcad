@@ -2,77 +2,50 @@
 
 A faithful CAD drafting experience, reimagined for the modern web using **TypeScript**, **Three.js**, and **Vite**.
 
-![WebCAD Interface Screenshot](screenshots/screen1.png)
+![WebCAD Interface Screenshot](screenshots/modelling.png)
+
+![WebCAD Interface Screenshot](screenshots/scripting.png)
+
 
 ## 🚀 Features
 
 ### 🎯 Precision Drafting
--   **Geometric Kernel:** Integrated **OpenCascade.js** (OCCT) for professional-grade 2D/3D operations and file processing.
--   **Snap Engine:** Real-time geometric snapping (Endpoint, Midpoint, Center) and **GRID Snap**.
--   **Drafting Aids:**
-    -   **ORTHO:** Lock movement to strictly horizontal/vertical axes.
-    -   **GRID:** Visual reference dot grid that pans and scales with the viewport.
-    -   **SNAP:** Discrete coordinate input intervals (configured via `SNAP` command).
-    -   **Active Point Marker:** Dynamic cyan 'X' marker at cursor and reference points during point specification.
--   **Command Engine:** Fully asynchronous state-machine based command system.
--   **Coordinate Parser:** Supports absolute (`x,y`), relative Cartesian (`@dx,dy`), and relative Polar (`@dist<angle`) inputs.
--   **Visual Feedback:** Real-time "rubber-banding" previews, formatting echoing, and helper markers.
+- **Geometric Kernel:** Powered by **OpenCascade.js** (OCCT) and optimized for high-performance 2D drafting and 3D modeling operations.
+- **Snap Engine:** Real-time, sub-pixel snapping modes (Endpoint, Midpoint, Center, Bulge Center) and adjustable **GRID Snap**.
+- **Drafting Aids:**
+  - **ORTHO:** Restricts vector paths strictly to horizontal/vertical axes.
+  - **GRID:** Scalable visual reference dot grid that pans and updates fluidly with the viewport camera.
+  - **SNAP:** Configurable discrete coordinate input spacing intervals.
+  - **Coordinate Parser:** Fully supports absolute (`x,y`), relative Cartesian (`@dx,dy`), and relative Polar (`@dist<angle`) formatting.
+- **Interactive Previews:** Asynchronous, state-machine based command loops rendering real-time rubber-banding lines, arcs, circles, and curves during editing.
 
 ### 💾 File I/O & Interoperability
--   **DXF I/O Layer:** **Custom R12/R14 ASCII Writer & Parser** for industry-standard interoperability.
--   **IndexedDB Persistence:** Robust storage for drawings and 3D shapes using RxDB.
--   **Solid Persistence:** Switched to STEP format for reliable saving and loading of 3D boolean shapes.
--   **File Operations Window:** Dedicated UI panel listing DB projects and static files, featuring:
-    -   **Date-Time Column:** Shows when the project was last updated.
-    -   **Delete with Confirmation:** Safe deletion of stored projects.
--   **Main Menu Integration:** Integrated "Edit an EXISTING drawing" workflow with dynamic file listing and selection.
+- **Custom DXF Parser & Writer:** High-fidelity R12/R14 DXF engine for saving and loading complex CAD drawings with layers, hatches, and blocks.
+- **Parametric Block Library:** A modular block registration system supporting 2D sketches and 3D solids.
+  - **Dynamic Sidebar Folder Browsing:** Browses local block files (`blocks/2D` and `blocks/3D`) with immediate popup thumbnails showing interactive previews of solids and sketches.
+  - **Robust File Import:** Imports `.step` files for 3D solids and `.dxf` drawings for 2D blocks seamlessly.
+  - **Instant Origin Placement:** Features a dedicated "Place" button to automatically instantiate a block definition directly at origin coordinates `(0, 0, 0)`.
+- **Database Persistence:** Secure background storage using IndexedDB with structural integrity checks to prevent data corruption.
 
 ### ⌨️ Classic Commands
--   **LINE:** Continuous drawing with `Undo` (U), `Close` (C), and `Exit` (E/Enter) shortcuts.
--   **PLINE:** Connected sequences of line and arc segments with interactive mode switching and bulges.
--   **ARC:** 3-Point arc implementation (Start, Second Point, End).
--   **CIRCLE:** Center/Radius and Center/Diameter methods (toggle via `D`/`R` keys).
--   **POLYGON:** Regular polygons via Center/Radius or Edge methods with real-time radius/angle feedback.
--   **SOLID:** Solid-filled 2D planar triangles and quadrilaterals with chaining.
--   **SPLINE:** Cubic B-spline curves with multi-point interactive drafting and clamped knot support.
--   **TRACE:** Solid filled lines of specified width.
--   **POINT:** Single point entities.
--   **TEXT:** Single-line annotations with configurable height and rotation (using `osifont` ISO 3098).
--   **HATCH:** Pattern fill with full .PAT file support (ANSI31, ANSI32, etc.) and DXF persistence.
--   **LAYER:** Professional layer management (New, Set, On/Off, Freeze/Thaw, Lock/Unlock, Color, Linetype).
--   **LINETYPE (LTYPE):** Global and per-layer linetype definitions.
--   **REGEN:** Global viewport regeneration to synchronize display properties.
--   **UNITS:** Set drawing units (Decimal, Metric, Architectural) and coordinate precision (0-8 decimals).
--   **FILLET:** Professional corner rounding with automated trimming/extending and tangent arc insertion.
--   **TRIM / EXTEND:** Precise geometric modification using entity-to-entity intersections.
--   **OFFSET / ARRAY:** Distance-based offset and Rectangular/Polar array generation.
--   **BLOCK / INSERT:** Symbol management with block definitions and efficient viewport instantiation.
--   **ERASE / MOVE / COPY / STRETCH / ROTATE / SCALE / MIRROR:** Full suite of precise modification tools with crossing-window support.
--   **DIMENSIONING:** Professional engineering annotations including `DIMLINEAR`, `DIMALIGNED`, `DIMRADIUS` (with automatic one-click placement), and `DIMANGULAR`. Now features crisp high-resolution text rendering and automatic dimension line breaking for centered text.
--   **PLOT:** Plot to SVG or PDF. Features a professional text-to-path outlining solution using `opentype.js` to ensure fonts look identical on all devices without requiring font embedding.
--   **ZOOM:** `Zoom Window`, `Zoom All`, and factor-based zooming.
--   **NEW:** Workspace reset with safety confirmation prompt.
+- **Drafting Suite:** `LINE`, `PLINE` (Polyline with bulge arcs), `ARC` (3-Point), `CIRCLE` (Center/Radius, Center/Diameter), `POLYGON` (Inscribed/Circumscribed), `SPLINE` (Cubic B-Spline), `SOLID`, `TEXT`, `HATCH` (leak-proof Midpoint Clipping with `.pat` pattern support).
+- **Modification Tools:** `TRIM`, `EXTEND`, `FILLET` (tangent arc blending), `OFFSET`, `ARRAY` (Rectangular/Polar), `ERASE`, `MOVE`, `COPY`, `ROTATE`, `SCALE`, `MIRROR`, and `STRETCH` (Crossing Window vertex shifting).
+- **Workspace Utilities:** `REGEN` (forces full redraw), `UNITS` (Decimal, Architectural, Metric with selectable precision), `NEW` (resets document with confirmation).
+- **Dimensioning & Plotting:**
+  - `DIMLINEAR`, `DIMALIGNED`, `DIMRADIUS`, `DIMANGULAR` with crisp engineering annotations and text gaps.
+  - `PLOT` with high-fidelity vector SVG and PDF exporting (utilizing path-outlining via `opentype.js`).
 
 ### 🎮 3D Interaction & Persistence
-- **3D Gizmo**: Interactive translation and rotation gizmo for `Solid3D` entities.
-- **Proportional Scaling**: Gizmo size automatically scales based on the selected object's bounding box.
-- **Smart DXF I/O**: Manipulated position and rotation are saved to DXF (applying matrix transforms to vertices). Objects are intelligently grouped back on load using custom DXF XData.
-- **Boolean Operations**: Support for Union, Subtract, and Intersect operations on 3D Solids via OpenCascade.
-- **Rotation Preservation**: Boolean operations correctly preserve the position and rotation of operands by calculating the true center of shapes.
-- **Solid Toolbar**: Floating toolbar for quick access to Box, Cylinder, Sphere, and Boolean operations.
-
-### 🖥️ Modern Dark UI (AutoCAD Classic Style)
--   **Modern Dark Theme:** Sleek dark interface with clean typography, styled after classic AutoCAD but modernized for the web.
--   **Main Menu:** Classic text-based startup screen with project management options.
--   **Hierarchical Side Menu:** Fully interactive menu navigation (e.g., `DRAW` -> `LINE:`).
--   **Command Area:** Multi-line status log with persistent command prompt, cleaned interaction echoes, and discovery (`?` to list files/shapes).
--   **Status Bar:** Real-time world coordinate tracking (respecting `UNITS`), layer info, and clickable mode tags (**[SNAP]**, **[GRID]**, **[ORTHO]**).
+- **3D Solid Modeling:** Integrated command suite to create primitive solids: `BOX`, `CYLINDER`, `SPHERE`, `CONE`, and `TORUS`.
+- **Boolean CSG Operations:** High-level 3D Boolean Union, Subtraction, and Intersection operations powered by OpenCascade.
+- **Interactive 3D Gizmo:** High-fidelity widget for precise 3D object translations and rotations.
+- **Proportional Scaling:** Gizmo handles dynamically scale based on selected entity bounding box sizes.
+- **Physical Save/Load (STEP):** 3D boolean shapes are serialized directly to professional STEP format in the persistent drawing DB.
 
 ### 🖱️ Selection & Interaction
--   **Selection Engine:** Advanced AABB-based hit-testing and precise geometry selection (including Lines, Circles, Arcs, and Dimensions).
--   **Box Selection:** Window/Crossing modes with dashed visual indicators.
--   **Auto-Focus:** Intelligent command line focus when typing alphanumeric keys without an active process.
--   **Pan & Zoom:** Intuitive middle-click pan and cursor-centered scroll zoom.
+- **Advanced Selection Engine:** Precise AABB spatial tree hit-testing supporting individual entity selection, Window/Crossing selection boxes, and intersection matching.
+- **Layer-Locked Selection:** Selection mechanisms respect layer visibility, frozen, and locked states.
+- **Dynamic Mode Switcher:** Smooth tabbed environment that isolates 3D SCAD scripting viewports from 2D manual drafting, altering interface backdrops (e.g. high-contrast workspace vs deep-space editor).
 
 ## 🛠️ Installation & Usage
 

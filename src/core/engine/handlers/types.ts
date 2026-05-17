@@ -18,6 +18,7 @@ export interface AppContext {
   terminateActiveCommand(): void;
   onStatusBarUpdate(layer: Layer): void;
   onLayersChange(): void;
+  onEntitiesChange?(): void;
 }
 
 export interface ActionHandler {

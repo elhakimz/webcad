@@ -1,5 +1,6 @@
 import { ActionHandler, AppContext } from "../types";
 import { CommandAction, CommandResponse } from "../../../commands/types";
+import { OpenCascadeService } from "../../../io/OpenCascadeService";
 
 export class CopyHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -12,16 +13,45 @@ export class CopyHandler implements ActionHandler {
     if (action.action === 'copy' && (action.id || action.ids) && action.dx !== undefined) {
       const ids = action.ids || (action.id ? [action.id] : []);
       const newIds: string[] = [];
-      ids.forEach(id => {
+      
+      for (const id of ids) {
         const source = doc.getEntity(id);
         if (source) {
-          const newId = source.id + "_COPY_" + Math.random().toString(36).substr(2, 5);
+          const newId = doc.getNextId(source.constructor.name === "Solid3D" || (source as any).type === "Solid3D" ? "SL" : "CP");
           const copy = source.clone(newId);
-          copy.move(action.dx!, action.dy!);
+          const isSolid3D = (source as any).type === "Solid3D" || source.constructor.name === "Solid3D";
+          
+          if (isSolid3D) {
+            try {
+              const dx = action.dx!;
+              const dy = action.dy!;
+              const dz = action.dz || 0;
+              
+              const geom = await OpenCascadeService.getInstance().transformShape(source.id, dx, dy, dz, newId);
+              
+              const solidCopy = copy as any;
+              solidCopy.positions = Array.from(geom.attributes.position.array);
+              solidCopy.indices = geom.index ? Array.from(geom.index.array) : [];
+              solidCopy.faceMapping = geom.userData.faceMapping;
+              solidCopy.edgeLines = geom.userData.edgeLines;
+              solidCopy.brepSnapshot = geom.userData.brepSnapshot;
+              
+              if ('move3D' in copy && typeof (copy as any).move3D === 'function') {
+                (copy as any).move3D(dx, dy, dz);
+              } else {
+                copy.move(dx, dy);
+              }
+            } catch (err) {
+              console.error(`Failed to copy shape in worker for ${id}:`, err);
+            }
+          } else {
+            copy.move(action.dx!, action.dy!);
+          }
+          
           addEntity(copy, true, false); 
           newIds.push(newId);
         }
-      });
+      }
       this.cleanup(context);
       return `Entities copied to [${newIds.join(', ')}].`;
     }

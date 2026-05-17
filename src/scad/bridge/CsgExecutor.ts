@@ -53,15 +53,12 @@ export class CsgExecutor {
       case "Boolean": {
         const children = await this.evaluateNodes(node.children);
         if (children.length === 0) return null;
-        if (children.length === 1 && node.name === "union") return children[0];
-        
         return this.applyBoolean(node.name, children, id);
       }
 
       case "Group": {
         const children = await this.evaluateNodes(node.children);
         if (children.length === 0) return null;
-        if (children.length === 1) return children[0];
         return this.applyBoolean("union", children, id);
       }
     }
@@ -81,6 +78,7 @@ export class CsgExecutor {
   private async createPrimitive(node: { name: string; params: any }, id: string): Promise<THREE.BufferGeometry | null> {
     const p = node.params;
     const deflection = 0.1;
+    let geo: THREE.BufferGeometry | null = null;
 
     switch (node.name) {
       case "cube": {
@@ -95,11 +93,13 @@ export class CsgExecutor {
         const x = center ? -dx/2 : 0;
         const y = center ? -dy/2 : 0;
         const z = center ? -dz/2 : 0;
-        return this.occ.createBox(x, y, z, dx, dy, dz, deflection, id);
+        geo = await this.occ.createBox(x, y, z, dx, dy, dz, deflection, id);
+        break;
       }
       case "sphere": {
         const r = p.r !== undefined ? p.r : (p.d !== undefined ? p.d / 2 : (p[0] ?? 1));
-        return this.occ.createSphere(0, 0, 0, r, deflection, id);
+        geo = await this.occ.createSphere(0, 0, 0, r, deflection, id);
+        break;
       }
       case "cylinder": {
         const h = p.h ?? p[0] ?? 1;
@@ -108,17 +108,22 @@ export class CsgExecutor {
         const center = p.center ?? p[3] ?? false;
         const z = center ? -h/2 : 0;
         if (r1 === r2) {
-          return this.occ.createCylinder(0, 0, z, r1, h, deflection, id);
+          geo = await this.occ.createCylinder(0, 0, z, r1, h, deflection, id);
         } else {
-          return this.occ.createCone(0, 0, z, r1, h, deflection, id);
+          geo = await this.occ.createCone(0, 0, z, r1, h, deflection, id);
         }
+        break;
       }
     }
-    return null;
+    if (geo) {
+      geo.userData = { ...geo.userData, entityId: id };
+    }
+    return geo;
   }
 
   private async applyBoolean(op: string, children: THREE.BufferGeometry[], baseId: string): Promise<THREE.BufferGeometry | null> {
-    if (children.length < 2) return children[0] || null;
+    if (children.length === 0) return null;
+    if (children.length === 1) return children[0];
 
     let resultGeo = children[0];
     let resultId = (resultGeo.userData as any).entityId;
@@ -131,10 +136,14 @@ export class CsgExecutor {
       if (op === 'difference') type = 'cut';
       if (op === 'intersection') type = 'common';
 
-      const currentResultId = `${baseId}_step_${i}`;
+      const isLast = (i === children.length - 1);
+      const currentResultId = isLast ? baseId : `${baseId}_step_${i}`;
       this.tempIds.add(currentResultId);
       
       resultGeo = await this.occ.createBoolean(type, resultId, childId, currentResultId);
+      if (resultGeo) {
+        resultGeo.userData = { ...resultGeo.userData, entityId: currentResultId };
+      }
       resultId = currentResultId;
     }
 
@@ -145,24 +154,29 @@ export class CsgExecutor {
     const p = params;
     const deflection = 0.1;
     this.tempIds.add(targetId);
+    let geo: THREE.BufferGeometry | null = null;
 
     switch (name) {
       case "translate": {
         const v = p.v ?? p[0] ?? [0, 0, 0];
-        return this.occ.transformShape(sourceId, v[0], v[1], v[2], targetId, deflection);
+        geo = await this.occ.transformShape(sourceId, v[0], v[1], v[2], targetId, deflection);
+        break;
       }
       case "rotate": {
         const v = p.a ?? p[0] ?? [0, 0, 0];
         // SCAD rotate takes [x, y, z] in degrees
-        return this.occ.rotateShape(sourceId, v[0], v[1], v[2], 0, 0, 0, targetId, deflection);
+        geo = await this.occ.rotateShape(sourceId, v[0], v[1], v[2], 0, 0, 0, targetId, deflection);
+        break;
       }
       case "scale": {
-        const v = p.v ?? p[0] ?? [1, 1, 1];
         // Scale still missing in OCC, returning null for now
         return null;
       }
     }
-    return null;
+    if (geo) {
+      geo.userData = { ...geo.userData, entityId: targetId };
+    }
+    return geo;
   }
 
   private async ensureSingleShape(shapes: THREE.BufferGeometry[], id: string): Promise<string> {

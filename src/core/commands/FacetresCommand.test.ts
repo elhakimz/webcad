@@ -21,14 +21,14 @@ describe('FacetresCommand', () => {
 
   it('should set valid facetres value', () => {
     const res = cmd.onInput('2.5', 'DUMMY', units, undefined, doc);
-    expect(res).toEqual('FACETRES set to 2.50');
+    expect(res).toEqual({ _echo: 'FACETRES set to 2.50', action: 'regen' });
     expect(doc.facetres).toEqual(2.5);
   });
 
   it('should reject invalid facetres value', () => {
     const res = cmd.onInput('abc', 'DUMMY', units, undefined, doc);
     expect(res).toEqual('Requires a number between 0.01 and 10.0.');
-    expect(doc.facetres).toEqual(0.5); // Default
+    expect(doc.facetres).toEqual(5.0); // Default
   });
 
   it('should reject out of range value', () => {

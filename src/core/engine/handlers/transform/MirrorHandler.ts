@@ -1,6 +1,7 @@
 import { ActionHandler, AppContext } from "../types";
 import { CommandAction, CommandResponse } from "../../../commands/types";
 import { Insert } from "../../../model/Insert";
+import { OpenCascadeService } from "../../../io/OpenCascadeService";
 
 export class MirrorHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -23,25 +24,64 @@ export class MirrorHandler implements ActionHandler {
       }
       
       if (deleteOriginal) {
-        ids.forEach(id => {
+        for (const id of ids) {
           const source = doc.getEntity(id);
           if (source) {
             const before = source.clone(source.id);
-            source.mirror(p1, p2);
+            const isSolid3D = (source as any).type === "Solid3D" || source.constructor.name === "Solid3D";
+            
+            if (isSolid3D) {
+              try {
+                const geom = await OpenCascadeService.getInstance().mirrorShape(id, p1, p2);
+                const solid = source as any;
+                solid.positions = Array.from(geom.attributes.position.array);
+                solid.indices = geom.index ? Array.from(geom.index.array) : [];
+                solid.faceMapping = geom.userData.faceMapping;
+                solid.edgeLines = geom.userData.edgeLines;
+                solid.brepSnapshot = geom.userData.brepSnapshot;
+                
+                source.mirror(p1, p2);
+              } catch (err) {
+                console.error(`Failed to mirror shape in worker for ${id}:`, err);
+              }
+            } else {
+              source.mirror(p1, p2);
+            }
+            
             doc.recordTransform(before, source);
             addEntity(source, false, false);
           }
-        });
+        }
       } else {
-        ids.forEach(id => {
+        for (const id of ids) {
           const source = doc.getEntity(id);
           if (source) {
-            const target = source.clone(source.id + "_MIRROR_" + Math.random().toString(36).substr(2, 5));
-            target.mirror(p1, p2);
+            const targetId = doc.getNextId(source.constructor.name === "Solid3D" || (source as any).type === "Solid3D" ? "SL" : "MR");
+            const target = source.clone(targetId);
+            const isSolid3D = (source as any).type === "Solid3D" || source.constructor.name === "Solid3D";
+            
+            if (isSolid3D) {
+              try {
+                const geom = await OpenCascadeService.getInstance().mirrorShape(id, p1, p2, targetId);
+                const solidTarget = target as any;
+                solidTarget.positions = Array.from(geom.attributes.position.array);
+                solidTarget.indices = geom.index ? Array.from(geom.index.array) : [];
+                solidTarget.faceMapping = geom.userData.faceMapping;
+                solidTarget.edgeLines = geom.userData.edgeLines;
+                solidTarget.brepSnapshot = geom.userData.brepSnapshot;
+                
+                target.mirror(p1, p2);
+              } catch (err) {
+                console.error(`Failed to mirror shape in worker for ${id}:`, err);
+              }
+            } else {
+              target.mirror(p1, p2);
+            }
+            
             addEntity(target, true, false);
             newIds.push(target.id);
           }
-        });
+        }
       }
       this.cleanup(context);
       return deleteOriginal 

@@ -4,6 +4,7 @@ import { GizmoRenderer, HandleDescriptor } from "../../render/GizmoRenderer";
 import { GizmoController } from "./GizmoController";
 import { App } from "../../app";
 import { Solid3D } from "../model/Solid3D";
+import { Insert } from "../model/Insert";
 import { OpenCascadeService } from "../io/OpenCascadeService";
 
 export class GizmoManager {
@@ -13,7 +14,7 @@ export class GizmoManager {
   private app: App;
 
   private targetObject: THREE.Object3D | null = null;
-  private targetEntity: Solid3D | null = null;
+  private targetEntity: Solid3D | Insert | null = null;
   private isDragging: boolean = false;
   private initialObjectPosition: THREE.Vector3 = new THREE.Vector3();
 
@@ -48,7 +49,7 @@ export class GizmoManager {
     canvas.addEventListener('pointerup', this.onPointerUp.bind(this), { capture: true });
   }
 
-  public attachToObject(obj: THREE.Object3D, entity: Solid3D) {
+  public attachToObject(obj: THREE.Object3D, entity: Solid3D | Insert) {
     console.log("GizmoManager attaching to object:", obj.name);
     this.targetObject = obj;
     this.targetEntity = entity;
@@ -79,8 +80,13 @@ export class GizmoManager {
 
     // Apply rotation from the target entity's rotation properties!
     if (this.targetEntity) {
-      const rot = this.targetEntity.rotation;
-      this.renderer.root.quaternion.setFromEuler(new THREE.Euler(rot.x, rot.y, rot.z));
+      if (this.targetEntity instanceof Solid3D) {
+        const rot = this.targetEntity.rotation;
+        this.renderer.root.quaternion.setFromEuler(new THREE.Euler(rot.x, rot.y, rot.z));
+      } else if (this.targetEntity instanceof Insert) {
+        const rotZ = this.targetEntity.rotation * (Math.PI / 180);
+        this.renderer.root.quaternion.setFromEuler(new THREE.Euler(0, 0, rotZ));
+      }
     }
 
     // Calculate size of object to scale gizmo proportionally
@@ -199,54 +205,76 @@ export class GizmoManager {
   private async syncTransformToEntity() {
     if (!this.targetEntity || !this.targetObject) return;
 
-    // Create a snapshot of the entity before modification for history
-    const before = this.targetEntity.clone(this.targetEntity.id);
+    if (this.targetEntity instanceof Insert) {
+      const insert = this.targetEntity;
+      const before = insert.clone(insert.id);
 
-    // Calculate the original center from entity.positions to get the relative delta!
+      const deltaPos = this.targetObject.position.clone().sub(this.initialObjectPosition);
+      insert.x += deltaPos.x;
+      insert.y += deltaPos.y;
+
+      const euler = new THREE.Euler().setFromQuaternion(this.targetObject.quaternion);
+      insert.rotation = euler.z * (180 / Math.PI);
+
+      this.targetObject.position.set(0, 0, 0);
+      this.targetObject.rotation.set(0, 0, 0);
+
+      this.app.doc.history.startTransaction();
+      this.app.doc.recordTransform(before, insert);
+      this.app.doc.history.commitTransaction();
+
+      this.app.syncFromDocument();
+      return;
+    }
+
+    const solid = this.targetEntity as Solid3D;
+    const before = solid.clone(solid.id) as Solid3D;
+
+    // Calculate the original center from solid.positions to get the relative delta!
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.targetEntity.positions, 3));
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(solid.positions, 3));
     geometry.computeBoundingBox();
     const center = geometry.boundingBox!.getCenter(new THREE.Vector3());
 
-    const oldPos = { ...this.targetEntity.position };
+    const oldPos = { ...solid.position };
 
-    // Update position and rotation in entity
+    // Update position and rotation in solid
     // We save the delta position relative to the original center!
-    this.targetEntity.position = {
+    solid.position = {
       x: this.targetObject.position.x - center.x,
       y: this.targetObject.position.y - center.y,
       z: this.targetObject.position.z - center.z
     };
 
     const euler = new THREE.Euler().setFromQuaternion(this.targetObject.quaternion);
-    this.targetEntity.rotation = {
+    solid.rotation = {
       x: euler.x,
       y: euler.y,
       z: euler.z
     };
 
     const oldRot = { ...before.rotation };
-    const drx = this.targetEntity.rotation.x - oldRot.x;
-    const dry = this.targetEntity.rotation.y - oldRot.y;
-    const drz = this.targetEntity.rotation.z - oldRot.z;
+    const drx = solid.rotation.x - oldRot.x;
+    const dry = solid.rotation.y - oldRot.y;
+    const drz = solid.rotation.z - oldRot.z;
 
-    const dx = this.targetEntity.position.x - oldPos.x;
-    const dy = this.targetEntity.position.y - oldPos.y;
-    const dz = this.targetEntity.position.z - oldPos.z;
+    const dx = solid.position.x - oldPos.x;
+    const dy = solid.position.y - oldPos.y;
+    const dz = solid.position.z - oldPos.z;
 
     // Sync with OpenCascade worker
-    if (!this.targetEntity.creationParams) {
+    if (!solid.creationParams) {
       // Fallback for raw meshes from DXF!
-      console.log(`[GizmoManager] Raw mesh detected for ${this.targetEntity.id}. Applying transform in JS.`);
+      console.log(`[GizmoManager] Raw mesh detected for ${solid.id}. Applying transform in JS.`);
       
-      const newPositions = new Array(this.targetEntity.positions.length);
+      const newPositions = new Array(solid.positions.length);
       const v = new THREE.Vector3();
       
-      for (let i = 0; i < this.targetEntity.positions.length; i += 3) {
+      for (let i = 0; i < solid.positions.length; i += 3) {
         v.set(
-          this.targetEntity.positions[i],
-          this.targetEntity.positions[i+1],
-          this.targetEntity.positions[i+2]
+          solid.positions[i],
+          solid.positions[i+1],
+          solid.positions[i+2]
         );
         
         // 1. Center the vertex (like Viewer does)
@@ -263,12 +291,12 @@ export class GizmoManager {
         newPositions[i+2] = v.z;
       }
       
-      this.targetEntity.positions = newPositions;
+      solid.positions = newPositions;
       
       // Also update edgeLines if they exist!
-      if (this.targetEntity.edgeLines) {
+      if (solid.edgeLines) {
         const newEdgeLines: number[][] = [];
-        for (const line of this.targetEntity.edgeLines) {
+        for (const line of solid.edgeLines) {
           const newLine = new Array(line.length);
           for (let i = 0; i < line.length; i += 3) {
             v.set(line[i], line[i+1], line[i+2]);
@@ -281,9 +309,10 @@ export class GizmoManager {
           }
           newEdgeLines.push(newLine);
         }
-        this.targetEntity.edgeLines = newEdgeLines;
+        solid.edgeLines = newEdgeLines;
       }
     } else {
+      let geom: any = null;
       if (drx !== 0 || dry !== 0 || drz !== 0) {
         try {
           const rotCenter = {
@@ -291,25 +320,38 @@ export class GizmoManager {
             y: before.position.y + center.y,
             z: before.position.z + center.z
           };
-          await OpenCascadeService.getInstance().rotateShape(this.targetEntity.id, drx, dry, drz, rotCenter.x, rotCenter.y, rotCenter.z);
-          console.log(`Synced rotation to worker for ${this.targetEntity.id}: drx=${drx}, dry=${dry}, drz=${drz}`);
+          geom = await OpenCascadeService.getInstance().rotateShape(solid.id, drx, dry, drz, rotCenter.x, rotCenter.y, rotCenter.z);
+          console.log(`Synced rotation to worker for ${solid.id}: drx=${drx}, dry=${dry}, drz=${drz}`);
         } catch (err) {
-          console.error(`Failed to rotate shape in worker for ${this.targetEntity.id}:`, err);
+          console.error(`Failed to rotate shape in worker for ${solid.id}:`, err);
         }
       }
       if (dx !== 0 || dy !== 0 || dz !== 0) {
         try {
-          await OpenCascadeService.getInstance().transformShape(this.targetEntity.id, dx, dy, dz);
-          console.log(`Synced transform to worker for ${this.targetEntity.id}: dx=${dx}, dy=${dy}, dz=${dz}`);
+          geom = await OpenCascadeService.getInstance().transformShape(solid.id, dx, dy, dz);
+          console.log(`Synced transform to worker for ${solid.id}: dx=${dx}, dy=${dy}, dz=${dz}`);
         } catch (err) {
-          console.error(`Failed to transform shape in worker for ${this.targetEntity.id}:`, err);
+          console.error(`Failed to transform shape in worker for ${solid.id}:`, err);
         }
+      }
+
+      if (geom) {
+        solid.positions = Array.from(geom.attributes.position.array);
+        solid.indices = geom.index ? Array.from(geom.index.array) : [];
+        solid.faceMapping = geom.userData.faceMapping;
+        solid.edgeLines = geom.userData.edgeLines;
+        solid.brepSnapshot = geom.userData.brepSnapshot;
+        
+        solid.position = { x: 0, y: 0, z: 0 };
+        solid.rotation = { x: 0, y: 0, z: 0 };
+
+        this.app.addEntity(solid, false, false);
       }
     }
 
     // Record the transformation in the document history
     this.app.doc.history.startTransaction();
-    this.app.doc.recordTransform(before, this.targetEntity);
+    this.app.doc.recordTransform(before, solid);
     this.app.doc.history.commitTransaction();
     
     // Update properties window to reflect new position/rotation

@@ -164,6 +164,16 @@ export class OpenCascadeService {
     return this.buildGeometry(data);
   }
 
+  async mirrorShape(entityId: string, p1: { x: number, y: number, z?: number }, p2: { x: number, y: number, z?: number }, targetEntityId?: string, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.mirrorShape(entityId, p1, p2, targetEntityId, deflection);
+    return this.buildGeometry(data);
+  }
+
+  async scaleShape(entityId: string, factor: number, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.scaleShape(entityId, factor, cx, cy, cz, targetEntityId, deflection);
+    return this.buildGeometry(data);
+  }
+
   async releaseShapes(entityIds: string[]): Promise<void> {
     await this.client.releaseShapes(entityIds);
   }

@@ -11,6 +11,11 @@ const fileStoragePlugin = (): Plugin => ({
       if (req.url?.startsWith('/api/files')) {
         const filesDir = path.resolve(__dirname, 'files');
         if (!fs.existsSync(filesDir)) fs.mkdirSync(filesDir);
+        
+        const scadProjectsDir = path.resolve(filesDir, 'scad', 'projects');
+        if (!fs.existsSync(scadProjectsDir)) {
+          fs.mkdirSync(scadProjectsDir, { recursive: true });
+        }
 
         // GET /api/files - List files
         if (req.method === 'GET' && req.url === '/api/files') {
@@ -20,28 +25,40 @@ const fileStoragePlugin = (): Plugin => ({
           return;
         }
 
-        // GET /api/files/:name - Read file
+        // GET /api/files/:name - Read file or list directory
         if (req.method === 'GET' && req.url.startsWith('/api/files/')) {
-          const fileName = req.url.split('/').pop();
-          const filePath = path.join(filesDir, fileName || '');
+          const subPath = decodeURIComponent(req.url.substring('/api/files/'.length));
+          const filePath = path.join(filesDir, subPath);
           if (fs.existsSync(filePath)) {
-            res.setHeader('Content-Type', 'text/plain');
-            res.end(fs.readFileSync(filePath, 'utf-8'));
+            const stat = fs.statSync(filePath);
+            if (stat.isDirectory()) {
+              const items = fs.readdirSync(filePath);
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(items));
+            } else {
+              res.setHeader('Content-Type', 'text/plain');
+              res.end(fs.readFileSync(filePath, 'utf-8'));
+            }
           } else {
             res.statusCode = 404;
-            res.end('File not found');
+            res.end('File or directory not found');
           }
           return;
         }
 
         // POST /api/files/:name - Write file
         if (req.method === 'POST' && req.url.startsWith('/api/files/')) {
-          const fileName = req.url.split('/').pop();
-          const filePath = path.join(filesDir, fileName || '');
-          let body = '';
-          req.on('data', chunk => body += chunk);
+          const subPath = decodeURIComponent(req.url.substring('/api/files/'.length));
+          const filePath = path.join(filesDir, subPath);
+          const parentDir = path.dirname(filePath);
+          if (!fs.existsSync(parentDir)) {
+            fs.mkdirSync(parentDir, { recursive: true });
+          }
+          const chunks: any[] = [];
+          req.on('data', chunk => chunks.push(chunk));
           req.on('end', () => {
-            fs.writeFileSync(filePath, body);
+            const buffer = Buffer.concat(chunks);
+            fs.writeFileSync(filePath, buffer);
             res.end('File saved');
           });
           return;

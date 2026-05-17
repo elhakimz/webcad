@@ -2087,13 +2087,8 @@ self.onmessage = async (e) => {
       const resultId = targetEntityId || entityId;
       cacheShape(resultId, newShape);
 
-      // If we are creating a new shape, we might want the geometry back
-      let geometryData = null;
-      let brepBytes = null;
-      if (targetEntityId) {
-        geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
-        brepBytes = exportShapeToBytes(oc, newShape, resultId);
-      }
+      const geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
+      const brepBytes = exportShapeToBytes(oc, newShape, resultId);
 
       translation.delete();
       transform.delete();
@@ -2121,17 +2116,96 @@ self.onmessage = async (e) => {
       const resultId = targetEntityId || entityId;
       cacheShape(resultId, newShape);
 
-      let geometryData = null;
-      let brepBytes = null;
-      if (targetEntityId) {
-        geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
-        brepBytes = exportShapeToBytes(oc, newShape, resultId);
-      }
+      const geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
+      const brepBytes = exportShapeToBytes(oc, newShape, resultId);
 
       self.postMessage({ type: 'rotateShape', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
       const errorMessage = decodeOCCError('rotateShape', error);
       self.postMessage({ type: 'rotateShape', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'mirrorShape') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, p1, p2, targetEntityId, deflection } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not cached for entity ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1e-6) {
+        throw new Error("Mirror line points are too close.");
+      }
+
+      const nx = -dy / len;
+      const ny = dx / len;
+
+      const gpPnt = new oc.gp_Pnt_3(p1.x, p1.y, p1.z || 0);
+      const gpDir = new oc.gp_Dir_4(nx, ny, 0);
+      const gpAx2 = new oc.gp_Ax2_2(gpPnt, gpDir);
+
+      const transform = new oc.gp_Trsf_1();
+      transform.SetMirror_3(gpAx2);
+
+      const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+      const newShape = brepTransform.Shape();
+
+      const resultId = targetEntityId || entityId;
+      cacheShape(resultId, newShape);
+
+      const geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
+      const brepBytes = exportShapeToBytes(oc, newShape, resultId);
+
+      gpPnt.delete();
+      gpDir.delete();
+      gpAx2.delete();
+      transform.delete();
+      brepTransform.delete();
+
+      self.postMessage({ type: 'mirrorShape', success: true, payload: { ...geometryData, brepBytes }, id });
+    } catch (error: any) {
+      const errorMessage = decodeOCCError('mirrorShape', error);
+      self.postMessage({ type: 'mirrorShape', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'scaleShape') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, factor, cx, cy, cz, targetEntityId, deflection } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not cached for entity ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+
+      const gpPnt = new oc.gp_Pnt_3(cx, cy, cz);
+      const transform = new oc.gp_Trsf_1();
+      transform.SetScale(gpPnt, factor);
+
+      const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+      const newShape = brepTransform.Shape();
+
+      const resultId = targetEntityId || entityId;
+      cacheShape(resultId, newShape);
+
+      const geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
+      const brepBytes = exportShapeToBytes(oc, newShape, resultId);
+
+      gpPnt.delete();
+      transform.delete();
+      brepTransform.delete();
+
+      self.postMessage({ type: 'scaleShape', success: true, payload: { ...geometryData, brepBytes }, id });
+    } catch (error: any) {
+      const errorMessage = decodeOCCError('scaleShape', error);
+      self.postMessage({ type: 'scaleShape', success: false, error: errorMessage, id });
     }
   } else if (type === 'releaseShapes') {
     const { entityIds } = payload;

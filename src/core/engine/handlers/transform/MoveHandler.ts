@@ -16,21 +16,42 @@ export class MoveHandler implements ActionHandler {
         const entity = doc.getEntity(id);
         if (entity) {
           const before = entity.clone(entity.id);
-          if (action.dz !== undefined && 'move3D' in entity && typeof (entity as any).move3D === 'function') {
-            (entity as any).move3D(action.dx!, action.dy!, action.dz!);
-            // Sync with OpenCascade worker if it's a Solid3D
-            if ((entity as any).type === "Solid3D" || entity.constructor.name === "Solid3D") {
-              try {
-                await OpenCascadeService.getInstance().transformShape(id, action.dx!, action.dy!, action.dz!);
-              } catch (err) {
-                console.error(`Failed to transform shape in worker for ${id}:`, err);
+          const isSolid3D = (entity as any).type === "Solid3D" || entity.constructor.name === "Solid3D";
+          
+          if (isSolid3D) {
+            try {
+              const dx = action.dx!;
+              const dy = action.dy!;
+              const dz = action.dz || 0;
+              
+              const geom = await OpenCascadeService.getInstance().transformShape(id, dx, dy, dz);
+              
+              const solid = entity as any;
+              solid.positions = Array.from(geom.attributes.position.array);
+              solid.indices = geom.index ? Array.from(geom.index.array) : [];
+              solid.faceMapping = geom.userData.faceMapping;
+              solid.edgeLines = geom.userData.edgeLines;
+              solid.brepSnapshot = geom.userData.brepSnapshot;
+
+              if ('move3D' in entity && typeof (entity as any).move3D === 'function') {
+                (entity as any).move3D(dx, dy, dz);
+              } else {
+                entity.move(dx, dy);
               }
+              
+              context.addEntity(entity, false, false);
+            } catch (err) {
+              console.error(`Failed to transform shape in worker for ${id}:`, err);
             }
           } else {
-            entity.move(action.dx!, action.dy!);
+            if (action.dz !== undefined && 'move3D' in entity && typeof (entity as any).move3D === 'function') {
+              (entity as any).move3D(action.dx!, action.dy!, action.dz!);
+            } else {
+              entity.move(action.dx!, action.dy!);
+            }
+            viewer.moveObject(id, action.dx!, action.dy!, action.dz);
           }
           doc.recordTransform(before, entity);
-          viewer.moveObject(id, action.dx!, action.dy!, action.dz);
         }
       }
       this.cleanup(context);

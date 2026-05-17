@@ -73,6 +73,9 @@ export class SystemHandler implements ActionHandler {
       }
       
       doc.updateSpatialIndex();
+      if (context.onEntitiesChange) {
+        context.onEntitiesChange();
+      }
       return `Deleted ${action.ids.length} objects.`;
     }
 

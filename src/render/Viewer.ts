@@ -1832,7 +1832,45 @@ export class Viewer {
             obj = this.createArcObject(e.cx - block.basePoint.x, e.cy - block.basePoint.y, e.r, e.startAngle, e.endAngle, e.ccw, color, linetype);
         } else if (e instanceof Polyline) {
             const shifted = new Polyline(e.id, e.vertices.map(v => ({ ...v, x: v.x - block.basePoint.x, y: v.y - block.basePoint.y })), e.closed);
-            obj = this.createPolylineObject(shifted, aciToRgb(color), linetype);
+            obj = this.createPolylineObject(shifted, color, linetype);
+        } else if (e instanceof Solid3D) {
+            // Shift coordinates of positions and edgeLines by subtracting the block's basePoint
+            const shiftedPositions = [...e.positions];
+            for (let i = 0; i < shiftedPositions.length; i += 3) {
+                shiftedPositions[i] -= block.basePoint.x;
+                shiftedPositions[i+1] -= block.basePoint.y;
+            }
+            const shiftedEdgeLines = e.edgeLines ? e.edgeLines.map(line => {
+                const shiftedLine = [...line];
+                for (let i = 0; i < shiftedLine.length; i += 3) {
+                    shiftedLine[i] -= block.basePoint.x;
+                    shiftedLine[i+1] -= block.basePoint.y;
+                }
+                return shiftedLine;
+            }) : undefined;
+
+            const shiftedSolid = new Solid3D(e.id, shiftedPositions, e.indices, e.faceMapping, shiftedEdgeLines);
+            shiftedSolid.position = { ...e.position };
+            shiftedSolid.rotation = { ...e.rotation };
+            shiftedSolid.creationParams = e.creationParams ? JSON.parse(JSON.stringify(e.creationParams)) : undefined;
+            shiftedSolid.brepSnapshot = e.brepSnapshot;
+
+            obj = this.createSolid3DObject(shiftedSolid, color);
+
+            // Register solid mesh to selectableMeshes for raycasting selection support in manual modelling mode
+            const mesh = obj.children.find(child => child instanceof THREE.Mesh && child.userData.type === 'Solid3D') as THREE.Mesh;
+            if (mesh) {
+                mesh.userData.entityId = entity.id; // Map to parent Insert entity ID
+                this.selectableMeshes.push(mesh);
+            }
+            
+            // Register edges to edgeLines for interactive shading/wireframe mode toggles
+            const profileLines = obj.children.filter(child => child.userData && child.userData.isEdge) as THREE.Object3D[];
+            profileLines.forEach(line => {
+                line.userData.entityId = entity.id; // Link to the parent INSERT entity ID so they are deleted together
+                this.edgeLines.push(line);
+                line.visible = (this.shadingMode === 'SHADED');
+            });
         }
 
         if (obj) group.add(obj);
@@ -2647,6 +2685,9 @@ export class Viewer {
       this.selectableMeshes = this.selectableMeshes.filter(m => m.name !== id);
       this.edgeLines = this.edgeLines.filter(l => l.userData.entityId !== id);
       obj.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          this.selectableMeshes = this.selectableMeshes.filter(m => m !== child);
+        }
         if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
           child.geometry.dispose();
           if (Array.isArray(child.material)) {

@@ -5,6 +5,7 @@ import { Document } from '../model/Document'
 import { Solid3D } from '../model/Solid3D'
 import { OpenCascadeService } from '../io/OpenCascadeService'
 import { v4 as uuidv4 } from 'uuid'
+import { rebuildSweepGeometry } from '../engine/handlers/transform/SweepGeometryUtil'
 
 export class PersistenceService {
   private static instance: PersistenceService;
@@ -23,9 +24,11 @@ export class PersistenceService {
     this.occ = OpenCascadeService.getInstance();
 
     // Wire up error reporting to command line
-    this.occ.onError((msg) => {
-      if (this.onErrorMessage) this.onErrorMessage(msg);
-    });
+    if (this.occ && typeof this.occ.onError === 'function') {
+      this.occ.onError((msg) => {
+        if (this.onErrorMessage) this.onErrorMessage(msg);
+      });
+    }
   }
 
   private onErrorMessage: ((msg: string) => void) | null = null;
@@ -215,7 +218,7 @@ export class PersistenceService {
 
         // Rebuild geometry in worker if it's a primitive or from BREP
         if (ent.creationParams) {
-          await this.rebuildFromCreationParams(ent, doc.facetres || 5.0)
+          await this.rebuildFromCreationParams(ent, doc.facetres || 5.0, doc)
         } else {
           // It's a boolean or complex shape — load BREP
           let brep;
@@ -252,7 +255,7 @@ export class PersistenceService {
     app.syncFromDocument()
   }
 
-  private async rebuildFromCreationParams(entity: Solid3D, facetres: number): Promise<void> {
+  private async rebuildFromCreationParams(entity: Solid3D, facetres: number, doc: Document): Promise<void> {
     const { type, params } = entity.creationParams!
     const deflection = 0.1 / (facetres ?? 5.0)
     try {
@@ -265,6 +268,31 @@ export class PersistenceService {
         case 'torus': geoData = await this.occ.createTorus(params.x, params.y, params.z, params.r1, params.r2, deflection, entity.id); break
         case 'extrude': geoData = await this.occ.createExtrude(params.points, params.height, params.thickness, deflection, params.isClosed, entity.id); break
         case 'revolve': geoData = await this.occ.createRevolve(params.points, params.axisPoint, params.axisDir, params.angle, params.thickness, deflection, params.isClosed, entity.id); break
+        case 'sweep': {
+          const profileEntity = doc.getEntity(params.profileId);
+          const spineEntity = doc.getEntity(params.spineId);
+          if (profileEntity && spineEntity) {
+            const geomData = await rebuildSweepGeometry(
+              profileEntity,
+              spineEntity,
+              params.isSolid,
+              facetres,
+              deflection,
+              entity.id,
+              params.cornerMode
+            );
+            entity.positions = geomData.positions;
+            entity.indices = geomData.indices;
+            entity.faceMapping = geomData.faceMapping;
+            entity.edgeLines = geomData.edgeLines;
+            if (geomData.brepSnapshot) {
+              entity.brepSnapshot = geomData.brepSnapshot;
+            }
+          } else {
+            console.warn(`[PersistenceService] Sweep profile/spine entities not found in document: profileId=${params.profileId}, spineId=${params.spineId}`);
+          }
+          return;
+        }
         default: console.warn(`[PersistenceService] Unknown creationParams type: ${type}`)
       }
       if (geoData) {
@@ -336,20 +364,26 @@ export class PersistenceService {
     const pid = uuidv4()
     this.activeProjectId = pid
     this.activeProjectName = 'Untitled'
-    await this.db.upsertProject({
-      id: pid, name: 'Untitled',
-      createdAt: Date.now(), updatedAt: Date.now(),
-      settings: {
-        units: doc.units,
-        facetres: doc.facetres,
-        dimtoh: doc.dimtoh,
-        dimtad: doc.dimtad,
-        currentLayer: doc.layers.getCurrentLayer().name,
-        currentElevation: doc.currentElevation,
-        currentThickness: doc.currentThickness,
-        idCounters: doc.getIdCounters()
+    try {
+      if (this.db && typeof this.db.upsertProject === 'function') {
+        await this.db.upsertProject({
+          id: pid, name: 'Untitled',
+          createdAt: Date.now(), updatedAt: Date.now(),
+          settings: {
+            units: doc.units,
+            facetres: doc.facetres,
+            dimtoh: doc.dimtoh,
+            dimtad: doc.dimtad,
+            currentLayer: doc.layers.getCurrentLayer().name,
+            currentElevation: doc.currentElevation,
+            currentThickness: doc.currentThickness,
+            idCounters: doc.getIdCounters()
+          }
+        })
       }
-    })
+    } catch (err) {
+      console.warn('[PersistenceService] Database not initialized or available during newProject. Skipping db save.')
+    }
     return pid
   }
 

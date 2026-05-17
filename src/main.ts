@@ -16,6 +16,7 @@ import { ToolWindowBar } from "./ui/ToolWindowBar"
 import { ToolWindow } from "./ui/ToolWindow"
 import { LayerWindow } from "./ui/LayerWindow"
 import { PropertiesWindow } from "./ui/PropertiesWindow"
+import { ObjectsWindow } from "./ui/ObjectsWindow"
 import { DimToolbar } from "./ui/DimToolbar"
 import { EditToolbar } from "./ui/EditToolbar"
 import { InquiryToolbar } from "./ui/InquiryToolbar"
@@ -24,6 +25,8 @@ import { FileToolWindow } from "./ui/FileToolWindow"
 import { ScadEditor } from "./ui/ScadEditor"
 import { AppTabs } from "./ui/AppTabs"
 import { ScadRibbonBar } from "./ui/ScadRibbonBar"
+import { ProjectToolWindow } from "./ui/ProjectToolWindow"
+import { BlockToolWindow } from "./ui/BlockToolWindow"
 
 // 1. Core Setup
 const canvas = document.getElementById("c") as HTMLCanvasElement
@@ -89,66 +92,7 @@ const settingsRibbon = new SettingsRibbonBar((theme) => {
   viewer.setTheme(theme);
 });
 
-const scadEditor = new ScadEditor(dockingManager, (geometries) => {
-  geometries.forEach(geo => {
-    viewer.addTemporaryMesh(geo);
-  });
-});
 
-const scadRibbon = new ScadRibbonBar((action) => {
-  if (action === 'RUN') scadEditor.runScad();
-  if (action === 'CUSTOMIZE') scadEditor.openCustomizer();
-  if (action === 'CLEAR') viewer.clearTemporaryMeshes();
-});
-
-// 3. Tab Manager & Layout Assembly
-const appTabs = new AppTabs((mode) => {
-  ribbonContainer.getElement().innerHTML = '';
-  const dock = document.getElementById('docking-pane');
-  const toolBar = toolWindowBar.getElement();
-  
-  // Set viewer context (separate Modelling vs Scripting context)
-  viewer.setViewContext(mode as 'modelling' | 'scripting');
-
-  if (mode === 'scripting') {
-    ribbonContainer.addBar(scadRibbon);
-    ribbonContainer.addBar(settingsRibbon);
-    if (toolBar) toolBar.style.display = 'none';
-    
-    // Dock SCAD editor and make dock wider
-    if (dock) {
-      dock.style.display = 'flex';
-      dock.style.width = '450px';
-      dockingManager.dock('scad_editor');
-      dockingManager.showWindow('scad_editor');
-      // Hide other docked windows if any
-      dock.querySelectorAll('.dockable-window:not(#scad-editor-window)').forEach(el => {
-        (el as HTMLElement).style.display = 'none';
-      });
-    }
-  } else {
-    ribbonContainer.addBar(layerRibbon);
-    ribbonContainer.addBar(draftingRibbon);
-    ribbonContainer.addBar(unitsRibbon);
-    ribbonContainer.addBar(displayRibbon);
-    ribbonContainer.addBar(settingsRibbon);
-    if (toolBar) toolBar.style.display = 'flex';
-    
-    // Restore modelling dock
-    if (dock) {
-      dock.style.display = 'flex';
-      dock.style.width = '180px';
-      dockingManager.hideWindow('scad_editor');
-      // Show other docked windows
-      dock.querySelectorAll('.dockable-window:not(#scad-editor-window)').forEach(el => {
-        (el as HTMLElement).style.display = 'flex';
-      });
-    }
-  }
-});
-
-const appEl = document.getElementById('app')!;
-appEl.insertBefore(appTabs.getElement(), appEl.firstChild);
 
 const statusBarEl = document.getElementById('status-bar')!;
 statusBarEl.innerHTML = '';
@@ -218,6 +162,11 @@ const propertiesWindow = new PropertiesWindow(propertiesToolbar, app);
 app.setPropertiesWindow(propertiesWindow);
 app.setLayersWindowUpdate(() => layerWindow.refresh());
 
+const objectsToolbar = new ToolWindow("objects", "Objects");
+mainArea.insertBefore(objectsToolbar.getElement(), propertiesToolbar.getElement().nextSibling);
+toolWindowBar.addWindow("O", objectsToolbar);
+const objectsWindow = new ObjectsWindow(objectsToolbar, app);
+
 const floatingToolbar = new FloatingToolbar(async (cmd) => {
   cmdLine.print(`Command: ${cmd}`)
   const res = await app.execute(cmd)
@@ -262,6 +211,107 @@ const fileToolbar = new ToolWindow("file", "File Operations")
 const fileToolWindow = new FileToolWindow(fileToolbar, app)
 mainArea.insertBefore(fileToolbar.getElement(), toolWindowBar.getElement().nextSibling);
 toolWindowBar.addWindow("F", fileToolbar)
+
+const blockToolbar = new ToolWindow("block", "Block Library")
+const blockToolWindow = new BlockToolWindow(blockToolbar, app)
+mainArea.insertBefore(blockToolbar.getElement(), toolWindowBar.getElement().nextSibling);
+toolWindowBar.addWindow("B", blockToolbar)
+
+// 4b. SCAD Scripting Tools & Tabs Setup
+const scadEditor = new ScadEditor((geometries) => {
+  geometries.forEach(geo => {
+    viewer.addTemporaryMesh(geo);
+  });
+}, app);
+
+const scadProjectsToolbar = new ToolWindow("scad_projects", "SCAD Projects");
+const projectToolWindow = new ProjectToolWindow(scadProjectsToolbar, scadEditor);
+
+// Insert SCAD Projects Window directly into the main-area next to the ToolWindowBar, and append the raw SCAD Editor to the right of the workspace
+mainArea.insertBefore(scadProjectsToolbar.getElement(), toolWindowBar.getElement().nextSibling);
+mainArea.appendChild(scadEditor.getElement());
+
+// Add SCAD projects tool to the left toolbar
+toolWindowBar.addWindow("PR", scadProjectsToolbar);
+
+const scadRibbon = new ScadRibbonBar((action) => {
+  if (action === 'RUN') scadEditor.runScad();
+  if (action === 'CUSTOMIZE') scadEditor.openCustomizer();
+  if (action === 'CLEAR') viewer.clearTemporaryMeshes();
+});
+
+// 3. Tab Manager & Layout Assembly
+const appTabs = new AppTabs((mode) => {
+  ribbonContainer.getElement().innerHTML = '';
+  const toolBar = toolWindowBar.getElement();
+  const dock = document.getElementById('docking-pane');
+  
+  // Set viewer context (separate Modelling vs Scripting context)
+  viewer.setViewContext(mode as 'modelling' | 'scripting');
+
+  if (mode === 'scripting') {
+    ribbonContainer.addBar(scadRibbon);
+    ribbonContainer.addBar(settingsRibbon);
+    if (toolBar) toolBar.style.display = 'flex';
+    
+    // Manage toolbar icons visibility for scripting
+    toolWindowBar.setVisible('scad_projects', true);
+    toolWindowBar.setVisible('file', false);
+    toolWindowBar.setVisible('block', false);
+    toolWindowBar.setVisible('properties', false);
+    toolWindowBar.setVisible('objects', false);
+    toolWindowBar.setVisible('layers', false);
+
+    // Make SCAD projects panel active on the left panel
+    toolWindowBar.setActive('scad_projects', true);
+
+    // Show raw SCAD Editor panel on the right side of the workspace
+    scadEditor.show();
+
+    // Hide modelling toolbars and docking pane in scripting mode
+    if (dock) dock.style.display = 'none';
+    floatingToolbar.hide();
+    dimToolbar.hide();
+    editToolbar.hide();
+    inquiryToolbar.hide();
+    solidToolbar.hide();
+  } else {
+    ribbonContainer.addBar(layerRibbon);
+    ribbonContainer.addBar(draftingRibbon);
+    ribbonContainer.addBar(unitsRibbon);
+    ribbonContainer.addBar(displayRibbon);
+    ribbonContainer.addBar(settingsRibbon);
+    if (toolBar) toolBar.style.display = 'flex';
+    
+    // Manage toolbar icons visibility for modelling
+    toolWindowBar.setVisible('scad_projects', false);
+    toolWindowBar.setVisible('file', true);
+    toolWindowBar.setVisible('block', true);
+    toolWindowBar.setVisible('properties', true);
+    toolWindowBar.setVisible('objects', true);
+    toolWindowBar.setVisible('layers', true);
+
+    // Make layers active on the left panel
+    toolWindowBar.setActive('layers', true);
+
+    // Hide raw SCAD Editor panel in modelling mode
+    scadEditor.hide();
+
+    // Restore modelling toolbars and docking pane in modelling mode
+    if (dock) {
+      dock.style.display = 'flex';
+      dock.style.width = '180px';
+    }
+    floatingToolbar.show();
+    dimToolbar.show();
+    editToolbar.show();
+    inquiryToolbar.show();
+    solidToolbar.show();
+  }
+});
+
+const appEl = document.getElementById('app')!;
+appEl.insertBefore(appTabs.getElement(), appEl.firstChild);
 
 // 5. App State & Engine Init
 viewer.resize()
@@ -393,14 +443,24 @@ window.addEventListener("mousemove", (e) => {
 
 window.addEventListener("keydown", async (e) => {
   if (!app.cmd.active && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+    if (document.activeElement && (
+      document.activeElement.tagName === 'INPUT' || 
+      document.activeElement.tagName === 'TEXTAREA' ||
+      document.activeElement.getAttribute('contenteditable') === 'true' ||
+      document.activeElement.closest('.cm-content') !== null
+    )) return;
     const key = e.key;
     if (key.length === 1 && /^[a-z0-9]$/i.test(key)) {
       const cmdInput = document.getElementById('cmd') as HTMLInputElement;
       if (cmdInput && document.activeElement !== cmdInput) cmdInput.focus();
     }
   } else if (app.cmd.active && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+    if (document.activeElement && (
+      document.activeElement.tagName === 'INPUT' || 
+      document.activeElement.tagName === 'TEXTAREA' ||
+      document.activeElement.getAttribute('contenteditable') === 'true' ||
+      document.activeElement.closest('.cm-content') !== null
+    )) return;
     if (e.key.length === 1) app.focusDynamicInput();
   }
 

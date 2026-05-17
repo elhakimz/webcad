@@ -154,10 +154,32 @@ export class ScadEvaluator {
       }
       case "ArrayExpression":
         return expr.elements.map(e => this.evaluateExpression(e, scope));
+      case "RangeExpression": {
+        const start = this.evaluateExpression(expr.start, scope);
+        const end = this.evaluateExpression(expr.end, scope);
+        const step = expr.step ? this.evaluateExpression(expr.step, scope) : 1;
+        const arr: number[] = [];
+        if (step > 0) {
+          for (let v = start; v <= end; v += step) {
+            arr.push(v);
+          }
+        } else if (step < 0) {
+          for (let v = start; v >= end; v += step) {
+            arr.push(v);
+          }
+        }
+        return arr;
+      }
       case "FunctionCall": {
-        // Handle built-ins like sin, cos
+        // Handle built-ins like sin, cos, sqrt, atan2
         if (expr.name === "sin") return Math.sin((this.evaluateExpression(expr.arguments[0].value, scope) * Math.PI) / 180);
         if (expr.name === "cos") return Math.cos((this.evaluateExpression(expr.arguments[0].value, scope) * Math.PI) / 180);
+        if (expr.name === "sqrt") return Math.sqrt(this.evaluateExpression(expr.arguments[0].value, scope));
+        if (expr.name === "atan2") {
+          const y = this.evaluateExpression(expr.arguments[0].value, scope);
+          const x = this.evaluateExpression(expr.arguments[1].value, scope);
+          return (Math.atan2(y, x) * 180) / Math.PI;
+        }
         
         const funcDef = this.functions.get(expr.name);
         if (funcDef) {

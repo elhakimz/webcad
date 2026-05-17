@@ -110,6 +110,44 @@ function applyRotation(shape: any, rot: { x: number, y: number, z: number }, oc:
   return newShape;
 }
 
+function createSewing(oc: any, tolerance: number = 1e-4): any {
+  if (oc.BRepBuilderAPI_Sewing) {
+    try {
+      return new oc.BRepBuilderAPI_Sewing(tolerance, true, true, false, true);
+    } catch (_) {}
+    try {
+      return new oc.BRepBuilderAPI_Sewing(tolerance, true, true, false);
+    } catch (_) {}
+    try {
+      return new oc.BRepBuilderAPI_Sewing(tolerance);
+    } catch (_) {}
+    try {
+      return new oc.BRepBuilderAPI_Sewing();
+    } catch (_) {}
+  }
+  if (oc.BRepOffsetAPI_Sewing_2) {
+    return new oc.BRepOffsetAPI_Sewing_2(tolerance);
+  }
+  if (oc.BRepOffsetAPI_Sewing_1) {
+    const s = new oc.BRepOffsetAPI_Sewing_1();
+    if (s.SetTolerance) {
+      s.SetTolerance(tolerance);
+    }
+    return s;
+  }
+  if (oc.BRepBuilderAPI_Sewing_2) {
+    return new oc.BRepBuilderAPI_Sewing_2(tolerance);
+  }
+  if (oc.BRepBuilderAPI_Sewing_1) {
+    const s = new oc.BRepBuilderAPI_Sewing_1();
+    if (s.SetTolerance) {
+      s.SetTolerance(tolerance);
+    }
+    return s;
+  }
+  throw new Error("No accessible sewing constructor found in OpenCascade bindings.");
+}
+
 function configureBooleanOp(op: any) {
   if (!op) return;
 
@@ -963,6 +1001,68 @@ self.onmessage = async (e) => {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'createCylinder', success: false, error: errorMessage, id });
     }
+  } else if (type === 'createFrustum') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { x, y, z, r1, r2, h, deflection, entityId } = payload;
+    try {
+      let shape: any = null;
+      let frustum: any = null;
+      let cylinder: any = null;
+
+      const R1 = Math.max(0, r1);
+      const R2 = Math.max(0, r2);
+
+      if (Math.abs(R1 - R2) < 1e-6) {
+        // Equal radii -> Create standard cylinder to avoid MakeCone C++ domain exception
+        cylinder = new oc.BRepPrimAPI_MakeCylinder_2(R1, h, 2 * Math.PI);
+        shape = cylinder.Shape();
+      } else {
+        // Different radii -> Create cone frustum
+        frustum = new oc.BRepPrimAPI_MakeCone_1(R1, R2, h);
+        shape = frustum.Shape();
+      }
+
+      let translation: any = null;
+      let transform: any = null;
+      let brepTransform: any = null;
+
+      if (x !== 0 || y !== 0 || z !== 0) {
+        translation = new oc.gp_Vec_4(x, y, z);
+        transform = new oc.gp_Trsf_1();
+        transform.SetTranslation_1(translation);
+        brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+        shape = brepTransform.Shape();
+      }
+
+      shape = detachShape(oc, shape);
+
+      if (entityId) {
+        cacheShape(entityId, shape);
+      }
+
+      // Tessellate and get geometry data
+      const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
+      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+
+      if (geometryData.positions.length === 0) {
+        throw new Error("No geometry generated from shape. Positions array is empty.");
+      }
+
+      // Cleanup
+      if (translation) translation.delete();
+      if (transform) transform.delete();
+      if (brepTransform) brepTransform.delete();
+      if (frustum) frustum.delete();
+      if (cylinder) cylinder.delete();
+
+      self.postMessage({ type: 'createFrustum', success: true, payload: { ...geometryData, brepBytes }, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'createFrustum', success: false, error: errorMessage, id });
+    }
   } else if (type === 'createSphere') {
     if (!oc) {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
@@ -1114,33 +1214,34 @@ self.onmessage = async (e) => {
     }
     const { points, faces, deflection, entityId } = payload;
     try {
+      const gpPoints: any[] = [];
       const vertices: any[] = [];
       for (const pt of points) {
         const x = pt.x !== undefined ? pt.x : (pt[0] ?? 0);
         const y = pt.y !== undefined ? pt.y : (pt[1] ?? 0);
         const z = pt.z !== undefined ? pt.z : (pt[2] ?? 0);
         const gpPnt = new oc.gp_Pnt_3(x, y, z);
+        gpPoints.push(gpPnt);
         const makeVertex = new oc.BRepBuilderAPI_MakeVertex(gpPnt);
         vertices.push(detachShape(oc, makeVertex.Vertex()));
         makeVertex.delete();
-        gpPnt.delete();
       }
 
       const faceShapes: any[] = [];
       for (const faceIndices of faces) {
         if (faceIndices.length < 3) continue;
-        const makeWire = new oc.BRepBuilderAPI_MakeWire();
+        const makeWire = new oc.BRepBuilderAPI_MakeWire_1();
         let wireDone = true;
         for (let j = 0; j < faceIndices.length; j++) {
           const idx1 = faceIndices[j];
           const idx2 = faceIndices[(j + 1) % faceIndices.length];
-          const v1 = vertices[idx1];
-          const v2 = vertices[idx2];
-          if (!v1 || !v2) {
+          const p1 = gpPoints[idx1];
+          const p2 = gpPoints[idx2];
+          if (!p1 || !p2) {
             wireDone = false;
             break;
           }
-          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_1(v1, v2);
+          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
           if (makeEdge.IsDone()) {
             makeWire.Add_1(makeEdge.Edge());
           } else {
@@ -1150,7 +1251,7 @@ self.onmessage = async (e) => {
         }
 
         if (wireDone && makeWire.IsDone()) {
-          const makeFace = new oc.BRepBuilderAPI_MakeFace_1(makeWire.Wire(), true);
+          const makeFace = new oc.BRepBuilderAPI_MakeFace_15(makeWire.Wire(), true);
           if (makeFace.IsDone()) {
             faceShapes.push(detachShape(oc, makeFace.Face()));
           }
@@ -1159,15 +1260,33 @@ self.onmessage = async (e) => {
         makeWire.delete();
       }
 
+      // Clean up gpPoints as they are no longer needed
+      for (const gpPnt of gpPoints) {
+        gpPnt.delete();
+      }
+
       if (faceShapes.length === 0) {
         throw new Error("No valid faces could be created from the polyhedron specification.");
       }
-
-      const sewing = new oc.BRepOffsetAPI_Sewing(1e-4);
+      const sewing = createSewing(oc, 1e-4);
       for (const face of faceShapes) {
         sewing.Add(face);
       }
-      sewing.Perform();
+      if (oc.Handle_Message_ProgressIndicator_1) {
+        const range = new oc.Handle_Message_ProgressIndicator_1();
+        sewing.Perform(range);
+        range.delete();
+      } else if (oc.Handle_Message_ProgressIndicator) {
+        const range = new oc.Handle_Message_ProgressIndicator();
+        sewing.Perform(range);
+        range.delete();
+      } else if (oc.Message_ProgressRange) {
+        const range = new oc.Message_ProgressRange();
+        sewing.Perform(range);
+        range.delete();
+      } else {
+        sewing.Perform();
+      }
       let shape = sewing.SewedShape();
 
       const nakedLines: number[][] = [];
@@ -1280,7 +1399,14 @@ self.onmessage = async (e) => {
         for (const sId of shapeIds) {
           const shape = shapeCache.get(sId);
           if (shape && !shape.IsNull()) {
-            const mesh = new oc.BRepMesh_IncrementalMesh(shape, deflection || 0.5, false, 0.5, false);
+            let mesh: any;
+            if (oc.BRepMesh_IncrementalMesh_2) {
+              mesh = new oc.BRepMesh_IncrementalMesh_2(shape, deflection || 0.5, false, 0.5, false);
+            } else if (oc.BRepMesh_IncrementalMesh_1) {
+              mesh = new oc.BRepMesh_IncrementalMesh_1(shape, deflection || 0.5, false, 0.5, false);
+            } else {
+              mesh = new oc.BRepMesh_IncrementalMesh(shape, deflection || 0.5, false, 0.5, false);
+            }
             mesh.delete();
 
             const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
@@ -1290,9 +1416,10 @@ self.onmessage = async (e) => {
               const triangulation = oc.BRep_Tool.Triangulation(face, loc);
               if (triangulation && !triangulation.IsNull()) {
                 const trans = loc.Transformation();
-                const nbNodes = triangulation.NbNodes();
+                const tri = triangulation.get();
+                const nbNodes = tri.NbNodes();
                 for (let i = 1; i <= nbNodes; i++) {
-                  const node = triangulation.Node(i);
+                  const node = tri.Node(i);
                   const pnt = node.Transformed(trans);
                   points.push({ x: pnt.X(), y: pnt.Y(), z: pnt.Z() });
                   pnt.delete();
@@ -1328,29 +1455,30 @@ self.onmessage = async (e) => {
       const faces = computeConvexHull3D(uniquePoints);
 
       // Build B-Rep solid from the points and faces
+      const gpPoints: any[] = [];
       const vertices: any[] = [];
       for (const pt of uniquePoints) {
         const gpPnt = new oc.gp_Pnt_3(pt.x, pt.y, pt.z);
+        gpPoints.push(gpPnt);
         const makeVertex = new oc.BRepBuilderAPI_MakeVertex(gpPnt);
         vertices.push(detachShape(oc, makeVertex.Vertex()));
         makeVertex.delete();
-        gpPnt.delete();
       }
 
       const faceShapes: any[] = [];
       for (const faceIndices of faces) {
-        const makeWire = new oc.BRepBuilderAPI_MakeWire();
+        const makeWire = new oc.BRepBuilderAPI_MakeWire_1();
         let wireDone = true;
         for (let j = 0; j < 3; j++) {
           const idx1 = faceIndices[j];
           const idx2 = faceIndices[(j + 1) % 3];
-          const v1 = vertices[idx1];
-          const v2 = vertices[idx2];
-          if (!v1 || !v2) {
+          const p1 = gpPoints[idx1];
+          const p2 = gpPoints[idx2];
+          if (!p1 || !p2) {
             wireDone = false;
             break;
           }
-          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_1(v1, v2);
+          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
           if (makeEdge.IsDone()) {
             makeWire.Add_1(makeEdge.Edge());
           } else {
@@ -1360,7 +1488,7 @@ self.onmessage = async (e) => {
         }
 
         if (wireDone && makeWire.IsDone()) {
-          const makeFace = new oc.BRepBuilderAPI_MakeFace_1(makeWire.Wire(), true);
+          const makeFace = new oc.BRepBuilderAPI_MakeFace_15(makeWire.Wire(), true);
           if (makeFace.IsDone()) {
             faceShapes.push(detachShape(oc, makeFace.Face()));
           }
@@ -1369,15 +1497,34 @@ self.onmessage = async (e) => {
         makeWire.delete();
       }
 
+      // Clean up gpPoints as they are no longer needed
+      for (const gpPnt of gpPoints) {
+        gpPnt.delete();
+      }
+
       if (faceShapes.length === 0) {
         throw new Error("No BRep faces could be built from the convex hull triangulation.");
       }
 
-      const sewing = new oc.BRepOffsetAPI_Sewing(1e-4);
+      const sewing = createSewing(oc, 1e-4);
       for (const face of faceShapes) {
         sewing.Add(face);
       }
-      sewing.Perform();
+      if (oc.Handle_Message_ProgressIndicator_1) {
+        const range = new oc.Handle_Message_ProgressIndicator_1();
+        sewing.Perform(range);
+        range.delete();
+      } else if (oc.Handle_Message_ProgressIndicator) {
+        const range = new oc.Handle_Message_ProgressIndicator();
+        sewing.Perform(range);
+        range.delete();
+      } else if (oc.Message_ProgressRange) {
+        const range = new oc.Message_ProgressRange();
+        sewing.Perform(range);
+        range.delete();
+      } else {
+        sewing.Perform();
+      }
       let shape = sewing.SewedShape();
 
       // Solidify

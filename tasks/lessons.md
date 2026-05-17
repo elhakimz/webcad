@@ -59,3 +59,16 @@ function shapeInfo(oc, shape) {
 ## 11. Mathematical Singularity Prevention on Affine Transformations
 **Pattern**: Arbitrary user-defined custom transform matrices (`multmatrix`) can contain degenerate scale factors or zero scaling on one axis, collapsing 3D volumes into 2D planes and causing infinite loops in the solver.
 **Correction**: Always implement strict determinant calculation validation guards ($\vert \det(M) \vert \ge 10^{-9}$) to reject singular affine matrices before they reach the OpenCascade geometric kernel.
+
+## 12. OpenCascade MakeCone Domain Exceptions
+**Pattern**: Constructing a frustum cone via `BRepPrimAPI_MakeCone` throws a silent OpenCascade C++ domain exception (often returning a numeric pointer address error like `16711256` in WASM) if the base radius ($R_1$) and top radius ($R_2$) are equal.
+**Correction**: Implement a tolerance guard in the worker/creator. If the radii are mathematically equal within floating-point tolerance (e.g., $10^{-6}$), gracefully fall back to creating a standard cylinder primitive (`BRepPrimAPI_MakeCylinder`) instead of a degenerate cone frustum.
+
+## 13. OpenCascade Emscripten Constructor Arity and Suffixes
+**Pattern**: In Emscripten/WebIDL, overloaded C++ constructors with default arguments are often bound as either a single constructor requiring the maximum number of arguments, or as multiple suffixed properties (e.g., `Class_1`, `Class_2`, etc.) in the WASM build.
+**Correction**: Design defensive instantiation helpers that wrap creation inside a try-catch cascading block, testing the signature with the most arguments down to zero arguments, or testing multiple suffixed variants (e.g. `BRepBuilderAPI_Sewing(tolerance, option, cutting, nonManifold, whichSide)` -> `BRepBuilderAPI_Sewing(tolerance)`). This guarantees constructor safety across different target builds.
+
+## 14. Universal Progress Indicator and WebIDL Overload Resolution
+**Pattern**: Methods expecting a progress reference (like `sewing.Perform(progress)`) will throw signature errors if called with 0 arguments or if passed `undefined` when the target class (like `Message_ProgressRange`) is not bound in the WASM module.
+**Correction**: Inspect the keys of the `oc` WASM object at runtime to detect bound classes (such as `Handle_Message_ProgressIndicator` or `Message_ProgressRange`), construct the appropriate null reference handle or progress indicator object, and pass it explicitly. This satisfies the WebIDL overload resolution without throwing argument count exceptions.
+

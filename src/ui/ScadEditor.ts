@@ -10,6 +10,7 @@ import { ScadParameterDialog } from "./ScadParameterDialog";
 import { Solid3D } from "../core/model/Solid3D";
 import { Polyline } from "../core/model/Polyline";
 import { Insert } from "../core/model/Insert";
+import { Entity } from "../core/model/Entity";
 import { NotificationManager } from "./NotificationManager";
 
 class ScadInputDialog {
@@ -54,8 +55,16 @@ class ScadInputDialog {
 
     const descEl = document.createElement('div');
     descEl.textContent = this.labelText;
-    descEl.style.fontSize = '12px';
-    descEl.style.opacity = '0.8';
+    Object.assign(descEl.style, {
+      fontSize: '12px',
+      opacity: '0.8',
+      whiteSpace: 'pre-wrap',
+      maxHeight: '150px',
+      overflowY: 'auto',
+      border: '1px solid rgba(255, 255, 255, 0.05)',
+      padding: '6px',
+      backgroundColor: 'rgba(0, 0, 0, 0.2)'
+    });
     this.container.appendChild(descEl);
 
     const input = document.createElement('input');
@@ -169,6 +178,8 @@ export class ScadEditor {
   private scadManager: ScadManager;
   private extractor: ParameterExtractor;
   private lastGeometries: any[] = [];
+  public currentProject: string = "myproject";
+  public currentFile: string = "main.scad";
 
   constructor(
     private onRender: (geometries: any[]) => void,
@@ -379,6 +390,16 @@ difference() {
 
   public openCustomizer() {
     const code = this.editorView.state.doc.toString();
+    
+    // Clean up viewport screen and interpreter stack immediately
+    if (this.app?.viewer) {
+      this.app.viewer.clearTemporaryMeshes();
+      this.app.viewer.render();
+    }
+    this.scadManager.clearCache().catch(e => {
+      console.warn("Failed to clear SCAD interpreter cache on customize:", e);
+    });
+
     const params = this.extractor.extract(code);
     
     const dialog = new ScadParameterDialog(
@@ -590,9 +611,46 @@ difference() {
     this.showProgressBar();
 
     await new Promise(resolve => requestAnimationFrame(resolve));
+
+    // Clean up viewport screen and interpreter stack immediately
+    if (this.app?.viewer) {
+      this.app.viewer.clearTemporaryMeshes();
+      this.app.viewer.render();
+    }
+    try {
+      await this.scadManager.clearCache();
+    } catch (e) {
+      console.warn("Failed to clear SCAD interpreter cache:", e);
+    }
+    
+    const parts = this.currentFile.replace(/\\/g, '/').split('/');
+    parts.pop();
+    const currentDir = parts.join('/');
+    
+    // Fetch absolute path info from server
+    let absolutePath = "";
+    try {
+      const subPath = currentDir ? `scad/projects/${this.currentProject}/${currentDir}` : `scad/projects/${this.currentProject}`;
+      const response = await fetch(`/api/files-absolute-path/${subPath}`);
+      if (response.ok) {
+        const data = await response.json();
+        absolutePath = data.absolutePath;
+      }
+    } catch (e) {
+      console.warn("Error fetching absolute path:", e);
+    }
+
+    if (this.app && typeof this.app.printToCommandLine === 'function') {
+      const displayPath = absolutePath ? `${absolutePath}\\${this.currentFile.split('/').pop()}` : `files/scad/projects/${this.currentProject}/${this.currentFile.split('/').pop()}`;
+      this.app.printToCommandLine(`Running SCAD: ${displayPath}`);
+    }
     
     try {
-      const result = await this.scadManager.execute(code, overrides);
+      const result = await this.scadManager.execute(code, overrides, (msg) => {
+        if (this.app && typeof this.app.printToCommandLine === 'function') {
+          this.app.printToCommandLine(msg);
+        }
+      }, this.currentProject, currentDir, absolutePath);
       
       if (result.success) {
         this.lastGeometries = result.entities;
@@ -846,9 +904,15 @@ difference() {
           if (!overwrite) return;
         }
 
+        const entities: any[] = [];
+
         // 1. Extract raw 2D segments from both BRep topological edge lines and mesh silhouette edges
         const segments: { p1: { x: number; y: number }; p2: { x: number; y: number } }[] = [];
         this.lastGeometries.forEach((geo: any) => {
+          if (geo instanceof Entity) {
+            entities.push(geo.clone(this.app.doc.getNextId(geo.constructor.name.toUpperCase())));
+            return;
+          }
           // A. Add BRep topological edges
           const edgeLines = geo.userData?.edgeLines;
           if (edgeLines && Array.isArray(edgeLines)) {
@@ -912,7 +976,6 @@ difference() {
         }
 
         // 3. Chain segments into continuous polyline paths
-        const entities: any[] = [];
         const remaining = [...uniqueSegments];
 
         while (remaining.length > 0) {
@@ -1055,6 +1118,8 @@ difference() {
                 body: code
               });
               if (response.ok) {
+                this.currentProject = projectName;
+                this.currentFile = fileName;
                 NotificationManager.getInstance().show(`SCAD script saved successfully to scad/projects/${projectName}/${fileName}!`, "success");
               } else {
                 NotificationManager.getInstance().show(`Error saving SCAD script: ${response.statusText}`, "error");
@@ -1121,6 +1186,8 @@ difference() {
                   if (contentResponse.ok) {
                     const content = await contentResponse.text();
                     
+                    this.currentProject = projectName;
+                    this.currentFile = fileName;
                     this.editorView.dispatch({
                       changes: {
                         from: 0,

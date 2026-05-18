@@ -174,7 +174,9 @@ module helical_gear(
         }
         
         if (hole_diameter > 0) {
-            cylinder(h=thickness + 2, d=hole_diameter, center=true, $fn=32);
+            translate([0, 0, -thickness/2 - 1]) {
+                cylinder(h=thickness + 2, d=hole_diameter, center=false, $fn=32);
+            }
         }
     }
 }
@@ -199,7 +201,9 @@ module bevel_gear(
         }
         
         if (hole_diameter > 0) {
-            cylinder(h=thickness + 2, d=hole_diameter, center=true, $fn=32);
+            translate([0, 0, -thickness/2 - 1]) {
+                cylinder(h=thickness + 2, d=hole_diameter, center=false, $fn=32);
+            }
         }
     }
 }

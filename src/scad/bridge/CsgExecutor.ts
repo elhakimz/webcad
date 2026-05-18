@@ -1134,7 +1134,7 @@ export class CsgExecutor {
           this.tempIds.add(tempId);
           extGeo = await this.occ.transformShape(id, 0, 0, -height / 2, tempId, deflection);
           if (extGeo) {
-            extGeo.userData = { ...extGeo.userData, entityId: id };
+            extGeo.userData = { ...extGeo.userData, entityId: tempId };
           }
         } else {
           extGeo.userData = { ...extGeo.userData, entityId: id };

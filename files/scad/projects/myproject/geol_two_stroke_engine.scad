@@ -112,67 +112,69 @@ union() {
 
 // --- Engine Block / Cylinder Module ---
 module cylinder_block() {
-    // 1. Lower Crankcase
-    color("grey") {
-        translate([0, 0, 0]) {
-            // Crankcase main housing
-            cyl(l=35, d=58, center=true);
-            // Front cover shaft sleeve
-            translate([18, 0, 0]) rotate([0, 90, 0]) cyl(l=10, d=20, center=true);
-            // Rear cover shaft sleeve
-            translate([-18, 0, 0]) rotate([0, 90, 0]) cyl(l=10, d=20, center=true);
-        }
-    }
-    
-    // 2. Cylinder Barrel (Vertical)
-    color("crimson") {
-        translate([0, 0, 45]) {
-            difference() {
-                // Main outer barrel
-                cyl(l=65, d=45, center=true);
-                // Inner cylinder bore (where piston slides)
-                cyl(l=70, d=bore_d, center=true);
-                // Intake Port
-                translate([0, 20, -20]) rotate([90, 0, 0]) cyl(l=20, d=10, center=true);
-                // Exhaust Port
-                translate([0, -20, 0]) rotate([90, 0, 0]) cyl(l=20, d=10, center=true);
+    union() {
+        // 1. Lower Crankcase
+        color("grey") {
+            translate([0, 0, 0]) {
+                // Crankcase main housing
+                cyl(l=35, d=58, center=true);
+                // Front cover shaft sleeve
+                translate([18, 0, 0]) rotate([0, 90, 0]) cyl(l=10, d=20, center=true);
+                // Rear cover shaft sleeve
+                translate([-18, 0, 0]) rotate([0, 90, 0]) cyl(l=10, d=20, center=true);
             }
         }
-    }
-    
-    // 3. Cylinder Cooling Fins (For air cooling)
-    color("firebrick") {
-        for (z = [25 : 8 : 75]) {
-            translate([0, 0, z]) {
+        
+        // 2. Cylinder Barrel (Vertical)
+        color("crimson") {
+            translate([0, 0, 45]) {
                 difference() {
-                    cyl(l=2.5, d=62, center=true);
-                    cyl(l=4, d=bore_d + 0.5, center=true);
+                    // Main outer barrel
+                    cyl(l=65, d=45, center=true);
+                    // Inner cylinder bore (where piston slides)
+                    cyl(l=70, d=bore_d, center=true);
+                    // Intake Port
+                    translate([0, 20, -20]) rotate([90, 0, 0]) cyl(l=20, d=10, center=true);
+                    // Exhaust Port
+                    translate([0, -20, 0]) rotate([90, 0, 0]) cyl(l=20, d=10, center=true);
                 }
             }
         }
-    }
-    
-    // 4. Cylinder Head (Cylinder top cover)
-    color("darkred") {
-        translate([0, 0, 80]) {
-            difference() {
-                // Head base dome
-                cyl(l=8, d1=45, d2=38, center=true);
-                // Spark plug threaded hole
-                cyl(l=12, d=10, center=true);
-            }
-            // Cooling fins on top of the head
-            for (ang = [0 : 45 : 180]) {
-                rotate([0, 0, ang]) {
-                    translate([0, 0, 5]) cube([45, 2, 4], center=true);
+        
+        // 3. Cylinder Cooling Fins (For air cooling)
+        color("firebrick") {
+            for (z = [25 : 8 : 75]) {
+                translate([0, 0, z]) {
+                    difference() {
+                        cyl(l=2.5, d=62, center=true);
+                        cyl(l=4, d=bore_d + 0.5, center=true);
+                    }
                 }
             }
         }
-    }
-    
-    // 5. Spark Plug (UTS standard V-thread M10 plug)
-    translate([0, 0, 84]) {
-        spark_plug();
+        
+        // 4. Cylinder Head (Cylinder top cover)
+        color("darkred") {
+            translate([0, 0, 80]) {
+                difference() {
+                    // Head base dome
+                    cyl(l=8, d1=45, d2=38, center=true);
+                    // Spark plug threaded hole
+                    cyl(l=12, d=10, center=true);
+                }
+                // Cooling fins on top of the head
+                for (ang = [0 : 45 : 180]) {
+                    rotate([0, 0, ang]) {
+                        translate([0, 0, 5]) cube([45, 2, 4], center=true);
+                    }
+                }
+            }
+        }
+        
+        // 5. Spark Plug (UTS standard V-thread M10 plug)
+        translate([0, 0, 84]) {
+            spark_plug();
+        }
     }
 }
 

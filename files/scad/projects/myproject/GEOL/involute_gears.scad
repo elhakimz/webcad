@@ -35,8 +35,8 @@ function base_radius(mm_per_tooth=5, number_of_teeth=11, pressure_angle=28) =
 
 function _gear_polar(r, theta) = r * [sin(theta), cos(theta)];
 function _gear_iang(r1, r2) = sqrt(max(0, (r2/r1)*(r2/r1) - 1)) / PI * 180 - acos(r1/r2);
-function _gear_q6(b, s, t, d) = _gear_polar(d, s * (_gear_iang(b, d) + t));
-function _gear_q7(f, r, b, r2, t, s) = _gear_q6(b, s, t, (1-f)*max(b,r)+f*r2);
+function _gear_q6(b, s, t, d, offset=0) = _gear_polar(d, s * (_gear_iang(b, d) + t) + offset);
+function _gear_q7(f, r, b, r2, t, s, offset=0) = _gear_q6(b, s, t, (1-f)*max(b,r)+f*r2, offset);
 
 // Returns points for a single tooth profile centered at the origin
 function gear_tooth_profile(
@@ -64,22 +64,42 @@ function gear_tooth_profile(
         ]
     ) points;
 
-// Creates a complete rotated 2D gear profile
+// Creates a complete rotated 2D gear profile (watertight, simple, duplicate-free for OpenCascade)
 function gear2d(
     mm_per_tooth    = 5,
     number_of_teeth = 17,
     pressure_angle  = 20,
     clearance       = undef,
     backlash        = 0.0
-) = [
-    for (i = [0 : number_of_teeth - 1])
-        let (
-            angle = i * 360 / number_of_teeth,
-            rot_mat = [[cos(angle), -sin(angle)], [sin(angle), cos(angle)]],
-            tooth = gear_tooth_profile(mm_per_tooth, number_of_teeth, pressure_angle, backlash, clearance, valleys=false)
-        )
-        for (pt = tooth) rot_mat * pt
-];
+) = let(
+        p = pitch_radius(mm_per_tooth, number_of_teeth),
+        c = outer_radius(mm_per_tooth, number_of_teeth, clearance),
+        r = root_radius(mm_per_tooth, number_of_teeth, clearance),
+        b = base_radius(mm_per_tooth, number_of_teeth, pressure_angle),
+        t = mm_per_tooth/2 - backlash/2,
+        k = -_gear_iang(b, p) - t/2/p/PI*180
+    ) [
+        for (i = [0 : number_of_teeth - 1])
+            let (
+                offset = i * 360 / number_of_teeth
+            )
+            each concat(
+                // 1. Left root corner
+                [_gear_polar(r, -180 / number_of_teeth + offset)],
+                
+                // 2. Left base transition (only if root is inside base circle)
+                (r < b) ? [_gear_polar(r, k + offset)] : [],
+                
+                // 3. Left involute curve (from 0 to 5)
+                [for (f = [0 : 5]) _gear_q7(f/5, r, b, c, k, 1, offset)],
+                
+                // 4. Right involute curve (from 5 down to 0)
+                [for (f = [5 : -1 : 0]) _gear_q7(f/5, r, b, c, k, -1, offset)],
+                
+                // 5. Right base transition (only if root is inside base circle)
+                (r < b) ? [_gear_polar(r, -k + offset)] : []
+            )
+    ];
 
 // 2D profile wrapper module
 module gear2d_profile(mm_per_tooth=5, number_of_teeth=17, pressure_angle=20, clearance=undef, backlash=0.0) {

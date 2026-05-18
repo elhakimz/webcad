@@ -180,6 +180,55 @@ export class CsgExecutor {
         return this.createPrimitive(node, id);
 
       case "Transform": {
+        if (node.name === "linear_extrude" || node.name === "rotate_extrude") {
+          const deflection = this.getDeflection(node.params);
+          const pts = [];
+          for (const child of node.children) {
+            pts.push(...this.get2DPoints(child));
+          }
+          if (pts.length >= 3) {
+            if (node.name === "linear_extrude") {
+              const height = node.params.height ?? node.params[0] ?? 1.0;
+              const center = node.params.center ?? node.params[1] ?? false;
+              const formattedPts = pts.map(pt => ({ x: pt.x, y: pt.y, z: 0 }));
+              let extGeo = await this.occ.createExtrude(formattedPts, height, undefined, deflection, true, id);
+              if (extGeo) {
+                if (center) {
+                  const tempId = id + "_centered";
+                  this.tempIds.add(tempId);
+                  extGeo = await this.occ.transformShape(id, 0, 0, -height / 2, tempId, deflection);
+                  if (extGeo) {
+                    extGeo.userData = { ...extGeo.userData, entityId: id };
+                  }
+                } else {
+                  extGeo.userData = { ...extGeo.userData, entityId: id };
+                }
+                const firstColor = node.params.color ?? node.params.c;
+                const hexColor = this.parseScadColor(firstColor);
+                if (hexColor !== undefined && extGeo) {
+                  extGeo.userData.color = hexColor;
+                }
+                return extGeo;
+              }
+            } else if (node.name === "rotate_extrude") {
+              const angle = node.params.angle ?? node.params[0] ?? 360.0;
+              const profilePts = pts.map(pt => ({ x: pt.x, y: 0, z: pt.y }));
+              const axisPoint = { x: 0, y: 0, z: 0 };
+              const axisDir = { x: 0, y: 0, z: 1 };
+              let revGeo = await this.occ.createRevolve(profilePts, axisPoint, axisDir, angle, undefined, deflection, true, id);
+              if (revGeo) {
+                revGeo.userData = { ...revGeo.userData, entityId: id };
+                const firstColor = node.params.color ?? node.params.c;
+                const hexColor = this.parseScadColor(firstColor);
+                if (hexColor !== undefined) {
+                  revGeo.userData.color = hexColor;
+                }
+                return revGeo;
+              }
+            }
+          }
+        }
+
         const children = await this.evaluateNodes(node.children);
         if (children.length === 0) return null;
 
@@ -349,8 +398,16 @@ export class CsgExecutor {
 
   private async createPrimitive(node: { name: string; params: any }, id: string): Promise<THREE.BufferGeometry | Entity | null> {
     const p = node.params;
-    const deflection = 0.1;
+    const deflection = this.getDeflection(p);
     let geo: THREE.BufferGeometry | null = null;
+
+    const validate = (...args: any[]) => {
+      for (const val of args) {
+        if (typeof val !== 'number' || isNaN(val) || !isFinite(val)) {
+          throw new Error(`Invalid parameter: expected a finite number, got ${typeof val} (${val})`);
+        }
+      }
+    };
 
     const parsePoint = (val: any, defaultVal = { x: 0, y: 0 }): { x: number; y: number } => {
       if (Array.isArray(val)) {
@@ -368,41 +425,86 @@ export class CsgExecutor {
         const center = p.center ?? p[1] ?? false;
         let dx = 1, dy = 1, dz = 1;
         if (Array.isArray(size)) {
-          [dx, dy, dz] = size;
+          dx = size[0] ?? 1;
+          dy = size[1] ?? 1;
+          dz = size[2] ?? 1;
         } else {
-          dx = dy = dz = size;
+          dx = dy = dz = (size ?? 1);
         }
         const x = center ? -dx/2 : 0;
         const y = center ? -dy/2 : 0;
         const z = center ? -dz/2 : 0;
+        validate(dx, dy, dz, x, y, z);
+        if (dx <= 0 || dy <= 0 || dz <= 0) {
+          throw new Error(`Cube size must be positive, got size=[${dx}, ${dy}, ${dz}]`);
+        }
         geo = await this.occ.createBox(x, y, z, dx, dy, dz, deflection, id);
         break;
       }
       case "sphere": {
-        const r = p.r !== undefined ? p.r : (p.d !== undefined ? p.d / 2 : (p[0] ?? 1));
+        let r = p.r !== undefined && p.r !== null ? p.r : (p.d !== undefined && p.d !== null ? p.d / 2 : (p[0] ?? 1));
+        if (r === undefined || r === null) r = 1;
+        validate(r);
+        if (r <= 0) {
+          throw new Error(`Sphere radius must be positive, got r=${r}`);
+        }
         geo = await this.occ.createSphere(0, 0, 0, r, deflection, id);
         break;
       }
       case "cylinder": {
-        const h = p.h ?? p[0] ?? 1;
-        const r1 = p.r1 !== undefined ? p.r1 : (p.r !== undefined ? p.r : (p.d1 !== undefined ? p.d1 / 2 : (p.d !== undefined ? p.d / 2 : (p[1] ?? 1))));
-        const r2 = p.r2 !== undefined ? p.r2 : (p.r !== undefined ? p.r : (p.d2 !== undefined ? p.d2 / 2 : (p.d !== undefined ? p.d / 2 : (p[2] ?? 1))));
+        let h = p.h ?? p[0] ?? 1;
+        let r1 = p.r1 !== undefined && p.r1 !== null ? p.r1 : (p.r !== undefined && p.r !== null ? p.r : (p.d1 !== undefined && p.d1 !== null ? p.d1 / 2 : (p.d !== undefined && p.d !== null ? p.d / 2 : (p[1] ?? 1))));
+        let r2 = p.r2 !== undefined && p.r2 !== null ? p.r2 : (p.r !== undefined && p.r !== null ? p.r : (p.d2 !== undefined && p.d2 !== null ? p.d2 / 2 : (p.d !== undefined && p.d !== null ? p.d / 2 : (p[2] ?? 1))));
         const center = p.center ?? p[3] ?? false;
+        if (h === undefined || h === null) h = 1;
+        if (r1 === undefined || r1 === null) r1 = 1;
+        if (r2 === undefined || r2 === null) r2 = 1;
         const z = center ? -h/2 : 0;
+        validate(h, r1, r2, z);
+        if (h <= 0) {
+          throw new Error(`Cylinder height must be positive, got h=${h}`);
+        }
+        if (r1 < 0 || r2 < 0 || (r1 === 0 && r2 === 0)) {
+          throw new Error(`Cylinder radii must be positive, got r1=${r1}, r2=${r2}`);
+        }
         geo = await this.occ.createFrustum(0, 0, z, r1, r2, h, deflection, id);
         break;
       }
       case "cone": {
-        const r = p.r !== undefined ? p.r : (p.d !== undefined ? p.d / 2 : (p[0] ?? 1));
-        const h = p.h ?? p[1] ?? 1;
+        let r = p.r !== undefined && p.r !== null ? p.r : (p.d !== undefined && p.d !== null ? p.d / 2 : (p[0] ?? 1));
+        let h = p.h ?? p[1] ?? 1;
         const center = p.center ?? p[2] ?? false;
+        if (r === undefined || r === null) r = 1;
+        if (h === undefined || h === null) h = 1;
         const z = center ? -h/2 : 0;
+        validate(r, h, z);
+        if (h <= 0) {
+          throw new Error(`Cone height must be positive, got h=${h}`);
+        }
+        if (r <= 0) {
+          throw new Error(`Cone radius must be positive, got r=${r}`);
+        }
         geo = await this.occ.createCone(0, 0, z, r, h, deflection, id);
+        break;
+      }
+      case "torus": {
+        let r1 = p.r1 !== undefined ? p.r1 : (p[0] ?? 1);
+        let r2 = p.r2 !== undefined ? p.r2 : (p[1] ?? 0.2);
+        validate(r1, r2);
+        if (r1 <= 0 || r2 <= 0) {
+          throw new Error(`Torus radii must be positive, got r1=${r1}, r2=${r2}`);
+        }
+        geo = await this.occ.createTorus(0, 0, 0, r1, r2, deflection, id);
         break;
       }
       case "polyhedron": {
         const points = p.points ?? p[0] ?? [];
         const faces = p.faces ?? p.triangles ?? p[1] ?? [];
+        for (const pt of points) {
+          if (Array.isArray(pt)) {
+            validate(...pt);
+          }
+        }
         geo = await this.occ.createPolyhedron(points, faces, deflection, id);
         break;
       }
@@ -414,15 +516,24 @@ export class CsgExecutor {
           dx = size[0] ?? 1;
           dy = size[1] ?? 1;
         } else {
-          dx = dy = size;
+          dx = dy = (size ?? 1);
         }
         const x = center ? -dx/2 : 0;
         const y = center ? -dy/2 : 0;
+        validate(dx, dy, x, y);
+        if (dx <= 0 || dy <= 0) {
+          throw new Error(`Square dimensions must be positive, got size=[${dx}, ${dy}]`);
+        }
         geo = await this.occ.createBox(x, y, 0, dx, dy, 0.001, deflection, id);
         break;
       }
       case "circle": {
-        const r = p.r !== undefined ? p.r : (p.d !== undefined ? p.d / 2 : (p[0] ?? 1));
+        let r = p.r !== undefined && p.r !== null ? p.r : (p.d !== undefined && p.d !== null ? p.d / 2 : (p[0] ?? 1));
+        if (r === undefined || r === null) r = 1;
+        validate(r);
+        if (r <= 0) {
+          throw new Error(`Circle radius must be positive, got r=${r}`);
+        }
         geo = await this.occ.createCylinder(0, 0, 0, r, 0.001, deflection, id);
         break;
       }
@@ -439,6 +550,9 @@ export class CsgExecutor {
           }
           return { x: px, y: py, z: 0 };
         });
+        for (const pt of formattedPoints) {
+          validate(pt.x, pt.y);
+        }
         if (formattedPoints.length >= 3) {
           geo = await this.occ.createExtrude(formattedPoints, 0.001, undefined, deflection, true, id);
         }
@@ -895,5 +1009,117 @@ export class CsgExecutor {
       }
     }
     return (result?.userData as any).entityId;
+  }
+
+  private getDeflection(params: any, defaultSegments = 32): number {
+    let fn = params?.$fn ?? 0;
+    if (fn <= 0) {
+      const fa = params?.$fa ?? 12;
+      const fs = params?.$fs ?? 2;
+      fn = Math.max(5, Math.ceil(360 / Math.max(0.1, fa)));
+    }
+    if (fn < 3) fn = 3;
+    const deflection = Math.max(0.001, Math.min(1.0, 0.5 * (1 - Math.cos(Math.PI / fn))));
+    return deflection;
+  }
+
+  private get2DPoints(node: EvaluatedGeometry, transform = new THREE.Matrix4()): { x: number; y: number }[] {
+    const points: { x: number; y: number }[] = [];
+    
+    switch (node.type) {
+      case "Primitive": {
+        const p = node.params;
+        if (node.name === "polygon") {
+          const pts = p.points ?? p[0] ?? [];
+          const ptsMapped = pts.map((pt: any) => {
+            let px = 0, py = 0;
+            if (Array.isArray(pt)) {
+              px = pt[0] ?? 0;
+              py = pt[1] ?? 0;
+            } else if (pt && typeof pt === 'object') {
+              px = pt.x ?? 0;
+              py = pt.y ?? 0;
+            }
+            const vec = new THREE.Vector3(px, py, 0).applyMatrix4(transform);
+            return { x: vec.x, y: vec.y };
+          });
+          points.push(...ptsMapped);
+        } else if (node.name === "square") {
+          const size = p.size ?? p[0] ?? 1;
+          const center = p.center ?? p[1] ?? false;
+          let dx = 1, dy = 1;
+          if (Array.isArray(size)) {
+            dx = size[0] ?? 1;
+            dy = size[1] ?? 1;
+          } else {
+            dx = dy = size;
+          }
+          const x = center ? -dx/2 : 0;
+          const y = center ? -dy/2 : 0;
+          const squarePts = [
+            { x, y },
+            { x: x + dx, y },
+            { x: x + dx, y: y + dy },
+            { x, y: y + dy }
+          ].map(pt => {
+            const vec = new THREE.Vector3(pt.x, pt.y, 0).applyMatrix4(transform);
+            return { x: vec.x, y: vec.y };
+          });
+          points.push(...squarePts);
+        } else if (node.name === "circle") {
+          let r = p.r !== undefined && p.r !== null ? p.r : (p.d !== undefined && p.d !== null ? p.d / 2 : (p[0] ?? 1));
+          if (r === undefined || r === null) r = 1;
+          const fn = p.$fn ?? 32;
+          const segments = Math.max(5, fn);
+          const circlePts = [];
+          for (let i = 0; i < segments; i++) {
+            const angle = (i * 2 * Math.PI) / segments;
+            const vec = new THREE.Vector3(r * Math.cos(angle), r * Math.sin(angle), 0).applyMatrix4(transform);
+            circlePts.push({ x: vec.x, y: vec.y });
+          }
+          points.push(...circlePts);
+        }
+        break;
+      }
+      case "Transform": {
+        const localMat = new THREE.Matrix4();
+        if (node.name === "translate") {
+          const v = node.params.v ?? node.params[0] ?? [0, 0, 0];
+          localMat.makeTranslation(v[0] ?? 0, v[1] ?? 0, v[2] ?? 0);
+        } else if (node.name === "rotate") {
+          const v = node.params.a ?? node.params[0] ?? [0, 0, 0];
+          if (Array.isArray(v)) {
+            const euler = new THREE.Euler(
+              (v[0] * Math.PI) / 180,
+              (v[1] * Math.PI) / 180,
+              (v[2] * Math.PI) / 180
+            );
+            localMat.makeRotationFromEuler(euler);
+          } else if (typeof v === 'number') {
+            localMat.makeRotationZ((v * Math.PI) / 180);
+          }
+        } else if (node.name === "scale") {
+          const v = node.params.v ?? node.params[0] ?? [1, 1, 1];
+          if (Array.isArray(v)) {
+            localMat.makeScale(v[0] ?? 1, v[1] ?? 1, v[2] ?? 1);
+          } else if (typeof v === 'number') {
+            localMat.makeScale(v, v, v);
+          }
+        }
+        const nextMat = transform.clone().multiply(localMat);
+        for (const child of node.children) {
+          points.push(...this.get2DPoints(child, nextMat));
+        }
+        break;
+      }
+      case "Boolean":
+      case "Group": {
+        for (const child of node.children) {
+          points.push(...this.get2DPoints(child, transform));
+        }
+        break;
+      }
+    }
+    return points;
   }
 }

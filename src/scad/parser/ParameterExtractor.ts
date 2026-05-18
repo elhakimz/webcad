@@ -28,10 +28,20 @@ export class ParameterExtractor {
         continue;
       }
 
-      // Description marker: // Description
+      // Description marker or Group header: // Description or // Core Dimensions
       const descMatch = line.match(/^\/\/\s*(.*)/);
       if (descMatch && !line.includes('=')) {
-        currentDescription = descMatch[1];
+        const commentText = descMatch[1].trim();
+        // Heuristic: Standalone comment of 1-4 words (<= 35 chars) with no period is a Group header.
+        const isLikelyGroup = commentText.length <= 35 &&
+                              /^[A-Za-z0-9]/.test(commentText) &&
+                              !/[.!?]$/.test(commentText);
+        if (isLikelyGroup) {
+          currentGroup = commentText;
+          currentDescription = "";
+        } else {
+          currentDescription = commentText;
+        }
         continue;
       }
 
@@ -41,6 +51,10 @@ export class ParameterExtractor {
         const name = assignMatch[1];
         const rawValue = assignMatch[2].trim();
         const metadata = assignMatch[3].trim();
+
+        if (!this.isSimpleLiteral(rawValue)) {
+          continue; // Skip calculated/complex expressions
+        }
 
         const defaultValue = this.parseValue(rawValue);
         const type: ScadParameter['type'] = typeof defaultValue === 'boolean' ? 'boolean' : (typeof defaultValue === 'number' ? 'number' : 'string');
@@ -54,7 +68,7 @@ export class ParameterExtractor {
           group: currentGroup
         };
 
-        // Parse metadata: // [0:1:100] or // [a, b, c]
+        // Parse metadata: // [0:1:100] or // [a, b, c] or // Help text
         if (metadata.startsWith('//')) {
           const metaContent = metadata.substring(2).trim();
           const rangeMatch = metaContent.match(/^\[([-0-9.]+):([-0-9.]+):([-0-9.]+)\]/);
@@ -68,6 +82,9 @@ export class ParameterExtractor {
             if (enumMatch) {
               param.options = enumMatch[1].split(',').map(s => this.parseValue(s.trim()));
               param.type = 'enum';
+            } else {
+              // Custom help text/description on the right side of the parameter
+              param.description = metaContent;
             }
           }
         }
@@ -86,5 +103,16 @@ export class ParameterExtractor {
     if (!isNaN(parseFloat(val)) && isFinite(Number(val))) return parseFloat(val);
     if (val.startsWith('"') && val.endsWith('"')) return val.substring(1, val.length - 1);
     return val;
+  }
+
+  private isSimpleLiteral(val: string): boolean {
+    val = val.trim();
+    if (val === 'true' || val === 'false') return true;
+    if (val.startsWith('"') && val.endsWith('"')) return true;
+    if (val.startsWith('0x')) {
+      const hexVal = val.substring(2);
+      return /^[0-9a-fA-F]+$/.test(hexVal);
+    }
+    return /^-?[0-9.]+$/.test(val) && !isNaN(Number(val));
   }
 }

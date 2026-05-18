@@ -88,19 +88,22 @@ export class ScadParameterDialog {
   private createParamRow(p: ScadParameter): HTMLElement {
     const row = document.createElement('div');
     Object.assign(row.style, {
-      display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px'
+      display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '12px'
     });
 
     const label = document.createElement('div');
     label.style.flex = '1';
+    label.style.paddingTop = '4px';
     label.innerHTML = `
       <div style="font-weight:bold">${p.name}</div>
-      <div style="font-size:10px; opacity:0.6">${p.description || ''}</div>
     `;
     row.appendChild(label);
 
     const inputContainer = document.createElement('div');
     inputContainer.style.flex = '1';
+    inputContainer.style.display = 'flex';
+    inputContainer.style.flexDirection = 'column';
+    inputContainer.style.gap = '4px';
     
     if (p.type === 'enum' && p.options) {
       const select = document.createElement('select');
@@ -158,6 +161,17 @@ export class ScadParameterDialog {
       input.value = p.value.toString();
       input.oninput = () => this.paramValues.set(p.name, p.type === 'number' ? parseFloat(input.value) : input.value);
       inputContainer.appendChild(input);
+    }
+
+    if (p.description) {
+      const helpText = document.createElement('div');
+      helpText.style.fontSize = '10px';
+      helpText.style.opacity = '0.7';
+      helpText.style.color = 'var(--accent-color)';
+      helpText.style.fontStyle = 'italic';
+      helpText.style.marginTop = '2px';
+      helpText.textContent = `// ${p.description}`;
+      inputContainer.appendChild(helpText);
     }
 
     row.appendChild(inputContainer);

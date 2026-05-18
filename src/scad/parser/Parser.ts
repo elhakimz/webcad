@@ -19,6 +19,32 @@ export class ScadParser {
   }
 
   private declaration(): AST.Node {
+    if (this.match(TokenType.STAR)) {
+      this.declaration(); // parse and ignore
+      return { type: "Assignment", name: "_ignored_" + Math.random().toString(36).substring(2, 9), value: { type: "Literal", value: 0 } };
+    }
+    if (this.match(TokenType.PERCENT)) {
+      const child = this.declaration();
+      return {
+        type: "ModuleInstantiation",
+        name: "color",
+        arguments: [{ name: undefined, value: { type: "Literal", value: [0.5, 0.5, 0.5, 0.2] } }],
+        children: [child]
+      };
+    }
+    if (this.match(TokenType.BANG)) {
+      return this.declaration();
+    }
+    if (this.match(TokenType.HASH)) {
+      const child = this.declaration();
+      return {
+        type: "ModuleInstantiation",
+        name: "color",
+        arguments: [{ name: undefined, value: { type: "Literal", value: [1.0, 0.41, 0.7, 0.5] } }],
+        children: [child]
+      };
+    }
+
     if (this.match(TokenType.MODULE)) return this.moduleDeclaration();
     if (this.match(TokenType.FUNCTION)) return this.functionDeclaration();
     if (this.match(TokenType.IF)) return this.ifStatement();
@@ -37,7 +63,7 @@ export class ScadParser {
     this.consume(TokenType.LPAREN, "Expect '(' after module name.");
     const parameters = this.parameterList();
     this.consume(TokenType.RPAREN, "Expect ')' after parameters.");
-    const body = this.block();
+    const body = this.statementOrBlock();
     return { type: "ModuleDef", name, parameters, body };
   }
 
@@ -56,6 +82,9 @@ export class ScadParser {
     const parameters: AST.Parameter[] = [];
     if (!this.check(TokenType.RPAREN)) {
       do {
+        if (this.check(TokenType.RPAREN)) {
+          break;
+        }
         const name = this.consume(TokenType.IDENT, "Expect parameter name.").value;
         let defaultValue: AST.Expression | undefined;
         if (this.match(TokenType.EQUALS)) {
@@ -95,6 +124,9 @@ export class ScadParser {
     const args: AST.Argument[] = [];
     if (!this.check(TokenType.RPAREN)) {
       do {
+        if (this.check(TokenType.RPAREN)) {
+          break;
+        }
         let name: string | undefined;
         if (this.check(TokenType.IDENT) && this.peekNext().type === TokenType.EQUALS) {
           name = this.consume(TokenType.IDENT, "Expect argument name.").value;
@@ -119,18 +151,31 @@ export class ScadParser {
     return { type: "IfStatement", condition, thenBranch, elseBranch };
   }
 
-  private forStatement(): AST.ForStatement {
+  private forStatement(): AST.Node {
     this.consume(TokenType.LPAREN, "Expect '(' after 'for'.");
-    const variables: string[] = [];
+    const loops: { variable: string; range: AST.Expression }[] = [];
     do {
-      variables.push(this.consume(TokenType.IDENT, "Expect loop variable.").value);
+      const variable = this.consume(TokenType.IDENT, "Expect loop variable.").value;
+      this.consume(TokenType.EQUALS, "Expect '=' after loop variable.");
+      const range = this.expression();
+      loops.push({ variable, range });
     } while (this.match(TokenType.COMMA));
-    
-    this.consume(TokenType.EQUALS, "Expect '=' after loop variables.");
-    const range = this.expression();
     this.consume(TokenType.RPAREN, "Expect ')' after for parameters.");
+
     const body = this.statementOrBlock();
-    return { type: "ForStatement", variables, range, body };
+
+    // Desugar loops from right to left (innermost to outermost)
+    let currentBody = body;
+    for (let i = loops.length - 1; i >= 0; i--) {
+      const loop = loops[i];
+      currentBody = [{
+        type: "ForStatement",
+        variables: [loop.variable],
+        range: loop.range,
+        body: currentBody
+      }];
+    }
+    return currentBody[0];
   }
 
   private statementOrBlock(): AST.Node[] {
@@ -230,19 +275,46 @@ export class ScadParser {
   }
 
   private unary(): AST.Expression {
-    if (this.match(TokenType.BANG, TokenType.MINUS)) {
+    if (this.match(TokenType.BANG, TokenType.MINUS, TokenType.PLUS)) {
       const operator = this.previous().value;
       const argument = this.unary();
       return { type: "UnaryExpression", operator, argument };
     }
-    return this.primary();
+    return this.exponent();
+  }
+
+  private exponent(): AST.Expression {
+    let expr = this.primary();
+    while (this.match(TokenType.CARET)) {
+      const operator = this.previous().value;
+      const right = this.unary();
+      expr = { type: "BinaryExpression", operator, left: expr, right };
+    }
+    return expr;
   }
 
   private primary(): AST.Expression {
+    let expr = this.basePrimary();
+    while (true) {
+      if (this.match(TokenType.LSQUARE)) {
+        const index = this.expression();
+        this.consume(TokenType.RSQUARE, "Expect ']' after index.");
+        expr = { type: "IndexExpression", expr, index };
+      } else if (this.match(TokenType.DOT)) {
+        const property = this.consume(TokenType.IDENT, "Expect property name after '.'.").value;
+        expr = { type: "DotExpression", expr, property };
+      } else {
+        break;
+      }
+    }
+    return expr;
+  }
+
+  private basePrimary(): AST.Expression {
     if (this.match(TokenType.TRUE)) return { type: "Literal", value: true };
     if (this.match(TokenType.FALSE)) return { type: "Literal", value: false };
     if (this.match(TokenType.UNDEF)) return { type: "Literal", value: undefined };
-    if (this.match(TokenType.NUMBER)) return { type: "Literal", value: parseFloat(this.previous().value) };
+    if (this.match(TokenType.NUMBER)) return { type: "Literal", value: Number(this.previous().value) };
     if (this.match(TokenType.STRING)) return { type: "Literal", value: this.previous().value };
 
     if (this.match(TokenType.IDENT)) {
@@ -255,13 +327,27 @@ export class ScadParser {
       return { type: "Identifier", name };
     }
 
+    if (this.match(TokenType.LET)) {
+      this.consume(TokenType.LPAREN, "Expect '(' after 'let'.");
+      const assignments: { name: string; value: AST.Expression }[] = [];
+      do {
+        const name = this.consume(TokenType.IDENT, "Expect variable name in let.").value;
+        this.consume(TokenType.EQUALS, "Expect '=' after variable name in let.");
+        const value = this.expression();
+        assignments.push({ name, value });
+      } while (this.match(TokenType.COMMA));
+      this.consume(TokenType.RPAREN, "Expect ')' after let variables.");
+      const expr = this.expression();
+      return { type: "LetExpression", assignments, expr };
+    }
+
     if (this.match(TokenType.LSQUARE)) {
       if (this.check(TokenType.RSQUARE)) {
         this.advance();
         return { type: "ArrayExpression", elements: [] };
       }
       
-      const first = this.expression();
+      const first = this.arrayElement();
       if (this.match(TokenType.COLON)) {
         const second = this.expression();
         if (this.match(TokenType.COLON)) {
@@ -276,7 +362,10 @@ export class ScadParser {
       
       const elements: AST.Expression[] = [first];
       while (this.match(TokenType.COMMA)) {
-        elements.push(this.expression());
+        if (this.check(TokenType.RSQUARE)) {
+          break;
+        }
+        elements.push(this.arrayElement());
       }
       this.consume(TokenType.RSQUARE, "Expect ']' after array.");
       return { type: "ArrayExpression", elements };
@@ -289,6 +378,113 @@ export class ScadParser {
     }
 
     throw new Error(`Expect expression at line ${this.peek().line}, col ${this.peek().col}. Found ${this.peek().value}`);
+  }
+
+  private listComprehensionBody(): AST.Expression {
+    if (this.match(TokenType.FOR)) {
+      this.consume(TokenType.LPAREN, "Expect '(' after 'for'.");
+      const loops: { variable: string; range: AST.Expression }[] = [];
+      do {
+        const variable = this.consume(TokenType.IDENT, "Expect loop variable.").value;
+        this.consume(TokenType.EQUALS, "Expect '=' after loop variable.");
+        const range = this.expression();
+        loops.push({ variable, range });
+      } while (this.match(TokenType.COMMA));
+      this.consume(TokenType.RPAREN, "Expect ')' after loop parameters.");
+
+      let expr = this.listComprehensionBody();
+      
+      // Desugar loops from right to left
+      for (let i = loops.length - 1; i >= 0; i--) {
+        const loop = loops[i];
+        expr = {
+          type: "ListComprehension",
+          variable: loop.variable,
+          range: loop.range,
+          expr
+        };
+      }
+      return expr;
+    }
+
+    if (this.match(TokenType.LET)) {
+      this.consume(TokenType.LPAREN, "Expect '(' after 'let'.");
+      const assignments: { name: string; value: AST.Expression }[] = [];
+      do {
+        const name = this.consume(TokenType.IDENT, "Expect variable name in let.").value;
+        this.consume(TokenType.EQUALS, "Expect '=' after variable name in let.");
+        const value = this.expression();
+        assignments.push({ name, value });
+      } while (this.match(TokenType.COMMA));
+      this.consume(TokenType.RPAREN, "Expect ')' after let variables.");
+
+      const expr = this.listComprehensionBody();
+      return { type: "LetExpression", assignments, expr };
+    }
+
+    if (this.match(TokenType.IF)) {
+      this.consume(TokenType.LPAREN, "Expect '(' after 'if'.");
+      const condition = this.expression();
+      this.consume(TokenType.RPAREN, "Expect ')' after condition.");
+
+      const thenBranch = this.listComprehensionBody();
+      let elseBranch: AST.Expression | undefined;
+      if (this.match(TokenType.ELSE)) {
+        elseBranch = this.listComprehensionBody();
+      }
+
+      if (elseBranch) {
+        return {
+          type: "ListComprehension",
+          variable: "_is_then",
+          range: {
+            type: "ArrayExpression",
+            elements: [
+              { type: "Literal", value: true },
+              { type: "Literal", value: false }
+            ]
+          },
+          condition: {
+            type: "TernaryExpression",
+            condition: { type: "Identifier", name: "_is_then" },
+            trueExpr: condition,
+            falseExpr: {
+              type: "UnaryExpression",
+              operator: "!",
+              argument: condition
+            }
+          },
+          expr: {
+            type: "TernaryExpression",
+            condition: { type: "Identifier", name: "_is_then" },
+            trueExpr: thenBranch,
+            falseExpr: elseBranch
+          }
+        };
+      } else {
+        return {
+          type: "ListComprehension",
+          variable: "_if_dummy",
+          range: {
+            type: "ArrayExpression",
+            elements: [{ type: "Literal", value: 1 }]
+          },
+          condition,
+          expr: thenBranch
+        };
+      }
+    }
+
+    if (this.match(TokenType.EACH)) {
+      const expr = this.listComprehensionBody();
+      return { type: "EachExpression", expr };
+    }
+
+    return this.expression();
+  }
+
+  private arrayElement(): AST.Expression {
+    return this.listComprehensionBody();
   }
 
   // Helpers

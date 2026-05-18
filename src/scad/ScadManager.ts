@@ -134,8 +134,7 @@ export class ScadManager {
         if (imp.type === "use") {
           const filtered = importedNodes.filter(node =>
             node.type === "ModuleDef" ||
-            node.type === "FunctionDef" ||
-            node.type === "Assignment"
+            node.type === "FunctionDef"
           );
           bodyNodes.push(...filtered);
         } else {

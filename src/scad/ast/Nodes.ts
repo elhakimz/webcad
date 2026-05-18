@@ -72,7 +72,43 @@ export type Expression =
   | TernaryExpression
   | FunctionCall
   | ArrayExpression
-  | RangeExpression;
+  | RangeExpression
+  | IndexExpression
+  | DotExpression
+  | LetExpression
+  | ListComprehension
+  | EachExpression;
+
+export interface EachExpression {
+  type: "EachExpression";
+  expr: Expression;
+}
+
+export interface DotExpression {
+  type: "DotExpression";
+  expr: Expression;
+  property: string;
+}
+
+export interface LetExpression {
+  type: "LetExpression";
+  assignments: { name: string; value: Expression }[];
+  expr: Expression;
+}
+
+export interface ListComprehension {
+  type: "ListComprehension";
+  variable: string;
+  range: Expression;
+  condition?: Expression;
+  expr: Expression;
+}
+
+export interface IndexExpression {
+  type: "IndexExpression";
+  expr: Expression;
+  index: Expression;
+}
 
 export interface Literal {
   type: "Literal";

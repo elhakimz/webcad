@@ -1,11 +1,13 @@
 export enum TokenType {
   NUMBER, STRING, IDENT,
   TRUE, FALSE, UNDEF,
-  IF, ELSE, FOR, LET, MODULE, FUNCTION, INCLUDE, USE,
+  IF, ELSE, FOR, LET, MODULE, FUNCTION, INCLUDE, USE, EACH,
   LBRACE, RBRACE, LPAREN, RPAREN, LSQUARE, RSQUARE,
   SEMICOLON, COMMA, EQUALS, PLUS, MINUS, STAR, SLASH, PERCENT, CARET,
   BANG, AMP_AMP, PIPE_PIPE, LT, GT, LE, GE, EQ, NEQ,
   QUESTION, COLON,
+  DOT,
+  HASH,
   EOF
 }
 
@@ -28,6 +30,7 @@ const KEYWORDS: Record<string, TokenType> = {
   "true": TokenType.TRUE,
   "false": TokenType.FALSE,
   "undef": TokenType.UNDEF,
+  "each": TokenType.EACH,
 };
 
 const SYMBOLS: Record<string, TokenType> = {
@@ -41,6 +44,7 @@ const SYMBOLS: Record<string, TokenType> = {
   "^": TokenType.CARET, "!": TokenType.BANG,
   "<": TokenType.LT, ">": TokenType.GT,
   "?": TokenType.QUESTION, ":": TokenType.COLON,
+  ".": TokenType.DOT, "#": TokenType.HASH,
 };
 
 const MULTI_SYMBOLS: [string, TokenType][] = [
@@ -104,10 +108,20 @@ export class ScadLexer {
       }
       if (matchedMulti) continue;
 
+      // Namespaced Identifiers (e.g. 2d.line, dim.linear)
+      const namespaceMatch = this.src.slice(this.pos).match(/^(2d\.[a-zA-Z_$][a-zA-Z0-9_$]*|dim\.[a-zA-Z_$][a-zA-Z0-9_$]*)/);
+      if (namespaceMatch) {
+        const value = namespaceMatch[0];
+        tokens.push({ type: TokenType.IDENT, value, line: this.line, col: this.col });
+        this.pos += value.length;
+        this.col += value.length;
+        continue;
+      }
+
       // Numbers
       if (/[0-9.]/.test(char)) {
-        // Handle leading dot or digit
-        const match = this.src.slice(this.pos).match(/^[0-9]*\.?[0-9]+([eE][+-]?[0-9]+)?/);
+        // Handle hex or leading dot/digit
+        const match = this.src.slice(this.pos).match(/^(0[xX][0-9a-fA-F]+|[0-9]*\.?[0-9]+([eE][+-]?[0-9]+)?)/);
         if (match) {
           tokens.push({ type: TokenType.NUMBER, value: match[0], line: this.line, col: this.col });
           this.pos += match[0].length;

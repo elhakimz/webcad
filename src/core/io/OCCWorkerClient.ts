@@ -115,6 +115,10 @@ export class OCCWorkerClient {
     return this.send('createRevolve', { points, axisPoint, axisDir, angle, thickness, deflection, isClosed, entityId });
   }
 
+  createCompound(childrenIds: string[], entityId: string, deflection?: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('createCompound', { childrenIds, entityId, deflection });
+  }
+
   createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number, rotA?: {x:number, y:number, z:number}, rotB?: {x:number, y:number, z:number}, centerA?: {x:number, y:number, z:number}, centerB?: {x:number, y:number, z:number}): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createBoolean', { operation, idA, idB, entityId, deflection, rotA, rotB, centerA, centerB });
   }
@@ -153,16 +157,16 @@ export class OCCWorkerClient {
 
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private send(type: string, payload: any): Promise<any> {
+  private send(type: string, payload: any, timeoutMs: number = 120000): Promise<any> {
     const id = this.messageId++;
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         if (this.resolvers.has(id)) {
           this.resolvers.delete(id);
           this.rejecters.delete(id);
-          reject(new Error(`Worker request timed out after 15s: ${type}`));
+          reject(new Error(`Worker request timed out after ${timeoutMs / 1000}s: ${type}`));
         }
-      }, 15000);
+      }, timeoutMs);
 
       this.resolvers.set(id, (val) => {
         clearTimeout(timeout);

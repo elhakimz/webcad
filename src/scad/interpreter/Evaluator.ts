@@ -163,6 +163,17 @@ export class ScadEvaluator {
   private evaluateModuleInstantiation(node: AST.ModuleInstantiation, scope: Scope): EvaluatedGeometry[] {
     const args = this.evaluateArguments(node.arguments, scope);
 
+    // Handle assert() call
+    if (node.name === "assert") {
+      const cond = node.arguments[0] ? this.evaluateExpression(node.arguments[0].value, scope) : true;
+      if (!cond) {
+        const msgVal = node.arguments[1] ? this.evaluateExpression(node.arguments[1].value, scope) : undefined;
+        const msg = msgVal !== undefined ? String(msgVal) : "Assertion failed";
+        throw new Error(`Assertion failed: ${msg}`);
+      }
+      return [];
+    }
+
     // Handle echo() call
     if (node.name === "echo") {
       const parts = node.arguments.map(arg => {
@@ -219,13 +230,21 @@ export class ScadEvaluator {
          "line", "circle2d", "arc2d", "polyline2d", "mtext2d", "text2d", "hatch2d", "dimension2d",
          "2d.line", "2d.circle", "2d.arc", "2d.polyline", "2d.mtext", "2d.text", "2d.hatch",
          "dim.linear", "dim.aligned", "dim.angular", "dim.radial", "dim.diameter", "dim.dimension"].includes(node.name)) {
-      return [{ type: "Primitive", name: node.name, params: args }];
+      const params = { ...args };
+      if (params.$fn === undefined) params.$fn = scope.get("$fn");
+      if (params.$fa === undefined) params.$fa = scope.get("$fa");
+      if (params.$fs === undefined) params.$fs = scope.get("$fs");
+      return [{ type: "Primitive", name: node.name, params }];
     }
 
     // Check for built-in transforms
-    if (["translate", "rotate", "scale", "mirror", "multmatrix", "color", "linear_extrude"].includes(node.name)) {
+    if (["translate", "rotate", "scale", "mirror", "multmatrix", "color", "linear_extrude", "rotate_extrude"].includes(node.name)) {
       const children = this.evaluateBody(node.children, scope);
-      return [{ type: "Transform", name: node.name, params: args, children }];
+      const params = { ...args };
+      if (params.$fn === undefined) params.$fn = scope.get("$fn");
+      if (params.$fa === undefined) params.$fa = scope.get("$fa");
+      if (params.$fs === undefined) params.$fs = scope.get("$fs");
+      return [{ type: "Transform", name: node.name, params, children }];
     }
 
     // Check for built-in booleans
@@ -271,12 +290,11 @@ export class ScadEvaluator {
     const range = this.evaluateExpression(node.range, scope);
     const results: EvaluatedGeometry[] = [];
 
-    if (Array.isArray(range)) {
-      for (const val of range) {
-        const newScope = scope.extend();
-        newScope.set(node.variables[0], val);
-        results.push(...this.evaluateBody(node.body, newScope));
-      }
+    const list = Array.isArray(range) ? range : [range];
+    for (const val of list) {
+      const newScope = scope.extend();
+      newScope.set(node.variables[0], val);
+      results.push(...this.evaluateBody(node.body, newScope));
     }
 
     return results;
@@ -296,6 +314,8 @@ export class ScadEvaluator {
           case "-": return subtract(left, right);
           case "*": return multiply(left, right);
           case "/": return divide(left, right);
+          case "%": return left % right;
+          case "^": return Math.pow(left, right);
           case "==": return equals(left, right);
           case "!=": return !equals(left, right);
           case "<": return left < right;
@@ -325,7 +345,7 @@ export class ScadEvaluator {
         for (const element of expr.elements) {
           const val = this.evaluateExpression(element, scope);
           if (val !== undefined) {
-            if (Array.isArray(val) && (element.type === "ListComprehension" || element.type === "EachExpression")) {
+            if (Array.isArray(val) && this.shouldSpread(element)) {
               result.push(...val);
             } else {
               result.push(val);
@@ -354,6 +374,10 @@ export class ScadEvaluator {
         // Handle built-ins like sin, cos, sqrt, atan2
         if (expr.name === "sin") return Math.sin((this.evaluateExpression(expr.arguments[0].value, scope) * Math.PI) / 180);
         if (expr.name === "cos") return Math.cos((this.evaluateExpression(expr.arguments[0].value, scope) * Math.PI) / 180);
+        if (expr.name === "tan") return Math.tan((this.evaluateExpression(expr.arguments[0].value, scope) * Math.PI) / 180);
+        if (expr.name === "asin") return (Math.asin(this.evaluateExpression(expr.arguments[0].value, scope)) * 180) / Math.PI;
+        if (expr.name === "acos") return (Math.acos(this.evaluateExpression(expr.arguments[0].value, scope)) * 180) / Math.PI;
+        if (expr.name === "atan") return (Math.atan(this.evaluateExpression(expr.arguments[0].value, scope)) * 180) / Math.PI;
         if (expr.name === "sqrt") return Math.sqrt(this.evaluateExpression(expr.arguments[0].value, scope));
         if (expr.name === "atan2") {
           const y = this.evaluateExpression(expr.arguments[0].value, scope);
@@ -399,16 +423,100 @@ export class ScadEvaluator {
           const val = this.evaluateExpression(expr.arguments[0].value, scope);
           return typeof val === "number" ? Math.sign(val) : 0;
         }
-        if (expr.name === "ln" || expr.name === "log") {
+        if (expr.name === "ln") {
           const val = this.evaluateExpression(expr.arguments[0].value, scope);
           return Math.log(val);
+        }
+        if (expr.name === "log") {
+          const val = this.evaluateExpression(expr.arguments[0].value, scope);
+          return Math.log10(val);
         }
         if (expr.name === "exp") {
           const val = this.evaluateExpression(expr.arguments[0].value, scope);
           return Math.exp(val);
         }
-        if (expr.name === "assertion") {
+        if (expr.name === "assert") {
+          const cond = this.evaluateExpression(expr.arguments[0].value, scope);
+          if (!cond) {
+            const msgVal = expr.arguments[1] ? this.evaluateExpression(expr.arguments[1].value, scope) : undefined;
+            const msg = msgVal !== undefined ? String(msgVal) : "Assertion failed";
+            throw new Error(`SCAD Assertion Failed: ${msg}`);
+          }
           return 0;
+        }
+        if (expr.name === "norm") {
+          const v = this.evaluateExpression(expr.arguments[0].value, scope);
+          if (Array.isArray(v)) {
+            return Math.sqrt(v.reduce((sum: number, x: any) => sum + (Number(x) || 0) * (Number(x) || 0), 0));
+          }
+          return 0;
+        }
+        if (expr.name === "cross") {
+          const a = this.evaluateExpression(expr.arguments[0].value, scope);
+          const b = this.evaluateExpression(expr.arguments[1].value, scope);
+          if (Array.isArray(a) && Array.isArray(b)) {
+            const ax = Number(a[0]) || 0;
+            const ay = Number(a[1]) || 0;
+            const az = Number(a[2]) || 0;
+            const bx = Number(b[0]) || 0;
+            const by = Number(b[1]) || 0;
+            const bz = Number(b[2]) || 0;
+            return [
+              ay * bz - az * by,
+              az * bx - ax * bz,
+              ax * by - ay * bx
+            ];
+          }
+          return [0, 0, 0];
+        }
+        if (expr.name === "lookup") {
+          const key = Number(this.evaluateExpression(expr.arguments[0].value, scope)) || 0;
+          const table = this.evaluateExpression(expr.arguments[1].value, scope);
+          if (Array.isArray(table) && table.length > 0) {
+            const sorted = table
+              .filter(item => Array.isArray(item) && item.length >= 2)
+              .map(item => [Number(item[0]) || 0, Number(item[1]) || 0])
+              .sort((a, b) => a[0] - b[0]);
+            if (sorted.length === 0) return 0;
+            if (key <= sorted[0][0]) return sorted[0][1];
+            if (key >= sorted[sorted.length - 1][0]) return sorted[sorted.length - 1][1];
+            for (let i = 0; i < sorted.length - 1; i++) {
+              const p1 = sorted[i];
+              const p2 = sorted[i + 1];
+              if (key >= p1[0] && key <= p2[0]) {
+                const t = (key - p1[0]) / (p2[0] - p1[0]);
+                return p1[1] + t * (p2[1] - p1[1]);
+              }
+            }
+          }
+          return 0;
+        }
+        if (expr.name === "chr") {
+          const n = this.evaluateExpression(expr.arguments[0].value, scope);
+          if (Array.isArray(n)) {
+            return n.map(x => String.fromCharCode(Number(x) || 0)).join("");
+          }
+          return String.fromCharCode(Number(n) || 0);
+        }
+        if (expr.name === "ord") {
+          const s = this.evaluateExpression(expr.arguments[0].value, scope);
+          if (typeof s === "string" && s.length > 0) {
+            return s.charCodeAt(0);
+          }
+          return undefined;
+        }
+        if (expr.name === "is_function") {
+          return false;
+        }
+        if (expr.name === "rands") {
+          const min = Number(this.evaluateExpression(expr.arguments[0].value, scope)) || 0;
+          const max = Number(this.evaluateExpression(expr.arguments[1].value, scope)) || 1;
+          const n = Math.floor(Number(this.evaluateExpression(expr.arguments[2].value, scope)) || 0);
+          const result = [];
+          for (let i = 0; i < n; i++) {
+            result.push(min + Math.random() * (max - min));
+          }
+          return result;
         }
         if (expr.name === "len") {
           const val = this.evaluateExpression(expr.arguments[0].value, scope);
@@ -547,23 +655,22 @@ export class ScadEvaluator {
       case "ListComprehension": {
         const rangeVal = this.evaluateExpression(expr.range, scope);
         const result: any[] = [];
-        if (Array.isArray(rangeVal)) {
-          for (const item of rangeVal) {
-            const newScope = scope.extend();
-            newScope.set(expr.variable, item);
-            
-            if (expr.condition) {
-              const cond = this.evaluateExpression(expr.condition, newScope);
-              if (!cond) continue;
-            }
-            
-            const val = this.evaluateExpression(expr.expr, newScope);
-            if (val !== undefined) {
-              if (Array.isArray(val) && (expr.expr.type === "ListComprehension" || expr.expr.type === "EachExpression")) {
-                result.push(...val);
-              } else {
-                result.push(val);
-              }
+        const list = Array.isArray(rangeVal) ? rangeVal : [rangeVal];
+        for (const item of list) {
+          const newScope = scope.extend();
+          newScope.set(expr.variable, item);
+          
+          if (expr.condition) {
+            const cond = this.evaluateExpression(expr.condition, newScope);
+            if (!cond) continue;
+          }
+          
+          const val = this.evaluateExpression(expr.expr, newScope);
+          if (val !== undefined) {
+            if (Array.isArray(val) && this.shouldSpread(expr.expr)) {
+              result.push(...val);
+            } else {
+              result.push(val);
             }
           }
         }
@@ -590,5 +697,19 @@ export class ScadEvaluator {
       }
     });
     return result;
+  }
+
+  private shouldSpread(expr: AST.Expression): boolean {
+    if (!expr) return false;
+    if (expr.type === "ListComprehension" || expr.type === "EachExpression") {
+      return true;
+    }
+    if (expr.type === "LetExpression") {
+      return this.shouldSpread((expr as any).expr);
+    }
+    if (expr.type === "TernaryExpression") {
+      return this.shouldSpread((expr as any).trueExpr) || this.shouldSpread((expr as any).falseExpr);
+    }
+    return false;
   }
 }

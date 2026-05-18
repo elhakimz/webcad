@@ -1,74 +1,65 @@
-# Lessons Learned: WebCAD 3D Stabilization
+# WebCAD Lessons Learned & AI Developer Rules
 
-## 1. OpenCascade Memory Safety: The "Maker" Trap
-**Pattern**: Any shape returned by a Maker (e.g., `BRepPrimAPI_MakeBox`) is a reference owned by that Maker. Deleting the Maker invalidates the shape immediately.
-**Correction**: Always use a `detachShape` helper to create an independent copy BEFORE deleting the Maker.
-```typescript
-function detachShape(oc, shape) {
-  const loc = new oc.TopLoc_Location_1();
-  const copy = shape.Located(loc); // identity copy is high-performance
-  loc.delete();
-  return copy;
-}
-```
+Refined guidelines and lessons cataloged from user feedback and implementation iterations to maintain high structural standards.
 
-## 2. WebWorker Persistence: STEP vs BRep
-**Pattern**: `BRepTools` can be unstable in some Emscripten builds due to string/binary encoding issues.
-**Correction**: Use `STEPControl_Writer` and `STEPControl_Reader`. They are more robust and provide better interoperability. 
+## Lessons Catalog
 
-## 3. WASM Filesystem: Lazy Loading
-**Pattern**: `reader.ReadFile(path)` only parses the file structure. The actual geometric data is streamed from the FS during `TransferRoots`.
-**Correction**: NEVER `unlink` the temporary file immediately after `ReadFile`. Wait until the entire `TransferRoots` and `OneShape` sequence is complete.
+### 1. Robust SCAD Preprocessing
+* **Context**: Support for library files (like BOSL) that require nested imports and exact relative directory lookup.
+* **Solution**: Rather than raw text replacement, parse files recursively relative to their parent importing folder, stripping top-level module instantiations on `use` imports to match standard OpenSCAD specifications perfectly.
 
-## 4. Persistence Integrity Guards
-**Pattern**: Failed exports often produce valid STEP headers but zero geometric data (approx 20-40 bytes).
-**Correction**: Implement a minimum byte-length guard (e.g., `bytes.length > 50`) before saving to IndexedDB. This prevents a "corrupted session" from overwriting healthy historical data in the database.
+### 2. General-Purpose Path Resolution Fallback
+* **Context**: Hardcoded prefix filters (like `startsWith("BOSL/")`) are fragile, case-sensitive, and fail for custom user libraries in other subfolders.
+* **Solution**: Implement a general-purpose fallback import loader. Try to resolve relative to `currentDir` first. If that returns 404, fallback to resolving from the project root. This naturally supports case insensitivity and arbitrary folder hierarchies.
 
-## 5. Diagnostic Introspection
-**Pattern**: WASM handles appear as `{}` in `console.log`.
-**Correction**: Use specialized introspection helpers to log meaningful metadata:
-```typescript
-function shapeInfo(oc, shape) {
-  const type = shape.ShapeType(); // Returns Enum value
-  const isNull = shape.IsNull();
-  // Count faces via TopExp_Explorer
-  return `Type=${type} IsNull=${isNull} ...`;
-}
-```
+### 3. OpenSCAD Dot Component Access (`v.x`, `v.y`, `v.z`)
+* **Context**: Modern OpenSCAD libraries (e.g. BOSL) rely heavily on dot access for coordinates rather than index subscripts.
+* **Solution**: Add `TokenType.DOT` to the Lexer, parse it as a `DotExpression` AST Node, and evaluate it in the Interpreter by mapping `x`, `y`, `z` properties to array indices `0`, `1`, `2` respectively.
 
-## 6. Path Sensitivity in Emscripten FS
-**Pattern**: Long or special-character paths in the virtual filesystem can cause silent failures in some OCC bindings.
-**Correction**: Use simple, hardcoded paths for temporary operations (e.g., `/exp.step`, `/imp.step`) and clear them immediately after use.
+### 5. Vector/Matrix Math Operators & Deep Equality
+* **Context**: OpenSCAD heavily overloads standard arithmetic operators (`+`, `-`, `*`, `/`) for element-wise vector operations and matrix/vector dot-product multiplications. Without recursive, type-aware support, helper libraries fail to compute coordinate offsets, breaking recursion base cases (e.g. comparing arrays by identity instead of value/deep equality) and triggering infinite recursion stack overflows.
+* **Solution**: Implement recursive mathematical helpers (`add`, `subtract`, `multiply`, `divide`) that gracefully handle scalar-scalar, array-scalar, scalar-array, element-wise array-array, matrix-matrix, matrix-vector, and vector-matrix multiplications. Implement recursive deep-equality (`equals`) comparison for array comparisons.
 
-## 7. UI Docked Panel Layout & Ergonomics
-**Pattern**: Rotating docked panel/toolbar headers (e.g., using `writing-mode: vertical-rl` and `transform: rotate(180deg)`) on side docks to save horizontal space might seem ergonomic but negatively impacts readability and visual appeal.
-**Correction**: Keep docked toolbar/panel headers horizontal on top of the toolbar grid, using a standard stacking layout (`flex-direction: column` and standard horizontal text header) to maintain high readability, consistency, and professional CAD aesthetics.
+### 6. List-Comprehension & Array Splicing (`each` keyword)
+* **Context**: Standard OpenSCAD allows flattening/unpacking list elements inside array literals and list comprehensions using the `each` keyword (e.g., `[1, each [2, 3], 4]`).
+* **Solution**: Tokenize the `each` keyword, parse it as an `EachExpression` node in the parser (handling it anywhere inside array literals and generator expressions), and evaluate it in the interpreter by performing flat array splicing (`result.push(...val)`) when the evaluated AST node type is an `EachExpression` or generator statement.
 
-## 8. Three.js Scene Graph Lifecycle & Group Removal
-**Pattern**: In hierarchical 3D scene graphs, temporary or preview objects are often nested under a specific sub-group (e.g., `mainGroup`) to support mode-toggling and geometric grouping.
-**Correction**: Never use `this.scene.remove(obj)` to delete nested/grouped objects. In Three.js, `scene.remove(obj)` is a silent no-op if `obj` is not a direct child of the scene. Always use `obj.parent?.remove(obj)` to ensure robust, parent-relative removal regardless of where the object resides in the hierarchy. This prevents "hall of mirrors" rendering duplicates, memory leaks, and trailing outline artifacts.
+### 7. Custom Scrollable List Components over Native Select Dropdowns
+* **Context**: When displaying long lists of project folders or files in modal dialogs or side navigation bars, native HTML `<select>` dropdowns can easily overflow the screen or look basic.
+* **Solution**: Replace native select elements with scrollable, pre-wrapped `div`/`li` list containers styled with `max-height` and `overflow-y: auto`. Support hover state transitions and dynamic active-state styling. This ensures a consistent, high-end IDE feel with reliable navigation.
 
-## 9. Non-Uniform Scaling & Analytic Surface Integrity
-**Pattern**: Applying `BRepBuilderAPI_GTransform` to standard CAD shapes (e.g., cylinders, spheres, cones) converts their analytic algebraic surfaces into complex, computationally expensive BSpline representations.
-**Correction**: Always check if scaling factors are uniform (`fx === fy === fz`) with a small tolerance. If uniform, fall back to `BRepBuilderAPI_Transform` and `gp_Trsf.SetScale` to retain primitive properties, keeping geometry lightweight and performant.
+### 8. Viewport Clearing Before Script Execution
+* **Context**: When running successive SCAD files or compiling iterations of the same script, the generated temporary 3D meshes will accumulate and overlap in the rendering viewport if they are not explicitly cleared beforehand, causing extreme visual confusion.
+* **Solution**: Intercept the script's `onRender` callback globally inside the main orchestrator (`src/main.ts`) and invoke `viewer.clearTemporaryMeshes()` immediately prior to loading and building the new temporary meshes. This ensures that the scripting viewport is cleanly reset for each script execution automatically.
 
-## 10. Handedness-Aware Mirroring of Solids
-**Pattern**: Applying direct mirror transforms can invert the coordinate system orientation, resulting in negative volumes or mathematically "inside-out" solids that cause downstream boolean operations to fail.
-**Correction**: Upgrade mirroring to convert `gp_Trsf.SetMirror` matrices into `gp_GTrsf` applied with `copyGeometry = true` (via `BRepBuilderAPI_GTransform(shape, gTrsf, true)`). This correctly updates the face/normal orientation and determinant properties of the solid.
+### 9. Distinguishing Circular Dependencies from Standard Duplicate Imports
+* **Context**: A standard preprocessor needs to prevent infinite recursion loop cycles (circular dependencies) when loading imports, but simply checking if a file has been processed anywhere globally triggers warning spam for standard, highly nested dependency structures (like BOSL includes) which is normal and expected behavior.
+* **Solution**: Track active recursive traversals using an active traversal set (`visiting`). If an incoming path is inside the active visiting set, it is a circular dependency (warn or throw). If it has been processed globally (`loadedFiles`) but is *not* actively visiting, it is a normal duplicate import (silently bypass it).
 
-## 11. Mathematical Singularity Prevention on Affine Transformations
-**Pattern**: Arbitrary user-defined custom transform matrices (`multmatrix`) can contain degenerate scale factors or zero scaling on one axis, collapsing 3D volumes into 2D planes and causing infinite loops in the solver.
-**Correction**: Always implement strict determinant calculation validation guards ($\vert \det(M) \vert \ge 10^{-9}$) to reject singular affine matrices before they reach the OpenCascade geometric kernel.
+### 10. Direct Registration of Standard SCAD Color Maps
+* **Context**: Parametric scripting engines (like OpenSCAD) support robust color properties applied dynamically to 3D solid and 2D drafting entities. When these transforms are parsed but not registered or passed to rendering engines, everything defaults to a uniform gray look, breaking visual differentiation.
+* **Solution**: Register a comprehensive standard W3C SVG color names map (`OPENSCAD_COLOR_MAP`) at the engine level. Parse names, float-based RGB arrays, and hex strings dynamically inside the geometry builder (`CsgExecutor.ts`), attach this metadata to the resulting geometries via `userData`, and read/pass the values to the viewer during execution hooks to render objects in their gorgeous specified colors.
 
-## 12. OpenCascade MakeCone Domain Exceptions
-**Pattern**: Constructing a frustum cone via `BRepPrimAPI_MakeCone` throws a silent OpenCascade C++ domain exception (often returning a numeric pointer address error like `16711256` in WASM) if the base radius ($R_1$) and top radius ($R_2$) are equal.
-**Correction**: Implement a tolerance guard in the worker/creator. If the radii are mathematically equal within floating-point tolerance (e.g., $10^{-6}$), gracefully fall back to creating a standard cylinder primitive (`BRepPrimAPI_MakeCylinder`) instead of a degenerate cone frustum.
+### 11. Adding Missing SCAD Mathematical Functions and Sandboxing Input Values
+* **Context**: OpenSCAD libraries (like BOSL) heavily rely on basic mathematical and trigonometric functions such as `tan(x)`, `asin(x)`, `acos(x)`, and `atan(x)`. If these functions are not supported by the AST Interpreter, they return `undefined` or `NaN`, which gets passed directly into the OpenCascade WASM bindings. Trying to initialize OpenCascade primitives with illegal float parameters (such as `NaN` or `Infinity`) causes severe Emscripten stack overflows or JavaScript call-stack exhaustion crashes.
+* **Solution**: Implement all standard OpenSCAD math functions (`tan`, `asin`, `acos`, `atan`) in `Evaluator.ts`, converting degrees to radians (and vice-versa) to match standard OpenSCAD specifications. Add rigorous JavaScript-level input validation guards for all primitive builders (`cube`, `sphere`, `cylinder`, `cone`, `square`, `circle`, `polygon`) inside `CsgExecutor.ts` to immediately reject `NaN`, `Infinity`, or negative dimensions, throwing elegant, clean user-facing SCAD interpretation errors instead of crashing the worker.
 
-## 13. OpenCascade Emscripten Constructor Arity and Suffixes
-**Pattern**: In Emscripten/WebIDL, overloaded C++ constructors with default arguments are often bound as either a single constructor requiring the maximum number of arguments, or as multiple suffixed properties (e.g., `Class_1`, `Class_2`, etc.) in the WASM build.
-**Correction**: Design defensive instantiation helpers that wrap creation inside a try-catch cascading block, testing the signature with the most arguments down to zero arguments, or testing multiple suffixed variants (e.g. `BRepBuilderAPI_Sewing(tolerance, option, cutting, nonManifold, whichSide)` -> `BRepBuilderAPI_Sewing(tolerance)`). This guarantees constructor safety across different target builds.
+### 12. List Comprehension Let Expression Nesting and Polyhedron Face Floor Mapping
+* **Context**: List comprehensions wrapped inside `let()` blocks or conditional ternary expressions return arrays that fail standard type-based flattening because the AST node of the body is a `LetExpression` or `TernaryExpression` rather than directly a `ListComprehension`. This results in nested arrays (e.g. `[[0, 736, 737]]`), which evaluate to `NaN` when looked up in JavaScript. In addition, curved helicoids generate float coordinates and float index arrays, which cause `undefined` lookups in standard JS vertex arrays.
+* **Solution**: Implement recursive checking in `shouldSpread(expr)` inside the evaluator to correctly detect and spread values returned from nested list generators through `Let` and `Ternary` nodes. Floor all indices parsed in the OpenCascade polyhedron worker thread (`OCCWorker.ts`) before array indexing to guarantee correct integer vertex lookup.
 
-## 14. Universal Progress Indicator and WebIDL Overload Resolution
-**Pattern**: Methods expecting a progress reference (like `sewing.Perform(progress)`) will throw signature errors if called with 0 arguments or if passed `undefined` when the target class (like `Message_ProgressRange`) is not bound in the WASM module.
-**Correction**: Inspect the keys of the `oc` WASM object at runtime to detect bound classes (such as `Handle_Message_ProgressIndicator` or `Message_ProgressRange`), construct the appropriate null reference handle or progress indicator object, and pass it explicitly. This satisfies the WebIDL overload resolution without throwing argument count exceptions.
+## Developer Guidelines
+1. **Plan & Track**: Always maintain `tasks/todo.md` and check in before massive structural changes.
+2. **AST over Text Regex**: Prefer parsing AST structures rather than error-prone regex manipulations for syntactic transformations like import mapping.
+3. **Keep Context Synchronized**: Keep fields like `currentProject` in sync across components (e.g. `ScadEditor`, `ProjectToolWindow`) to prevent silent project path errors.
+4. **Generalize Over Hacks**: Prefer mathematical, general fallback designs (e.g. root fallback resolution) over case-sensitive hardcoded prefix checks.
+5. **Standard Compliance**: When libraries throw lexer/parser errors, identify if the dialect uses modern standard syntax additions (such as vector component dot-notation or `each` keyword unpacking) and implement robust AST-based support.
+6. **Recursive Calculations and Operators**: Always implement type-aware, recursive math operations and deep array comparisons to guarantee modern CAD math engines terminate safely.
+7. **UX Responsiveness & Scrollbars**: Always ensure list containers in modals and tool windows have proper scrolling styles (`overflow-y: auto`, `max-height`, `white-space: pre-wrap`) to prevent truncation and overflow on screens of varying heights.
+8. **Automatic Viewport Resets**: When compiling geometries inside active scripts, always clear prior rendering groups automatically before rendering new geometries, preventing visual asset collisions.
+9. **Separate Recursion Stack from Global Loaded Sets**: When implementing preprocessors for import loading, differentiate active circular imports from already loaded duplicate imports to prevent compiler console spam while maintaining circular cycle safety.
+10. **Propagate Color Metadata through Geometries**: When implementing visual features in rendering engines, register a dedicated color naming and value translation layer, attach the resolved color codes to mesh metadata, and retrieve them explicitly when drawing geometries to provide rich visual feedback.
+11. **Sanitize and Validate Numeric Inputs**: Always validate numeric inputs (for `NaN`, `Infinity`, and positive/negative domain constraints) before passing them to the OpenCascade.js WASM engine, preventing thread-level crashes or call stack exhaustion bugs.
+12. **Recursive Array/Generator Flattening and Floor Index Lookups**: Ensure that all evaluator array comprehensions check nested block nodes (`Let`, `Ternary`, etc.) recursively for flattening compatibility, and always floor polyhedron face references when converting shape coordinates to integer arrays in workers.
+
 

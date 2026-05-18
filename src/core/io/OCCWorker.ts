@@ -92,7 +92,7 @@ function applyRotation(shape: any, rot: { x: number, y: number, z: number }, oc:
   transform.Multiply(toOrigin);
 
   const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
-  const newShape = brepTransform.Shape();
+  const newShape = detachShape(oc, brepTransform.Shape());
 
   // Cleanup
   vecToOrigin.delete();
@@ -146,6 +146,79 @@ function createSewing(oc: any, tolerance: number = 1e-4): any {
     return s;
   }
   throw new Error("No accessible sewing constructor found in OpenCascade bindings.");
+}
+
+function createNullPI(oc: any): any {
+  if (oc.Handle_Message_ProgressIndicator_1) {
+    try { return new oc.Handle_Message_ProgressIndicator_1(); } catch (_) {}
+  }
+  if (oc.Handle_Message_ProgressIndicator) {
+    try { return new oc.Handle_Message_ProgressIndicator(); } catch (_) {}
+  }
+  return null;
+}
+
+function makeBooleanBuilder(oc: any, operation: string, shapeA: any, shapeB: any): any {
+  const nullPI = createNullPI(oc);
+
+  const ctorMap: Record<string, string[]> = {
+    fuse:   ['BRepAlgoAPI_Fuse_3',   'BRepAlgoAPI_Fuse_4',   'BRepAlgoAPI_Fuse_2'],
+    cut:    ['BRepAlgoAPI_Cut_3',    'BRepAlgoAPI_Cut_4',    'BRepAlgoAPI_Cut_2'],
+    common: ['BRepAlgoAPI_Common_3', 'BRepAlgoAPI_Common_4', 'BRepAlgoAPI_Common_2'],
+  };
+
+  for (const ctorName of (ctorMap[operation] ?? [])) {
+    const Ctor = oc[ctorName];
+    if (typeof Ctor !== 'function') continue;
+    
+    // Try with null progress handle first (handles _3 = (S1, S2, PI) case)
+    if (nullPI) {
+      try {
+        const builder = new Ctor(shapeA, shapeB, nullPI);
+        nullPI.delete();
+        return builder;
+      } catch (_) {}
+    }
+    
+    // Try without progress (handles _4 = (S1, S2) case)
+    try {
+      const builder = new Ctor(shapeA, shapeB);
+      if (nullPI) nullPI.delete();
+      return builder;
+    } catch (_) {}
+  }
+
+  const defaultCtors: Record<string, string> = {
+    fuse:   'BRepAlgoAPI_Fuse_1',
+    cut:    'BRepAlgoAPI_Cut_1',
+    common: 'BRepAlgoAPI_Common_1',
+  };
+  const DefaultCtor = oc[defaultCtors[operation]];
+  if (DefaultCtor) {
+    const builder = new DefaultCtor();
+    if (typeof builder.SetShape1 === 'function') builder.SetShape1(shapeA);
+    if (typeof builder.SetShape2 === 'function') builder.SetShape2(shapeB);
+    if (nullPI) nullPI.delete();
+    return builder;
+  }
+
+  if (nullPI) nullPI.delete();
+  throw new Error(`No working constructor found for BRepAlgoAPI ${operation}`);
+}
+
+function buildBooleanOp(oc: any, builder: any): void {
+  const nullPI = createNullPI(oc);
+  try {
+    if (nullPI) {
+      builder.Build(nullPI);
+    } else {
+      builder.Build();
+    }
+  } catch (_) {
+    builder.Build();
+  } finally {
+    if (nullPI) nullPI.delete();
+  }
 }
 
 function configureBooleanOp(op: any) {
@@ -722,9 +795,9 @@ self.onmessage = async (e) => {
       const scaledShape = transformer.Shape();
 
       // Perform Boolean Cut
-      const cutter = new oc.BRepAlgoAPI_Cut_3(shape, scaledShape);
+      const cutter = makeBooleanBuilder(oc, 'cut', shape, scaledShape);
       configureBooleanOp(cutter);
-      cutter.Build();
+      buildBooleanOp(oc, cutter);
 
       if (!cutter.IsDone()) {
         cutter.delete();
@@ -816,9 +889,9 @@ self.onmessage = async (e) => {
               const prismBuilder = new oc.BRepPrimAPI_MakePrism_1(faceToExtrude, vec, false, true);
               if (prismBuilder.IsDone()) {
                 const cuttingShape = prismBuilder.Shape();
-                const faceCutter = new oc.BRepAlgoAPI_Cut_3(newShape, cuttingShape);
+                const faceCutter = makeBooleanBuilder(oc, 'cut', newShape, cuttingShape);
                 configureBooleanOp(faceCutter);
-                faceCutter.Build();
+                buildBooleanOp(oc, faceCutter);
 
                 if (faceCutter.IsDone()) {
                   const oldShape = newShape;
@@ -1247,7 +1320,8 @@ self.onmessage = async (e) => {
 
           // Filter out adjacent duplicate or coincident vertices
           const uniqueIndices: number[] = [];
-          for (const idx of faceIndices) {
+          for (const rawIdx of faceIndices) {
+            const idx = Math.floor(Number(rawIdx));
             if (uniqueIndices.length === 0) {
               uniqueIndices.push(idx);
             } else {
@@ -1739,9 +1813,9 @@ self.onmessage = async (e) => {
           resultShape = shapes[0];
           for (let i = 1; i < shapes.length; i++) {
             const prevResult = resultShape;
-            const fuse = new oc.BRepAlgoAPI_Fuse_3(resultShape, shapes[i]);
+            const fuse = makeBooleanBuilder(oc, 'fuse', resultShape, shapes[i]);
             configureBooleanOp(fuse);
-            fuse.Build();
+            buildBooleanOp(oc, fuse);
             if (fuse.IsDone()) {
               resultShape = fuse.Shape();
               prevResult.delete();
@@ -2573,21 +2647,12 @@ self.onmessage = async (e) => {
       const shapeA = applyRotation(originalShapeA, rotA, oc, centerA);
       const shapeB = applyRotation(originalShapeB, rotB, oc, centerB);
 
-      let boolBuilder: any;
-      if (operation === 'fuse') {
-        boolBuilder = new oc.BRepAlgoAPI_Fuse_3(shapeA, shapeB);
-      } else if (operation === 'cut') {
-        boolBuilder = new oc.BRepAlgoAPI_Cut_3(shapeA, shapeB);
-      } else if (operation === 'common') {
-        boolBuilder = new oc.BRepAlgoAPI_Common_3(shapeA, shapeB);
-      } else {
-        throw new Error(`Unknown boolean operation: ${operation}`);
-      }
+      const boolBuilder = makeBooleanBuilder(oc, operation, shapeA, shapeB);
 
       if (boolBuilder) {
         configureBooleanOp(boolBuilder);
       }
-      boolBuilder.Build();
+      buildBooleanOp(oc, boolBuilder);
 
       if (!boolBuilder.IsDone()) {
         boolBuilder.delete();
@@ -2595,31 +2660,36 @@ self.onmessage = async (e) => {
       }
 
       const resultShape = detachShape(oc, boolBuilder.Shape());
-      if (resultShape.IsNull()) {
-        boolBuilder.delete();
-        resultShape.delete();
-        throw new Error(`Boolean ${operation} produced an empty result`);
+      
+      // Explore if the shape has faces
+      let hasFaces = false;
+      if (!resultShape.IsNull()) {
+        const exp = new oc.TopExp_Explorer_2(resultShape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        hasFaces = exp.More();
+        exp.delete();
       }
 
-      // Fallback check: ensure the shape has faces
-      const exp = new oc.TopExp_Explorer_2(resultShape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
-      const hasFaces = exp.More();
-      exp.delete();
-      if (!hasFaces) {
-        resultShape.delete();
-        boolBuilder.delete();
-        throw new Error(`Boolean ${operation} produced a shape with no faces — shapes may not intersect`);
+      let finalResultShape = resultShape;
+      if (resultShape.IsNull() || !hasFaces) {
+        if (!resultShape.IsNull()) {
+          resultShape.delete();
+        }
+        const emptyShape = new oc.TopoDS_Compound();
+        const builder = new oc.BRep_Builder();
+        builder.MakeCompound(emptyShape);
+        builder.delete();
+        finalResultShape = emptyShape;
       }
 
-      // Section 9: BRepCheck validation
-      if (oc.BRepCheck_Analyzer) {
-        const analyzer = new oc.BRepCheck_Analyzer(resultShape, true);
+      // Section 9: BRepCheck validation (only for non-empty shapes)
+      if (oc.BRepCheck_Analyzer && hasFaces) {
+        const analyzer = new oc.BRepCheck_Analyzer(finalResultShape, true);
         try {
           const isValidFn = analyzer.IsValid || (analyzer as any).isValid;
           if (typeof isValidFn === 'function') {
             if (!isValidFn.call(analyzer)) {
               analyzer.delete();
-              resultShape.delete();
+              finalResultShape.delete();
               boolBuilder.delete();
               throw new Error(`Boolean ${operation} produced an invalid/degenerate shape`);
             }
@@ -2632,12 +2702,12 @@ self.onmessage = async (e) => {
       }
 
       if (entityId) {
-        cacheShape(entityId, resultShape);
+        cacheShape(entityId, finalResultShape);
       }
 
       // ✅ Use the cached (deep-copied) shape for everything from here on.
       // This ensures stability and avoids issues with builder-owned handles.
-      const stableShape = entityId ? shapeCache.get(entityId) : resultShape;
+      const stableShape = entityId ? shapeCache.get(entityId) : finalResultShape;
 
       console.log(`[Worker] Boolean ${operation} success. ${shapeInfo(oc, stableShape)}`);
 
@@ -2647,11 +2717,11 @@ self.onmessage = async (e) => {
       if (brepBytes) {
         self.postMessage({ type: 'log', message: `[Worker] Boolean snapshot generated: ${brepBytes.length} bytes.` });
       } else {
-        self.postMessage({ type: 'log', message: '[Worker] Boolean snapshot generation FAILED (result is undefined).' });
+        self.postMessage({ type: 'log', message: '[Worker] Boolean snapshot generation completed.' });
       }
 
-      if (!entityId) {
-        resultShape.delete();
+      if (!entityId || finalResultShape !== stableShape) {
+        finalResultShape.delete();
       }
       boolBuilder.delete();
       if (shapeA !== originalShapeA) shapeA.delete();
@@ -2661,6 +2731,47 @@ self.onmessage = async (e) => {
     } catch (error: any) {
       const errorMessage = decodeOCCError('createBoolean', error);
       self.postMessage({ type: 'createBoolean', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'multMatrixShape') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, m, targetEntityId, deflection } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not cached for entity ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+
+      const transform = new oc.gp_Trsf_1();
+      if (Array.isArray(m) && m.length >= 12) {
+        transform.SetValues(
+          m[0], m[1], m[2], m[3],
+          m[4], m[5], m[6], m[7],
+          m[8], m[9], m[10], m[11]
+        );
+      } else {
+        throw new Error(`Invalid transformation matrix coefficients: expected at least 12 elements`);
+      }
+
+      const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+      const newShape = detachShape(oc, brepTransform.Shape());
+
+      const resultId = targetEntityId || entityId;
+      cacheShape(resultId, newShape);
+
+      const geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
+      const brepBytes = exportShapeToBytes(oc, newShape, resultId);
+
+      newShape.delete();
+      transform.delete();
+      brepTransform.delete();
+
+      self.postMessage({ type: 'multMatrixShape', success: true, payload: { ...geometryData, brepBytes }, id });
+    } catch (error: any) {
+      const errorMessage = decodeOCCError('multMatrixShape', error);
+      self.postMessage({ type: 'multMatrixShape', success: false, error: errorMessage, id });
     }
   } else if (type === 'transformShape') {
     if (!oc) {

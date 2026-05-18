@@ -28,6 +28,7 @@ use <GEOL/shapes.scad>
 use <GEOL/masks.scad>
 use <GEOL/threading.scad>
 use <GEOL/paths.scad>
+use <GEOL/beziers.scad>
 ```
 
 ---
@@ -73,6 +74,17 @@ Arbitrary 3D sweeps, curve tracking, and visual wireframe debug tools.
 * `extrude_2d_shapes_along_3dpath(path)`: Sweeps 2D children along an arbitrary 3D polyline path.
 * `trace_polyline(pline, showpts, size, line_color)`: Visualizes 3D paths as tubes with custom gold/coral vertex spheres.
 * `debug_polygon(points, paths)`: Visualizes a 2D polygon with color-coded markers (first vertex is gold, others alternate between crimson and blue).
+
+### ♾️ GEOL/beziers.scad
+Native recursive De Casteljau bezier path evaluation, closed curves, and 3D sweeps.
+* `bez_point(curve, u)`: Recursive De Casteljau evaluator for Bezier curves of any degree N.
+* `bez_tangent(curve, u)`: Recursive tangent vector evaluator for Bezier curves.
+* `bezier_polyline(bezier, splinesteps, N)`: Converts a concatenated Bezier path into a flat polyline.
+* `bezier_polygon(bezier, splinesteps, N)`: Creates a closed 2D polygon from a 2D Bezier path.
+* `linear_extrude_bezier(bezier, height, splinesteps, N, twist, scale, slices)`: Linearly extrudes a closed 2D Bezier path.
+* `rotate_extrude_bezier(bezier, splinesteps, N, angle)`: Revolve-extrudes a closed 2D Bezier path.
+* `extrude_2d_shapes_along_bezier(bezier, splinesteps, N)`: Sweeps 2D children perpendicularly along a 3D Bezier curve.
+* `trace_bezier(bez, N, size)`: Visualizes a Bezier control path with control points and a smooth interpolated path.
 
 ---
 

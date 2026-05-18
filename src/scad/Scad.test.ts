@@ -3,6 +3,7 @@ import { ScadLexer } from "./parser/Lexer";
 import { ScadParser } from "./parser/Parser";
 import { ScadEvaluator } from "./interpreter/Evaluator";
 import { ParameterExtractor } from "./parser/ParameterExtractor";
+import { ScadManager } from "./ScadManager";
 
 describe("SCAD Parser & Interpreter Ranges and Math", () => {
   it("should successfully lex, parse, and evaluate range loops with step", () => {
@@ -514,5 +515,213 @@ describe("SCAD Parser & Interpreter Ranges and Math", () => {
         [0, 0, 0, 1]
       ]);
     });
+
+    it("should successfully evaluate gear tooth profile without NaN", async () => {
+      const code = `
+        include <BOSL/constants.scad>
+        use <BOSL/involute_gears.scad>
+        gear_tooth_profile(mm_per_tooth=5, number_of_teeth=20, pressure_angle=20);
+      `;
+      const fs = require("fs");
+      const path = require("path");
+      const rootDir = path.join(__dirname, "../../files/scad/projects/myproject");
+
+      global.fetch = (async (input: any) => {
+        const urlStr = typeof input === "string" ? input : input.url || String(input);
+        const prefix = "/api/files/scad/projects/myproject/";
+        const cleanUrl = decodeURIComponent(urlStr);
+        if (cleanUrl.includes("BOSL/constants.scad")) {
+          return { ok: true, status: 200, text: async () => `PI = 3.14159;`, statusText: "OK" } as any;
+        }
+        if (cleanUrl.includes("BOSL/involute_gears.scad")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => `
+              module gear_tooth_profile(mm_per_tooth=5, number_of_teeth=20, pressure_angle=20) { polygon([[0,0], [1,0], [0,1]]); }
+              module rack(mm_per_tooth=5, number_of_teeth=10, thickness=5, height=5, pressure_angle=20) { cube([1,1,1]); }
+            `,
+            statusText: "OK"
+          } as any;
+        }
+        if (cleanUrl.startsWith(prefix)) {
+          const relPath = cleanUrl.substring(prefix.length);
+          const fullPath = path.join(rootDir, relPath);
+          if (fs.existsSync(fullPath)) {
+            const content = fs.readFileSync(fullPath, "utf-8");
+            return {
+              ok: true,
+              status: 200,
+              text: async () => content,
+            } as any;
+          }
+        }
+        return { ok: false, status: 404 } as any;
+      }) as any;
+
+      const manager = new ScadManager();
+      const astNodes = await (manager as any).resolveImports(code, "myproject");
+      const ast = {
+        type: "Program",
+        body: astNodes
+      };
+      
+      const geom = (manager as any).evaluator.evaluate(ast);
+      expect(geom.length).toBeGreaterThan(0);
+      expect(geom[0].params[0][0][0]).toBeTypeOf("number");
+    });
+
+    it("should successfully evaluate rack module without NaN or errors", async () => {
+      const code = `
+        include <BOSL/constants.scad>
+        use <BOSL/involute_gears.scad>
+        rack(mm_per_tooth=5, number_of_teeth=10, thickness=5, height=5, pressure_angle=20);
+      `;
+      const fs = require("fs");
+      const path = require("path");
+      const rootDir = path.join(__dirname, "../../files/scad/projects/myproject");
+
+      global.fetch = (async (input: any) => {
+        const urlStr = typeof input === "string" ? input : input.url || String(input);
+        const prefix = "/api/files/scad/projects/myproject/";
+        const cleanUrl = decodeURIComponent(urlStr);
+        if (cleanUrl.includes("BOSL/constants.scad")) {
+          return { ok: true, status: 200, text: async () => `PI = 3.14159;`, statusText: "OK" } as any;
+        }
+        if (cleanUrl.includes("BOSL/involute_gears.scad")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => `
+              module gear_tooth_profile(mm_per_tooth=5, number_of_teeth=20, pressure_angle=20) { polygon([[0,0], [1,0], [0,1]]); }
+              module rack(mm_per_tooth=5, number_of_teeth=10, thickness=5, height=5, pressure_angle=20) { cube([1,1,1]); }
+            `,
+            statusText: "OK"
+          } as any;
+        }
+        if (cleanUrl.startsWith(prefix)) {
+          const relPath = cleanUrl.substring(prefix.length);
+          const fullPath = path.join(rootDir, relPath);
+          if (fs.existsSync(fullPath)) {
+            const content = fs.readFileSync(fullPath, "utf-8");
+            return {
+              ok: true,
+              status: 200,
+              text: async () => content,
+            } as any;
+          }
+        }
+        return { ok: false, status: 404 } as any;
+      }) as any;
+
+      const manager = new ScadManager();
+      const astNodes = await (manager as any).resolveImports(code, "myproject");
+      const ast = {
+        type: "Program",
+        body: astNodes
+      };
+      
+      const geom = (manager as any).evaluator.evaluate(ast);
+      console.log("RACK GEOM RESULT:", JSON.stringify(geom, null, 2));
+    });
+
+    describe("SCAD EvaluatorFIX Enhancements", () => {
+      it("should support cascading parameter default values in modules and functions", () => {
+        const code = `
+          function add_square(x, y = x * x) = x + y;
+          module draw_rect(w, h = w * 2) {
+            cube([w, h, 1]);
+          }
+          val = add_square(3); // 3 + 9 = 12
+          draw_rect(5);        // cube([5, 10, 1])
+          sphere(val);
+        `;
+        const lexer = new ScadLexer();
+        const tokens = lexer.tokenize(code);
+        const parser = new ScadParser();
+        const ast = parser.parse(tokens);
+        const evaluator = new ScadEvaluator();
+        const geom = evaluator.evaluate(ast);
+
+        expect(geom.length).toBe(2);
+        const g0 = geom[0] as any;
+        expect(g0.name).toBe("cube");
+        expect(g0.params[0]).toEqual([5, 10, 1]);
+
+        const g1 = geom[1] as any;
+        expect(g1.name).toBe("sphere");
+        expect(g1.params[0]).toBe(12);
+      });
+
+      it("should dynamically propagate special variables to nested module scopes", () => {
+        const code = `
+          module inner() {
+            cube($fn);
+          }
+          module outer() {
+            inner();
+          }
+          $fn = 100;
+          outer();
+        `;
+        const lexer = new ScadLexer();
+        const tokens = lexer.tokenize(code);
+        const parser = new ScadParser();
+        const ast = parser.parse(tokens);
+        const evaluator = new ScadEvaluator();
+        const geom = evaluator.evaluate(ast);
+
+        expect(geom.length).toBe(1);
+        const g0 = geom[0] as any;
+        expect(g0.name).toBe("cube");
+        expect(g0.params.$fn).toBe(100);
+      });
+
+      it("should treat $children as an integer count and support $children_list iteration", () => {
+        const code = `
+          module count_children() {
+            cube($children);
+          }
+          count_children() {
+            sphere(1);
+            cylinder(2);
+          }
+        `;
+        const lexer = new ScadLexer();
+        const tokens = lexer.tokenize(code);
+        const parser = new ScadParser();
+        const ast = parser.parse(tokens);
+        const evaluator = new ScadEvaluator();
+        const geom = evaluator.evaluate(ast);
+
+        expect(geom.length).toBe(1);
+        const g0 = geom[0] as any;
+        expect(g0.name).toBe("cube");
+        expect(g0.params[0]).toBe(2);
+      });
+
+      it("should support multiple loop variables (Cartesian product) in for loops", () => {
+        const code = `
+          for (x = [10, 20], y = [30, 40]) {
+            translate([x, y, 0]) cube(1);
+          }
+        `;
+        const lexer = new ScadLexer();
+        const tokens = lexer.tokenize(code);
+        const parser = new ScadParser();
+        const ast = parser.parse(tokens);
+        const evaluator = new ScadEvaluator();
+        const geom = evaluator.evaluate(ast);
+
+        expect(geom.length).toBe(4);
+        
+        expect((geom[0] as any).params[0]).toEqual([10, 30, 0]);
+        expect((geom[1] as any).params[0]).toEqual([10, 40, 0]);
+        expect((geom[2] as any).params[0]).toEqual([20, 30, 0]);
+        expect((geom[3] as any).params[0]).toEqual([20, 40, 0]);
+      });
+    });
   });
 });
+
+

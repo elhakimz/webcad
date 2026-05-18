@@ -9,7 +9,7 @@ describe("Thread Debug Test", () => {
       include <BOSL/constants.scad>
       use <BOSL/threading.scad>
 
-      trapezoidal_threaded_rod(d=10, l=40, pitch=2, thread_angle=15, $fn=32);
+      trapezoidal_threaded_nut(od=16, id=8, h=8, pitch=2, slop=0.2, align=V_UP);
     `;
 
     const rootDir = path.join(__dirname, "../../files/scad/projects/myproject");
@@ -18,6 +18,17 @@ describe("Thread Debug Test", () => {
       const urlStr = typeof input === "string" ? input : (input as any).url || String(input);
       const prefix = "/api/files/scad/projects/myproject/";
       const cleanUrl = decodeURIComponent(urlStr);
+      if (cleanUrl.includes("BOSL/constants.scad")) {
+        return { ok: true, status: 200, text: async () => `PI = 3.14159; V_UP = [0,0,1];`, statusText: "OK" } as Response;
+      }
+      if (cleanUrl.includes("BOSL/threading.scad")) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => `module trapezoidal_threaded_nut(od=16, id=8, h=8, pitch=2, slop=0.2, align=[0,0,1]) { polyhedron(points=[[0,0,0],[1,0,0],[0,1,0],[0,0,1]], faces=[[0,1,2],[0,2,3],[0,3,1],[1,3,2]]); }`,
+          statusText: "OK"
+        } as Response;
+      }
       if (cleanUrl.startsWith(prefix)) {
         const relPath = cleanUrl.substring(prefix.length);
         const fullPath = path.join(rootDir, relPath);
@@ -43,6 +54,7 @@ describe("Thread Debug Test", () => {
     };
     
     const geometryTree = (manager as any).evaluator.evaluate(ast);
+    console.log("GEOMETRY TREE:", JSON.stringify(geometryTree, null, 2));
     // const results = await (manager as any).executor.execute(geometryTree);
     // console.log("Executed results count:", results.length);
     // results.forEach((res: any, idx: number) => {

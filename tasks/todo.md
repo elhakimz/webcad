@@ -15,6 +15,7 @@ Track progress of implementing and validating OpenSCAD `include` and `use` direc
 - [x] **OpenSCAD Compatibility built-ins**: Implement `version_num`, `version`, `is_undef`, `is_bool`, `is_num`, `is_string`, `is_list`, `search`, and `echo` printing to the command bar.
 - [x] **Project Directory Fallback Imports**: Fall back to the project root directory when resolving relative imports from subdirectories, enabling full access to project-level files and folders.
 - [x] **Automatic Viewport Reset on Run**: Automatically clear previously rendered temporary meshes before executing and applying new SCAD shapes, keeping the viewport clean.
+- [x] **Modal Progress Bar during Generation**: Implement a blocking, premium modal overlay during object generation (showing loading, compilation, boolean fusing, and translation progress), preventing misclicks or UI misplacement until finished.
 
 - [x] **Vector/Matrix Operators Integration**: Support recursive element-wise and scalar-array math operations (`+`, `-`, `*`, `/`) and matrix-matrix, matrix-vector, and vector-matrix dot-product multiplications.
 - [x] **Each Expression Splicing**: Support parsing and flat splicing evaluation of the `each` keyword inside list comprehensions and array literals.
@@ -221,7 +222,43 @@ All core preprocessor, parser, interpreter math additions, UX scrollbars, and cl
 - [x] **Animated 2-Stroke Engine Model**: Created `geol_two_stroke_engine.scad` showcasing a fully animated, mathematically exact slider-crank 2-stroke IC engine with detailed spark plug, cooling fins, expansion chamber, and cutaway option.
 - [x] **Documentation & Git Versioning**: Updated `GEOL_AGENT_INSTRUCTIONS.md` and committed all files to Git with clean commit history.
 
+## High-Performance Math & Geometry Processing Integration
 
+### Plan & Task List
+- [x] **JIT Register Cache Vectorization**: Cache local arrays and array length references outside all high-frequency loops in `src/core/model/Solid3D.ts` (move, move3D, rotate, scale, mirror, getBoundingBox, getBoundingBox3D) to enable browser V8 assembly-level optimization.
+- [x] **Real-Time Convex Hull Decimation**: Implement high-performance coordinate downsampling (`downsamplePoints`) in `src/core/commands/HullCommand.ts` to reduce interactive convex hull computations from thousands of vertices to a 150-vertex representative boundary cloud (while strictly maintaining extreme boundary coordinates).
+- [x] **Vitest Validation**: Execute full test suites for both SCAD evaluations (`Scad.test.ts`), FastMath engines (`FastMath.test.ts`), and Hull geometry builders (`HullCommand.test.ts`) to verify zero regressions.
+- [x] **Zero-Copy Transferable TypedArrays**: Convert raw geometry `positions`, `indices`, and `faceMapping` arrays returned by the background OpenCascade worker triangulation (`shapeToBufferGeometryData`) to WebGL-native TypedArrays (`Float32Array`, `Uint32Array`, `Int32Array`) and automatically pipe them through a global thread interceptor in `OCCWorker.ts` to execute zero-copy browser transferable-object messaging.
 
+### Review & Verification Log
+- **Solid3D Vectorization Performance**: Refactored loops inside [Solid3D.ts](file:///c:/Dev/webcad/src/core/model/Solid3D.ts) to utilize local references `const pos = this.positions` and `const len = pos.length` instead of looking up object properties at every element loop step. This optimizes JIT compilation, accelerating interactive workspace operations.
+- **Hull Command Mouse Lag Elimination**: Patched [HullCommand.ts](file:///c:/Dev/webcad/src/core/commands/HullCommand.ts) to decimate the vertex cloud to a max of 150 coordinates dynamically during interactive drag actions (`getPreview`), preventing UI stutter when selecting complex objects with thousands of facets.
+- **Zero-Copy Transferable Operations**: Configured all solid CSG and modeling operations in [OCCWorker.ts](file:///c:/Dev/webcad/src/core/io/OCCWorker.ts) to triangulate meshes directly into structured flat TypedArrays and auto-transfer their underlying array buffers directly to the main thread with $0\text{ ms}$ CPU copying cost, enabling high-performance modeling.
+- **Test Success**: Confirmed that all 203 WebCAD unit tests pass with 100% success (Vitest exit code `0`).## Zero-Copy Transferable BufferGeometry Rendering Bug Fix
 
+- [x] **1. Wrap index array in OpenCascadeService**: In `buildGeometry` inside `OpenCascadeService.ts`, check if `data.indices` is a `Uint32Array` or `Uint16Array` and wrap it using `THREE.Uint32BufferAttribute` before passing it to `geometry.setIndex()`.
+- [x] **2. Wrap index array in Viewer.createSolid3DObject**: In `createSolid3DObject` inside `Viewer.ts`, check if `entity.indices` is a `Uint32Array` or `Uint16Array` and wrap it appropriately.
+- [x] **3. Verify build**: Run Vitest and compilation tests to ensure type safety.
+- [ ] **4. Browser Verification**: Prompt the user to test the WebCAD scripting viewport to confirm the `byteLength` render error is resolved and the solid primitive displays beautifully.
 
+## Default Facet Resolution Setting
+
+- [x] **Set Default FACETRES to 1.0**: Updated both `Document.ts` default initialization and `IOHandler.ts` new drawing resets to set default `facetres = 1.0`.
+- [x] **Verify test expectations**: Updated `FacetresCommand.test.ts` to expect `1.0` and verified all 4 tests pass successfully.
+
+## Block Library Text Refactoring & Native Editable Import
+
+- [x] **Rename Button Text from Place to Insert**: Modified `src/ui/BlockToolWindow.ts` to rename the block button visible text from "Place" to "Insert".
+- [x] **Refactor HTML Class & Variables**: Updated button class to `insert-btn` and variables to `insertBtn` & `shouldInsertAtOrigin`.
+- [x] **Update Notifications**: Renamed successful import/placement toast notifications to say "Inserted block" instead of "Placed block".
+- [x] **Direct Native Editable Import ("Edit Solid" / "Edit Sketch")**: Implemented two separate actions in the sidebar. Clicking "Edit Solid" (for 3D STEP blocks) or "Edit Sketch" (for 2D DXF blocks) parses and imports the geometry directly as native document-level entities at origin `(0,0,0)`, fully enabling immediate Boolean CSG modifications, moving, scaling, and CAD drafting!
+
+## Parametric Object Generator Integration
+
+- [x] **1. Create `GeneratorCommand.ts`**: Implement interactive viewport coordinate placement for generators.
+- [x] **2. Register command in `CommandManager.ts`**: Add `GENERATOR` command mapping.
+- [x] **3. Implement `GeneratorToolWindow.ts`**: Create dynamic form panel, parameter parser, list generators, and activate generator button.
+- [x] **4. Add new tool button in `ToolWindowBar.ts`**: Add icon and toggle for `GeneratorToolWindow`.
+- [x] **5. Add action interceptor in `App.ts`**: Handle `generator_placed` action by compiling SCAD, applying coordinate translation, and adding to the document.
+- [x] **6. Wire UI in `main.ts`**: Hook up `GeneratorToolWindow` and register it on `ToolWindowBar`.
+- [x] **7. Verify build**: Run Vitest and build tool verification.

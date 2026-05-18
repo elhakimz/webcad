@@ -162,6 +162,7 @@ export class CsgExecutor {
     }
 
     // Cleanup all intermediate shapes except the final results
+    console.log("CSG EXECUTOR RESULT GEOMETRIES:", results.length, results);
     const finalIds = new Set(results.map(g => g instanceof THREE.BufferGeometry ? (g.userData as any).entityId : null).filter(Boolean));
     const toRelease = Array.from(this.tempIds).filter(id => !finalIds.has(id));
     if (toRelease.length > 0) {
@@ -182,51 +183,70 @@ export class CsgExecutor {
       case "Transform": {
         if (node.name === "linear_extrude" || node.name === "rotate_extrude") {
           const deflection = this.getDeflection(node.params);
-          const pts = [];
-          for (const child of node.children) {
-            pts.push(...this.get2DPoints(child));
-          }
-          if (pts.length >= 3) {
-            if (node.name === "linear_extrude") {
-              const height = node.params.height ?? node.params[0] ?? 1.0;
-              const center = node.params.center ?? node.params[1] ?? false;
-              const formattedPts = pts.map(pt => ({ x: pt.x, y: pt.y, z: 0 }));
-              let extGeo = await this.occ.createExtrude(formattedPts, height, undefined, deflection, true, id);
-              if (extGeo) {
-                if (center) {
-                  const tempId = id + "_centered";
-                  this.tempIds.add(tempId);
-                  extGeo = await this.occ.transformShape(id, 0, 0, -height / 2, tempId, deflection);
-                  if (extGeo) {
-                    extGeo.userData = { ...extGeo.userData, entityId: id };
+          const extrudedShapes: THREE.BufferGeometry[] = [];
+
+          for (let i = 0; i < node.children.length; i++) {
+            const child = node.children[i];
+            const pts = this.get2DPoints(child);
+            if (pts.length >= 3) {
+              const childId = `${id}_child_${i}`;
+              this.tempIds.add(childId);
+              
+              if (node.name === "linear_extrude") {
+                const height = node.params.height ?? node.params[0] ?? 1.0;
+                const center = node.params.center ?? node.params[1] ?? false;
+                const formattedPts = pts.map(pt => ({ x: pt.x, y: pt.y, z: 0 }));
+                let extGeo = await this.occ.createExtrude(formattedPts, height, undefined, deflection, true, childId);
+                if (extGeo) {
+                  if (center) {
+                    const tempId = childId + "_centered";
+                    this.tempIds.add(tempId);
+                    extGeo = await this.occ.transformShape(childId, 0, 0, -height / 2, tempId, deflection);
+                    if (extGeo) {
+                      extGeo.userData = { ...extGeo.userData, entityId: childId };
+                    }
+                  } else {
+                    extGeo.userData = { ...extGeo.userData, entityId: childId };
                   }
-                } else {
-                  extGeo.userData = { ...extGeo.userData, entityId: id };
+                  extrudedShapes.push(extGeo);
                 }
-                const firstColor = node.params.color ?? node.params.c;
-                const hexColor = this.parseScadColor(firstColor);
-                if (hexColor !== undefined && extGeo) {
-                  extGeo.userData.color = hexColor;
+              } else if (node.name === "rotate_extrude") {
+                const angle = node.params.angle ?? node.params[0] ?? 360.0;
+                const profilePts = pts.map(pt => ({ x: pt.x, y: 0, z: pt.y }));
+                const axisPoint = { x: 0, y: 0, z: 0 };
+                const axisDir = { x: 0, y: 0, z: 1 };
+                let revGeo = await this.occ.createRevolve(profilePts, axisPoint, axisDir, angle, undefined, deflection, true, childId);
+                if (revGeo) {
+                  revGeo.userData = { ...revGeo.userData, entityId: childId };
+                  extrudedShapes.push(revGeo);
                 }
-                return extGeo;
-              }
-            } else if (node.name === "rotate_extrude") {
-              const angle = node.params.angle ?? node.params[0] ?? 360.0;
-              const profilePts = pts.map(pt => ({ x: pt.x, y: 0, z: pt.y }));
-              const axisPoint = { x: 0, y: 0, z: 0 };
-              const axisDir = { x: 0, y: 0, z: 1 };
-              let revGeo = await this.occ.createRevolve(profilePts, axisPoint, axisDir, angle, undefined, deflection, true, id);
-              if (revGeo) {
-                revGeo.userData = { ...revGeo.userData, entityId: id };
-                const firstColor = node.params.color ?? node.params.c;
-                const hexColor = this.parseScadColor(firstColor);
-                if (hexColor !== undefined) {
-                  revGeo.userData.color = hexColor;
-                }
-                return revGeo;
               }
             }
           }
+
+          if (extrudedShapes.length > 0) {
+            let finalGeo = extrudedShapes[0];
+            if (extrudedShapes.length > 1) {
+              finalGeo = await this.applyBoolean("union", extrudedShapes, id);
+            } else {
+              const oldChildId = (finalGeo.userData as any).entityId;
+              const clonedGeo = await this.occ.transformShape(oldChildId, 0, 0, 0, id, deflection);
+              if (clonedGeo) {
+                finalGeo = clonedGeo;
+              }
+            }
+
+            if (finalGeo) {
+              finalGeo.userData = { ...finalGeo.userData, entityId: id };
+              const firstColor = node.params.color ?? node.params.c;
+              const hexColor = this.parseScadColor(firstColor);
+              if (hexColor !== undefined) {
+                finalGeo.userData.color = hexColor;
+              }
+              return finalGeo;
+            }
+          }
+          return null;
         }
 
         const children = await this.evaluateNodes(node.children);
@@ -467,7 +487,50 @@ export class CsgExecutor {
         if (r1 < 0 || r2 < 0 || (r1 === 0 && r2 === 0)) {
           throw new Error(`Cylinder radii must be positive, got r1=${r1}, r2=${r2}`);
         }
-        geo = await this.occ.createFrustum(0, 0, z, r1, r2, h, deflection, id);
+
+        const fn = p.$fn;
+        if (fn !== undefined && typeof fn === 'number' && fn >= 3 && fn < 24) {
+          const n = Math.floor(fn);
+          const points: number[][] = [];
+          
+          // Bottom face vertices at Z = z
+          for (let i = 0; i < n; i++) {
+            const angle = (2 * Math.PI * i) / n;
+            points.push([r1 * Math.cos(angle), r1 * Math.sin(angle), z]);
+          }
+          
+          // Top face vertices at Z = z + h
+          for (let i = 0; i < n; i++) {
+            const angle = (2 * Math.PI * i) / n;
+            points.push([r2 * Math.cos(angle), r2 * Math.sin(angle), z + h]);
+          }
+          
+          const faces: number[][] = [];
+          
+          // Bottom face (facing down, ordered clockwise when viewed from bottom)
+          const bottomFace = [];
+          for (let i = n - 1; i >= 0; i--) {
+            bottomFace.push(i);
+          }
+          faces.push(bottomFace);
+          
+          // Top face (facing up, ordered counter-clockwise when viewed from top)
+          const topFace = [];
+          for (let i = 0; i < n; i++) {
+            topFace.push(i + n);
+          }
+          faces.push(topFace);
+          
+          // Side faces
+          for (let i = 0; i < n; i++) {
+            const next = (i + 1) % n;
+            faces.push([i, next, next + n, i + n]);
+          }
+          
+          geo = await this.occ.createPolyhedron(points, faces, deflection, id);
+        } else {
+          geo = await this.occ.createFrustum(0, 0, z, r1, r2, h, deflection, id);
+        }
         break;
       }
       case "cone": {
@@ -852,6 +915,14 @@ export class CsgExecutor {
     this.tempIds.add(targetId);
     let geo: THREE.BufferGeometry | null = null;
 
+    const validate = (...args: any[]) => {
+      for (const val of args) {
+        if (typeof val !== 'number' || isNaN(val) || !isFinite(val)) {
+          throw new Error(`Invalid parameter for transform ${name}: expected a finite number, got ${typeof val} (${val})`);
+        }
+      }
+    };
+
     switch (name) {
       case "translate": {
         const v = p.v ?? p[0] ?? [0, 0, 0];
@@ -861,6 +932,7 @@ export class CsgExecutor {
           ty = v[1] ?? 0;
           tz = v[2] ?? 0;
         }
+        validate(tx, ty, tz);
         geo = await this.occ.transformShape(sourceId, tx, ty, tz, targetId, deflection);
         break;
       }
@@ -874,8 +946,13 @@ export class CsgExecutor {
         } else if (typeof v === 'number') {
           rz = v;
         }
-        // SCAD rotate takes [x, y, z] in degrees
-        geo = await this.occ.rotateShape(sourceId, rx, ry, rz, 0, 0, 0, targetId, deflection);
+        validate(rx, ry, rz);
+        // SCAD rotate takes [x, y, z] in degrees, but OCC rotateShape expects radians
+        const rxRad = (rx * Math.PI) / 180;
+        const ryRad = (ry * Math.PI) / 180;
+        const rzRad = (rz * Math.PI) / 180;
+        validate(rxRad, ryRad, rzRad);
+        geo = await this.occ.rotateShape(sourceId, rxRad, ryRad, rzRad, 0, 0, 0, targetId, deflection);
         break;
       }
       case "scale": {
@@ -888,6 +965,7 @@ export class CsgExecutor {
         } else if (typeof v === 'number') {
           fx = fy = fz = v;
         }
+        validate(fx, fy, fz);
         geo = await this.occ.scaleShape(sourceId, undefined, 0, 0, 0, targetId, deflection, fx, fy, fz);
         break;
       }
@@ -899,6 +977,7 @@ export class CsgExecutor {
           my = v[1] ?? 0;
           mz = v[2] ?? 0;
         }
+        validate(mx, my, mz);
         geo = await this.occ.mirrorShape(sourceId, undefined, undefined, targetId, deflection, { x: mx, y: my, z: mz });
         break;
       }
@@ -932,6 +1011,7 @@ export class CsgExecutor {
             0, 0, 0, 1
           ];
         }
+        validate(...flatMatrix);
         geo = await this.occ.multMatrixShape(sourceId, flatMatrix, targetId, deflection);
         break;
       }
@@ -949,7 +1029,12 @@ export class CsgExecutor {
       case "linear_extrude": {
         const height = p.height ?? p[0] ?? 1;
         const center = p.center ?? p[1] ?? false;
+        validate(height);
+        if (height <= 0) {
+          throw new Error(`Invalid linear_extrude height: ${height} (must be positive)`);
+        }
         const scaleZ = height / 0.001;
+        validate(scaleZ);
         
         if (center) {
           const tempId = targetId + "_scaled";

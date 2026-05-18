@@ -198,9 +198,16 @@ module tube(
     inner_d1 = is_def(id1) ? id1 : (is_def(ir1) ? ir1 * 2 : (is_def(id) ? id : (is_def(ir) ? ir * 2 : outer_d1 - 2 * w)));
     inner_d2 = is_def(id2) ? id2 : (is_def(ir2) ? ir2 * 2 : (is_def(id) ? id : (is_def(ir) ? ir * 2 : outer_d2 - 2 * w)));
 
-    difference() {
-        cyl(h=len, d1=outer_d1, d2=outer_d2, realign=realign, orient=orient, align=align, center=center);
-        cyl(h=len + 0.02, d1=inner_d1, d2=inner_d2, realign=realign, orient=orient, align=align, center=center);
+    if (inner_d1 >= outer_d1 || inner_d2 >= outer_d2) {
+        echo("ERROR: tube() inner diameter is larger than or equal to outer diameter!", 
+             " outer_d1=", outer_d1, " inner_d1=", inner_d1, 
+             " outer_d2=", outer_d2, " inner_d2=", inner_d2, 
+             ". Check if you passed inner radius (ir) instead of inner diameter (id).");
+    } else {
+        difference() {
+            cyl(h=len, d1=outer_d1, d2=outer_d2, realign=realign, orient=orient, align=align, center=center);
+            cyl(h=len + 0.02, d1=inner_d1, d2=inner_d2, realign=realign, orient=orient, align=align, center=center);
+        }
     }
 }
 

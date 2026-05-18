@@ -51,6 +51,19 @@ Custom primitive shapes and treated solids.
 * `star_column(h, r_outer, r_inner, points, twist, scale, slices)`: Extruded star column.
 * `beveled_cube(size, chamfer)`: Cube with all 4 vertical edges cleanly chamfered.
 * `rounded_cube(size, fillet)`: Cube with all 4 vertical edges cleanly filleted.
+* `prismoid(size1, size2, h, shift, orient, align, center)`: Parametric rectangular prismoid and pyramids.
+* `rounded_prismoid(size1, size2, h, r, r1, r2, shift, orient, align, center)`: Rectangular prismoids with rounded vertical edges.
+* `right_triangle(size, orient, align, center)`: 3D right triangular prism.
+
+### 🌀 GEOL/shape_cyl.scad
+High-performance, library-free cylinders, tapered cones, hollow tubes, and torus rings.
+* `cyl(l, h, r, d, r1, d1, r2, d2, circum, realign, chamfer, chamfer1, chamfer2, chamfang, chamfang1, chamfang2, from_end, fillet, fillet1, fillet2, orient, align, center)`: Revolved multi-feature master cylinder/cone.
+* `downcyl(l, h, r, d, r1, d1, r2, d2)`: Cylinder aligned below the origin.
+* `xcyl(l, h, r, d, r1, d1, r2, d2, align, center)`: Cylinder oriented along the X-axis.
+* `ycyl(l, h, r, d, r1, d1, r2, d2, align, center)`: Cylinder oriented along the Y-axis.
+* `zcyl(l, h, r, d, r1, d1, r2, d2, align, center)`: Cylinder oriented along the Z-axis.
+* `tube(h, or, od, or1, od1, or2, od2, ir, id, ir1, id1, ir2, id2, wall, realign, orient, align, center)`: Hollow tubes and conical sleeves.
+* `torus(r, r2, d, d2, or, ir, od, id, orient, align)`: Revolved torus rings.
 
 ### 😷 GEOL/masks.scad
 Precision masking cutters built with boundary extensions to prevent coplanar face collisions.
@@ -98,6 +111,19 @@ Fast, native C++ spur, helical, beveled gears and racks with set-screw hubs and 
 * `helical_gear(mm_per_tooth, number_of_teeth, thickness, twist, hole_diameter, pressure_angle, slices)`: Helical gear with twisted teeth.
 * `bevel_gear(mm_per_tooth, number_of_teeth, thickness, bevel_angle, hole_diameter, pressure_angle)`: Beveled/conical miter gears.
 * `gear_rack(mm_per_tooth, number_of_teeth, thickness, height, pressure_angle, backlash, clearance)`: Linear gear racks.
+
+### 🧩 GEOL/joiners.scad
+High-performance sliding locks, snaps, and pairing connector grids.
+* `half_joiner_clear(h, w, a, clearance, overlap, orient, align)`: Clearance wedge cutter mask.
+* `half_joiner(h, w, l, a, screwsize, guides, slop, orient, align)`: Sliding male rail block with guide ridges.
+* `half_joiner2(h, w, l, a, screwsize, guides, orient, align)`: Sliding female matching slot block.
+* `joiner_clear(h, w, a, clearance, overlap, orient, align)`: Double-sided clearance cutter mask.
+* `joiner(h, w, l, a, screwsize, guides, slop, orient, align)`: Full self-mating connector link.
+* `joiner_pair_clear(spacing, h, w, a, n, clearance, overlap, orient, align)`: Dual horizontal clearance cutter.
+* `joiner_pair(spacing, h, w, l, a, n, alternate, screwsize, guides, slop, orient, align)`: Alternating 180° dual connector pair.
+* `joiner_quad_clear(spacing1, spacing2, n, h, w, a, clearance, overlap, orient, align)`: Symmetrical 4-quadrant clearance cutter.
+* `joiner_quad(spacing1, spacing2, h, w, l, a, n, alternate, screwsize, guides, slop, orient, align)`: Symmetrical 4-quadrant connector brackets.
+
 
 ---
 

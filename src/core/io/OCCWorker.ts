@@ -1216,48 +1216,141 @@ self.onmessage = async (e) => {
     try {
       const gpPoints: any[] = [];
       const vertices: any[] = [];
-      for (const pt of points) {
-        const x = pt.x !== undefined ? pt.x : (pt[0] ?? 0);
-        const y = pt.y !== undefined ? pt.y : (pt[1] ?? 0);
-        const z = pt.z !== undefined ? pt.z : (pt[2] ?? 0);
-        const gpPnt = new oc.gp_Pnt_3(x, y, z);
-        gpPoints.push(gpPnt);
-        const makeVertex = new oc.BRepBuilderAPI_MakeVertex(gpPnt);
-        vertices.push(detachShape(oc, makeVertex.Vertex()));
-        makeVertex.delete();
+      try {
+        for (const pt of points) {
+          const x = pt.x !== undefined ? pt.x : (pt[0] ?? 0);
+          const y = pt.y !== undefined ? pt.y : (pt[1] ?? 0);
+          const z = pt.z !== undefined ? pt.z : (pt[2] ?? 0);
+          const gpPnt = new oc.gp_Pnt_3(x, y, z);
+          gpPoints.push(gpPnt);
+          const makeVertex = new oc.BRepBuilderAPI_MakeVertex(gpPnt);
+          vertices.push(detachShape(oc, makeVertex.Vertex()));
+          makeVertex.delete();
+        }
+      } catch (err) {
+        throw new Error(`[createPolyhedron: Vertices creation] ${decodeOCCError('vertices', err)}`);
       }
 
       const faceShapes: any[] = [];
-      for (const faceIndices of faces) {
-        if (faceIndices.length < 3) continue;
-        const makeWire = new oc.BRepBuilderAPI_MakeWire_1();
-        let wireDone = true;
-        for (let j = 0; j < faceIndices.length; j++) {
-          const idx1 = faceIndices[j];
-          const idx2 = faceIndices[(j + 1) % faceIndices.length];
-          const p1 = gpPoints[idx1];
-          const p2 = gpPoints[idx2];
-          if (!p1 || !p2) {
-            wireDone = false;
-            break;
-          }
-          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
-          if (makeEdge.IsDone()) {
-            makeWire.Add_1(makeEdge.Edge());
-          } else {
-            wireDone = false;
-          }
-          makeEdge.delete();
-        }
+      let totalFacesCount = faces.length;
+      let degenerateEdgesSkipped = 0;
+      let edgeCreationFailures = 0;
+      let wireAdditionFailures = 0;
+      let wireNotDoneCount = 0;
+      let faceCreationFailures = 0;
+      let faceSuccessCount = 0;
 
-        if (wireDone && makeWire.IsDone()) {
-          const makeFace = new oc.BRepBuilderAPI_MakeFace_15(makeWire.Wire(), true);
-          if (makeFace.IsDone()) {
-            faceShapes.push(detachShape(oc, makeFace.Face()));
+      try {
+        for (let i = 0; i < faces.length; i++) {
+          const faceIndices = faces[i];
+          if (faceIndices.length < 3) continue;
+
+          // Filter out adjacent duplicate or coincident vertices
+          const uniqueIndices: number[] = [];
+          for (const idx of faceIndices) {
+            if (uniqueIndices.length === 0) {
+              uniqueIndices.push(idx);
+            } else {
+              const lastIdx = uniqueIndices[uniqueIndices.length - 1];
+              const pLast = gpPoints[lastIdx];
+              const pCurr = gpPoints[idx];
+              if (pLast && pCurr) {
+                let dist = 1.0;
+                try { dist = pLast.Distance(pCurr); } catch (_) {}
+                if (dist < 1e-7) {
+                  degenerateEdgesSkipped++;
+                } else {
+                  uniqueIndices.push(idx);
+                }
+              }
+            }
           }
-          makeFace.delete();
+          if (uniqueIndices.length >= 3) {
+            const firstIdx = uniqueIndices[0];
+            const lastIdx = uniqueIndices[uniqueIndices.length - 1];
+            const pFirst = gpPoints[firstIdx];
+            const pLast = gpPoints[lastIdx];
+            if (pFirst && pLast) {
+              let dist = 1.0;
+              try { dist = pFirst.Distance(pLast); } catch (_) {}
+              if (dist < 1e-7) {
+                degenerateEdgesSkipped++;
+                uniqueIndices.pop();
+              }
+            }
+          }
+
+          if (uniqueIndices.length < 3) continue;
+
+          const makeWire = new oc.BRepBuilderAPI_MakeWire_1();
+          let wireDone = true;
+          let addedEdgesCount = 0;
+          for (let j = 0; j < uniqueIndices.length; j++) {
+            const idx1 = uniqueIndices[j];
+            const idx2 = uniqueIndices[(j + 1) % uniqueIndices.length];
+            const p1 = gpPoints[idx1];
+            const p2 = gpPoints[idx2];
+            if (!p1 || !p2) {
+              wireDone = false;
+              break;
+            }
+
+            try {
+              const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+              if (makeEdge.IsDone()) {
+                const tempEdge = makeEdge.Edge();
+                try {
+                  makeWire.Add_1(tempEdge);
+                  addedEdgesCount++;
+                } catch (e: any) {
+                  wireAdditionFailures++;
+                  wireDone = false;
+                }
+              } else {
+                edgeCreationFailures++;
+                wireDone = false;
+              }
+              makeEdge.delete();
+            } catch (e: any) {
+              edgeCreationFailures++;
+              wireDone = false;
+            }
+          }
+
+          if (wireDone && addedEdgesCount >= 3 && makeWire.IsDone()) {
+            let face: any = null;
+            try {
+              const makeFace = new oc.BRepBuilderAPI_MakeFace_15(makeWire.Wire(), false);
+              if (makeFace.IsDone()) {
+                face = detachShape(oc, makeFace.Face());
+                faceSuccessCount++;
+              } else {
+                faceCreationFailures++;
+              }
+              makeFace.delete();
+            } catch (e: any) {
+              faceCreationFailures++;
+            }
+            if (face) {
+              faceShapes.push(face);
+            }
+          } else {
+            if (!makeWire.IsDone()) {
+              wireNotDoneCount++;
+            }
+          }
+          makeWire.delete();
         }
-        makeWire.delete();
+        
+        console.log(`[Polyhedron Diagnosis] Total input faces: ${totalFacesCount}`);
+        console.log(`  Degenerate edges skipped: ${degenerateEdgesSkipped}`);
+        console.log(`  Edge creation failures: ${edgeCreationFailures}`);
+        console.log(`  Wire addition failures: ${wireAdditionFailures}`);
+        console.log(`  Wire not done count: ${wireNotDoneCount}`);
+        console.log(`  Face creation failures: ${faceCreationFailures}`);
+        console.log(`  Faces successfully created: ${faceSuccessCount}`);
+      } catch (err) {
+        throw new Error(`[createPolyhedron: Face creation] ${decodeOCCError('faces', err)}`);
       }
 
       // Clean up gpPoints as they are no longer needed
@@ -1374,7 +1467,7 @@ self.onmessage = async (e) => {
 
       self.postMessage({ type: 'createPolyhedron', success: true, payload: { ...geometryData, brepBytes, nakedLines, isSolid }, id });
     } catch (error: any) {
-      const errorMessage = error.message || error.toString() || 'Unknown error';
+      const errorMessage = decodeOCCError('createPolyhedron', error);
       self.postMessage({ type: 'createPolyhedron', success: false, error: errorMessage, id });
     }
   } else if (type === 'createConvexHull') {
@@ -2426,6 +2519,40 @@ self.onmessage = async (e) => {
       const errorMessage = decodeOCCError('createRevolve', error);
       self.postMessage({ type: 'createRevolve', success: false, error: errorMessage, id });
     }
+  } else if (type === 'createCompound') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { childrenIds, entityId, deflection } = payload;
+    try {
+      const builder = new oc.BRep_Builder();
+      const compound = new oc.TopoDS_Compound();
+      builder.MakeCompound(compound);
+
+      for (const childId of childrenIds) {
+        if (shapeCache.has(childId)) {
+          const childShape = shapeCache.get(childId);
+          if (childShape && !childShape.IsNull()) {
+            builder.Add(compound, childShape);
+          }
+        }
+      }
+
+      const resultShape = detachShape(oc, compound);
+      cacheShape(entityId, resultShape);
+
+      const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
+      const brepBytes = exportShapeToBytes(oc, resultShape, entityId);
+
+      builder.delete();
+      compound.delete();
+
+      self.postMessage({ type: 'createCompound', success: true, payload: { ...geometryData, brepBytes }, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'createCompound', success: false, error: errorMessage, id });
+    }
   } else if (type === 'createBoolean') {
     if (!oc) {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
@@ -2598,26 +2725,68 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { entityId, p1, p2, targetEntityId, deflection } = payload;
+    const { entityId, p1, p2, targetEntityId, deflection, normal } = payload;
     try {
       if (!shapeCache.has(entityId)) {
         throw new Error(`Shape not cached for entity ${entityId}`);
       }
       const shape = shapeCache.get(entityId);
 
-      const dx = p2.x - p1.x;
-      const dy = p2.y - p1.y;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len < 1e-6) {
-        throw new Error("Mirror line points are too close.");
+      let gpPnt: any;
+      let gpDir: any;
+      let nx = 0, ny = 0, nz = 0;
+
+      if (normal) {
+        const px = p1 ? (p1.x ?? 0) : 0;
+        const py = p1 ? (p1.y ?? 0) : 0;
+        const pz = p1 ? (p1.z ?? 0) : 0;
+        gpPnt = new oc.gp_Pnt_3(px, py, pz);
+
+        nx = normal.x ?? 1;
+        ny = normal.y ?? 0;
+        nz = normal.z ?? 0;
+        const nlen = Math.sqrt(nx * nx + ny * ny + nz * nz);
+        if (nlen < 1e-6) {
+          throw new Error("Mirror normal vector is zero.");
+        }
+        nx /= nlen;
+        ny /= nlen;
+        nz /= nlen;
+        gpDir = new oc.gp_Dir_4(nx, ny, nz);
+      } else {
+        if (!p1 || !p2) {
+          throw new Error("Mirror requires either a normal vector or two points defining a line.");
+        }
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1e-6) {
+          throw new Error("Mirror line points are too close.");
+        }
+
+        nx = -dy / len;
+        ny = dx / len;
+        nz = 0;
+
+        gpPnt = new oc.gp_Pnt_3(p1.x, p1.y, p1.z || 0);
+        gpDir = new oc.gp_Dir_4(nx, ny, nz);
       }
 
-      const nx = -dy / len;
-      const ny = dx / len;
+      // Compute a perpendicular vector to (nx, ny, nz)
+      let vx = 0, vy = 0, vz = 0;
+      if (Math.abs(nz) < 0.9) {
+        vx = ny;
+        vy = -nx;
+        vz = 0;
+      } else {
+        vx = 0;
+        vy = nz;
+        vz = -ny;
+      }
+      const vlen = Math.sqrt(vx * vx + vy * vy + vz * vz);
+      const gpDirVx = new oc.gp_Dir_4(vx / vlen, vy / vlen, vz / vlen);
 
-      const gpPnt = new oc.gp_Pnt_3(p1.x, p1.y, p1.z || 0);
-      const gpDir = new oc.gp_Dir_4(nx, ny, 0);
-      const gpAx2 = new oc.gp_Ax2_2(gpPnt, gpDir);
+      const gpAx2 = new oc.gp_Ax2_2(gpPnt, gpDir, gpDirVx);
 
       const transform = new oc.gp_Trsf_1();
       transform.SetMirror_3(gpAx2);
@@ -2633,6 +2802,7 @@ self.onmessage = async (e) => {
 
       gpPnt.delete();
       gpDir.delete();
+      gpDirVx.delete();
       gpAx2.delete();
       transform.delete();
       brepTransform.delete();
@@ -2647,29 +2817,61 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { entityId, factor, cx, cy, cz, targetEntityId, deflection } = payload;
+    const { entityId, factor, cx, cy, cz, targetEntityId, deflection, factorX, factorY, factorZ } = payload;
     try {
       if (!shapeCache.has(entityId)) {
         throw new Error(`Shape not cached for entity ${entityId}`);
       }
       const shape = shapeCache.get(entityId);
 
-      const gpPnt = new oc.gp_Pnt_3(cx, cy, cz);
-      const transform = new oc.gp_Trsf_1();
-      transform.SetScale(gpPnt, factor);
+      let newShape: any;
+      const isNonUniform = factor === undefined && (factorX !== undefined || factorY !== undefined || factorZ !== undefined);
 
-      const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
-      const newShape = brepTransform.Shape();
+      if (isNonUniform) {
+        const fx = factorX !== undefined ? factorX : 1;
+        const fy = factorY !== undefined ? factorY : 1;
+        const fz = factorZ !== undefined ? factorZ : 1;
+
+        if (!oc.gp_GTrsf_1 || !oc.BRepBuilderAPI_GTransform_2) {
+          throw new Error("Non-uniform scaling is not supported by the current OpenCascade.js WASM build.");
+        }
+
+        const gtrsf = new oc.gp_GTrsf_1();
+        // Set diagonal scaling factors
+        gtrsf.SetValue(1, 1, fx);
+        gtrsf.SetValue(2, 2, fy);
+        gtrsf.SetValue(3, 3, fz);
+
+        // Apply center translation if cx, cy, cz are not zero
+        if (cx !== 0 || cy !== 0 || cz !== 0) {
+          gtrsf.SetValue(1, 4, cx * (1 - fx));
+          gtrsf.SetValue(2, 4, cy * (1 - fy));
+          gtrsf.SetValue(3, 4, cz * (1 - fz));
+        }
+
+        const gTrans = new oc.BRepBuilderAPI_GTransform_2(shape, gtrsf, true);
+        newShape = gTrans.Shape();
+
+        gtrsf.delete();
+        gTrans.delete();
+      } else {
+        const gpPnt = new oc.gp_Pnt_3(cx, cy, cz);
+        const transform = new oc.gp_Trsf_1();
+        transform.SetScale(gpPnt, factor !== undefined ? factor : 1);
+
+        const brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+        newShape = brepTransform.Shape();
+
+        gpPnt.delete();
+        transform.delete();
+        brepTransform.delete();
+      }
 
       const resultId = targetEntityId || entityId;
       cacheShape(resultId, newShape);
 
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
       const brepBytes = exportShapeToBytes(oc, newShape, resultId);
-
-      gpPnt.delete();
-      transform.delete();
-      brepTransform.delete();
 
       self.postMessage({ type: 'scaleShape', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {

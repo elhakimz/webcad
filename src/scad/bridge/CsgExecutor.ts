@@ -187,40 +187,11 @@ export class CsgExecutor {
 
           for (let i = 0; i < node.children.length; i++) {
             const child = node.children[i];
-            const pts = this.get2DPoints(child);
-            if (pts.length >= 3) {
-              const childId = `${id}_child_${i}`;
-              this.tempIds.add(childId);
-              
-              if (node.name === "linear_extrude") {
-                const height = node.params.height ?? node.params[0] ?? 1.0;
-                const center = node.params.center ?? node.params[1] ?? false;
-                const formattedPts = pts.map(pt => ({ x: pt.x, y: pt.y, z: 0 }));
-                let extGeo = await this.occ.createExtrude(formattedPts, height, undefined, deflection, true, childId);
-                if (extGeo) {
-                  if (center) {
-                    const tempId = childId + "_centered";
-                    this.tempIds.add(tempId);
-                    extGeo = await this.occ.transformShape(childId, 0, 0, -height / 2, tempId, deflection);
-                    if (extGeo) {
-                      extGeo.userData = { ...extGeo.userData, entityId: childId };
-                    }
-                  } else {
-                    extGeo.userData = { ...extGeo.userData, entityId: childId };
-                  }
-                  extrudedShapes.push(extGeo);
-                }
-              } else if (node.name === "rotate_extrude") {
-                const angle = node.params.angle ?? node.params[0] ?? 360.0;
-                const profilePts = pts.map(pt => ({ x: pt.x, y: 0, z: pt.y }));
-                const axisPoint = { x: 0, y: 0, z: 0 };
-                const axisDir = { x: 0, y: 0, z: 1 };
-                let revGeo = await this.occ.createRevolve(profilePts, axisPoint, axisDir, angle, undefined, deflection, true, childId);
-                if (revGeo) {
-                  revGeo.userData = { ...revGeo.userData, entityId: childId };
-                  extrudedShapes.push(revGeo);
-                }
-              }
+            const childId = `${id}_ext_${i}`;
+            this.tempIds.add(childId);
+            const geo = await this.extrudeOrRevolve(child, node.name as any, node.params, deflection, childId);
+            if (geo) {
+              extrudedShapes.push(geo);
             }
           }
 
@@ -1106,6 +1077,99 @@ export class CsgExecutor {
     if (fn < 3) fn = 3;
     const deflection = Math.max(0.001, Math.min(1.0, 0.5 * (1 - Math.cos(Math.PI / fn))));
     return deflection;
+  }
+
+  private async extrudeOrRevolve(
+    node: EvaluatedGeometry,
+    parentName: "linear_extrude" | "rotate_extrude",
+    params: any,
+    deflection: number,
+    id: string
+  ): Promise<THREE.BufferGeometry | null> {
+    if (node.type === "Boolean") {
+      const childGeometries: THREE.BufferGeometry[] = [];
+      for (let i = 0; i < node.children.length; i++) {
+        const childId = `${id}_bool_${i}`;
+        this.tempIds.add(childId);
+        const geo = await this.extrudeOrRevolve(node.children[i], parentName, params, deflection, childId);
+        if (geo) {
+          childGeometries.push(geo);
+        }
+      }
+
+      if (childGeometries.length === 0) return null;
+      if (childGeometries.length === 1) return childGeometries[0];
+
+      return this.applyBoolean(node.name, childGeometries, id);
+    }
+
+    if (node.type === "Group") {
+      const childGeometries: THREE.BufferGeometry[] = [];
+      for (let i = 0; i < node.children.length; i++) {
+        const childId = `${id}_grp_${i}`;
+        this.tempIds.add(childId);
+        const geo = await this.extrudeOrRevolve(node.children[i], parentName, params, deflection, childId);
+        if (geo) {
+          childGeometries.push(geo);
+        }
+      }
+
+      if (childGeometries.length === 0) return null;
+      if (childGeometries.length === 1) return childGeometries[0];
+
+      return this.applyBoolean("union", childGeometries, id);
+    }
+
+    const pts = this.get2DPoints(node);
+    if (pts.length < 3) return null;
+
+    if (parentName === "linear_extrude") {
+      const height = params.height ?? params[0] ?? 1.0;
+      const center = params.center ?? params[1] ?? false;
+      const formattedPts = pts.map(pt => ({ x: pt.x, y: pt.y, z: 0 }));
+      let extGeo = await this.occ.createExtrude(formattedPts, height, undefined, deflection, true, id);
+      if (extGeo) {
+        if (center) {
+          const tempId = id + "_centered";
+          this.tempIds.add(tempId);
+          extGeo = await this.occ.transformShape(id, 0, 0, -height / 2, tempId, deflection);
+          if (extGeo) {
+            extGeo.userData = { ...extGeo.userData, entityId: id };
+          }
+        } else {
+          extGeo.userData = { ...extGeo.userData, entityId: id };
+        }
+      }
+      return extGeo;
+    } else {
+      if (pts.every(pt => pt.x <= 0.001)) {
+        return null;
+      }
+
+      const angle = params.angle ?? params[0] ?? 360.0;
+      const profilePts = pts.map(pt => ({ x: Math.max(0, pt.x), y: 0, z: pt.y }));
+
+      const uniqueProfilePts = [];
+      for (const pt of profilePts) {
+        if (uniqueProfilePts.length === 0) {
+          uniqueProfilePts.push(pt);
+        } else {
+          const last = uniqueProfilePts[uniqueProfilePts.length - 1];
+          if (Math.abs(pt.x - last.x) > 0.0001 || Math.abs(pt.z - last.z) > 0.0001) {
+            uniqueProfilePts.push(pt);
+          }
+        }
+      }
+      if (uniqueProfilePts.length < 3) return null;
+
+      const axisPoint = { x: 0, y: 0, z: 0 };
+      const axisDir = { x: 0, y: 0, z: 1 };
+      const revGeo = await this.occ.createRevolve(uniqueProfilePts, axisPoint, axisDir, angle, undefined, deflection, true, id);
+      if (revGeo) {
+        revGeo.userData = { ...revGeo.userData, entityId: id };
+      }
+      return revGeo;
+    }
   }
 
   private get2DPoints(node: EvaluatedGeometry, transform = new THREE.Matrix4()): { x: number; y: number }[] {

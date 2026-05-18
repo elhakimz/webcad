@@ -194,7 +194,7 @@ export class ScadEvaluator {
 
     // Handle children() call
     if (node.name === "children") {
-      const parentChildren = scope.get("$children");
+      const parentChildren = scope.get("$children_nodes") || scope.get("$children");
       const parentScope = scope.get("$children_scope");
       if (!parentChildren || !Array.isArray(parentChildren) || parentChildren.length === 0) {
         return [];
@@ -267,7 +267,8 @@ export class ScadEvaluator {
         newScope.set(param.name, val);
       });
       
-      newScope.set("$children", node.children);
+      newScope.set("$children", node.children.length);
+      newScope.set("$children_nodes", node.children);
       newScope.set("$children_scope", scope);
 
       return this.evaluateBody(moduleDef.body, newScope);
@@ -305,8 +306,27 @@ export class ScadEvaluator {
     switch (expr.type) {
       case "Literal":
         return expr.value;
-      case "Identifier":
-        return scope.get(expr.name);
+      case "Identifier": {
+        const val = scope.get(expr.name);
+        if (val !== undefined) return val;
+        const BUILTIN_CONSTANTS: Record<string, any> = {
+          "PI": Math.PI,
+          "ORIENT_Z": [0, 0, 1],
+          "ORIENT_X": [1, 0, 0],
+          "ORIENT_Y": [0, 1, 0],
+          "V_UP": [0, 0, 1],
+          "V_DOWN": [0, 0, -1],
+          "V_LEFT": [-1, 0, 0],
+          "V_RIGHT": [1, 0, 0],
+          "V_FORWARD": [0, 1, 0],
+          "V_BACK": [0, -1, 0],
+          "V_CENTER": [0, 0, 0]
+        };
+        if (expr.name in BUILTIN_CONSTANTS) {
+          return BUILTIN_CONSTANTS[expr.name];
+        }
+        return undefined;
+      }
       case "BinaryExpression": {
         const left = this.evaluateExpression(expr.left, scope);
         const right = this.evaluateExpression(expr.right, scope);
@@ -484,25 +504,25 @@ export class ScadEvaluator {
         }
         if (expr.name === "lookup") {
           const key = Number(this.evaluateExpression(expr.arguments[0].value, scope)) || 0;
-          const table = this.evaluateExpression(expr.arguments[1].value, scope);
-          if (Array.isArray(table) && table.length > 0) {
-            const sorted = table
-              .filter(item => Array.isArray(item) && item.length >= 2)
-              .map(item => [Number(item[0]) || 0, Number(item[1]) || 0])
-              .sort((a, b) => a[0] - b[0]);
-            if (sorted.length === 0) return 0;
-            if (key <= sorted[0][0]) return sorted[0][1];
-            if (key >= sorted[sorted.length - 1][0]) return sorted[sorted.length - 1][1];
-            for (let i = 0; i < sorted.length - 1; i++) {
-              const p1 = sorted[i];
-              const p2 = sorted[i + 1];
-              if (key >= p1[0] && key <= p2[0]) {
-                const t = (key - p1[0]) / (p2[0] - p1[0]);
-                return p1[1] + t * (p2[1] - p1[1]);
-              }
+          const table = this.evaluateExpression(expr.arguments[1].value, scope) as number[][];
+
+          if (!Array.isArray(table) || table.length === 0) return key;
+
+          // Clamp to table bounds
+          if (key <= table[0][0])                  return table[0][1];
+          if (key >= table[table.length - 1][0])   return table[table.length - 1][1];
+
+          // Find surrounding entries and interpolate
+          for (let i = 0; i < table.length - 1; i++) {
+            const [k0, v0] = table[i];
+            const [k1, v1] = table[i + 1];
+            if (key >= k0 && key <= k1) {
+              if (k0 === k1) return v0;
+              const t = (key - k0) / (k1 - k0);
+              return v0 + t * (v1 - v0);
             }
           }
-          return 0;
+          return table[table.length - 1][1];
         }
         if (expr.name === "chr") {
           const n = this.evaluateExpression(expr.arguments[0].value, scope);
@@ -657,6 +677,7 @@ export class ScadEvaluator {
         }
         return undefined;
       }
+      
       case "LetExpression": {
         const newScope = scope.extend();
         for (const assign of expr.assignments) {

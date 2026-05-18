@@ -118,6 +118,7 @@ export class ScadEvaluator {
     scope.set("$fa", 12);
     scope.set("$fs", 2);
     scope.set("undef", undefined);
+    scope.set("PI", Math.PI);
 
     if (overrides) {
       for (const [key, val] of Object.entries(overrides)) {
@@ -375,10 +376,22 @@ export class ScadEvaluator {
         if (expr.name === "sin") return Math.sin((this.evaluateExpression(expr.arguments[0].value, scope) * Math.PI) / 180);
         if (expr.name === "cos") return Math.cos((this.evaluateExpression(expr.arguments[0].value, scope) * Math.PI) / 180);
         if (expr.name === "tan") return Math.tan((this.evaluateExpression(expr.arguments[0].value, scope) * Math.PI) / 180);
-        if (expr.name === "asin") return (Math.asin(this.evaluateExpression(expr.arguments[0].value, scope)) * 180) / Math.PI;
-        if (expr.name === "acos") return (Math.acos(this.evaluateExpression(expr.arguments[0].value, scope)) * 180) / Math.PI;
+        if (expr.name === "asin") {
+          const val = this.evaluateExpression(expr.arguments[0].value, scope);
+          const clamped = Math.max(-1, Math.min(1, typeof val === "number" && !isNaN(val) ? val : 0));
+          return (Math.asin(clamped) * 180) / Math.PI;
+        }
+        if (expr.name === "acos") {
+          const val = this.evaluateExpression(expr.arguments[0].value, scope);
+          const clamped = Math.max(-1, Math.min(1, typeof val === "number" && !isNaN(val) ? val : 0));
+          return (Math.acos(clamped) * 180) / Math.PI;
+        }
         if (expr.name === "atan") return (Math.atan(this.evaluateExpression(expr.arguments[0].value, scope)) * 180) / Math.PI;
-        if (expr.name === "sqrt") return Math.sqrt(this.evaluateExpression(expr.arguments[0].value, scope));
+        if (expr.name === "sqrt") {
+          const val = this.evaluateExpression(expr.arguments[0].value, scope);
+          const clamped = Math.max(0, typeof val === "number" && !isNaN(val) ? val : 0);
+          return Math.sqrt(clamped);
+        }
         if (expr.name === "atan2") {
           const y = this.evaluateExpression(expr.arguments[0].value, scope);
           const x = this.evaluateExpression(expr.arguments[1].value, scope);
@@ -579,7 +592,7 @@ export class ScadEvaluator {
           const keys = this.evaluateExpression(expr.arguments[0].value, scope);
           const dataset = this.evaluateExpression(expr.arguments[1].value, scope);
           const args = this.evaluateArguments(expr.arguments, scope);
-          const indexColNum = args.index_col_num ?? args[3] ?? undefined;
+          const indexColNum = args.index_col_num ?? args[3] ?? 0;
           
           if (!Array.isArray(dataset)) return [[]];
           

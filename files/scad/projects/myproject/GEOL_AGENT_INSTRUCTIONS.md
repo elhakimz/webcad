@@ -29,6 +29,7 @@ use <GEOL/masks.scad>
 use <GEOL/threading.scad>
 use <GEOL/paths.scad>
 use <GEOL/beziers.scad>
+use <GEOL/involute_gears.scad>
 ```
 
 ---
@@ -85,6 +86,18 @@ Native recursive De Casteljau bezier path evaluation, closed curves, and 3D swee
 * `rotate_extrude_bezier(bezier, splinesteps, N, angle)`: Revolve-extrudes a closed 2D Bezier path.
 * `extrude_2d_shapes_along_bezier(bezier, splinesteps, N)`: Sweeps 2D children perpendicularly along a 3D Bezier curve.
 * `trace_bezier(bez, N, size)`: Visualizes a Bezier control path with control points and a smooth interpolated path.
+
+### ⚙️ GEOL/involute_gears.scad
+Fast, native C++ spur, helical, beveled gears and racks with set-screw hubs and keyway slots.
+* `pitch_radius(mm_per_tooth, number_of_teeth)`: Radius of rolling pitch circle.
+* `outer_radius(mm_per_tooth, number_of_teeth, clearance)`: Radius to top of teeth.
+* `root_radius(mm_per_tooth, number_of_teeth, clearance)`: Radius to bottom of valleys.
+* `base_radius(mm_per_tooth, number_of_teeth, pressure_angle)`: Radius controlling tooth involute curvature.
+* `gear2d_profile(mm_per_tooth, number_of_teeth, pressure_angle, clearance, backlash)`: 2D closed gear profile.
+* `gear(mm_per_tooth, number_of_teeth, thickness, hole_diameter, keyway_w, keyway_h, hub_d, hub_h, pressure_angle, clearance, backlash)`: High-performance 3D spur gear with optional keyways and set-screw hubs.
+* `helical_gear(mm_per_tooth, number_of_teeth, thickness, twist, hole_diameter, pressure_angle, slices)`: Helical gear with twisted teeth.
+* `bevel_gear(mm_per_tooth, number_of_teeth, thickness, bevel_angle, hole_diameter, pressure_angle)`: Beveled/conical miter gears.
+* `gear_rack(mm_per_tooth, number_of_teeth, thickness, height, pressure_angle, backlash, clearance)`: Linear gear racks.
 
 ---
 

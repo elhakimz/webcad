@@ -720,6 +720,39 @@ describe("SCAD Parser & Interpreter Ranges and Math", () => {
         expect((geom[2] as any).params[0]).toEqual([20, 30, 0]);
         expect((geom[3] as any).params[0]).toEqual([20, 40, 0]);
       });
+
+      it("should successfully lex, parse, and evaluate braced_thinning_wall and thinning_triangle", () => {
+        const fs = require("fs");
+        const path = require("path");
+        const filePath = path.join(__dirname, "../../files/scad/projects/myproject/GEOL/shapes.scad");
+        const code = fs.readFileSync(filePath, "utf-8") + `
+          braced_thinning_wall(h=40, l=100, thick=3);
+          thinning_triangle(h=40, l=100, thick=3);
+        `;
+        const lexer = new ScadLexer();
+        const tokens = lexer.tokenize(code);
+        const parser = new ScadParser();
+        const ast = parser.parse(tokens);
+        const evaluator = new ScadEvaluator();
+        const geom = evaluator.evaluate(ast);
+
+        expect(geom.length).toBeGreaterThan(0);
+      });
+
+      it("should successfully lex, parse, and evaluate spiral_polyline.scad generator", () => {
+        const fs = require("fs");
+        const path = require("path");
+        const filePath = path.join(__dirname, "../../files/scad/generators/sketch/spiral_polyline.scad");
+        const code = fs.readFileSync(filePath, "utf-8");
+        const lexer = new ScadLexer();
+        const tokens = lexer.tokenize(code);
+        const parser = new ScadParser();
+        const ast = parser.parse(tokens);
+        const evaluator = new ScadEvaluator();
+        const geom = evaluator.evaluate(ast);
+
+        expect(geom.length).toBeGreaterThan(0);
+      });
     });
   });
 });

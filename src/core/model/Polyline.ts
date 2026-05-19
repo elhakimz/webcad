@@ -5,6 +5,7 @@ import { rotatePoint, reflectPointAcrossLine, bulgeToArc } from "../engine/MathU
 export interface PolylineVertex {
   x: number;
   y: number;
+  z?: number;
   bulge: number;
 }
 

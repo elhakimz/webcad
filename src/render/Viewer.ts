@@ -63,7 +63,9 @@ export class Viewer {
   public edgeLines: THREE.Object3D[] = [];
   private highlightedEntityIds: string[] = [];
   public selectedIds: string[] = [];
-  private currentMode: 'modelling' | 'scripting' = 'modelling';
+  public currentMode: 'modelling' | 'scripting' = 'modelling';
+  public getBlockCallback?: (blockName: string) => BlockDefinition | null;
+  public getLayerPropertiesCallback?: () => Map<string, {color: number, linetype: string}>;
 
   private modellingCameraState = {
     position: new THREE.Vector3(0, 0, 500),
@@ -545,20 +547,34 @@ export class Viewer {
     this.scheduleRender();
   }
 
+  public addTemporaryEntity(entity: any, color: number = 0x888888) {
+    const obj = this.createPreviewObject(entity, color, { type: 'decimal', precision: 4, scale: 1.0 });
+    if (obj) {
+      this.temporaryMeshGroup.add(obj);
+      this.scheduleRender();
+    }
+  }
+
+
   public clearTemporaryMeshes() {
-    this.temporaryMeshGroup.children.forEach(child => {
-      if (child instanceof THREE.Mesh) {
-        child.geometry.dispose();
-        if (Array.isArray(child.material)) {
-          child.material.forEach(m => m.dispose());
-        } else {
-          child.material.dispose();
-        }
-      } else if (child instanceof THREE.LineSegments) {
-        child.geometry.dispose();
-        (child.material as THREE.Material).dispose();
+    const disposeObj = (obj: THREE.Object3D) => {
+      // Recursively dispose of children first
+      const childrenCopy = [...obj.children];
+      childrenCopy.forEach(disposeObj);
+      
+      const anyObj = obj as any;
+      if (anyObj.geometry) {
+        anyObj.geometry.dispose();
       }
-    });
+      if (anyObj.material) {
+        if (Array.isArray(anyObj.material)) {
+          anyObj.material.forEach((m: any) => m.dispose());
+        } else {
+          anyObj.material.dispose();
+        }
+      }
+    };
+    this.temporaryMeshGroup.children.forEach(disposeObj);
     this.temporaryMeshGroup.clear();
     this.scheduleRender();
   }
@@ -574,6 +590,76 @@ export class Viewer {
     );
   }
 
+  private resolveColor(colorVal: any, defaultColor: number = 0xffffff): number {
+    if (colorVal === undefined || colorVal === null) return defaultColor;
+    const num = Number(colorVal);
+    if (num >= 1 && num <= 255) {
+      return aciToRgb(num);
+    }
+    return num; // Direct RGB hex
+  }
+
+  private createHatchObject(entity: Hatch, colorVal: number): THREE.Object3D | null {
+    if (entity.boundaryVertices.length < 3) return null;
+
+    const patternData = entity.getPatternData();
+    const allSegments: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    const vertices = entity.boundaryVertices;
+
+    if (patternData && patternData.lines.length > 0) {
+      for (const lineDef of patternData.lines) {
+        const effectiveAngle = lineDef.angle + entity.angle;
+        const spacing = lineDef.spacing * entity.patternScale;
+        const offsetX = lineDef.offset[0];
+        const offsetY = lineDef.offset[1];
+        const lines = generateHatchLines(vertices, spacing, effectiveAngle, offsetX, offsetY);
+
+        for (const line of lines) {
+          const segments = clipLineWithPolygon(line, entity.boundaryVertices);
+          for (const seg of segments) {
+            if (lineDef.dashPattern.length === 0) {
+              allSegments.push({ x1: seg.p1.x, y1: seg.p1.y, x2: seg.p2.x, y2: seg.p2.y });
+            } else {
+              const dashed = this.generateDashedPath([seg.p1, seg.p2], lineDef.dashPattern);
+              allSegments.push(...dashed);
+            }
+          }
+        }
+      }
+    } else {
+      const spacing = 8 * entity.patternScale;
+      const angle = entity.angle;
+      const lines = generateHatchLines(vertices, spacing, angle);
+
+      for (const line of lines) {
+        const segments = clipLineWithPolygon(line, entity.boundaryVertices);
+        for (const seg of segments) {
+          allSegments.push({ x1: seg.p1.x, y1: seg.p1.y, x2: seg.p2.x, y2: seg.p2.y });
+        }
+      }
+    }
+
+    if (allSegments.length === 0) return null;
+
+    const positions: number[] = [];
+    for (const seg of allSegments) {
+      positions.push(seg.x1, seg.y1, 0);
+      positions.push(seg.x2, seg.y2, 0);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+    const material = new THREE.LineBasicMaterial({
+      color: colorVal
+    });
+
+    const mesh = new THREE.LineSegments(geometry, material);
+    mesh.position.z = 0.1;
+    mesh.renderOrder = 500;
+    return mesh;
+  }
+
   private createPreviewObject(entity: PreviewObject, previewColor: number, units: UnitsConfig): THREE.Object3D | null {
     let obj: THREE.Object3D | null = null;
     if (entity instanceof Line) {
@@ -583,7 +669,7 @@ export class Viewer {
         new THREE.Vector3(entity.x1, entity.y1, z1),
         new THREE.Vector3(entity.x2, entity.y2, z2)
       ]);
-      const color = (entity.properties && entity.properties.color !== undefined) ? (entity.properties.color as number) : previewColor;
+      const color = this.resolveColor(entity.properties?.color, previewColor);
       const mat = new THREE.LineBasicMaterial({ color });
       obj = new THREE.Line(geo, mat);
     } else if (entity instanceof Circle) {
@@ -591,23 +677,27 @@ export class Viewer {
       const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, 0, 2 * Math.PI, false, 0);
       const points = curve.getPoints(50);
       const geo = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, z)));
-      const mat = new THREE.LineBasicMaterial({ color: previewColor });
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      const mat = new THREE.LineBasicMaterial({ color });
       obj = new THREE.LineLoop(geo, mat);
     } else if (entity instanceof Arc) {
       const z = entity.elevation || 0;
       const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, entity.startAngle, entity.endAngle, !entity.ccw, 0);
       const points = curve.getPoints(50);
       const geo = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, z)));
-      const mat = new THREE.LineBasicMaterial({ color: previewColor });
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      const mat = new THREE.LineBasicMaterial({ color });
       obj = new THREE.Line(geo, mat);
     } else if (entity instanceof Point) {
       const geo = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(entity.x, entity.y, 0)
       ]);
-      const mat = new THREE.PointsMaterial({ color: previewColor, size: 5, sizeAttenuation: false });
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      const mat = new THREE.PointsMaterial({ color, size: 5, sizeAttenuation: false });
       obj = new THREE.Points(geo, mat);
     } else if (entity instanceof Dimension) {
-      obj = this.createDimensionObject(entity, units, previewColor);
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      obj = this.createDimensionObject(entity, units, color);
     } else if ('type' in entity && entity.type === 'xmarker') {
       const m = entity as XMarkerPreview;
       const size = m.size || 10 / this.camera.zoom;
@@ -673,11 +763,13 @@ export class Viewer {
       obj = group;
     } else if (entity instanceof Polyline || ('type' in entity && entity.type === 'polyline_preview')) {
         if (entity instanceof Polyline) {
-            obj = this.createPolylineObject(entity, previewColor);
+            const color = this.resolveColor(entity.properties?.color, previewColor);
+            obj = this.createPolylineObject(entity, color);
         } else {
             const p = entity as PolylinePreview;
             const pline = new Polyline('preview', p.vertices, p.closed);
-            obj = this.createPolylineObject(pline, previewColor);
+            const color = this.resolveColor((p as any).properties?.color, previewColor);
+            obj = this.createPolylineObject(pline, color);
         }
     } else if ('type' in entity && entity.type === 'rotation_preview') {
       const { angle, baseX, baseY } = entity as RotationPreview;
@@ -688,7 +780,8 @@ export class Viewer {
       const mat = new THREE.LineBasicMaterial({ color: 0x00FFFF });
       obj = new THREE.Line(geo, mat);
     } else if (entity instanceof Text) {
-      obj = this.createTextObject(entity.text, entity.height, previewColor, "Arial");
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      obj = this.createTextObject(entity.text, entity.height, color, "Arial");
       const mesh = obj.children[0] as THREE.Mesh;
       const width = (mesh.geometry as THREE.PlaneGeometry).parameters.width;
       const height = (mesh.geometry as THREE.PlaneGeometry).parameters.height;
@@ -697,12 +790,14 @@ export class Viewer {
       obj.position.z = entity.elevation || 0;
       obj.rotation.z = (entity.rotation || 0) * (Math.PI / 180);
     } else if (entity instanceof Note) {
-      obj = this.createNoteObject(entity, previewColor);
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      obj = this.createNoteObject(entity, color);
     } else if (entity instanceof Spline || ('type' in entity && entity.type === 'spline_preview')) {
       const sp = (entity instanceof Spline) ? entity : (entity as SplinePreview);
       const pts = tessellateSpline(sp.controlPoints, sp.degree, sp.knots);
       const geom = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, 0)));
-      const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: previewColor }));
+      const color = this.resolveColor((sp as any).properties?.color, previewColor);
+      const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color }));
       
       const group = new THREE.Group();
       group.add(line);
@@ -730,13 +825,80 @@ export class Viewer {
       
       obj = group;
     } else if (entity instanceof Solid) {
-      obj = this.createSolidObject(entity, previewColor);
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      obj = this.createSolidObject(entity, color);
     } else if (entity instanceof Donut) {
-      obj = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, previewColor);
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      obj = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, color);
     } else if (entity instanceof Ellipse) {
-      obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle || 0, entity.endAngle || Math.PI * 2, entity.ccw !== false, previewColor);
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle || 0, entity.endAngle || Math.PI * 2, entity.ccw !== false, color);
     } else if (entity instanceof MText) {
-      obj = this.createMTextObject(entity, previewColor);
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      obj = this.createMTextObject(entity, color);
+    } else if (entity instanceof Hatch) {
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      obj = this.createHatchObject(entity, color);
+    } else if (entity instanceof Insert) {
+      if (this.getBlockCallback && this.getLayerPropertiesCallback) {
+        const block = this.getBlockCallback(entity.blockName);
+        if (block) {
+          const layerProps = this.getLayerPropertiesCallback();
+          const targetColor = this.resolveColor(entity.properties?.color, previewColor);
+          
+          const group = new THREE.Group();
+          group.name = entity.id + '_preview';
+
+          block.entities.forEach(e => {
+            let subObj: THREE.Object3D | null = null;
+            const targetLayerName = (e.layer === "0" || !e.layer) ? (entity.layer || "0") : e.layer;
+            const props = layerProps.get(targetLayerName) || { color: 7, linetype: "CONTINUOUS" };
+            
+            const color = targetColor;
+            const linetype = props.linetype;
+
+            if (e instanceof Line) {
+              subObj = this.createLineObject(e.x1 - block.basePoint.x, e.y1 - block.basePoint.y, e.x2 - block.basePoint.x, e.y2 - block.basePoint.y, color, linetype);
+            } else if (e instanceof Circle) {
+              subObj = this.createCircleObject(e.cx - block.basePoint.x, e.cy - block.basePoint.y, e.r, color, linetype);
+            } else if (e instanceof Arc) {
+              subObj = this.createArcObject(e.cx - block.basePoint.x, e.cy - block.basePoint.y, e.r, e.startAngle, e.endAngle, e.ccw, color, linetype);
+            } else if (e instanceof Polyline) {
+              const shifted = new Polyline(e.id, e.vertices.map(v => ({ ...v, x: v.x - block.basePoint.x, y: v.y - block.basePoint.y })), e.closed);
+              subObj = this.createPolylineObject(shifted, color, linetype);
+            } else if (e instanceof Solid3D) {
+              const shiftedPositions = [...e.positions];
+              for (let i = 0; i < shiftedPositions.length; i += 3) {
+                shiftedPositions[i] -= block.basePoint.x;
+                shiftedPositions[i+1] -= block.basePoint.y;
+              }
+              const shiftedEdgeLines = e.edgeLines ? e.edgeLines.map(line => {
+                const shiftedLine = [...line];
+                for (let i = 0; i < shiftedLine.length; i += 3) {
+                  shiftedLine[i] -= block.basePoint.x;
+                  shiftedLine[i+1] -= block.basePoint.y;
+                }
+                return shiftedLine;
+              }) : undefined;
+
+              const shiftedSolid = new Solid3D(e.id, shiftedPositions, e.indices, e.faceMapping, shiftedEdgeLines);
+              shiftedSolid.position = { ...e.position };
+              shiftedSolid.rotation = { ...e.rotation };
+              shiftedSolid.creationParams = e.creationParams ? JSON.parse(JSON.stringify(e.creationParams)) : undefined;
+              shiftedSolid.brepSnapshot = e.brepSnapshot;
+
+              subObj = this.createSolid3DObject(shiftedSolid, color);
+            }
+
+            if (subObj) group.add(subObj);
+          });
+
+          group.position.set(entity.x, entity.y, 0);
+          group.scale.set(entity.scaleX, entity.scaleY, 1);
+          group.rotation.z = entity.rotation * (Math.PI / 180);
+          obj = group;
+        }
+      }
     }
     return obj;
   }
@@ -800,8 +962,8 @@ export class Viewer {
     // Draw text
     ctx.font = `${textHeight * scale}px ${fontName}`;
     ctx.textBaseline = "top";
-    const threeColor = new THREE.Color(aciToRgb(colorIndex));
-    ctx.fillStyle = threeColor.getStyle(); // Use ACI color
+    const threeColor = new THREE.Color(this.resolveColor(colorIndex));
+    ctx.fillStyle = threeColor.getStyle(); // Use resolved color
     ctx.fillText(text, 0, 0);
 
     const texture = new THREE.CanvasTexture(canvas);
@@ -854,7 +1016,7 @@ export class Viewer {
 
     ctx.clearRect(0, 0, cw, ch);
 
-    const color = aciToRgb(colorIndex);
+    const color = this.resolveColor(colorIndex);
     const hexColor = `#${color.toString(16).padStart(6, '0')}`;
     
     ctx.font = `${entity.textHeight * scale}px Arial`;
@@ -887,7 +1049,7 @@ export class Viewer {
         new THREE.Vector3(0, 0, 0),
         new THREE.Vector3(0, 0, (entity as any).thickness)
       ]);
-      const lineMat = new THREE.LineBasicMaterial({ color: aciToRgb(colorIndex) });
+      const lineMat = new THREE.LineBasicMaterial({ color: this.resolveColor(colorIndex) });
       const line = new THREE.Line(lineGeo, lineMat);
       mesh.add(line);
 
@@ -914,7 +1076,7 @@ export class Viewer {
   }
 
   private createSolidObject(entity: Solid, colorIndex: number): THREE.Object3D {
-    const color = aciToRgb(colorIndex);
+    const color = this.resolveColor(colorIndex);
     const shape = new THREE.Shape();
     if (entity.vertices && entity.vertices.length > 0) {
       shape.moveTo(entity.vertices[0].x, entity.vertices[0].y);
@@ -930,7 +1092,7 @@ export class Viewer {
   }
 
   private createPolylineObject(entity: Polyline, colorIndex: number, linetype?: string): THREE.Object3D {
-    const color = aciToRgb(colorIndex);
+    const color = this.resolveColor(colorIndex);
     const group = new THREE.Group();
     const pattern = linetype ? getLinetypeSettings(linetype) : null;
     const material = new THREE.LineBasicMaterial({ color });
@@ -942,19 +1104,26 @@ export class Viewer {
     for (let i = 0; i < entity.vertices.length - (entity.closed ? 0 : 1); i++) {
       const v1 = entity.vertices[i];
       const v2 = entity.vertices[(i + 1) % entity.vertices.length];
+      const z1 = v1.z !== undefined ? v1.z : elevation;
+      const z2 = v2.z !== undefined ? v2.z : elevation;
 
       if (Math.abs(v1.bulge) < 1e-6) {
         // Line segment
         if (thickness !== 0) {
-          const dx = v2.x - v1.x;
-          const dy = v2.y - v1.y;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          const angle = Math.atan2(dy, dx);
-          
-          const geo = new THREE.PlaneGeometry(len, Math.abs(thickness));
-          geo.rotateX(Math.PI / 2); // Make it vertical (XZ plane)
-          geo.rotateZ(angle); // Rotate in XY plane
-          geo.translate((v1.x + v2.x) / 2, (v1.y + v2.y) / 2, elevation + thickness / 2);
+          const vertices: number[] = [
+            v1.x, v1.y, z1,
+            v2.x, v2.y, z2,
+            v2.x, v2.y, z2 + thickness,
+            v1.x, v1.y, z1 + thickness
+          ];
+          const indices = [
+            0, 1, 2,
+            0, 2, 3
+          ];
+          const geo = new THREE.BufferGeometry();
+          geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+          geo.setIndex(indices);
+          geo.computeVertexNormals();
           
           const mesh = new THREE.Mesh(geo, meshMat);
           mesh.userData = { type: 'Solid3D' };
@@ -962,16 +1131,23 @@ export class Viewer {
         } else if (pattern) {
             const dashed = this.generateDashedPath([{ x: v1.x, y: v1.y }, { x: v2.x, y: v2.y }], pattern);
             dashed.forEach(seg => {
+                const lenFull = Math.sqrt((v2.x - v1.x)**2 + (v2.y - v1.y)**2) || 1;
+                const d1 = Math.sqrt((seg.x1 - v1.x)**2 + (seg.y1 - v1.y)**2);
+                const d2 = Math.sqrt((seg.x2 - v1.x)**2 + (seg.y2 - v1.y)**2);
+                const t1 = d1 / lenFull;
+                const t2 = d2 / lenFull;
+                const sz1 = z1 + t1 * (z2 - z1);
+                const sz2 = z1 + t2 * (z2 - z1);
                 const geo = new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(seg.x1, seg.y1, elevation),
-                    new THREE.Vector3(seg.x2, seg.y2, elevation)
+                    new THREE.Vector3(seg.x1, seg.y1, sz1),
+                    new THREE.Vector3(seg.x2, seg.y2, sz2)
                 ]);
                 group.add(new THREE.Line(geo, material));
             });
         } else {
             const geo = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(v1.x, v1.y, elevation),
-                new THREE.Vector3(v2.x, v2.y, elevation)
+                new THREE.Vector3(v1.x, v1.y, z1),
+                new THREE.Vector3(v2.x, v2.y, z2)
             ]);
             group.add(new THREE.Line(geo, material));
         }
@@ -996,10 +1172,10 @@ export class Viewer {
               const baseIdx = vertices.length / 3;
               
               // 4 vertices for the quad segment
-              vertices.push(p1.x, p1.y, elevation); // 0
-              vertices.push(p2.x, p2.y, elevation); // 1
-              vertices.push(p2.x, p2.y, elevation + thickness); // 2
-              vertices.push(p1.x, p1.y, elevation + thickness); // 3
+              vertices.push(p1.x, p1.y, z1); // 0
+              vertices.push(p2.x, p2.y, z1); // 1
+              vertices.push(p2.x, p2.y, z1 + thickness); // 2
+              vertices.push(p1.x, p1.y, z1 + thickness); // 3
               
               // 2 triangles for the quad
               indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
@@ -1025,13 +1201,13 @@ export class Viewer {
                 const dashed = this.generateDashedPath(points, pattern);
                 dashed.forEach(seg => {
                     const geo = new THREE.BufferGeometry().setFromPoints([
-                        new THREE.Vector3(seg.x1, seg.y1, elevation),
-                        new THREE.Vector3(seg.x2, seg.y2, elevation)
+                        new THREE.Vector3(seg.x1, seg.y1, z1),
+                        new THREE.Vector3(seg.x2, seg.y2, z1)
                     ]);
                     group.add(new THREE.Line(geo, material));
                 });
             } else {
-                const pts3d = points.map(p => new THREE.Vector3(p.x, p.y, elevation));
+                const pts3d = points.map(p => new THREE.Vector3(p.x, p.y, z1));
                 const geo = new THREE.BufferGeometry().setFromPoints(pts3d);
                 group.add(new THREE.Line(geo, material));
             }
@@ -1047,11 +1223,12 @@ export class Viewer {
     
     const markerSize = 5 / this.camera.zoom;
     entity.vertices.forEach(v => {
+      const vz = v.z !== undefined ? v.z : elevation;
       const markerGeom = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(v.x - markerSize, v.y - markerSize, elevation),
-        new THREE.Vector3(v.x + markerSize, v.y + markerSize, elevation),
-        new THREE.Vector3(v.x - markerSize, v.y + markerSize, elevation),
-        new THREE.Vector3(v.x + markerSize, v.y - markerSize, elevation)
+        new THREE.Vector3(v.x - markerSize, v.y - markerSize, vz),
+        new THREE.Vector3(v.x + markerSize, v.y + markerSize, vz),
+        new THREE.Vector3(v.x - markerSize, v.y + markerSize, vz),
+        new THREE.Vector3(v.x + markerSize, v.y - markerSize, vz)
       ]);
       const markerMat = new THREE.LineBasicMaterial({ color: 0x00ffff });
       const marker = new THREE.LineSegments(markerGeom, markerMat);
@@ -1303,7 +1480,7 @@ export class Viewer {
     const positions = new Float32Array(pts);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.LineBasicMaterial({ color: aciToRgb(color || 7) });
+    const mat = new THREE.LineBasicMaterial({ color: this.resolveColor(color || 7) });
     const lines = new THREE.LineSegments(geo, mat);
     if (id) {
       lines.name = id;
@@ -1349,7 +1526,11 @@ export class Viewer {
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(entity.positions, 3));
-    geometry.setIndex(entity.indices);
+    if (entity.indices instanceof Uint32Array || entity.indices instanceof Uint16Array) {
+      geometry.setIndex(new THREE.Uint32BufferAttribute(entity.indices, 1));
+    } else {
+      geometry.setIndex(entity.indices);
+    }
     geometry.computeVertexNormals();
     
     // Compute bounding box and center
@@ -1418,13 +1599,20 @@ export class Viewer {
     const obj = this.scene.getObjectByName(entityId);
     if (!obj || !(obj instanceof THREE.Group)) return;
     
-    // Find the mesh
-    const mesh = obj.children.find(c => c instanceof THREE.Mesh) as THREE.Mesh;
+    // Find the mesh (supports nested block inserts by traversing)
+    let mesh: THREE.Mesh | undefined;
+    obj.traverse(c => {
+      if (c instanceof THREE.Mesh && c.userData.type === 'Solid3D') {
+        mesh = c;
+      }
+    });
     if (!mesh) return;
     
     // Remove existing face highlight if any
     const existingHighlight = obj.getObjectByName('faceHighlight');
-    if (existingHighlight) obj.remove(existingHighlight);
+    if (existingHighlight) {
+      existingHighlight.parent?.remove(existingHighlight);
+    }
     
     if (faceIndex === null) {
       this.scheduleRender();
@@ -1456,7 +1644,7 @@ export class Viewer {
     const faceMesh = new THREE.Mesh(faceGeo, faceMat);
     faceMesh.name = 'faceHighlight';
     
-    obj.add(faceMesh);
+    mesh.parent?.add(faceMesh);
     this.scheduleRender();
   }
 
@@ -1664,7 +1852,7 @@ export class Viewer {
     geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
 
-    const material = new THREE.MeshBasicMaterial({ color: aciToRgb(color), side: THREE.DoubleSide });
+    const material = new THREE.MeshBasicMaterial({ color: this.resolveColor(color), side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = entity.id;
     if (layer) {
@@ -1712,7 +1900,7 @@ export class Viewer {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
 
-    const material = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
+    const material = new THREE.LineBasicMaterial({ color: this.resolveColor(color) });
     const lines = new THREE.LineSegments(geometry, material);
     lines.name = entity.id;
     if (layer) {
@@ -1737,77 +1925,15 @@ export class Viewer {
   }
 
   addHatch(entity: Hatch, layer?: string, color?: number, isVisible = true) {
-    if (entity.boundaryVertices.length < 3) return;
-
-    const patternData = entity.getPatternData();
-    const allSegments: { x1: number; y1: number; x2: number; y2: number }[] = [];
-    const vertices = entity.boundaryVertices;
-
-    if (!patternData && entity.pattern.toUpperCase() !== "SOLID") {
-      console.warn(`[Viewer] Hatch pattern "${entity.pattern}" not found, falling back to default.`);
-    }
-
-    if (patternData && patternData.lines.length > 0) {
-      for (const lineDef of patternData.lines) {
-        const effectiveAngle = lineDef.angle + entity.angle;
-        const spacing = lineDef.spacing * entity.patternScale;
-        const offsetX = lineDef.offset[0];
-        const offsetY = lineDef.offset[1];
-        const lines = generateHatchLines(vertices, spacing, effectiveAngle, offsetX, offsetY);
-
-        for (const line of lines) {
-          const segments = clipLineWithPolygon(line, entity.boundaryVertices);
-          for (const seg of segments) {
-            if (lineDef.dashPattern.length === 0) {
-              allSegments.push({ x1: seg.p1.x, y1: seg.p1.y, x2: seg.p2.x, y2: seg.p2.y });
-            } else {
-              const dashed = this.generateDashedPath([seg.p1, seg.p2], lineDef.dashPattern);
-              allSegments.push(...dashed);
-            }
-          }
-        }
-      }
-    } else {
-      const spacing = 8 * entity.patternScale;
-      const angle = entity.angle;
-      const lines = generateHatchLines(vertices, spacing, angle);
-
-      for (const line of lines) {
-        const segments = clipLineWithPolygon(line, entity.boundaryVertices);
-        for (const seg of segments) {
-          allSegments.push({ x1: seg.p1.x, y1: seg.p1.y, x2: seg.p2.x, y2: seg.p2.y });
-        }
-      }
-    }
-
-    if (allSegments.length === 0 && entity.pattern.toUpperCase() !== "SOLID") {
-      console.warn(`[Viewer] Hatch "${entity.id}" (Pattern: ${entity.pattern}) generated no lines. The boundary might be too small for the current pattern scale.`);
-    }
-
-    if (allSegments.length === 0) return;
-
-    const positions: number[] = [];
-    for (const seg of allSegments) {
-      positions.push(seg.x1, seg.y1, 0);
-      positions.push(seg.x2, seg.y2, 0);
-    }
-
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-
-    const material = new THREE.LineBasicMaterial({
-      color: aciToRgb(color)
-    });
-
-    const mesh = new THREE.LineSegments(geometry, material);
-    mesh.position.z = 0.1;
-    mesh.renderOrder = 500;
-    mesh.name = entity.id;
+    const colorVal = this.resolveColor(color !== undefined ? color : entity.properties?.color, 7);
+    const obj = this.createHatchObject(entity, colorVal);
+    if (!obj) return;
+    obj.name = entity.id;
     if (layer) {
-      mesh.userData = { layer };
+      obj.userData = { layer };
     }
-    mesh.visible = isVisible;
-    this.mainGroup.add(mesh);
+    obj.visible = isVisible;
+    this.mainGroup.add(obj);
   }
 
   addInsert(entity: Insert, block: BlockDefinition, layerProperties: Map<string, {color: number, linetype: string}>, insertLayer: string, isVisible = true) {
@@ -1877,7 +2003,7 @@ export class Viewer {
         if (obj) group.add(obj);
     });
 
-    group.position.set(entity.x, entity.y, 0);
+    group.position.set(entity.x, entity.y, entity.z || 0);
     group.scale.set(entity.scaleX, entity.scaleY, 1);
     group.rotation.z = entity.rotation * (Math.PI / 180);
 
@@ -1887,6 +2013,7 @@ export class Viewer {
   }
 
   private createLineObject(x1: number, y1: number, x2: number, y2: number, color: number, linetype?: string, elevation = 0, thickness = 0): THREE.Object3D {
+    const resolvedColor = this.resolveColor(color);
     if (thickness !== 0) {
       const vertices = new Float32Array([
         x1, y1, elevation,
@@ -1896,7 +2023,7 @@ export class Viewer {
       ]);
       const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
       const geometry = new THREE.BufferGeometry();
-      const material = this.getMeshMaterial(aciToRgb(color));
+      const material = this.getMeshMaterial(resolvedColor);
         
       const mesh = new THREE.Mesh(geometry, material);
       mesh.userData = { type: 'Solid3D' };
@@ -1904,7 +2031,7 @@ export class Viewer {
     }
 
     const pattern = linetype ? getLinetypeSettings(linetype) : null;
-    const material = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
+    const material = new THREE.LineBasicMaterial({ color: resolvedColor });
     if (pattern) {
         const group = new THREE.Group();
         const dashed = this.generateDashedPath([{ x: x1, y: y1 }, { x: x2, y: y2 }], pattern);
@@ -1921,7 +2048,7 @@ export class Viewer {
 
   private createCircleObject(cx: number, cy: number, r: number, color: number, linetype?: string, elevation = 0, thickness = 0): THREE.Object3D {
     const pattern = linetype ? getLinetypeSettings(linetype) : null;
-    const material = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
+    const material = new THREE.LineBasicMaterial({ color: this.resolveColor(color) });
     const curve = new THREE.EllipseCurve(cx, cy, r, r, 0, 2 * Math.PI, false, 0);
     const points = curve.getPoints(100);
     const pts3d = points.map(p => new THREE.Vector3(p.x, p.y, elevation));
@@ -1969,7 +2096,7 @@ export class Viewer {
       geometry.setIndex(indices);
       geometry.computeVertexNormals();
 
-      const material = this.getMeshMaterial(aciToRgb(color));
+      const material = this.getMeshMaterial(this.resolveColor(color));
         
       const mesh = new THREE.Mesh(geometry, material);
       mesh.userData = { type: 'Solid3D' };
@@ -1977,7 +2104,7 @@ export class Viewer {
     }
 
     const pattern = linetype ? getLinetypeSettings(linetype) : null;
-    const material = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
+    const material = new THREE.LineBasicMaterial({ color: this.resolveColor(color) });
     const pts3d = points.map(p => new THREE.Vector3(p.x, p.y, elevation));
 
     if (pattern) {
@@ -1997,7 +2124,7 @@ export class Viewer {
     const geometry = innerR > 0 
         ? new THREE.RingGeometry(innerR, outerR, 32)
         : new THREE.CircleGeometry(outerR, 32);
-    const material = new THREE.MeshBasicMaterial({ color: aciToRgb(color), side: THREE.DoubleSide });
+    const material = new THREE.MeshBasicMaterial({ color: this.resolveColor(color), side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(cx, cy, 0);
     return mesh;
@@ -2008,7 +2135,7 @@ export class Viewer {
     if (pts.length < 2) return new THREE.Group();
 
     const pattern = linetype ? getLinetypeSettings(linetype) : null;
-    const material = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
+    const material = new THREE.LineBasicMaterial({ color: this.resolveColor(color) });
     
     if (pattern) {
       const group = new THREE.Group();
@@ -2067,7 +2194,7 @@ export class Viewer {
     const curve = new THREE.EllipseCurve(cx, cy, majorR, minorR, s, e, !ccw, rotation);
     const points = curve.getPoints(100);
     const geo = new THREE.BufferGeometry().setFromPoints(points);
-    const mat = new THREE.LineBasicMaterial({ color: aciToRgb(color) });
+    const mat = new THREE.LineBasicMaterial({ color: this.resolveColor(color) });
     
     if (isFullEllipse) {
       return new THREE.LineLoop(geo, mat);
@@ -2076,7 +2203,7 @@ export class Viewer {
   }
 
   private createDimensionObject(entity: Dimension, units: UnitsConfig, colorIndex: number): THREE.Object3D {
-    const color = aciToRgb(colorIndex);
+    const color = this.resolveColor(colorIndex);
     const group = new THREE.Group();
     const style = entity.style;
     const arrowSize = style.arrowSize;
@@ -3233,7 +3360,7 @@ export class Viewer {
 
   private createNoteObject(entity: Note, colorIndex: number): THREE.Object3D {
     const group = new THREE.Group();
-    const color = aciToRgb(colorIndex);
+    const color = this.resolveColor(colorIndex);
     const mat = new THREE.LineDashedMaterial({
       color,
       dashSize: 0.5,

@@ -26,6 +26,8 @@ export function extractSweepPoints(profileEntity: any, spineEntity: any, facetre
     for (let i = 0; i < limit; i++) {
       const v1 = spineEntity.vertices[i];
       const v2 = spineEntity.vertices[(i + 1) % count];
+      const z1 = v1.z !== undefined ? v1.z : spineElevation;
+      const z2 = v2.z !== undefined ? v2.z : spineElevation;
       
       if (v1.bulge && Math.abs(v1.bulge) >= 1e-6) {
         const arcParams = bulgeToArc(v1, v2, v1.bulge);
@@ -41,23 +43,25 @@ export function extractSweepPoints(profileEntity: any, spineEntity: any, facetre
           const segments = Math.max(8, Math.floor(8 * facetres));
           for (let j = 0; j < segments; j++) {
             const angle = startAngle + (j / segments) * sweep;
+            const zVal = z1 + (j / segments) * (z2 - z1);
             spinePoints.push({
               x: arcParams.cx + arcParams.r * Math.cos(angle),
               y: arcParams.cy + arcParams.r * Math.sin(angle),
-              z: spineElevation
+              z: zVal
             });
           }
         } else {
-          spinePoints.push({ x: v1.x, y: v1.y, z: spineElevation });
+          spinePoints.push({ x: v1.x, y: v1.y, z: z1 });
         }
       } else {
-        spinePoints.push({ x: v1.x, y: v1.y, z: spineElevation });
+        spinePoints.push({ x: v1.x, y: v1.y, z: z1 });
       }
     }
     // Add the very last point if not closed
     if (!spineEntity.closed) {
       const lastV = spineEntity.vertices[count - 1];
-      spinePoints.push({ x: lastV.x, y: lastV.y, z: spineElevation });
+      const lastZ = lastV.z !== undefined ? lastV.z : spineElevation;
+      spinePoints.push({ x: lastV.x, y: lastV.y, z: lastZ });
     } else {
       // If closed, add the first point to close it
       spinePoints.push(spinePoints[0]);

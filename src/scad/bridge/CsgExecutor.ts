@@ -196,7 +196,7 @@ export class CsgExecutor {
           }
 
           if (extrudedShapes.length > 0) {
-            let finalGeo = extrudedShapes[0];
+            let finalGeo: THREE.BufferGeometry | null = extrudedShapes[0];
             if (extrudedShapes.length > 1) {
               finalGeo = await this.applyBoolean("union", extrudedShapes, id);
             } else {
@@ -673,17 +673,25 @@ export class CsgExecutor {
         const pts = p.points ?? p[0] ?? [];
         const closed = p.closed ?? p[1] ?? false;
         const vertices = pts.map((pt: any) => {
-          let px = 0, py = 0, bulge = 0;
+          let px = 0, py = 0, pz: number | undefined = undefined, bulge = 0;
           if (Array.isArray(pt)) {
             px = pt[0] ?? 0;
             py = pt[1] ?? 0;
-            bulge = pt[2] ?? 0;
+            if (pt.length === 3) {
+              pz = pt[2];
+            } else if (pt.length >= 4) {
+              pz = pt[2];
+              bulge = pt[3] ?? 0;
+            } else {
+              bulge = pt[2] ?? 0;
+            }
           } else if (pt && typeof pt === 'object') {
             px = pt.x ?? 0;
             py = pt.y ?? 0;
+            pz = pt.z;
             bulge = pt.bulge ?? 0;
           }
-          return { x: px, y: py, bulge };
+          return { x: px, y: py, z: pz, bulge };
         });
 
         const entity = new Polyline(id, vertices, closed);
@@ -851,8 +859,23 @@ export class CsgExecutor {
     if (children.length === 1) return children[0];
 
     const resultColor = children[0]?.userData?.color;
+
+    if (op === "hull") {
+      const shapeIds = children.map(c => (c.userData as any).entityId).filter(Boolean);
+      const deflection = 0.1;
+      const geo = await this.occ.createConvexHull(undefined, shapeIds, deflection, baseId);
+      if (geo) {
+        geo.userData = { ...geo.userData, entityId: baseId };
+        if (resultColor !== undefined) {
+          geo.userData.color = resultColor;
+        }
+      }
+      return geo;
+    }
+
     let resultGeo = children[0];
     let resultId = (resultGeo.userData as any).entityId;
+
     
     for (let i = 1; i < children.length; i++) {
       const childGeo = children[i];

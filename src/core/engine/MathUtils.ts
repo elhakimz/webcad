@@ -4,8 +4,16 @@ import { Arc as ArcEntity } from "../model/Arc";
 import { Polyline as PolylineEntity } from "../model/Polyline";
 import { Ellipse as EllipseEntity } from "../model/Ellipse";
 import { Entity } from "../model/Entity";
+import { norm2 } from "../../scad/interpreter/FastMath";
 
 export type Point = { x: number; y: number };
+
+const TWO_PI = Math.PI * 2;
+
+/** Centralized branchless angle normalization */
+export function normalizeAngle(a: number): number {
+  return ((a % TWO_PI) + TWO_PI) % TWO_PI;
+}
 
 export function isPointInPolygon(p: Point, vertices: Point[]): boolean {
   let inside = false;
@@ -20,35 +28,38 @@ export function isPointInPolygon(p: Point, vertices: Point[]): boolean {
   return inside;
 }
 
-export function basisFunction(i: number, degree: number, t: number, knots: number[]): number {
-  if (degree === 0) {
-    return (t >= knots[i] && t < knots[i + 1]) ? 1 : 0;
-  }
-
-  let leftTerm = 0;
-  const leftDenom = knots[i + degree] - knots[i];
-  if (Math.abs(leftDenom) > 1e-9) {
-    leftTerm = ((t - knots[i]) / leftDenom) * basisFunction(i, degree - 1, t, knots);
-  }
-
-  let rightTerm = 0;
-  const rightDenom = knots[i + degree + 1] - knots[i + 1];
-  if (Math.abs(rightDenom) > 1e-9) {
-    rightTerm = ((knots[i + degree + 1] - t) / rightDenom) * basisFunction(i + 1, degree - 1, t, knots);
-  }
-
-  return leftTerm + rightTerm;
-}
-
+/**
+ * Evaluates a B-Spline point at parameter t using iterative De Boor's algorithm.
+ * This is geometrically stable and runs in O(d^2) without any recursive calls.
+ */
 export function evaluateSplinePoint(controlPoints: Point[], knots: number[], degree: number, t: number): Point {
-  let x = 0;
-  let y = 0;
-  for (let i = 0; i < controlPoints.length; i++) {
-    const basis = basisFunction(i, degree, t, knots);
-    x += controlPoints[i].x * basis;
-    y += controlPoints[i].y * basis;
+  const n = controlPoints.length - 1;
+  
+  // Find knot span index where t lies: knots[span] <= t < knots[span+1]
+  let span = degree;
+  while (span < n && knots[span + 1] <= t) {
+    span++;
   }
-  return { x, y };
+
+  // Copy local control points affecting this knot span
+  const d: Point[] = [];
+  for (let j = 0; j <= degree; j++) {
+    const cpIndex = span - degree + j;
+    const cp = controlPoints[cpIndex] ?? controlPoints[controlPoints.length - 1] ?? { x: 0, y: 0 };
+    d[j] = { x: cp.x, y: cp.y };
+  }
+
+  // De Boor's triangular schema
+  for (let r = 1; r <= degree; r++) {
+    for (let j = degree; j >= r; j--) {
+      const left = span - degree + j;
+      const denom = knots[left + degree - r + 1] - knots[left];
+      const alpha = denom < 1e-9 ? 0 : (t - knots[left]) / denom;
+      d[j].x = (1 - alpha) * d[j - 1].x + alpha * d[j].x;
+      d[j].y = (1 - alpha) * d[j - 1].y + alpha * d[j].y;
+    }
+  }
+  return d[degree];
 }
 
 export function tessellateSpline(controlPoints: Point[], degree: number, knots: number[], segments = 100): Point[] {
@@ -163,6 +174,7 @@ export function calculatePolygonVerticesByEdge(
   const vertices: Point[] = [p1, p2];
   const dx = p2.x - p1.x;
   const dy = p2.y - p1.y;
+  const edgeLen = Math.sqrt(dx * dx + dy * dy);
   const angleStep = (2 * Math.PI) / sides;
   
   let currentX = p2.x;
@@ -171,8 +183,8 @@ export function calculatePolygonVerticesByEdge(
 
   for (let i = 2; i < sides; i++) {
     currentAngle += angleStep;
-    currentX += Math.sqrt(dx * dx + dy * dy) * Math.cos(currentAngle);
-    currentY += Math.sqrt(dx * dx + dy * dy) * Math.sin(currentAngle);
+    currentX += edgeLen * Math.cos(currentAngle);
+    currentY += edgeLen * Math.sin(currentAngle);
     vertices.push({ x: currentX, y: currentY });
   }
 
@@ -180,41 +192,38 @@ export function calculatePolygonVerticesByEdge(
 }
 
 export function distancePointToPoint(x1: number, y1: number, x2: number, y2: number): number {
-  return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+  return norm2(x2 - x1, y2 - y1);
 }
 
 export function projectPointOnLine(px: number, py: number, x1: number, y1: number, x2: number, y2: number): { x: number, y: number } | null {
-  const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const l2 = dx * dx + dy * dy;
   if (l2 === 0) return null;
-  const t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
-  return { x: x1 + t * (x2 - x1), y: y1 + t * (y2 - y1) };
+  const t = ((px - x1) * dx + (py - y1) * dy) / l2;
+  return { x: x1 + t * dx, y: y1 + t * dy };
 }
 
 export function distancePointToLineSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
-  const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
-  if (l2 === 0) return distancePointToPoint(px, py, x1, y1);
-  let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const l2 = dx * dx + dy * dy;
+  if (l2 === 0) return norm2(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / l2;
   t = Math.max(0, Math.min(1, t));
-  return distancePointToPoint(px, py, x1 + t * (x2 - x1), y1 + t * (y2 - y1));
+  return norm2(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
 export function distancePointToCircle(px: number, py: number, cx: number, cy: number, r: number): number {
-  const d = distancePointToPoint(px, py, cx, cy);
-  return Math.abs(d - r);
+  return Math.abs(norm2(px - cx, py - cy) - r);
 }
 
 export function distancePointToArc(px: number, py: number, cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean): number {
   const angle = Math.atan2(py - cy, px - cx);
   
-  const normalize = (a: number) => {
-    while (a < 0) a += Math.PI * 2;
-    while (a >= Math.PI * 2) a -= Math.PI * 2;
-    return a;
-  };
-
-  const s = normalize(startAngle);
-  const e = normalize(endAngle);
-  const a = normalize(angle);
+  const s = normalizeAngle(startAngle);
+  const e = normalizeAngle(endAngle);
+  const a = normalizeAngle(angle);
 
   let withinArc = false;
   if (ccw) {
@@ -251,58 +260,84 @@ export function getEllipsePointAngle(px: number, py: number, cx: number, cy: num
   return Math.atan2(localY / minorR, localX / majorR);
 }
 
-export function distancePointToEllipse(px: number, py: number, cx: number, cy: number, majorX: number, majorY: number, ratio: number, startAngle: number, endAngle: number, ccw: boolean): number {
+export function distancePointToEllipse(
+  px: number, py: number,
+  cx: number, cy: number,
+  majorX: number, majorY: number,
+  ratio: number,
+  startAngle: number,
+  endAngle: number,
+  ccw: boolean
+): number {
   const rotation = Math.atan2(majorY, majorX);
-  const majorR = Math.sqrt(majorX * majorX + majorY * majorY);
-  const minorR = majorR * ratio;
+  const a = Math.sqrt(majorX * majorX + majorY * majorY);  // semi-major axis
+  const b = a * ratio;                                     // semi-minor axis
 
-  const normalize = (a: number) => {
-    while (a < 0) a += Math.PI * 2;
-    while (a >= Math.PI * 2) a -= Math.PI * 2;
-    return a;
+  const cosRot = Math.cos(rotation);
+  const sinRot = Math.sin(rotation);
+
+  const dx = px - cx;
+  const dy = py - cy;
+
+  // Rotate target point into ellipse local coordinate system
+  const lx = dx * cosRot + dy * sinRot;
+  const ly = -dx * sinRot + dy * cosRot;
+
+  const isFullEllipse = Math.abs(endAngle - startAngle - 2 * Math.PI) < 0.01 || 
+                        (Math.abs(startAngle) < 0.01 && Math.abs(endAngle - 2 * Math.PI) < 0.01);
+
+  const getLocalPt = (ang: number) => {
+    return { x: a * Math.cos(ang), y: b * Math.sin(ang) };
   };
 
-  const s = normalize(startAngle);
-  let e = normalize(endAngle);
+  const s = normalizeAngle(startAngle);
+  let e = normalizeAngle(endAngle);
   if (ccw && e <= s) e += Math.PI * 2;
   if (!ccw && e >= s) e -= Math.PI * 2;
-  
-  const getPt = (ang: number) => {
-    const tx = majorR * Math.cos(ang);
-    const ty = minorR * Math.sin(ang);
-    const rx = tx * Math.cos(rotation) - ty * Math.sin(rotation);
-    const ry = tx * Math.sin(rotation) + ty * Math.cos(rotation);
-    return { x: cx + rx, y: cy + ry };
+
+  const isAngleWithinArc = (ang: number): boolean => {
+    let tNorm = normalizeAngle(ang);
+    if (ccw) {
+      if (tNorm < s) tNorm += Math.PI * 2;
+      return tNorm <= e;
+    } else {
+      if (tNorm > s) tNorm -= Math.PI * 2;
+      return tNorm >= e;
+    }
   };
 
-  // Sample ellipse curve and find minimum distance to perimeter (not center!)
-  const steps = 128;
-  let minDist = Infinity;
-  
-  // For full ellipse (startAngle=0, endAngle=2π, ccw=true), use full circle
-  // For arc, only sample the arc portion
-  const isFullEllipse = Math.abs(endAngle - startAngle - 2 * Math.PI) < 0.01 || Math.abs(startAngle) < 0.01 && Math.abs(endAngle - 2 * Math.PI) < 0.01;
-  
-  if (isFullEllipse) {
-    // Full ellipse - sample full circle
-    for (let i = 0; i <= steps; i++) {
-      const ang = (i / steps) * Math.PI * 2;
-      const pt = getPt(ang);
-      const d = Math.sqrt((px - pt.x) ** 2 + (py - pt.y) ** 2);
-      if (d < minDist) minDist = d;
-    }
-  } else {
-    // Arc - sample only the arc portion
-    const sweep = e - s;
-    for (let i = 0; i <= steps; i++) {
-      const ang = s + (i / steps) * sweep;
-      const pt = getPt(ang);
-      const d = Math.sqrt((px - pt.x) ** 2 + (py - pt.y) ** 2);
-      if (d < minDist) minDist = d;
-    }
+  // Run Newton iteration to find the optimal parameter t on the full ellipse local boundary
+  let t = Math.atan2(ly * a, lx * b);
+  for (let iter = 0; iter < 8; iter++) {
+    const cosT = Math.cos(t);
+    const sinT = Math.sin(t);
+
+    const ex = a * cosT - lx;
+    const ey = b * sinT - ly;
+    const ex2 = -a * sinT;
+    const ey2 = b * cosT;
+
+    const f = ex * ex2 + ey * ey2;
+    // Corrected sign for second derivative:
+    const fp = ex2 * ex2 + ey2 * ey2 - ex * a * cosT - ey * b * sinT;
+
+    if (Math.abs(fp) < 1e-12) break;
+    t -= f / fp;
   }
 
-  return minDist;
+  // Check if optimal parameter falls inside active arc range
+  if (isFullEllipse || isAngleWithinArc(t)) {
+    const pt = getLocalPt(t);
+    return Math.sqrt((lx - pt.x) ** 2 + (ly - pt.y) ** 2);
+  }
+
+  // Clip to endpoints if outside arc range
+  const ptStart = getLocalPt(startAngle);
+  const ptEnd = getLocalPt(endAngle);
+  const dStart = Math.sqrt((lx - ptStart.x) ** 2 + (ly - ptStart.y) ** 2);
+  const dEnd = Math.sqrt((lx - ptEnd.x) ** 2 + (ly - ptEnd.y) ** 2);
+
+  return Math.min(dStart, dEnd);
 }
 
 export function rotatePoint(x: number, y: number, cx: number, cy: number, angleRad: number) {
@@ -324,13 +359,17 @@ export function reflectPointAcrossLine(point: Point, lineP1: Point, lineP2: Poin
   const tx = point.x - lineP1.x;
   const ty = point.y - lineP1.y;
 
-  const rx = tx * Math.cos(-angle) - ty * Math.sin(-angle);
-  const ry = tx * Math.sin(-angle) + ty * Math.cos(-angle);
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+
+  // cos(-angle) = cosA, sin(-angle) = -sinA
+  const rx = tx * cosA + ty * sinA;
+  const ry = -tx * sinA + ty * cosA;
 
   const reflectedRy = -ry;
 
-  const finalX = rx * Math.cos(angle) - reflectedRy * Math.sin(angle);
-  const finalY = rx * Math.sin(angle) + reflectedRy * Math.cos(angle);
+  const finalX = rx * cosA - reflectedRy * sinA;
+  const finalY = rx * sinA + reflectedRy * cosA;
 
   return {
     x: finalX + lineP1.x,
@@ -525,24 +564,21 @@ export function offsetCircle(cx: number, cy: number, r: number, distance: number
   return { cx, cy, r: newR };
 }
 
-export function aciToRgb(aci?: number): number {
-  const colors: Record<number, number> = {
-    1: 0xff0000,
-    2: 0xffff00,
-    3: 0x00ff00,
-    4: 0x00ffff,
-    5: 0x0000ff,
-    6: 0xff00ff,
-    7: 0xffffff,
-    8: 0x808080,
-    9: 0xc0c0c0,
-  };
-  
-  if (aci !== undefined && colors[aci] !== undefined) {
-    return colors[aci];
-  }
+const ACI_COLORS: Record<number, number> = {
+  1: 0xff0000, // Red
+  2: 0xffff00, // Yellow
+  3: 0x00ff00, // Green
+  4: 0x00ffff, // Cyan
+  5: 0x0000ff, // Blue
+  6: 0xff00ff, // Magenta
+  7: 0xffffff, // White/Black (depends on background, default white here)
+  8: 0x808080, // Dark Gray
+  9: 0xc0c0c0  // Light Gray
+};
 
-  return 0xffffff;
+export function aciToRgb(aci?: number): number {
+  if (aci === undefined) return 0xffffff;
+  return ACI_COLORS[aci] !== undefined ? ACI_COLORS[aci] : 0xffffff;
 }
 
 export const LINETYPES: Record<string, number[]> = {
@@ -840,19 +876,21 @@ export function sortConnected(entities: (LineEntity | ArcEntity)[]): (LineEntity
         found = true;
         break;
       } else if (distancePointToPoint(cEnd.x, cEnd.y, eEnd.x, eEnd.y) < 1e-3) {
-        if (entity instanceof LineEntity) {
-          const temp = { x: entity.x1, y: entity.y1 };
-          entity.x1 = entity.x2; entity.y1 = entity.y2;
-          entity.x2 = temp.x; entity.y2 = temp.y;
+        // Deep-clone the entity prior to reversing to protect model integrity
+        const reversedEntity = entity.clone(entity.id);
+        if (reversedEntity instanceof LineEntity) {
+          const temp = { x: reversedEntity.x1, y: reversedEntity.y1 };
+          reversedEntity.x1 = reversedEntity.x2; reversedEntity.y1 = reversedEntity.y2;
+          reversedEntity.x2 = temp.x; reversedEntity.y2 = temp.y;
         } else {
-          const temp = entity.startAngle;
-          entity.startAngle = entity.endAngle;
-          entity.endAngle = temp;
-          entity.ccw = !entity.ccw;
+          const temp = reversedEntity.startAngle;
+          reversedEntity.startAngle = reversedEntity.endAngle;
+          reversedEntity.endAngle = temp;
+          reversedEntity.ccw = !reversedEntity.ccw;
         }
-        sorted.push(entity);
+        sorted.push(reversedEntity);
         remaining.delete(entity);
-        current = entity;
+        current = reversedEntity;
         found = true;
         break;
       }

@@ -299,8 +299,8 @@ export function distancePointToEllipse(
   const lx = dx * cosRot + dy * sinRot;
   const ly = -dx * sinRot + dy * cosRot;
 
-  const isFullEllipse = Math.abs(endAngle - startAngle - 2 * Math.PI) < 0.01 || 
-                        (Math.abs(startAngle) < 0.01 && Math.abs(endAngle - 2 * Math.PI) < 0.01);
+  const isFullEllipse = Math.abs(normalizeAngle(endAngle - startAngle)) < 1e-4 ||
+                        Math.abs(Math.abs(endAngle - startAngle) - 2 * Math.PI) < 1e-4;
 
   const getLocalPt = (ang: number) => {
     return { x: a * Math.cos(ang), y: b * Math.sin(ang) };

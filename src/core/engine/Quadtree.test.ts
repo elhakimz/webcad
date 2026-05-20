@@ -47,4 +47,32 @@ describe("Quadtree", () => {
     expect(result).not.toContain("item_5")
     expect(result.length).toBe(14)
   })
+  it("should find items that straddle the quadrant midpoints", () => {
+    // A long horizontal line crossing the vertical midpoint of a [0,100] tree
+    const qt = new Quadtree({ minX: 0, minY: 0, maxX: 100, maxY: 100 })
+    // Force a split by inserting maxItems+1 small items first
+    for (let i = 0; i < 11; i++) {
+      qt.insert({ id: `small_${i}`, box: { minX: i, minY: i, maxX: i + 1, maxY: i + 1 } })
+    }
+    // This line straddles the vertical midpoint (x=50); old implementation would
+    // strand it at the root and never push it into any child.
+    qt.insert({ id: "long_line", box: { minX: 0, minY: 10, maxX: 100, maxY: 11 } })
+
+    // Query the right half only
+    const result = qt.query({ minX: 60, minY: 0, maxX: 100, maxY: 100 })
+    expect(result).toContain("long_line")
+  })
+
+  it("should not return duplicates for straddling items", () => {
+    const qt = new Quadtree({ minX: 0, minY: 0, maxX: 100, maxY: 100 })
+    for (let i = 0; i < 11; i++) {
+      qt.insert({ id: `small_${i}`, box: { minX: i, minY: i, maxX: i + 1, maxY: i + 1 } })
+    }
+    qt.insert({ id: "cross", box: { minX: 0, minY: 0, maxX: 100, maxY: 100 } })
+
+    const result = qt.query({ minX: 0, minY: 0, maxX: 100, maxY: 100 })
+    const unique = new Set(result)
+    expect(unique.size).toBe(result.length)
+    expect(result).toContain("cross")
+  })
 })

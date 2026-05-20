@@ -108,7 +108,9 @@ export class Quadtree {
 
     if (this.children) {
       for (const child of this.children) {
-        child.query(range, result, seen);
+        if (this.intersects(child.bounds, range)) {
+          child.query(range, result, seen);
+        }
       }
     }
 

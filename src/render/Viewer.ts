@@ -1,4 +1,5 @@
 import * as THREE from "three"
+import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js'
 import { Font } from 'three/examples/jsm/loaders/FontLoader.js'
 import { TTFLoader } from 'three/examples/jsm/loaders/TTFLoader.js'
 import { Line2 } from 'three/examples/jsm/lines/Line2.js'
@@ -37,6 +38,7 @@ export class Viewer {
   scene: THREE.Scene
   camera: THREE.OrthographicCamera
   renderer: THREE.WebGLRenderer
+  effect!: any
   canvas: HTMLCanvasElement
   font: InstanceType<typeof Font> | null = null
   public directionalLight: THREE.DirectionalLight | null = null;
@@ -130,6 +132,13 @@ export class Viewer {
     this.renderer = new THREE.WebGLRenderer({canvas})
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    
+    this.effect = new OutlineEffect(this.renderer, {
+      defaultThickness: 0.002,
+      defaultColor: [0, 0, 0],
+      defaultAlpha: 0.8,
+      defaultKeepAlive: true
+    });
     
 
     
@@ -1520,8 +1529,8 @@ export class Viewer {
   }
 
   private createSolid3DObject(entity: Solid3D, colorIndex: number): THREE.Object3D {
-    let color = aciToRgb(colorIndex);
-    if (color === 0xffffff) {
+    let color = this.resolveColor(entity.properties?.color, aciToRgb(colorIndex));
+    if (color === 0xffffff && (entity.properties?.color === undefined || entity.properties?.color === null)) {
       color = 0xebf2ff; // Very light bluish gray like CATIA
     }
     const geometry = new THREE.BufferGeometry();
@@ -1552,38 +1561,38 @@ export class Viewer {
     const group = new THREE.Group();
     group.add(mesh);
 
-    const lineMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-    const edgeRadius = Math.max(0.05, maxDim * 0.001); // Adaptive radius for the selection cylinders
+    const lineMat = new THREE.MeshBasicMaterial({ 
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.0
+    });
     
-    // 1. Prioritize BRep edges using Cylinder geometry for robust 3D selection (matches stable history)
+    // 1. Prioritize BRep edges using lightweight THREE.Line for high-performance and robust 3D selection
     if (entity.edgeLines && entity.edgeLines.length > 0) {
       entity.edgeLines.forEach((pts, idx) => {
         if (pts.length < 6) return;
         
-        for (let i = 0; i < pts.length - 3; i += 3) {
-          const p1 = new THREE.Vector3(pts[i] - center.x, pts[i+1] - center.y, pts[i+2] - center.z);
-          const p2 = new THREE.Vector3(pts[i+3] - center.x, pts[i+4] - center.y, pts[i+5] - center.z);
-          const dist = p1.distanceTo(p2);
-          if (dist < 0.001) continue;
-
-          const cylGeo = new THREE.CylinderGeometry(edgeRadius, edgeRadius, dist, 6);
-          const cyl = new THREE.Mesh(cylGeo, lineMat.clone()); // Clone material so we can highlight individually
-          
-          // Position at midpoint
-          cyl.position.copy(p1).add(p2).multiplyScalar(0.5);
-          // Rotate to align with direction
-          const direction = p2.clone().sub(p1).normalize();
-          cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-          
-          cyl.userData = { isEdge: true, type: 'Profile', entityId: entity.id, edgeIndex: idx };
-          group.add(cyl);
+        const edgePositions: number[] = [];
+        for (let i = 0; i < pts.length; i += 3) {
+          edgePositions.push(pts[i] - center.x, pts[i+1] - center.y, pts[i+2] - center.z);
         }
+        
+        const lineGeo = new THREE.BufferGeometry();
+        lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(edgePositions, 3));
+        
+        const line = new THREE.Line(lineGeo, lineMat.clone());
+        line.userData = { isEdge: true, type: 'Profile', entityId: entity.id, edgeIndex: idx };
+        group.add(line);
       });
     } else {
       // 2. Fallback to standard EdgesGeometry if BRep edges are missing
       const edgesGeo = new THREE.EdgesGeometry(weldedGeo, 1.0);
       if (edgesGeo.attributes.position && edgesGeo.attributes.position.count > 0) {
-        const lineMatBasic = new THREE.LineBasicMaterial({ color: 0x000000 });
+        const lineMatBasic = new THREE.LineBasicMaterial({ 
+          color: 0x000000,
+          transparent: true,
+          opacity: 0.0
+        });
         const line = new THREE.LineSegments(edgesGeo, lineMatBasic);
         line.userData = { isEdge: true, type: 'Profile', entityId: entity.id };
         group.add(line);
@@ -1639,8 +1648,16 @@ export class Viewer {
     faceGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     faceGeo.setIndex(faceIndices);
     
-    // Orange color for face highlight
-    const faceMat = new THREE.MeshBasicMaterial({ color: 0xffa500, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+    // Orange color for face highlight with polygon offset to prevent Z-fighting
+    const faceMat = new THREE.MeshBasicMaterial({ 
+      color: 0xffa500, 
+      side: THREE.DoubleSide, 
+      transparent: true, 
+      opacity: 0.5,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1
+    });
     const faceMesh = new THREE.Mesh(faceGeo, faceMat);
     faceMesh.name = 'faceHighlight';
     
@@ -1659,11 +1676,12 @@ export class Viewer {
 
     if (entityEdgeLines.length === 0) return;
 
-    // Reset all edges to dark gray
+    // Reset all edges to dark gray (invisible by default)
     entityEdgeLines.forEach(line => {
       const mat = (line as any).material;
       if (mat && mat.color) {
         mat.color.setHex(0x000000); // Reset to black
+        mat.opacity = 0.0;          // Invisible
         mat.polygonOffset = false;
         mat.needsUpdate = true;
       }
@@ -1677,12 +1695,13 @@ export class Viewer {
         const mat = (target as any).material;
         if (mat && mat.color) {
           mat.color.setHex(0xffa500); // Orange
+          mat.opacity = 1.0;          // Visible
           mat.polygonOffset = true;
           mat.polygonOffsetFactor = -2;
           mat.polygonOffsetUnits = -2;
           mat.needsUpdate = true;
         }
-        target.scale.set(4, 1, 4); // Make it 4x thicker
+        target.scale.set(1, 1, 1); // Keep scale at 1 to prevent offset/distortion
       });
     }
 
@@ -3502,6 +3521,10 @@ export class Viewer {
   render(){
     this.onBeforeRender();
     this.gridRenderer.updateAxesScale(1 / this.camera.zoom);
-    this.renderer.render(this.scene,this.camera)
+    if (this.shadingMode === 'SHADED') {
+      this.effect.render(this.scene, this.camera);
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 }

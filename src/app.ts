@@ -22,8 +22,8 @@ import { Hatch } from "./core/model/Hatch"
 import { getAllPatternNames } from "./core/io/Patterns"
 import { Insert } from "./core/model/Insert"
 import { Spline } from "./core/model/Spline"
-import { Note } from "./core/model/Note"
 import { FormatUtils } from "./core/engine/FormatUtils"
+import { Note } from "./core/model/Note"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
 import { Selection3DEngine } from "./core/engine/Selection3DEngine"
 import { SnapEngine, SnapPoint, SnapType } from "./core/engine/SnapEngine"
@@ -32,6 +32,7 @@ import * as THREE from "three"
 import { Layer } from "./core/model/Layer"
 import { DynamicInput } from "./ui/DynamicInput"
 import { ResultDispatcher } from "./core/engine/handlers/ResultDispatcher"
+import { GeneratorHandler } from "./core/engine/handlers/GeneratorHandler"
 import { LayerHandler } from "./core/engine/handlers/LayerHandler"
 import { BooleanHandler } from "./core/engine/handlers/transform/BooleanHandler"
 import { ArrayHandler } from "./core/engine/handlers/transform/ArrayHandler"
@@ -125,6 +126,12 @@ export class App {
     this.commandLinePrint = printFn;
   }
 
+  printToCommandLine(msg: string) {
+    if (this.commandLinePrint) {
+      this.commandLinePrint(msg);
+    }
+  }
+
   setStatusBar(updateFn: (layer: Layer) => void) {
     this.statusBarUpdate = updateFn;
     updateFn(this.doc.layers.getCurrentLayer());
@@ -134,6 +141,15 @@ export class App {
     this.viewer = viewer
     this.cmd = new CommandManager()
     this.doc = new Document()
+    
+    this.viewer.getBlockCallback = (blockName: string) => this.doc.blocks.getBlock(blockName) || null;
+    this.viewer.getLayerPropertiesCallback = () => {
+      const layerProps = new Map<string, {color: number, linetype: string}>();
+      this.doc.layers.listLayers().forEach(l => {
+          layerProps.set(l.name, { color: l.color, linetype: l.linetype });
+      });
+      return layerProps;
+    };
     
     this.gizmoManager = new GizmoManager(this.viewer, this);
     this.viewer.onBeforeRender = () => this.gizmoManager.update();
@@ -224,6 +240,7 @@ export class App {
     this.dispatcher.registerHandler(new PlotHandler());
     this.dispatcher.registerHandler(new DraftingHandler());
     this.dispatcher.registerHandler(new BlockHandler());
+    this.dispatcher.registerHandler(new GeneratorHandler());
     this.dispatcher.registerHandler(new InquiryHandler());
 
     this.drafting = new DraftingState()
@@ -327,6 +344,22 @@ export class App {
       if (count3D > 0) parts.push(`${count3D} solid${count3D > 1 ? 's' : ''}`);
       
       this.commandLinePrint(`[Selection] ${parts.join(', ')}. Width: ${width.toFixed(2)}, Height: ${height.toFixed(2)}`);
+
+      // If exactly one Polyline is selected, output its path coordinates directly!
+      if (this.selectedEntityIds.size === 1) {
+        const id = Array.from(this.selectedEntityIds)[0];
+        const entity = this.doc.getEntity(id);
+        if (entity instanceof Polyline) {
+          const elevation = entity.elevation || 0;
+          const coords = entity.vertices.map(v => {
+            const vz = v.z !== undefined ? v.z : elevation;
+            return `[${v.x.toFixed(2)}, ${v.y.toFixed(2)}, ${vz.toFixed(2)}]`;
+          });
+          const pathStr = `[${coords.join(", ")}]`;
+          this.commandLinePrint(`[Selection] Polyline '${entity.id}' path coordinates copied to command line:`);
+          this.commandLinePrint(`path=${pathStr}`);
+        }
+      }
     }
   }
 
@@ -347,6 +380,7 @@ export class App {
     const step = active.step ?? -1;
 
     return (activeName === 'ListCommand') ||
+        (activeName === 'GeneratorCommand') ||
         (step === 0 && isEditCommand) ||
         ((step === 0 || step === 1) && activeName === 'DimAngularCommand') ||
         (step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
@@ -372,8 +406,15 @@ export class App {
     });
   }
 
-  private getSolid3DSelectables(): Solid3D[] {
-    return this.getSelectableEntities().filter(e => (e as any).type === "Solid3D" || e instanceof Solid3D) as Solid3D[];
+  private getSolid3DSelectables(): Entity[] {
+    return this.getSelectableEntities().filter(e => {
+      if ((e as any).type === "Solid3D" || e instanceof Solid3D) return true;
+      if (e instanceof Insert) {
+        const block = this.doc.blocks.getBlock(e.blockName);
+        return block ? block.entities.some(be => be instanceof Solid3D) : false;
+      }
+      return false;
+    });
   }
 
   private getEditableEntities(entities: Entity[]): Entity[] {
@@ -403,7 +444,9 @@ export class App {
     }
 
     const res = this.cmd.execute(cmd, this.doc.units, selection, this.doc.entities, this.doc);
-    this.viewer.setControlPointsVisibility(this.cmd.active !== null);
+    const activeCmdName = this.cmd.active?.constructor.name;
+    const isViewCmd = activeCmdName === 'PanCommand' || activeCmdName === 'ZoomCommand';
+    this.viewer.setControlPointsVisibility(this.cmd.active !== null && !isViewCmd);
     return await this.handleResult(res);
   }
 
@@ -552,7 +595,7 @@ export class App {
     const tolerance = 10 / this.viewer.camera.zoom;
     let hoveredEntity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
     
-    let subEntity: { entity: Solid3D, faceIndex?: number, edgeIndex?: number } | null = null;
+    let subEntity: { entity: Entity, faceIndex?: number, edgeIndex?: number } | null = null;
     
     if (hoveredEntity === null) {
         const ndc = this.viewer.getNormalizedDeviceCoordinates(screenX, screenY);
@@ -601,7 +644,17 @@ export class App {
       this.viewer.highlightEdge(this.selectedEdge.entityId, this.selectedEdge.edgeIndex);
     }
 
-    if (this.cmd.active) {
+    // Re-apply selected faces so they remain highlighted during mouse move
+    if (this.selectedFaces && this.selectedFaces.length > 0) {
+      this.selectedFaces.forEach(f => {
+        this.viewer.highlightFace(f.entityId, f.faceIndex);
+      });
+    }
+
+    const activeCmdName = this.cmd.active?.constructor.name;
+    const isViewCmd = activeCmdName === 'PanCommand' || activeCmdName === 'ZoomCommand';
+
+    if (this.cmd.active && !isViewCmd) {
         this.viewer.setActivePointMarker(worldX, worldY, worldZ, this.viewer.camera.quaternion);
     } else {
         this.viewer.setActivePointMarker(null, null);
@@ -973,8 +1026,7 @@ export class App {
         const text = `EDGE:${subEntity.entity.id}:${subEntity.edgeIndex}`;
         const res = await this.cmd.inputString(text, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);
         await this.handleResult(res);
-        
-        // Edge selected, highlight applied via selectedEdge in move loop
+        return; // Return early to prevent full object selection & gizmo attachment
       } else if (subEntity.faceIndex !== undefined) {
         this.selectedFaces.push({ entityId: subEntity.entity.id, faceIndex: subEntity.faceIndex });
         
@@ -986,21 +1038,18 @@ export class App {
           this.selectedFaces.shift();
         }
         
-
-        
         // Highlight the clicked face
         this.viewer.highlightFace(subEntity.entity.id, subEntity.faceIndex);
         
         if (this.selectedFaces.length === 2) {
           const f1 = this.selectedFaces[0];
           const f2 = this.selectedFaces[1];
-          if (f1.entityId === f2.entityId) {
+          if (f1.entityId === f2.entityId && subEntity.entity instanceof Solid3D) {
              const sharedEdgeResult = Selection3DEngine.getSharedEdge(subEntity.entity, f1.faceIndex, f2.faceIndex);
              if (sharedEdgeResult !== null) {
                this.selectedEdge = { entityId: f1.entityId, edgeIndex: sharedEdgeResult.edgeIndex };
                this.viewer.highlightEdge(f1.entityId, sharedEdgeResult.edgeIndex);
 
-               
                // Clear face highlights
               this.viewer.highlightFace(f1.entityId, null);
               
@@ -1012,6 +1061,7 @@ export class App {
 
           }
         }
+        return; // Return early to prevent full object selection & gizmo attachment
       }
     }
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
@@ -1049,6 +1099,7 @@ export class App {
         if (entity) {
             if (!isCtrl) {
                 this.selectedEdge = null; // Clear edge selection on standard click
+                this.selectedFaces = [];  // Clear face selection on standard click
                 if (isShift) {
                     if (entity instanceof Solid3D && this.selectionMode === 'OBJECT') {
                         const allSolids = this.getSolid3DSelectables().filter((e): e is Solid3D => e instanceof Solid3D);
@@ -1110,6 +1161,7 @@ export class App {
         } else if (!isShift) {
             this.selectedEntityIds.clear();
             this.selectedEdge = null; // Clear edge selection on empty space click
+            this.selectedFaces = [];  // Clear face selection on empty space click
         }
 
         const selectedEntitiesForGrips = Array.from(this.selectedEntityIds)
@@ -1159,8 +1211,8 @@ export class App {
       let entity: Entity | undefined;
       let isCloseAction = false;
       
-      if (result && (result instanceof Line || result instanceof Circle || result instanceof Arc || result instanceof Point || result instanceof Polyline || result instanceof Text || result instanceof MText || result instanceof Solid || result instanceof Donut || result instanceof Ellipse || result instanceof Dimension || result instanceof Trace || result instanceof Hatch || result instanceof Shape || result instanceof Spline || result instanceof Note || (result as any).type === "Solid3D" || result instanceof Solid3D)) {
-        entity = result as Entity;
+      if (result instanceof Entity) {
+        entity = result;
       } else if (result && typeof result === 'object' && 'action' in result && result.action === 'close') {
         if (result.entity) {
           entity = result.entity;
@@ -1374,7 +1426,14 @@ export class App {
     if (this.selectedEntityIds.size === 1) {
       const id = Array.from(this.selectedEntityIds)[0];
       const entity = this.doc.getEntity(id);
-      if (entity instanceof Solid3D || (entity && entity.constructor.name === "Insert")) {
+      
+      const isSolidBlock = entity instanceof Insert && (() => {
+        const block = this.doc.blocks.getBlock(entity.blockName);
+        if (!block) return false;
+        return block.entities.some(e => e instanceof Solid3D);
+      })();
+
+      if (entity instanceof Solid3D || isSolidBlock) {
         let obj = this.viewer.scene.getObjectByName(id);
         if (!obj) {
           this.viewer.scene.traverse(child => {

@@ -86,3 +86,11 @@
   1. Never scale line meshes whose vertices are offset relative to their origin. Keep their scale at `(1, 1, 1)` and use materials or color indicators to provide selection feedback.
   2. Always return early in click handlers immediately after successfully matching and handling a sub-entity intersection (e.g., edge or face click). This prevents standard fallback raycasting from selecting the parent object and triggering unintended behaviors like 3D gizmo attachment.
 
+## 16. High-Performance Geometric Intersections with Lightweight Structs
+- **Issue**: Converting compound CAD entities (like polylines or ellipses) into temporary segments using full model class instantiations (`new LineEntity(...)`, `new ArcEntity(...)`) causes major memory churn, trigger-heavy garbage collection pauses, and expensive `instanceof` type checking inside nested intersection loops.
+- **Pattern**: 
+  1. Define a discriminated union of lightweight plain JS objects (e.g. `type Seg`) representing only the mathematical descriptors.
+  2. Explode complex entities directly into these lightweight structs rather than building full class instances with overheads (IDs, event systems, layers).
+  3. Query discriminant tags (e.g. `sub.kind === 'line'`) rather than using class-checking operators to achieve maximum JIT compiler optimizations.
+
+

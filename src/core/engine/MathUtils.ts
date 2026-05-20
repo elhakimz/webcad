@@ -493,14 +493,18 @@ export function lineSegmentIntersection(line: Line, segStart: Point, segEnd: Poi
 
 export function clipLineWithPolygon(line: Line, vertices: Point[]): Line[] {
   const intersections: Point[] = [];
+  const seen = new Set<string>();
   
   for (let i = 0; i < vertices.length; i++) {
     const j = (i + 1) % vertices.length;
     const pt = lineSegmentIntersection(line, vertices[i], vertices[j]);
     if (pt) {
-      // Avoid duplicate points at vertices
-      const exists = intersections.some(p => Math.abs(p.x - pt.x) < 1e-6 && Math.abs(p.y - pt.y) < 1e-6);
-      if (!exists) intersections.push(pt);
+      // Avoid duplicate points at vertices using an O(1) rounding-bucketed Set
+      const key = `${Math.round(pt.x * 1e6)},${Math.round(pt.y * 1e6)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        intersections.push(pt);
+      }
     }
   }
   

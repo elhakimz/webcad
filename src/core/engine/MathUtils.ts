@@ -32,7 +32,13 @@ export function isPointInPolygon(p: Point, vertices: Point[]): boolean {
  * Evaluates a B-Spline point at parameter t using iterative De Boor's algorithm.
  * This is geometrically stable and runs in O(d^2) without any recursive calls.
  */
-export function evaluateSplinePoint(controlPoints: Point[], knots: number[], degree: number, t: number): Point {
+export function evaluateSplinePoint(
+  controlPoints: Point[],
+  knots: number[],
+  degree: number,
+  t: number,
+  scratchD?: Point[]
+): Point {
   const n = controlPoints.length - 1;
   
   // Find knot span index where t lies: knots[span] <= t < knots[span+1]
@@ -41,12 +47,17 @@ export function evaluateSplinePoint(controlPoints: Point[], knots: number[], deg
     span++;
   }
 
-  // Copy local control points affecting this knot span
-  const d: Point[] = [];
+  // Copy local control points affecting this knot span, reusing scratchD elements if provided
+  const d = scratchD || [];
   for (let j = 0; j <= degree; j++) {
     const cpIndex = span - degree + j;
     const cp = controlPoints[cpIndex] ?? controlPoints[controlPoints.length - 1] ?? { x: 0, y: 0 };
-    d[j] = { x: cp.x, y: cp.y };
+    if (d[j]) {
+      d[j].x = cp.x;
+      d[j].y = cp.y;
+    } else {
+      d[j] = { x: cp.x, y: cp.y };
+    }
   }
 
   // De Boor's triangular schema
@@ -59,7 +70,9 @@ export function evaluateSplinePoint(controlPoints: Point[], knots: number[], deg
       d[j].y = (1 - alpha) * d[j - 1].y + alpha * d[j].y;
     }
   }
-  return d[degree];
+  
+  // Return a fresh Point object to maintain immutability of the returned coordinate
+  return { x: d[degree].x, y: d[degree].y };
 }
 
 export function tessellateSpline(controlPoints: Point[], degree: number, knots: number[], segments = 100): Point[] {
@@ -69,10 +82,13 @@ export function tessellateSpline(controlPoints: Point[], degree: number, knots: 
   
   if (tMax <= tMin) return [];
 
+  // Pre-allocate single scratch buffer array to avoid allocations across evaluations
+  const scratchD: Point[] = [];
+
   for (let i = 0; i <= segments; i++) {
     const t = tMin + (tMax - tMin) * (i / segments);
     const valT = t >= tMax ? tMax - 1e-9 : t;
-    points.push(evaluateSplinePoint(controlPoints, knots, degree, valT));
+    points.push(evaluateSplinePoint(controlPoints, knots, degree, valT, scratchD));
   }
   return points;
 }

@@ -645,20 +645,20 @@ export function getLineLineIntersectionInfinite(p1: Point, p2: Point, p3: Point,
   return { x: x1 + t * (x2 - x1), y: y1 + t * (y2 - y1) };
 }
 
+function getUnitDir(pa: Point, pb: Point, pick: Point, inter: Point): Point {
+  const dx = pb.x - pa.x;
+  const dy = pb.y - pa.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const ux = dx / len;
+  const uy = dy / len;
+  const tPick = (pick.x - inter.x) * ux + (pick.y - inter.y) * uy;
+  const sign = tPick > 0 ? 1 : -1;
+  return { x: ux * sign, y: uy * sign };
+}
+
 export function filletLines(p1: Point, p2: Point, p3: Point, p4: Point, radius: number, pick1: Point, pick2: Point) {
   const intersect = getLineLineIntersectionInfinite(p1, p2, p3, p4);
   if (!intersect) return null;
-
-  const getUnitDir = (pa: Point, pb: Point, pick: Point, inter: Point) => {
-    const dx = pb.x - pa.x;
-    const dy = pb.y - pa.y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    const ux = dx / len;
-    const uy = dy / len;
-    const tPick = (pick.x - inter.x) * ux + (pick.y - inter.y) * uy;
-    const sign = tPick > 0 ? 1 : -1;
-    return { x: ux * sign, y: uy * sign };
-  };
 
   const dir1 = getUnitDir(p1, p2, pick1, intersect);
   const dir2 = getUnitDir(p3, p4, pick2, intersect);
@@ -695,17 +695,6 @@ export function filletLines(p1: Point, p2: Point, p3: Point, p4: Point, radius: 
 export function chamferLines(p1: Point, p2: Point, p3: Point, p4: Point, dist1: number, dist2: number, pick1: Point, pick2: Point) {
   const intersect = getLineLineIntersectionInfinite(p1, p2, p3, p4);
   if (!intersect) return null;
-
-  const getUnitDir = (pa: Point, pb: Point, pick: Point, inter: Point) => {
-    const dx = pb.x - pa.x;
-    const dy = pb.y - pa.y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    const ux = dx / len;
-    const uy = dy / len;
-    const tPick = (pick.x - inter.x) * ux + (pick.y - inter.y) * uy;
-    const sign = tPick > 0 ? 1 : -1;
-    return { x: ux * sign, y: uy * sign };
-  };
 
   const dir1 = getUnitDir(p1, p2, pick1, intersect);
   const dir2 = getUnitDir(p3, p4, pick2, intersect);

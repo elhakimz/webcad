@@ -11,10 +11,22 @@ export class Quadtree {
   private maxItems = 10;
   private maxDepth = 10;
 
-  constructor(private bounds: BoundingBox, private depth: number = 0) {}
+  /**
+   * Shared reverse lookup: id → set of all nodes currently holding that item.
+   * Created once at the root; every child receives the same reference.
+   * Enables O(copies) removal without any tree traversal.
+   */
+  private readonly reverseMap: Map<string, Set<Quadtree>>;
+
+  constructor(
+    private bounds: BoundingBox,
+    private depth: number = 0,
+    reverseMap?: Map<string, Set<Quadtree>>
+  ) {
+    this.reverseMap = reverseMap ?? new Map();
+  }
 
   insert(item: QuadtreeItem) {
-    // If already split, push into every overlapping child (loose quadtree)
     if (this.children) {
       let insertedIntoChild = false;
       for (const child of this.children) {
@@ -23,20 +35,30 @@ export class Quadtree {
           insertedIntoChild = true;
         }
       }
-      // Item doesn't overlap any child quadrant (shouldn't happen for a
-      // well-formed tree, but guard against it)
+      // Guard: item doesn't overlap any child (shouldn't happen for a well-formed tree)
       if (!insertedIntoChild) {
-        this.items.push(item);
+        this.storeItem(item);
       }
       return;
     }
 
-    this.items.push(item);
+    this.storeItem(item);
 
     if (this.items.length > this.maxItems && this.depth < this.maxDepth) {
       this.split();
       this.redistribute();
     }
+  }
+
+  /** Store an item in this node and register the node in the shared reverse map. */
+  private storeItem(item: QuadtreeItem) {
+    this.items.push(item);
+    let nodes = this.reverseMap.get(item.id);
+    if (!nodes) {
+      nodes = new Set();
+      this.reverseMap.set(item.id, nodes);
+    }
+    nodes.add(this);
   }
 
   private split() {
@@ -45,21 +67,29 @@ export class Quadtree {
     const x = this.bounds.minX;
     const y = this.bounds.minY;
 
+    // Pass the shared reverseMap reference to all children
     this.children = [
-      new Quadtree({ minX: x + subWidth, minY: y + subHeight, maxX: x + subWidth * 2, maxY: y + subHeight * 2 }, this.depth + 1), // Top-Right
-      new Quadtree({ minX: x, minY: y + subHeight, maxX: x + subWidth, maxY: y + subHeight * 2 }, this.depth + 1), // Top-Left
-      new Quadtree({ minX: x, minY: y, maxX: x + subWidth, maxY: y + subHeight }, this.depth + 1), // Bottom-Left
-      new Quadtree({ minX: x + subWidth, minY: y, maxX: x + subWidth * 2, maxY: y + subHeight }, this.depth + 1) // Bottom-Right
+      new Quadtree({ minX: x + subWidth, minY: y + subHeight, maxX: x + subWidth * 2, maxY: y + subHeight * 2 }, this.depth + 1, this.reverseMap), // Top-Right
+      new Quadtree({ minX: x, minY: y + subHeight, maxX: x + subWidth, maxY: y + subHeight * 2 }, this.depth + 1, this.reverseMap), // Top-Left
+      new Quadtree({ minX: x, minY: y, maxX: x + subWidth, maxY: y + subHeight }, this.depth + 1, this.reverseMap), // Bottom-Left
+      new Quadtree({ minX: x + subWidth, minY: y, maxX: x + subWidth * 2, maxY: y + subHeight }, this.depth + 1, this.reverseMap) // Bottom-Right
     ];
   }
 
-  /** After splitting, move all current items into the appropriate children. */
+  /** After splitting, push all items held at this node into the new children. */
   private redistribute() {
     const old = this.items;
     this.items = [];
+    // Unregister this node from the reverse map for each item being redistributed
     for (const item of old) {
-      // Re-insert through the normal path — now that children exist, each item
-      // will be pushed into every overlapping child quadrant.
+      const nodes = this.reverseMap.get(item.id);
+      if (nodes) {
+        nodes.delete(this);
+        if (nodes.size === 0) this.reverseMap.delete(item.id);
+      }
+    }
+    // Re-insert through the normal path — items will fan into overlapping children
+    for (const item of old) {
       this.insert(item);
     }
   }
@@ -94,30 +124,28 @@ export class Quadtree {
     );
   }
 
+  /**
+   * O(copies) removal: look up the set of nodes holding this id directly,
+   * splice from each, then delete the reverse-map entry.
+   * No tree traversal needed.
+   */
   remove(id: string): boolean {
-    let removed = false;
+    const nodes = this.reverseMap.get(id);
+    if (!nodes || nodes.size === 0) return false;
 
-    const idx = this.items.findIndex(i => i.id === id);
-    if (idx !== -1) {
-      this.items.splice(idx, 1);
-      removed = true;
+    for (const node of nodes) {
+      const idx = node.items.findIndex(i => i.id === id);
+      if (idx !== -1) node.items.splice(idx, 1);
     }
-
-    // With a loose quadtree, the same item may live in multiple children,
-    // so we must walk ALL children (not short-circuit with .some()).
-    if (this.children) {
-      for (const child of this.children) {
-        if (child.remove(id)) {
-          removed = true;
-        }
-      }
-    }
-
-    return removed;
+    this.reverseMap.delete(id);
+    return true;
   }
 
   clear() {
     this.items = [];
+    // Clear the shared map once at whichever node clear() is called on.
+    // All nodes share the same reference, so this resets the entire tree's index.
+    this.reverseMap.clear();
     if (this.children) {
       for (const child of this.children) {
         child.clear();

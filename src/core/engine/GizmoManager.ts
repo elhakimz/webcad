@@ -17,6 +17,7 @@ export class GizmoManager {
   private targetEntity: Solid3D | Insert | null = null;
   private isDragging: boolean = false;
   private initialObjectPosition: THREE.Vector3 = new THREE.Vector3();
+  private initialGizmoQuaternion: THREE.Quaternion = new THREE.Quaternion();
 
   private gizmoMeshes: THREE.Mesh[] = [];
 
@@ -53,7 +54,7 @@ export class GizmoManager {
     console.log("GizmoManager attaching to object:", obj.name);
     this.targetObject = obj;
     this.targetEntity = entity;
-    this.renderer.root.visible = true;
+    this.renderer.root.visible = (this.viewer.currentMode === 'modelling');
     this.snapGizmoToObject();
     
     // Apply saved position/rotation to the Three.js object if needed
@@ -100,6 +101,15 @@ export class GizmoManager {
   }
 
   public update() {
+    if (this.viewer.currentMode === 'scripting') {
+      if (this.isDragging) {
+        this.isDragging = false;
+        this.controller.activeHandle = null;
+      }
+      this.renderer.root.visible = false;
+      return;
+    }
+    
     if (!this.targetObject) return;
     
     if (!this.isDragging) {
@@ -107,10 +117,10 @@ export class GizmoManager {
     }
     
     this.renderer.updateTransform(this.renderer.root.position, this.viewer.camera, this.viewer.target);
-    this.viewer.scheduleRender();
   }
 
   private onPointerMove(e: PointerEvent) {
+    if (this.viewer.currentMode === 'scripting') return;
     if (!this.targetObject) return;
 
     const ndc = this.getNormalizedDeviceCoordinates(e.clientX, e.clientY);
@@ -131,8 +141,13 @@ export class GizmoManager {
         // If the target object is a Group at (0,0,0), setting its position to deltaPos will move it correctly!
         this.targetObject.position.copy(this.initialObjectPosition).add(deltaPos);
         
-        // For rotation, we can copy the quaternion directly since the gizmo and object share the same orientation!
-        this.targetObject.quaternion.copy(this.renderer.root.quaternion);
+        // For rotation, apply delta rotation to Solid3D, copy directly for Insert
+        if (this.targetEntity instanceof Solid3D) {
+          const deltaQuat = this.renderer.root.quaternion.clone().multiply(this.initialGizmoQuaternion.clone().invert());
+          this.targetObject.quaternion.copy(deltaQuat);
+        } else {
+          this.targetObject.quaternion.copy(this.renderer.root.quaternion);
+        }
         
         this.viewer.scheduleRender();
       }
@@ -165,6 +180,7 @@ export class GizmoManager {
   }
 
   private onPointerDown(e: PointerEvent) {
+    if (this.viewer.currentMode === 'scripting') return;
     if (!this.targetObject || e.button !== 0) return; // Only left click
 
     const ndc = this.getNormalizedDeviceCoordinates(e.clientX, e.clientY);
@@ -173,6 +189,7 @@ export class GizmoManager {
     if (!hit) return;
 
     this.initialObjectPosition.copy(this.targetObject.position);
+    this.initialGizmoQuaternion.copy(this.renderer.root.quaternion);
     this.isDragging = true;
     this.viewer.canvas.style.cursor = 'grabbing';
     this.viewer.canvas.setPointerCapture(e.pointerId);
@@ -184,6 +201,7 @@ export class GizmoManager {
   }
 
   private onPointerUp(e: PointerEvent) {
+    if (this.viewer.currentMode === 'scripting') return;
     if (!this.isDragging) return;
 
     this.isDragging = false;
@@ -212,6 +230,7 @@ export class GizmoManager {
       const deltaPos = this.targetObject.position.clone().sub(this.initialObjectPosition);
       insert.x += deltaPos.x;
       insert.y += deltaPos.y;
+      insert.z = (insert.z || 0) + deltaPos.z;
 
       const euler = new THREE.Euler().setFromQuaternion(this.targetObject.quaternion);
       insert.rotation = euler.z * (180 / Math.PI);
@@ -238,15 +257,14 @@ export class GizmoManager {
 
     const oldPos = { ...solid.position };
 
-    // Update position and rotation in solid
-    // We save the delta position relative to the original center!
+    // Update position and rotation in solid as absolute world values
     solid.position = {
-      x: this.targetObject.position.x - center.x,
-      y: this.targetObject.position.y - center.y,
-      z: this.targetObject.position.z - center.z
+      x: this.targetObject.position.x,
+      y: this.targetObject.position.y,
+      z: this.targetObject.position.z
     };
 
-    const euler = new THREE.Euler().setFromQuaternion(this.targetObject.quaternion);
+    const euler = new THREE.Euler().setFromQuaternion(this.renderer.root.quaternion);
     solid.rotation = {
       x: euler.x,
       y: euler.y,
@@ -263,7 +281,7 @@ export class GizmoManager {
     const dz = solid.position.z - oldPos.z;
 
     // Sync with OpenCascade worker
-    if (!solid.creationParams) {
+    if (!solid.creationParams && !solid.brepSnapshot) {
       // Fallback for raw meshes from DXF!
       console.log(`[GizmoManager] Raw mesh detected for ${solid.id}. Applying transform in JS.`);
       
@@ -311,27 +329,102 @@ export class GizmoManager {
         }
         solid.edgeLines = newEdgeLines;
       }
-    } else {
+    } else if (solid.creationParams?.type === 'sweep') {
+      // Custom sync bypass strictly for sweep entities to preserve visually perfect JS mesh
+      console.log(`[GizmoManager] Sweep mesh detected for ${solid.id}. Applying transform in JS to preserve visual quality.`);
+      
+      const newPositions = new Array(solid.positions.length);
+      const v = new THREE.Vector3();
+      
+      for (let i = 0; i < solid.positions.length; i += 3) {
+        v.set(
+          solid.positions[i],
+          solid.positions[i+1],
+          solid.positions[i+2]
+        );
+        
+        // 1. Center the vertex (like Viewer does)
+        v.sub(center);
+        
+        // 2. Apply rotation of the group
+        v.applyQuaternion(this.targetObject.quaternion);
+        
+        // 3. Apply position of the group
+        v.add(this.targetObject.position);
+        
+        newPositions[i] = v.x;
+        newPositions[i+1] = v.y;
+        newPositions[i+2] = v.z;
+      }
+      
+      solid.positions = newPositions;
+      
+      // Also update edgeLines if they exist!
+      if (solid.edgeLines) {
+        const newEdgeLines: number[][] = [];
+        for (const line of solid.edgeLines) {
+          const newLine = new Array(line.length);
+          for (let i = 0; i < line.length; i += 3) {
+            v.set(line[i], line[i+1], line[i+2]);
+            v.sub(center);
+            v.applyQuaternion(this.targetObject.quaternion);
+            v.add(this.targetObject.position);
+            newLine[i] = v.x;
+            newLine[i+1] = v.y;
+            newLine[i+2] = v.z;
+          }
+          newEdgeLines.push(newLine);
+        }
+        solid.edgeLines = newEdgeLines;
+      }
+
+      // Simultaneously send multMatrixShape call in background to keep OpenCascade synced in the worker
       let geom: any = null;
-      if (drx !== 0 || dry !== 0 || drz !== 0) {
+      if (drx !== 0 || dry !== 0 || drz !== 0 || dx !== 0 || dy !== 0 || dz !== 0) {
         try {
-          const rotCenter = {
-            x: before.position.x + center.x,
-            y: before.position.y + center.y,
-            z: before.position.z + center.z
-          };
-          geom = await OpenCascadeService.getInstance().rotateShape(solid.id, drx, dry, drz, rotCenter.x, rotCenter.y, rotCenter.z);
-          console.log(`Synced rotation to worker for ${solid.id}: drx=${drx}, dry=${dry}, drz=${drz}`);
+          this.targetObject.updateMatrix();
+          const mTarget = this.targetObject.matrix.clone();
+          const tCenter = new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z);
+          const mCombined = new THREE.Matrix4().multiplyMatrices(mTarget, tCenter);
+          const e = mCombined.elements;
+          const flatMatrix = [
+            e[0], e[4], e[8],  e[12],
+            e[1], e[5], e[9],  e[13],
+            e[2], e[6], e[10], e[14],
+            e[3], e[7], e[11], e[15]
+          ];
+          geom = await OpenCascadeService.getInstance().multMatrixShape(solid.id, flatMatrix);
+          console.log(`Synced combined transformation to worker for sweep ${solid.id}`);
         } catch (err) {
-          console.error(`Failed to rotate shape in worker for ${solid.id}:`, err);
+          console.error(`Failed to apply combined transform in worker for sweep ${solid.id}:`, err);
         }
       }
-      if (dx !== 0 || dy !== 0 || dz !== 0) {
+
+      if (geom) {
+        solid.brepSnapshot = geom.userData.brepSnapshot;
+      }
+
+      solid.updateAbsolutePosition();
+      this.app.addEntity(solid, false, false);
+    } else {
+      let geom: any = null;
+      if (drx !== 0 || dry !== 0 || drz !== 0 || dx !== 0 || dy !== 0 || dz !== 0) {
         try {
-          geom = await OpenCascadeService.getInstance().transformShape(solid.id, dx, dy, dz);
-          console.log(`Synced transform to worker for ${solid.id}: dx=${dx}, dy=${dy}, dz=${dz}`);
+          this.targetObject.updateMatrix();
+          const mTarget = this.targetObject.matrix.clone();
+          const tCenter = new THREE.Matrix4().makeTranslation(-center.x, -center.y, -center.z);
+          const mCombined = new THREE.Matrix4().multiplyMatrices(mTarget, tCenter);
+          const e = mCombined.elements;
+          const flatMatrix = [
+            e[0], e[4], e[8],  e[12],
+            e[1], e[5], e[9],  e[13],
+            e[2], e[6], e[10], e[14],
+            e[3], e[7], e[11], e[15]
+          ];
+          geom = await OpenCascadeService.getInstance().multMatrixShape(solid.id, flatMatrix);
+          console.log(`Synced combined transformation to worker for ${solid.id}`);
         } catch (err) {
-          console.error(`Failed to transform shape in worker for ${solid.id}:`, err);
+          console.error(`Failed to apply combined transform in worker for ${solid.id}:`, err);
         }
       }
 
@@ -342,8 +435,7 @@ export class GizmoManager {
         solid.edgeLines = geom.userData.edgeLines;
         solid.brepSnapshot = geom.userData.brepSnapshot;
         
-        solid.position = { x: 0, y: 0, z: 0 };
-        solid.rotation = { x: 0, y: 0, z: 0 };
+        solid.updateAbsolutePosition();
 
         this.app.addEntity(solid, false, false);
       }
@@ -356,6 +448,9 @@ export class GizmoManager {
     
     // Update properties window to reflect new position/rotation
     this.app.updatePropertiesWindow();
+
+    // Rebind the gizmo's targetObject to the newly created group in the scene
+    this.app.updateGizmoAttachment();
   }
 
   private getNormalizedDeviceCoordinates(clientX: number, clientY: number): THREE.Vector2 {

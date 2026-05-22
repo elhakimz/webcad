@@ -36,11 +36,7 @@ export class CopyHandler implements ActionHandler {
               solidCopy.edgeLines = geom.userData.edgeLines;
               solidCopy.brepSnapshot = geom.userData.brepSnapshot;
               
-              if ('move3D' in copy && typeof (copy as any).move3D === 'function') {
-                (copy as any).move3D(dx, dy, dz);
-              } else {
-                copy.move(dx, dy);
-              }
+              solidCopy.updateAbsolutePosition();
             } catch (err) {
               console.error(`Failed to copy shape in worker for ${id}:`, err);
             }

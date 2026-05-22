@@ -33,7 +33,7 @@ export class ScaleHandler implements ActionHandler {
               solid.edgeLines = geom.userData.edgeLines;
               solid.brepSnapshot = geom.userData.brepSnapshot;
 
-              entity.scale(cx, cy, factor);
+              solid.updateAbsolutePosition();
               
               addEntity(entity, false, false);
             } catch (err) {

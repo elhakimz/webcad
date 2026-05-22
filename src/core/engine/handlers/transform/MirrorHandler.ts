@@ -40,7 +40,7 @@ export class MirrorHandler implements ActionHandler {
                 solid.edgeLines = geom.userData.edgeLines;
                 solid.brepSnapshot = geom.userData.brepSnapshot;
                 
-                source.mirror(p1, p2);
+                solid.updateAbsolutePosition();
               } catch (err) {
                 console.error(`Failed to mirror shape in worker for ${id}:`, err);
               }
@@ -70,7 +70,7 @@ export class MirrorHandler implements ActionHandler {
                 solidTarget.edgeLines = geom.userData.edgeLines;
                 solidTarget.brepSnapshot = geom.userData.brepSnapshot;
                 
-                target.mirror(p1, p2);
+                solidTarget.updateAbsolutePosition();
               } catch (err) {
                 console.error(`Failed to mirror shape in worker for ${id}:`, err);
               }

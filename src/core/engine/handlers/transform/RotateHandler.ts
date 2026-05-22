@@ -33,7 +33,7 @@ export class RotateHandler implements ActionHandler {
               solid.edgeLines = geom.userData.edgeLines;
               solid.brepSnapshot = geom.userData.brepSnapshot;
 
-              entity.rotate(cx, cy, angle);
+              solid.updateAbsolutePosition();
               
               addEntity(entity, false, false);
             } catch (err) {

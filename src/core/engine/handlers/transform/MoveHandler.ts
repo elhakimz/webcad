@@ -33,11 +33,7 @@ export class MoveHandler implements ActionHandler {
               solid.edgeLines = geom.userData.edgeLines;
               solid.brepSnapshot = geom.userData.brepSnapshot;
 
-              if ('move3D' in entity && typeof (entity as any).move3D === 'function') {
-                (entity as any).move3D(dx, dy, dz);
-              } else {
-                entity.move(dx, dy);
-              }
+              solid.updateAbsolutePosition();
               
               context.addEntity(entity, false, false);
             } catch (err) {

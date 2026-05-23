@@ -37,7 +37,7 @@ import { SketchCommand } from "../commands/SketchCommand"
 import { ShapeCommand } from "../commands/ShapeCommand"
 import { LayerCommand } from "../commands/LayerCommand"
 import { LinetypeCommand } from "../commands/LinetypeCommand"
-import { SaveCommand, LoadCommand, NewCommand } from "../commands/IOCommands"
+import { SaveCommand, LoadCommand, NewCommand, DBSaveCommand } from "../commands/IOCommands"
 import { UnitsCommand } from "../commands/UnitsCommand"
 import { FilletCommand } from "../commands/FilletCommand"
 import { SFilletCommand } from "../commands/SFilletCommand"
@@ -69,6 +69,7 @@ import { TrimCommand } from "../commands/TrimCommand"
 import { ExtendCommand } from "../commands/ExtendCommand"
 import { BlockCommand } from "../commands/BlockCommand"
 import { InsertCommand } from "../commands/InsertCommand"
+import { GeneratorCommand } from "../commands/GeneratorCommand"
 import { PlotCommand } from "../commands/PlotCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
@@ -193,6 +194,7 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["EXTEND", (selection) => new ExtendCommand(selection)],
   ["BLOCK", (selection) => new BlockCommand(selection)],
   ["INSERT", () => new InsertCommand()],
+  ["GENERATOR", () => new GeneratorCommand()],
   ["REGEN", () => ({ action: "regen" })],
   ["UNDO", () => ({ action: "undo" })],
   ["U", () => ({ action: "undo" })],
@@ -200,6 +202,7 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["R", () => ({ action: "redo" })],
   ["DIMTOH", () => new DimTohCommand()],
   ["DIMTAD", () => new DimTadCommand()],
+  ["DBSAVE", () => new DBSaveCommand()],
 ]);
 
 export class CommandManager {

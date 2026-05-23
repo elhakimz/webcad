@@ -3,13 +3,17 @@ import { CommandAction, CommandResponse } from "../../commands/types";
 import { DXFExporter } from "../../io/dxfExport";
 import { DXFImporter } from "../../io/dxfImport";
 import { Solid3D } from "../../model/Solid3D";
+import { Document } from "../../model/Document";
 import { OpenCascadeService } from "../../io/OpenCascadeService";
 import { PersistenceService } from "../../persistence/PersistenceService";
 import { rebuildSweepGeometry } from "./transform/SweepGeometryUtil";
+import { GeneratorProgressModal } from "../../../ui/GeneratorProgressModal";
+import { Solid3DReevaluator } from "../Solid3DReevaluator";
+
 
 export class IOHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['save', 'load', 'listFiles', 'new'].includes(action.action);
+    return ['save', 'load', 'listFiles', 'new', 'dbsave'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
@@ -23,7 +27,7 @@ export class IOHandler implements ActionHandler {
       doc.layers.currentLayerName = "0";
       
       // Reset settings to default
-      doc.facetres = 5.0;
+      doc.facetres = 1.0;
       doc.currentElevation = 0;
       viewer.setCameraView('TOP');
 
@@ -75,12 +79,28 @@ export class IOHandler implements ActionHandler {
       }
     }
 
-    if (action.action === 'load' && action.filename) {
+    if (action.action === 'dbsave' && action.projectName) {
       try {
+        const id = await PersistenceService.getInstance().saveProject(doc, action.projectName);
+        terminateActiveCommand();
+        return `Project "${action.projectName}" successfully saved to database.`;
+      } catch (err) {
+        console.error("Failed to save project to database:", err);
+        return `ERROR: Failed to save project to database: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    if (action.action === 'load' && action.filename) {
+      const progress = new GeneratorProgressModal("Loading DXF Drawing");
+      progress.show();
+      try {
+        progress.update(10, `Fetching "${action.filename}"...`);
         const response = await fetch(`/api/files/${action.filename}`);
         if (response.ok) {
+          progress.update(20, "Reading file content...");
           const dxfText = await response.text();
           
+          progress.update(30, "Clearing current workspace...");
           // Clear current document before loading
           doc.clear();
           
@@ -89,15 +109,29 @@ export class IOHandler implements ActionHandler {
           doc.layers.createLayer("0", 7, "CONTINUOUS");
           doc.layers.currentLayerName = "0";
           
+          progress.update(40, "Clearing 3D engine cache...");
           // Clear worker cache to prevent memory leaks!
           const occService = OpenCascadeService.getInstance();
           await occService.clearCache();
           
+          progress.update(50, "Parsing DXF data...");
           const importer = new DXFImporter();
           importer.import(dxfText, doc);
           
           // Rebuild worker cache for Solid3D entities
-          await this.rebuildWorkerCache(doc);
+          await this.rebuildWorkerCache(doc, (percent, status) => {
+            const mappedPercent = 60 + Math.round((percent / 100) * 35);
+            progress.update(mappedPercent, status);
+          });
+          
+          progress.update(96, "Updating absolute solid positions...");
+          for (const ent of doc.entities.values()) {
+            if (ent instanceof Solid3D) {
+              ent.updateAbsolutePosition();
+            }
+          }
+          progress.update(98, "Updating spatial indexing...");
+          doc.updateSpatialIndex();
           
           syncFromDocument();
           terminateActiveCommand();
@@ -114,65 +148,142 @@ export class IOHandler implements ActionHandler {
           }
           viewer.render();
           
+          progress.update(100, "Successfully loaded!");
           return `Drawing loaded from files/${action.filename}`;
         } else {
           return `File not found: ${action.filename}`;
         }
       } catch (e) {
         return `Network error loading file: ${e}`;
+      } finally {
+        if (typeof document !== 'undefined') {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        progress.close();
       }
     }
 
     return undefined;
   }
 
-  private async rebuildWorkerCache(doc: any) {
+  private updateEntityGeometry(entity: Solid3D, geoData: any) {
+    if (geoData) {
+      const attr = geoData.getAttribute('position') as any;
+      entity.positions = Array.from(attr.array);
+      entity.indices = Array.from(geoData.getIndex()!.array);
+      entity.faceMapping = geoData.userData?.faceMapping;
+      entity.edgeLines = geoData.userData?.edgeLines;
+      if (geoData.userData?.brepSnapshot) {
+        entity.brepSnapshot = geoData.userData.brepSnapshot;
+      }
+    }
+  }
+
+  private async rebuildWorkerCache(doc: Document, onProgress?: (percent: number, status: string) => void) {
     const occService = OpenCascadeService.getInstance();
     const facetres = doc.facetres || 5.0;
     const deflection = 0.1 / facetres;
 
-    for (const entity of doc.entities.values()) {
-      if (entity instanceof Solid3D && entity.creationParams) {
-        const { type, params } = entity.creationParams;
+    const solidEntities = Array.from(doc.entities.values()).filter(ent => ent instanceof Solid3D);
+    const total = solidEntities.length;
+
+    for (let i = 0; i < total; i++) {
+      const entity = solidEntities[i] as Solid3D;
+      const cp = entity.creationParams;
+      const entityName = cp ? `${cp.type} (${entity.id})` : `CSG Operation (${entity.id})`;
+
+      if (onProgress) {
+        const percent = Math.round((i / total) * 100);
+        onProgress(percent, `Rebuilding solid ${i + 1}/${total}: ${entityName}...`);
+      }
+
+      if (entity.features && entity.features.length > 0) {
         try {
-          if (type === 'box') {
-            await occService.createBox(params.x, params.y, params.z, params.dx, params.dy, params.dz, deflection, entity.id);
-          } else if (type === 'cylinder') {
-            await occService.createCylinder(params.x, params.y, params.z, params.radius, params.height, deflection, entity.id);
-          } else if (type === 'extrude') {
-            await occService.createExtrude(params.points, params.height, params.thickness, deflection, params.isClosed, entity.id);
-          } else if (type === 'sphere') {
-            await occService.createSphere(params.x, params.y, params.z, params.r, deflection, entity.id);
-          } else if (type === 'cone') {
-            await occService.createCone(params.x, params.y, params.z, params.r, params.h, deflection, entity.id);
-          } else if (type === 'torus') {
-            await occService.createTorus(params.x, params.y, params.z, params.r1, params.r2, deflection, entity.id);
-          } else if (type === 'revolve') {
-            await occService.createRevolve(
-              params.points, params.axisPoint, params.axisDir,
-              params.angle, params.thickness, deflection, params.isClosed, entity.id
+          const geom = await Solid3DReevaluator.reevaluate(entity, facetres, doc);
+          this.updateEntityGeometry(entity, geom);
+          console.log(`Rebuilt features worker cache for ${entity.id}`);
+          continue;
+        } catch (err) {
+          console.error(`Failed to rebuild features cache for ${entity.id}:`, err);
+        }
+      }
+
+      if (cp) {
+        try {
+          let geoData: any = null;
+          if (cp.type === 'box') {
+            geoData = await occService.createBox(cp.params.x, cp.params.y, cp.params.z, cp.params.dx, cp.params.dy, cp.params.dz, deflection, entity.id);
+          } else if (cp.type === 'cylinder') {
+            geoData = await occService.createCylinder(cp.params.x, cp.params.y, cp.params.z, cp.params.radius, cp.params.height, deflection, entity.id);
+          } else if (cp.type === 'extrude') {
+            geoData = await occService.createExtrude(cp.params.points, cp.params.height, cp.params.thickness, deflection, cp.params.isClosed, entity.id);
+          } else if (cp.type === 'sphere') {
+            geoData = await occService.createSphere(cp.params.x, cp.params.y, cp.params.z, cp.params.r, deflection, entity.id);
+          } else if (cp.type === 'cone') {
+            geoData = await occService.createCone(cp.params.x, cp.params.y, cp.params.z, cp.params.r, cp.params.h, deflection, entity.id);
+          } else if (cp.type === 'torus') {
+            geoData = await occService.createTorus(cp.params.x, cp.params.y, cp.params.z, cp.params.r1, cp.params.r2, deflection, entity.id);
+          } else if (cp.type === 'polyhedron') {
+            geoData = await occService.createPolyhedron(cp.params.points, cp.params.faces, deflection, entity.id);
+          } else if (cp.type === 'hull') {
+            geoData = await occService.createConvexHull(cp.params.points, cp.params.shapeIds, deflection, entity.id);
+          } else if (cp.type === 'revolve') {
+            geoData = await occService.createRevolve(
+              cp.params.points, cp.params.axisPoint, cp.params.axisDir,
+              cp.params.angle, cp.params.thickness, deflection, cp.params.isClosed, entity.id
             );
-          } else if (type === 'sweep') {
-            const profileEntity = doc.getEntity(params.profileId);
-            const spineEntity = doc.getEntity(params.spineId);
+          } else if (cp.type === 'sweep') {
+            const profileEntity = doc.getEntity(cp.params.profileId);
+            const spineEntity = doc.getEntity(cp.params.spineId);
             if (profileEntity && spineEntity) {
-              await rebuildSweepGeometry(
+              const geomData = await rebuildSweepGeometry(
                 profileEntity,
                 spineEntity,
-                params.isSolid,
+                cp.params.isSolid,
                 facetres,
                 deflection,
                 entity.id,
-                params.cornerMode
+                cp.params.cornerMode
               );
+              entity.positions = geomData.positions;
+              entity.indices = geomData.indices;
+              entity.faceMapping = geomData.faceMapping;
+              entity.edgeLines = geomData.edgeLines;
+              if (geomData.brepSnapshot) {
+                entity.brepSnapshot = geomData.brepSnapshot;
+              }
             }
           }
-          console.log(`Rebuilt worker cache for ${entity.id} (${type})`);
+
+          if (geoData) {
+            this.updateEntityGeometry(entity, geoData);
+          }
+
+          console.log(`Rebuilt worker cache for ${entity.id} (${cp.type})`);
         } catch (err) {
           console.error(`Failed to rebuild cache for ${entity.id}:`, err);
         }
       } else if (entity instanceof Solid3D) {
-        console.warn(`[IOHandler] Cannot rebuild worker cache for ${entity.id} - no creationParams. Boolean operations will fail on this entity.`);
+        // Reconstruct loaded CSG / Boolean operation shapes from mesh vertices and indices!
+        try {
+          const points: [number, number, number][] = [];
+          for (let i = 0; i < entity.positions.length; i += 3) {
+            points.push([entity.positions[i], entity.positions[i + 1], entity.positions[i + 2]]);
+          }
+
+          const faces: number[][] = [];
+          for (let i = 0; i < entity.indices.length; i += 3) {
+            faces.push([entity.indices[i], entity.indices[i + 1], entity.indices[i + 2]]);
+          }
+
+          const geoData = await occService.createPolyhedron(points, faces, deflection, entity.id);
+          if (geoData) {
+            this.updateEntityGeometry(entity, geoData);
+          }
+          console.log(`Rebuilt CSG/Boolean worker shape for ${entity.id} from mesh vertices`);
+        } catch (err) {
+          console.error(`Failed to rebuild CSG shape for ${entity.id}:`, err);
+        }
       }
     }
   }

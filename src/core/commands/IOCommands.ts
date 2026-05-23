@@ -1,5 +1,6 @@
 import { Command, CommandResponse } from "./types"
 import { UnitsConfig } from "../model/Document";
+import { PersistenceService } from "../persistence/PersistenceService";
 
 export class SaveCommand implements Command {
   onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse { return "Enter filename to save:"; }
@@ -43,4 +44,22 @@ export class NewCommand implements Command {
   }
 
   getPrompt() { return "Start a new drawing? (Y/N):"; }
+}
+
+export class DBSaveCommand implements Command {
+  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse { 
+    const currentName = PersistenceService.getInstance().activeProjectName || "Untitled";
+    return `Enter project name to save to database <${currentName}>:`; 
+  }
+
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
+    const currentName = PersistenceService.getInstance().activeProjectName || "Untitled";
+    const projName = text.trim() || currentName;
+    return { action: "dbsave", projectName: projName };
+  }
+
+  getPrompt() { 
+    const currentName = PersistenceService.getInstance().activeProjectName || "Untitled";
+    return `Save project to database <${currentName}>:`; 
+  }
 }

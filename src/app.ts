@@ -23,6 +23,7 @@ import { getAllPatternNames } from "./core/io/Patterns"
 import { Insert } from "./core/model/Insert"
 import { Spline } from "./core/model/Spline"
 import { solveDocumentConstraints, DocumentConstraint, DocumentPointRef, getPointCoords } from "./core/engine/SketchSolver"
+import { analyzeDocumentDoF } from "./core/engine/DocumentDoFAnalyzer"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import { Note } from "./core/model/Note"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
@@ -70,6 +71,7 @@ import { HasBasePoint, HasUpdateSketch, HasStartSketch, HasFinishSketch, HasSele
 import { GizmoManager } from "./core/engine/GizmoManager"
 import { PersistenceService } from "./core/persistence/PersistenceService"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
+import { NotificationManager } from "./ui/NotificationManager"
 
 export class App {
   viewer:Viewer
@@ -576,7 +578,7 @@ export class App {
         const { x, y } = snapped;
         
         const isConstrained = this.doc.constraints && this.doc.constraints.some(c => {
-          if (c.type === 'parallel' || c.type === 'perpendicular') {
+          if (c.type === 'parallel' || c.type === 'perpendicular' || c.type === 'angular') {
             return c.l1[0].entityId === this.activeGrip!.entityId ||
                    c.l1[1].entityId === this.activeGrip!.entityId ||
                    c.l2[0].entityId === this.activeGrip!.entityId ||
@@ -1070,10 +1072,16 @@ export class App {
 
       const hasLine1 = ent1 instanceof Line;
       const hasLine2 = ent2 instanceof Line;
+      const hasCircle1 = ent1 instanceof Circle || ent1 instanceof Arc;
+      const hasCircle2 = ent2 instanceof Circle || ent2 instanceof Arc;
 
       if (hasLine1 && hasLine2) {
-        options.push("Coincident", "Parallel", "Perpendicular", "Distance", "Cancel");
+        options.push("Coincident", "Parallel", "Perpendicular", "Angular", "Distance", "Cancel");
+      } else if (hasCircle1 && hasCircle2) {
+        options.push("Coincident", "Concentric", "Distance", "Cancel");
       } else if (hasLine1 || hasLine2) {
+        options.push("Coincident", "Distance", "Cancel");
+      } else if (hasCircle1 || hasCircle2) {
         options.push("Coincident", "Distance", "Cancel");
       } else {
         options.push("Coincident", "Distance", "Cancel");
@@ -1105,6 +1113,14 @@ export class App {
           });
           this.dynamicMenu.hide();
           this.contextMenuVisible = false;
+        } else if (option === "Concentric" && (ent1 instanceof Circle || ent1 instanceof Arc) && (ent2 instanceof Circle || ent2 instanceof Arc)) {
+          this.applyDirectConstraint({
+            type: 'concentric',
+            p1: { entityId: ent1.id, pointId: 'center' },
+            p2: { entityId: ent2.id, pointId: 'center' }
+          });
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
         } else if (option === "Parallel" && ent1 instanceof Line && ent2 instanceof Line) {
           this.applyDirectConstraint({
             type: 'parallel',
@@ -1120,6 +1136,56 @@ export class App {
             l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
           });
           this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+        } else if (option === "Angular" && ent1 instanceof Line && ent2 instanceof Line) {
+          this.dynamicMenu.hide();
+
+          const p1 = { x: ent1.x1, y: ent1.y1 };
+          const p2 = { x: ent1.x2, y: ent1.y2 };
+          const p3 = { x: ent2.x1, y: ent2.y1 };
+          const p4 = { x: ent2.x2, y: ent2.y2 };
+
+          const vx1 = p2.x - p1.x, vy1 = p2.y - p1.y;
+          const vx2 = p4.x - p3.x, vy2 = p4.y - p3.y;
+          const len1 = Math.sqrt(vx1 * vx1 + vy1 * vy1);
+          const len2 = Math.sqrt(vx2 * vx2 + vy2 * vy2);
+          if (len1 < 1e-6 || len2 < 1e-6) return;
+
+          const a1 = Math.atan2(vy1, vx1);
+          const a2 = Math.atan2(vy2, vx2);
+          let diff = a2 - a1;
+          while (diff > Math.PI) diff -= 2 * Math.PI;
+          while (diff < -Math.PI) diff += 2 * Math.PI;
+          const currentDeg = (Math.abs(diff) * 180 / Math.PI).toFixed(1);
+
+          const canvasRect = this.viewer.canvas.getBoundingClientRect();
+          const vx = canvasRect.left + canvasRect.width / 2 - 80;
+          const vy = canvasRect.top + canvasRect.height / 2 - 40;
+
+          this.dynamicInput.show(
+            vx, vy,
+            ["SET TARGET ANGLE", `Current: ${currentDeg}°`],
+            [],
+            true, [],
+            "Type angle in degrees and press Enter",
+            currentDeg
+          );
+
+          this.dynamicInput.onInputSubmitted((text) => {
+            const val = parseFloat(text);
+            if (!isNaN(val) && val > 0 && val < 180) {
+              this.applyDirectConstraint({
+                type: 'angular',
+                l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }],
+                l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }],
+                value: val * Math.PI / 180
+              });
+            } else {
+              NotificationManager.getInstance().show("Invalid angle (0-180°)", "error");
+            }
+            this.dynamicInput.hide();
+          });
+
           this.contextMenuVisible = false;
         } else if (option === "Distance") {
           this.dynamicMenu.hide();
@@ -1322,9 +1388,11 @@ export class App {
       });
       
       this.doc.history.commitTransaction();
-      
+
       this.activeCenterGrip = null;
       this.viewer.setPreview(null);
+
+      this.syncFromDocument();
       
       // Refresh highlights and grips
       this.viewer.setHighlight(Array.from(this.selectedEntityIds));
@@ -1344,7 +1412,7 @@ export class App {
         const { x, y } = snapped;
         
         const isConstrained = this.doc.constraints && this.doc.constraints.some(c => {
-          if (c.type === 'parallel' || c.type === 'perpendicular') {
+          if (c.type === 'parallel' || c.type === 'perpendicular' || c.type === 'angular') {
             return c.l1[0].entityId === this.activeGrip!.entityId ||
                    c.l1[1].entityId === this.activeGrip!.entityId ||
                    c.l2[0].entityId === this.activeGrip!.entityId ||
@@ -1397,6 +1465,7 @@ export class App {
           this.doc.history.commitTransaction(this.doc.constraints);
         }
         
+        this.syncFromDocument();
         this.activeGrip = null;
         this.viewer.setPreview(null);
         
@@ -1802,6 +1871,7 @@ export class App {
           const res = await this.dispatcher.dispatch(result as CommandAction, appContext);
           this.viewer.updateConstraints(this.doc);
           this.doc.history.commitTransaction(this.doc.constraints);
+          this.updateDoFVisualization();
           return res;
       })();
 
@@ -1913,7 +1983,8 @@ export class App {
     }
     this.viewer.updateConstraints(this.doc);
     this.viewer.render();
-    
+    this.updateDoFVisualization();
+
     if (this.propertiesWindow) {
       const selectedEntities = Array.from(this.selectedEntityIds)
           .map(id => this.doc.getEntity(id))
@@ -1923,6 +1994,18 @@ export class App {
 
     this.updateGizmoAttachment();
     this.triggerObjectsWindowUpdate();
+  }
+
+  public updateDoFVisualization(): void {
+    const constraints = this.doc.constraints;
+    if (!constraints || constraints.length === 0) {
+      this.viewer.clearDoFColors();
+      this.sketchToolWindow?.clearDoFBadge();
+      return;
+    }
+    const result = analyzeDocumentDoF(this.doc, constraints);
+    this.viewer.setDoFColors(result.entityStatus, result.dof);
+    this.sketchToolWindow?.runDoFAnalysis();
   }
 
   public updateGizmoAttachment() {

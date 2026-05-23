@@ -13,6 +13,8 @@ export type SketchConstraint =
   | { type: 'horizontal'; p1: number; p2: number }
   | { type: 'vertical'; p1: number; p2: number }
   | { type: 'distance'; p1: number; p2: number; value: number }
+  | { type: 'angular'; l1: [number, number]; l2: [number, number]; value: number }
+  | { type: 'concentric'; p1: number; p2: number }
   | { type: 'parallel'; l1: [number, number]; l2: [number, number] }
   | { type: 'perpendicular'; l1: [number, number]; l2: [number, number] }
   | { type: 'fix'; p1: number; x?: number; y?: number };
@@ -32,6 +34,20 @@ export function solveConstraints(
   for (let iter = 0; iter < iterations; iter++) {
     for (const c of constraints) {
       if (c.type === 'coincident') {
+        const { p1, p2 } = c;
+        if (p1 >= points.length || p2 >= points.length) continue;
+        const w1 = w[p1];
+        const w2 = w[p2];
+        const sumW = w1 + w2;
+        if (sumW > 0) {
+          const dx = points[p2].x - points[p1].x;
+          const dy = points[p2].y - points[p1].y;
+          points[p1].x += dx * (w1 / sumW);
+          points[p1].y += dy * (w1 / sumW);
+          points[p2].x -= dx * (w2 / sumW);
+          points[p2].y -= dy * (w2 / sumW);
+        }
+      } else if (c.type === 'concentric') {
         const { p1, p2 } = c;
         if (p1 >= points.length || p2 >= points.length) continue;
         const w1 = w[p1];
@@ -213,6 +229,69 @@ export function solveConstraints(
             }
           }
         }
+      } else if (c.type === 'angular') {
+        const { l1, l2, value } = c;
+        const [p1, p2] = l1;
+        const [p3, p4] = l2;
+        if (p1 >= points.length || p2 >= points.length || p3 >= points.length || p4 >= points.length) continue;
+
+        const m1x = (points[p1].x + points[p2].x) / 2;
+        const m1y = (points[p1].y + points[p2].y) / 2;
+        const m2x = (points[p3].x + points[p4].x) / 2;
+        const m2y = (points[p3].y + points[p4].y) / 2;
+
+        const dx1 = points[p2].x - points[p1].x;
+        const dy1 = points[p2].y - points[p1].y;
+        const dx2 = points[p4].x - points[p3].x;
+        const dy2 = points[p4].y - points[p3].y;
+
+        const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+        const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+
+        if (len1 > 1e-6 && len2 > 1e-6) {
+          const theta1 = Math.atan2(dy1, dx1);
+          const theta2 = Math.atan2(dy2, dx2);
+
+          let diff = theta2 - theta1 - value;
+          while (diff > Math.PI) diff -= 2 * Math.PI;
+          while (diff < -Math.PI) diff += 2 * Math.PI;
+
+          if (diff > Math.PI / 2) diff -= Math.PI;
+          else if (diff < -Math.PI / 2) diff += Math.PI;
+
+          const W1 = w[p1] + w[p2];
+          const W2 = w[p3] + w[p4];
+          const sumW = W1 + W2;
+          if (sumW > 0) {
+            const corr1 = diff * (W1 / sumW);
+            const corr2 = -diff * (W2 / sumW);
+
+            const t1 = theta1 + corr1;
+            const t2 = theta2 + corr2;
+
+            const cos1 = Math.cos(t1);
+            const sin1 = Math.sin(t1);
+            const cos2 = Math.cos(t2);
+            const sin2 = Math.sin(t2);
+
+            if (w[p1] > 0) {
+              points[p1].x = m1x - 0.5 * len1 * cos1;
+              points[p1].y = m1y - 0.5 * len1 * sin1;
+            }
+            if (w[p2] > 0) {
+              points[p2].x = m1x + 0.5 * len1 * cos1;
+              points[p2].y = m1y + 0.5 * len1 * sin1;
+            }
+            if (w[p3] > 0) {
+              points[p3].x = m2x - 0.5 * len2 * cos2;
+              points[p3].y = m2y - 0.5 * len2 * sin2;
+            }
+            if (w[p4] > 0) {
+              points[p4].x = m2x + 0.5 * len2 * cos2;
+              points[p4].y = m2y + 0.5 * len2 * sin2;
+            }
+          }
+        }
       } else if (c.type === 'fix') {
         const { p1, x, y } = c;
         if (p1 < points.length) {
@@ -236,6 +315,8 @@ export type DocumentConstraint =
   | { type: 'horizontal'; p1: DocumentPointRef; p2: DocumentPointRef }
   | { type: 'vertical'; p1: DocumentPointRef; p2: DocumentPointRef }
   | { type: 'distance'; p1: DocumentPointRef; p2: DocumentPointRef; value: number }
+  | { type: 'angular'; l1: [DocumentPointRef, DocumentPointRef]; l2: [DocumentPointRef, DocumentPointRef]; value: number }
+  | { type: 'concentric'; p1: DocumentPointRef; p2: DocumentPointRef }
   | { type: 'parallel'; l1: [DocumentPointRef, DocumentPointRef]; l2: [DocumentPointRef, DocumentPointRef] }
   | { type: 'perpendicular'; l1: [DocumentPointRef, DocumentPointRef]; l2: [DocumentPointRef, DocumentPointRef] }
   | { type: 'fix'; p1: DocumentPointRef; x?: number; y?: number };
@@ -374,14 +455,14 @@ export function solveDocumentConstraints(
   const referencedEntityIds = new Set<string>();
 
   for (const c of constraints) {
-    if (c.type === 'coincident' || c.type === 'horizontal' || c.type === 'vertical' || c.type === 'distance' || c.type === 'fix') {
+    if (c.type === 'coincident' || c.type === 'concentric' || c.type === 'horizontal' || c.type === 'vertical' || c.type === 'distance' || c.type === 'fix') {
       addRef(c.p1);
       referencedEntityIds.add(c.p1.entityId);
       if ('p2' in c) {
         addRef(c.p2);
         referencedEntityIds.add(c.p2.entityId);
       }
-    } else if (c.type === 'parallel' || c.type === 'perpendicular') {
+    } else if (c.type === 'parallel' || c.type === 'perpendicular' || c.type === 'angular') {
       addRef(c.l1[0]);
       addRef(c.l1[1]);
       addRef(c.l2[0]);
@@ -444,6 +525,12 @@ export function solveDocumentConstraints(
       if (idx1 !== undefined && idx2 !== undefined) {
         solverConstraints.push({ type: 'coincident', p1: idx1, p2: idx2 });
       }
+    } else if (c.type === 'concentric') {
+      const idx1 = refToIndex.get(refKey(c.p1));
+      const idx2 = refToIndex.get(refKey(c.p2));
+      if (idx1 !== undefined && idx2 !== undefined) {
+        solverConstraints.push({ type: 'concentric', p1: idx1, p2: idx2 });
+      }
     } else if (c.type === 'horizontal') {
       const idx1 = refToIndex.get(refKey(c.p1));
       const idx2 = refToIndex.get(refKey(c.p2));
@@ -461,6 +548,14 @@ export function solveDocumentConstraints(
       const idx2 = refToIndex.get(refKey(c.p2));
       if (idx1 !== undefined && idx2 !== undefined) {
         solverConstraints.push({ type: 'distance', p1: idx1, p2: idx2, value: c.value });
+      }
+    } else if (c.type === 'angular') {
+      const p1 = refToIndex.get(refKey(c.l1[0]));
+      const p2 = refToIndex.get(refKey(c.l1[1]));
+      const p3 = refToIndex.get(refKey(c.l2[0]));
+      const p4 = refToIndex.get(refKey(c.l2[1]));
+      if (p1 !== undefined && p2 !== undefined && p3 !== undefined && p4 !== undefined) {
+        solverConstraints.push({ type: 'angular', l1: [p1, p2], l2: [p3, p4], value: c.value });
       }
     } else if (c.type === 'parallel') {
       const p1 = refToIndex.get(refKey(c.l1[0]));

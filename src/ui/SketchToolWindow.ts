@@ -2,6 +2,7 @@ import { ToolWindow } from "./ToolWindow"
 import { App } from "../app"
 import { NotificationManager } from "./NotificationManager"
 import { DocumentConstraint, DocumentPointRef, solveDocumentConstraints, getPointCoords } from "../core/engine/SketchSolver"
+import { analyzeDocumentDoF, DocumentDoFResult } from "../core/engine/DocumentDoFAnalyzer"
 import { Entity } from "../core/model/Entity"
 import { Line } from "../core/model/Line"
 import { Circle } from "../core/model/Circle"
@@ -15,6 +16,7 @@ export class SketchToolWindow {
   private container: HTMLElement;
   private selectedPointRefs: Set<string> = new Set(); // serialized "entityId::pointId"
   private selectedElementIds: Set<string> = new Set(); // entityId
+  private dofBadge: HTMLElement | null = null;
 
   constructor(private toolWindow: ToolWindow, private app: App) {
     this.container = document.createElement('div');
@@ -52,6 +54,7 @@ export class SketchToolWindow {
 
       this.app.viewer.requestRender();
       this.refresh();
+      this.runDoFAnalysis();
     };
 
     const originalRedo = this.app.doc.redo.bind(this.app.doc);
@@ -71,6 +74,7 @@ export class SketchToolWindow {
 
       this.app.viewer.requestRender();
       this.refresh();
+      this.runDoFAnalysis();
     };
   }
 
@@ -424,6 +428,7 @@ export class SketchToolWindow {
     } else {
       docConstraints.forEach((c, idx) => {
         const item = document.createElement('div');
+        item.className = 'constraint-list-item';
         item.style.display = 'flex';
         item.style.justifyContent = 'space-between';
         item.style.alignItems = 'center';
@@ -438,7 +443,9 @@ export class SketchToolWindow {
         else if (c.type === 'vertical') txt.textContent = `V: ${shortName(c.p1)} ➔ ${shortName(c.p2)}`;
         else if (c.type === 'distance') txt.textContent = `Dist: ${shortName(c.p1)} ➔ ${shortName(c.p2)} = ${c.value}`;
         else if (c.type === 'parallel') txt.textContent = `Parallel: L1 // L2`;
+        else if (c.type === 'concentric') txt.textContent = `Concentric: ${shortName(c.p1)} = ${shortName(c.p2)}`;
         else if (c.type === 'perpendicular') txt.textContent = `Perp: L1 ⊥ L2`;
+        else if (c.type === 'angular') txt.textContent = `Angle: L1 ∠ L2 = ${(c.value * 180 / Math.PI).toFixed(1)}°`;
         else if (c.type === 'fix') txt.textContent = `Fix: ${shortName(c.p1)}`;
 
         const delBtn = document.createElement('span');
@@ -477,6 +484,7 @@ export class SketchToolWindow {
 
           NotificationManager.getInstance().show("Constraint deleted", "info");
           this.refresh();
+          this.runDoFAnalysis();
         };
 
         item.appendChild(txt);
@@ -485,6 +493,49 @@ export class SketchToolWindow {
       });
     }
     content.appendChild(constrList);
+
+    // DoF Status Badge
+    const dofSectionTitle = document.createElement('div');
+    dofSectionTitle.className = 'sketch-section-title';
+    dofSectionTitle.textContent = 'Constraint Status';
+    content.appendChild(dofSectionTitle);
+
+    const badge = document.createElement('div');
+    badge.className = 'sketch-dof-badge';
+    badge.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-family: var(--font-mono, monospace);
+      background: var(--bg-secondary, #1e1e2e);
+      border: 1px solid var(--color-border, #333);
+      margin-top: 2px;
+    `;
+
+    const dot = document.createElement('span');
+    dot.className = 'sketch-dof-dot';
+    dot.style.cssText = `
+      width: 10px; height: 10px; border-radius: 50%;
+      display: inline-block; flex-shrink: 0;
+      background: #888;
+      transition: background 0.15s ease;
+    `;
+
+    const label = document.createElement('span');
+    label.className = 'sketch-dof-label';
+    label.textContent = 'No constraints';
+    label.style.color = '#888';
+
+    badge.appendChild(dot);
+    badge.appendChild(label);
+    content.appendChild(badge);
+    this.dofBadge = badge;
+
+    // Run DoF analysis to populate badge with current state
+    this.runDoFAnalysis();
 
     // 4. Constraint Actions grid
     const constrToolbarTitle = document.createElement('div');
@@ -720,6 +771,92 @@ export class SketchToolWindow {
       });
     };
 
+    // ANGULAR (Interactive)
+    const angBtn = document.createElement('button');
+    angBtn.className = 'sketch-btn';
+    angBtn.textContent = '∠ Angle';
+    angBtn.disabled = !twoLinesSelected;
+    angBtn.title = 'Select exactly 2 Line elements to set the angle between them';
+    angBtn.onclick = () => {
+      const seg1 = activeSegments[0];
+      const seg2 = activeSegments[1];
+
+      const p1 = getPointCoords(this.app.doc, seg1.p1);
+      const p2 = getPointCoords(this.app.doc, seg1.p2);
+      const p3 = getPointCoords(this.app.doc, seg2.p1);
+      const p4 = getPointCoords(this.app.doc, seg2.p2);
+      if (!p1 || !p2 || !p3 || !p4) return;
+
+      const vx1 = p2.x - p1.x, vy1 = p2.y - p1.y;
+      const vx2 = p4.x - p3.x, vy2 = p4.y - p3.y;
+      const len1 = Math.sqrt(vx1 * vx1 + vy1 * vy1);
+      const len2 = Math.sqrt(vx2 * vx2 + vy2 * vy2);
+      if (len1 < 1e-6 || len2 < 1e-6) return;
+
+      const a1 = Math.atan2(vy1, vx1);
+      const a2 = Math.atan2(vy2, vx2);
+      let diff = a2 - a1;
+      while (diff > Math.PI) diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+      const currentDeg = (Math.abs(diff) * 180 / Math.PI).toFixed(1);
+
+      const canvasRect = this.app.viewer.canvas.getBoundingClientRect();
+      const vx = canvasRect.left + canvasRect.width / 2 - 80;
+      const vy = canvasRect.top + canvasRect.height / 2 - 40;
+
+      this.app.dynamicInput.show(
+        vx, vy,
+        ["SET TARGET ANGLE", `Current: ${currentDeg}°`],
+        [],
+        true, [],
+        "Type angle in degrees and press Enter",
+        currentDeg
+      );
+
+      this.app.dynamicInput.onInputSubmitted((text) => {
+        const val = parseFloat(text);
+        if (!isNaN(val) && val > 0 && val < 180) {
+          this.applyNewConstraint({
+            type: 'angular',
+            l1: [ seg1.p1, seg1.p2 ],
+            l2: [ seg2.p1, seg2.p2 ],
+            value: val * Math.PI / 180
+          });
+        } else {
+          NotificationManager.getInstance().show("Invalid angle (0-180°)", "error");
+        }
+        this.app.dynamicInput.hide();
+      });
+    };
+    const selectedCirclesOrArcs = this.app.selectedEntityIds.size === 2 &&
+      Array.from(this.app.selectedEntityIds).every(id => {
+        const ent = this.app.doc.getEntity(id);
+        return ent instanceof Circle || ent instanceof Arc;
+      });
+
+    // CONCENTRIC
+    const concBtn = document.createElement('button');
+    concBtn.className = 'sketch-btn';
+    concBtn.textContent = '⊙ Concentric';
+    concBtn.disabled = !selectedCirclesOrArcs;
+    concBtn.title = 'Select exactly 2 Circles or Arcs to share the same center';
+    concBtn.onclick = () => {
+      const ids = Array.from(this.app.selectedEntityIds);
+      if (ids.length !== 2) return;
+      const ent1 = this.app.doc.getEntity(ids[0]);
+      const ent2 = this.app.doc.getEntity(ids[1]);
+      if (!ent1 || !ent2) return;
+      const isCircle1 = ent1 instanceof Circle || ent1 instanceof Arc;
+      const isCircle2 = ent2 instanceof Circle || ent2 instanceof Arc;
+      if (!isCircle1 || !isCircle2) return;
+
+      this.applyNewConstraint({
+        type: 'concentric',
+        p1: { entityId: ent1.id, pointId: 'center' },
+        p2: { entityId: ent2.id, pointId: 'center' }
+      });
+    };
+
     constrGrid.appendChild(fixBtn);
     constrGrid.appendChild(coinBtn);
     constrGrid.appendChild(horizBtn);
@@ -727,6 +864,8 @@ export class SketchToolWindow {
     constrGrid.appendChild(distBtn);
     constrGrid.appendChild(paraBtn);
     constrGrid.appendChild(perpBtn);
+    constrGrid.appendChild(angBtn);
+    constrGrid.appendChild(concBtn);
 
     content.appendChild(constrGrid);
 
@@ -820,6 +959,93 @@ export class SketchToolWindow {
 
     NotificationManager.getInstance().show("Constraint applied successfully", "success");
     this.refresh();
+
+    // Run DoF analysis after constraint change
+    this.runDoFAnalysis();
+  }
+
+  private clearDoFBadge(): void {
+    if (this.dofBadge) {
+      const dot = this.dofBadge.querySelector('.sketch-dof-dot') as HTMLElement;
+      const label = this.dofBadge.querySelector('.sketch-dof-label') as HTMLElement;
+      if (dot) dot.style.background = '#888';
+      if (label) {
+        label.style.color = '#888';
+        label.textContent = 'No constraints';
+      }
+    }
+    this.app.viewer.clearDoFColors();
+  }
+
+  private updateDofBadge(badge: HTMLElement, result: DocumentDoFResult | null): void {
+    const dot = badge.querySelector('.sketch-dof-dot') as HTMLElement;
+    const label = badge.querySelector('.sketch-dof-label') as HTMLElement;
+
+    if (!result || result.status === 'under' && result.dof === 0 && result.entityStatus.size === 0) {
+      if (dot) dot.style.background = '#888';
+      if (label) {
+        label.style.color = '#888';
+        label.textContent = 'No constraints';
+      }
+      return;
+    }
+
+    switch (result.status) {
+      case 'under':
+        if (dot) dot.style.background = '#4da6ff';
+        if (label) {
+          label.style.color = '#4da6ff';
+          label.textContent = `Under-constrained  (${result.dof} DoF free)`;
+        }
+        break;
+      case 'solved':
+        if (dot) dot.style.background = '#44cc77';
+        if (label) {
+          label.style.color = '#44cc77';
+          label.textContent = 'Fully constrained ✓';
+        }
+        break;
+      case 'over':
+        if (dot) dot.style.background = '#ff4444';
+        if (label) {
+          label.style.color = '#ff4444';
+          label.textContent = `Over-constrained  (${result.redundantConstraintIndices.size} conflict${result.redundantConstraintIndices.size > 1 ? 's' : ''})`;
+        }
+        break;
+    }
+  }
+
+  public runDoFAnalysis(): void {
+    const constraints = this.app.doc.constraints;
+    if (!constraints || constraints.length === 0) {
+      this.clearDoFBadge();
+      return;
+    }
+
+    const result = analyzeDocumentDoF(this.app.doc, constraints);
+
+    // Apply entity colors
+    this.app.viewer.setDoFColors(result.entityStatus, result.dof);
+
+    // Update badge if it exists
+    if (this.dofBadge) {
+      this.updateDofBadge(this.dofBadge, result);
+    }
+
+    // Highlight redundant constraint rows in the constraint list
+    const constraintItems = this.container.querySelectorAll('.constraint-list-item');
+    constraintItems.forEach((item, idx) => {
+      const htmlItem = item as HTMLElement;
+      if (result.redundantConstraintIndices.has(idx)) {
+        htmlItem.style.background = 'rgba(255,68,68,0.15)';
+        htmlItem.style.borderLeft = '2px solid #ff4444';
+        htmlItem.title = 'Redundant — conflicts with another constraint';
+      } else {
+        htmlItem.style.background = '';
+        htmlItem.style.borderLeft = '';
+        htmlItem.title = '';
+      }
+    });
   }
 
   public refresh() {

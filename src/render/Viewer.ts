@@ -90,6 +90,9 @@ export class Viewer {
 
   private mainGroup: THREE.Group = new THREE.Group();
   private constraintGroup: THREE.Group = new THREE.Group();
+  private doFColorGroup: THREE.Group = new THREE.Group();
+  private doFColorMap: Map<string, number> = new Map();
+  private lastDoF: number = 0;
   private temporaryMeshGroup: THREE.Group = new THREE.Group();
   private modellingBg: THREE.Texture;
   private scriptingBg: THREE.Texture;
@@ -127,6 +130,7 @@ export class Viewer {
     this.scene.add(this.baseLineGroup);
     this.scene.add(this.mainGroup);
     this.scene.add(this.constraintGroup);
+    this.scene.add(this.doFColorGroup);
     this.scene.add(this.temporaryMeshGroup);
 
     this.gridRenderer = new GridRenderer(this.scene);
@@ -1551,28 +1555,46 @@ export class Viewer {
   }
 
   addLine(x1:number,y1:number,x2:number,y2:number, id?: string, layer?: string, color?: number, isVisible = true, linetype?: string, elevation = 0, thickness = 0){
-    const obj = this.createLineObject(x1, y1, x2, y2, color || 7, linetype, elevation, thickness);
+    const resolvedColor = color || 7;
+    const obj = this.createLineObject(x1, y1, x2, y2, resolvedColor, linetype, elevation, thickness);
+    const colorForStorage = this.resolveColor(resolvedColor);
 
     if (id) obj.name = id;
-    if (layer) obj.userData = { layer };
+    if (layer) {
+      obj.userData = { layer, originalColor: colorForStorage };
+    } else {
+      obj.userData = { originalColor: colorForStorage };
+    }
     obj.visible = isVisible;
     this.mainGroup.add(obj);
   }
 
   addCircle(cx:number, cy:number, r:number, id?: string, layer?: string, color?: number, isVisible = true, linetype?: string, elevation = 0, thickness = 0){
-    const obj = this.createCircleObject(cx, cy, r, color || 7, linetype, elevation, thickness);
+    const resolvedColor = color || 7;
+    const obj = this.createCircleObject(cx, cy, r, resolvedColor, linetype, elevation, thickness);
+    const colorForStorage = this.resolveColor(resolvedColor);
 
     if (id) obj.name = id;
-    if (layer) obj.userData = { layer };
+    if (layer) {
+      obj.userData = { layer, originalColor: colorForStorage };
+    } else {
+      obj.userData = { originalColor: colorForStorage };
+    }
     obj.visible = isVisible;
     this.mainGroup.add(obj);
   }
 
   addArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean, id?: string, layer?: string, color?: number, isVisible = true, linetype?: string, elevation = 0, thickness = 0) {
-    const obj = this.createArcObject(cx, cy, r, startAngle, endAngle, ccw, color || 7, linetype, elevation, thickness);
+    const resolvedColor = color || 7;
+    const obj = this.createArcObject(cx, cy, r, startAngle, endAngle, ccw, resolvedColor, linetype, elevation, thickness);
+    const colorForStorage = this.resolveColor(resolvedColor);
 
     if (id) obj.name = id;
-    if (layer) obj.userData = { layer };
+    if (layer) {
+      obj.userData = { layer, originalColor: colorForStorage };
+    } else {
+      obj.userData = { originalColor: colorForStorage };
+    }
     obj.visible = isVisible;
     this.mainGroup.add(obj);
   }
@@ -1630,6 +1652,11 @@ export class Viewer {
         text = '•';
         x = pt.x;
         y = pt.y;
+      } else if (c.type === 'concentric') {
+        const pt = getPointCoords(doc, c.p1);
+        if (!pt) continue;
+        this.createConstraintSprite('⊙', pt.x, pt.y);
+        continue;
       } else if (c.type === 'horizontal') {
         const p1 = getPointCoords(doc, c.p1);
         const p2 = getPointCoords(doc, c.p2);
@@ -1667,7 +1694,7 @@ export class Viewer {
           const dim = new Dimension(`const_dim_${doc.constraints.indexOf(c)}`, 'ALIGNED', p1.x, p1.y, p2.x, p2.y, offsetDist);
           dim.dimLineLocation = dimLineLocation;
           dim.style = {
-            textHeight: 1.8,
+            textHeight: 3.6,
             arrowSize: 1.2,
             offset: offsetDist,
             gap: 0.8,
@@ -1676,9 +1703,9 @@ export class Viewer {
             DIMTAD: true
           };
           (dim as any).textOverride = `d = ${c.value.toFixed(2)}`;
-          
+
           const units = doc.units || { type: 'decimal', precision: 2, scale: 1.0 };
-          const dimObj = this.createDimensionObject(dim, units, 6);
+          const dimObj = this.createDimensionObject(dim, units, 0x38bdf8);
           this.constraintGroup.add(dimObj);
         }
         continue;
@@ -1704,6 +1731,73 @@ export class Viewer {
         const p4 = getPointCoords(doc, c.l2[1]);
         if (p3 && p4) {
           this.createConstraintSprite('⊥', (p3.x + p4.x) / 2, (p3.y + p4.y) / 2);
+        }
+        continue;
+      } else if (c.type === 'angular') {
+        const p1 = getPointCoords(doc, c.l1[0]);
+        const p2 = getPointCoords(doc, c.l1[1]);
+        const p3 = getPointCoords(doc, c.l2[0]);
+        const p4 = getPointCoords(doc, c.l2[1]);
+        if (p1 && p2 && p3 && p4) {
+          const vx1 = p2.x - p1.x, vy1 = p2.y - p1.y;
+          const vx2 = p4.x - p3.x, vy2 = p4.y - p3.y;
+          const len1 = Math.sqrt(vx1 * vx1 + vy1 * vy1);
+          const len2 = Math.sqrt(vx2 * vx2 + vy2 * vy2);
+          if (len1 > 1e-6 && len2 > 1e-6) {
+            const denom = vx1 * vy2 - vy1 * vx2;
+            const a1 = Math.atan2(vy1, vx1);
+            const a2 = Math.atan2(vy2, vx2);
+
+            let vertex: { x: number, y: number };
+            if (Math.abs(denom) > 1e-6) {
+              const t = ((p3.x - p1.x) * vy2 - (p3.y - p1.y) * vx2) / denom;
+              vertex = { x: p1.x + t * vx1, y: p1.y + t * vy1 };
+            } else {
+              const cx = (p1.x + p2.x + p3.x + p4.x) / 4;
+              const cy = (p1.y + p2.y + p3.y + p4.y) / 4;
+              vertex = { x: cx, y: cy };
+            }
+
+            const ang1 = Math.atan2(p1.y - vertex.y, p1.x - vertex.x);
+            const ang2 = Math.atan2(p3.y - vertex.y, p3.x - vertex.x);
+            let diff = ang2 - ang1;
+            while (diff > Math.PI) diff -= 2 * Math.PI;
+            while (diff < -Math.PI) diff += 2 * Math.PI;
+            const midA = ang1 + diff / 2;
+            const angleDeg = (Math.abs(diff) * 180 / Math.PI).toFixed(1) + '°';
+            const targetDeg = (c.value * 180 / Math.PI).toFixed(1) + '°';
+
+            const arcRadius = Math.min(len1, len2) * 0.3;
+            const sA = ang1;
+            const eA = ang1 + diff;
+
+            const arcPoints: THREE.Vector3[] = [];
+            const segments = 24;
+            for (let i = 0; i <= segments; i++) {
+              const t = i / segments;
+              const ang = sA + t * (eA - sA);
+              arcPoints.push(new THREE.Vector3(
+                vertex.x + Math.cos(ang) * arcRadius,
+                vertex.y + Math.sin(ang) * arcRadius,
+                0
+              ));
+            }
+            const arcColor = 0x38bdf8;
+            this.constraintGroup.add(new THREE.Line(
+              new THREE.BufferGeometry().setFromPoints(arcPoints),
+              new THREE.LineBasicMaterial({ color: arcColor })
+            ));
+
+            const tx = vertex.x + Math.cos(midA) * (arcRadius + 10);
+            const ty = vertex.y + Math.sin(midA) * (arcRadius + 10);
+            const textMesh = this.createTextObject(`${angleDeg}→${targetDeg}`, 5.0, 5, 'osifont');
+            textMesh.position.set(tx, ty, 0.1);
+            textMesh.rotation.z = midA + Math.PI / 2;
+            if (textMesh.rotation.z > Math.PI / 2 && textMesh.rotation.z < 3 * Math.PI / 2) {
+              textMesh.rotation.z += Math.PI;
+            }
+            this.constraintGroup.add(textMesh);
+          }
         }
         continue;
       }
@@ -3815,5 +3909,87 @@ export class Viewer {
     } else {
       this.renderer.render(this.scene, this.camera);
     }
+  }
+
+  // DOF COLORS — tuned to be visible on the dark CAD background
+  private static readonly DOF_COLOR = {
+    underconstrained:  0x4da6ff,   // blue — has free movement
+    fullyconstrained:  0x44cc77,   // green — fully solved
+    overconstrained:   0xff4444,   // red — conflicting constraints
+    normal:            0xebf2ff,   // default entity color (unchanged)
+  } as const;
+
+  public setDoFColors(
+    entityStatus: Map<string, import('../core/engine/DocumentDoFAnalyzer').EntityDoFStatus>,
+    dof: number,
+  ): void {
+    // Reset previously tinted entities that are no longer in the map
+    for (const [prevId] of this.doFColorMap) {
+      if (!entityStatus.has(prevId)) {
+        this.tintEntityLines(prevId, null);
+      }
+    }
+    this.doFColorMap.clear();
+
+    // Apply new tints
+    for (const [entityId, status] of entityStatus) {
+      const color = Viewer.DOF_COLOR[status] ?? Viewer.DOF_COLOR.normal;
+      this.tintEntityLines(entityId, color);
+      this.doFColorMap.set(entityId, color);
+    }
+
+    // Store dof for requestRender
+    this.lastDoF = dof;
+    this.scheduleRender();
+  }
+
+  public clearDoFColors(): void {
+    for (const [entityId] of this.doFColorMap) {
+      this.tintEntityLines(entityId, null);
+    }
+    this.doFColorMap.clear();
+    this.lastDoF = 0;
+    this.scheduleRender();
+  }
+
+  public getLastDoF(): number {
+    return this.lastDoF;
+  }
+
+  private tintEntityLines(entityId: string, color: number | null): void {
+    const obj = this.scene.getObjectByName(entityId);
+    if (!obj) return;
+
+    if (color === null) {
+      const originalColor = this.getEntityLayerColor(entityId);
+      obj.traverse(child => {
+        if (
+          (child instanceof THREE.Line || child instanceof THREE.LineSegments) &&
+          child.material instanceof THREE.LineBasicMaterial
+        ) {
+          child.material.color.setHex(originalColor);
+          child.material.needsUpdate = true;
+        }
+      });
+      return;
+    }
+
+    obj.traverse(child => {
+      if (
+        (child instanceof THREE.Line || child instanceof THREE.LineSegments) &&
+        child.material instanceof THREE.LineBasicMaterial
+      ) {
+        child.material.color.setHex(color);
+        child.material.needsUpdate = true;
+      }
+    });
+  }
+
+  private getEntityLayerColor(entityId: string): number {
+    const obj = this.scene.getObjectByName(entityId);
+    if (obj?.userData?.originalColor !== undefined) {
+      return obj.userData.originalColor as number;
+    }
+    return Viewer.DOF_COLOR.normal;
   }
 }

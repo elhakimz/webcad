@@ -1,6 +1,8 @@
 import * as THREE from "three"
 import { Viewer } from "./render/Viewer"
 import { App } from "./app"
+import { Entity } from "./core/model/Entity"
+
 import { CommandLine } from "./ui/CommandLine"
 import { RibbonContainer } from "./ui/RibbonContainer"
 import { LayerInfoRibbonBar } from "./ui/LayerInfoRibbonBar"
@@ -27,13 +29,41 @@ import { AppTabs } from "./ui/AppTabs"
 import { ScadRibbonBar } from "./ui/ScadRibbonBar"
 import { ProjectToolWindow } from "./ui/ProjectToolWindow"
 import { BlockToolWindow } from "./ui/BlockToolWindow"
+import { GeneratorToolWindow } from "./ui/GeneratorToolWindow"
+import { SketchToolWindow } from "./ui/SketchToolWindow"
 
 // 1. Core Setup
 const canvas = document.getElementById("c") as HTMLCanvasElement
 const viewer = new Viewer(canvas)
 const app = new App(viewer)
+;(window as any).app = app
 const cmdLine = new CommandLine()
 const dockingManager = new DockingManager()
+
+// Global Alert and Exception Redirection to Command Bar
+window.alert = (message?: any) => {
+  console.warn("[Intercepted Alert]", message);
+  const msgStr = String(message ?? '');
+  const prefix = (msgStr.toUpperCase().startsWith("ERROR") || msgStr.toUpperCase().startsWith("FAILED")) ? "" : "Error: ";
+  cmdLine.print(`${prefix}${msgStr}`);
+};
+
+window.addEventListener("error", (event) => {
+  const errorMsg = event.error ? (event.error.message || String(event.error)) : event.message;
+  if (errorMsg.includes("__cxa_can_catch") || errorMsg.includes("Parametric rebuild failed")) {
+    event.preventDefault(); // Prevent Vite/browser crash overlays for parametric errors
+  }
+  cmdLine.print(`Error: Uncaught exception: ${errorMsg}`);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason;
+  const errorMsg = reason ? (reason.message || String(reason)) : "Unknown rejection";
+  if (errorMsg.includes("__cxa_can_catch") || errorMsg.includes("Parametric rebuild failed")) {
+    event.preventDefault(); // Prevent Vite/browser crash overlays for parametric errors
+  }
+  cmdLine.print(`Error: Unhandled promise rejection: ${errorMsg}`);
+});
 
 // Initialize layers
 app.doc.layers.createLayer("1", 7, "CONTINUOUS");
@@ -217,10 +247,27 @@ const blockToolWindow = new BlockToolWindow(blockToolbar, app)
 mainArea.insertBefore(blockToolbar.getElement(), toolWindowBar.getElement().nextSibling);
 toolWindowBar.addWindow("B", blockToolbar)
 
+const generatorToolbar = new ToolWindow("generator", "Object Generator")
+const generatorToolWindow = new GeneratorToolWindow(generatorToolbar, app)
+mainArea.insertBefore(generatorToolbar.getElement(), toolWindowBar.getElement().nextSibling);
+toolWindowBar.addWindow("G", generatorToolbar)
+
+const sketchToolbar = new ToolWindow("sketch", "Sketching")
+const sketchToolWindow = new SketchToolWindow(sketchToolbar, app)
+app.setSketchToolWindow(sketchToolWindow)
+mainArea.insertBefore(sketchToolbar.getElement(), toolWindowBar.getElement().nextSibling);
+toolWindowBar.addWindow("SK", sketchToolbar)
+
 // 4b. SCAD Scripting Tools & Tabs Setup
 const scadEditor = new ScadEditor((geometries) => {
+  viewer.clearTemporaryMeshes();
   geometries.forEach(geo => {
-    viewer.addTemporaryMesh(geo);
+    if (geo instanceof Entity) {
+      viewer.addTemporaryEntity(geo);
+    } else {
+      const color = geo.userData?.color;
+      viewer.addTemporaryMesh(geo, color);
+    }
   });
 }, app);
 
@@ -380,13 +427,14 @@ window.addEventListener("mousemove", (e) => {
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
 
-  if (e.buttons & 2) {
+  if ((e.buttons & 2) && !viewer.isPanning) {
     if (app.activeCenterGrip) {
       const rect = viewer.canvas.getBoundingClientRect();
       const clampedX = Math.max(rect.left, Math.min(rect.right, e.clientX));
       const clampedY = Math.max(rect.top, e.clientY); 
       app.move(clampedX, clampedY, e.ctrlKey, e.shiftKey);
-    } else {
+    } else if (!viewer.isPlainView) {
+      // Only orbit in 3D/orthogonal views; plain views (TOP/FRONT/LEFT/RIGHT) keep camera angle locked
       viewer.orbit(dx, dy);
     }
     return;
@@ -531,7 +579,15 @@ cmdLine.onCommand(async (val) => {
   updatePrompt()
 })
 
-window.addEventListener('contextmenu', (e) => { if (e.target === canvas) e.preventDefault(); });
+window.addEventListener('contextmenu', (e) => {
+  if (e.target === canvas) {
+    e.preventDefault();
+    if (viewer.isPanningActive() || viewer.wasViewportPanEnded() || e.buttons === 3) {
+      return;
+    }
+    app.showDraftingContextMenu(e.clientX, e.clientY);
+  }
+});
 
 window.addEventListener("pointerdown", (e) => {
   const target = e.target as HTMLElement;
@@ -553,7 +609,7 @@ window.addEventListener("pointerup", async (e) => {
     const rect = canvas.getBoundingClientRect();
     const clampedX = Math.max(rect.left, Math.min(rect.right, e.clientX));
     const clampedY = Math.max(rect.top, Math.min(rect.bottom, e.clientY));
-    const res = await app.pointerUp(clampedX, clampedY, e.shiftKey, e.ctrlKey);
+    const res = await app.pointerUp(clampedX, clampedY, e.shiftKey, e.ctrlKey, e.button);
     if (typeof res === 'string' && res) cmdLine.print(res);
     app.move(clampedX, clampedY, e.ctrlKey, e.shiftKey);
     updatePrompt();

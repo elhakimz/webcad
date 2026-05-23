@@ -1,6 +1,7 @@
 import { ActionHandler, AppContext } from "../types";
 import { CommandAction, CommandResponse } from "../../../commands/types";
 import { OpenCascadeService } from "../../../io/OpenCascadeService";
+import { Solid3D } from "../../../model/Solid3D";
 
 export class ScaleHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -16,9 +17,8 @@ export class ScaleHandler implements ActionHandler {
         const entity = doc.getEntity(id);
         if (entity) {
           const before = entity.clone(entity.id);
-          const isSolid3D = (entity as any).type === "Solid3D" || entity.constructor.name === "Solid3D";
           
-          if (isSolid3D) {
+          if (entity instanceof Solid3D) {
             try {
               const cx = action.baseX!;
               const cy = action.baseY!;
@@ -26,7 +26,7 @@ export class ScaleHandler implements ActionHandler {
               
               const geom = await OpenCascadeService.getInstance().scaleShape(id, factor, cx, cy, 0);
               
-              const solid = entity as any;
+              const solid = entity as Solid3D;
               solid.positions = Array.from(geom.attributes.position.array);
               solid.indices = geom.index ? Array.from(geom.index.array) : [];
               solid.faceMapping = geom.userData.faceMapping;
@@ -34,6 +34,19 @@ export class ScaleHandler implements ActionHandler {
               solid.brepSnapshot = geom.userData.brepSnapshot;
 
               solid.updateAbsolutePosition();
+              
+              solid.ensureFeaturesFromCreationParams();
+              solid.features.push({
+                id: `${id}_feat_${Date.now()}`,
+                type: "Scale",
+                parameters: {
+                  factor: factor,
+                  baseX: cx,
+                  baseY: cy,
+                  baseZ: 0
+                },
+                isActive: true
+              });
               
               addEntity(entity, false, false);
             } catch (err) {

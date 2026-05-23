@@ -19,6 +19,7 @@ import { Dimension } from "../model/Dimension";
 import { Spline } from "../model/Spline";
 import { Note } from "../model/Note";
 import { Solid3D } from "../model/Solid3D";
+import { uint8ArrayToBase64 } from "../persistence/EntitySerializer";
 
 export class DXFExporter {
   export(doc: Document): string {
@@ -260,30 +261,40 @@ export class DXFExporter {
         s += "  2\n" + e.targetEntityId + "\n";
       }
     } else if (e instanceof Solid3D) {
-      // Apply entity's position and rotation to vertices during export!
-      const matrix = new THREE.Matrix4();
-      const euler = new THREE.Euler(e.rotation.x, e.rotation.y, e.rotation.z);
-      matrix.makeRotationFromEuler(euler);
-      matrix.setPosition(e.position.x, e.position.y, e.position.z);
-
       for (let i = 0; i < e.indices.length; i += 3) {
         const i1 = e.indices[i];
         const i2 = e.indices[i + 1];
         const i3 = e.indices[i + 2];
         
-        const v1 = new THREE.Vector3(e.positions[i1 * 3], e.positions[i1 * 3 + 1], e.positions[i1 * 3 + 2]).applyMatrix4(matrix);
-        const v2 = new THREE.Vector3(e.positions[i2 * 3], e.positions[i2 * 3 + 1], e.positions[i2 * 3 + 2]).applyMatrix4(matrix);
-        const v3 = new THREE.Vector3(e.positions[i3 * 3], e.positions[i3 * 3 + 1], e.positions[i3 * 3 + 2]).applyMatrix4(matrix);
+        const x1 = e.positions[i1 * 3];
+        const y1 = e.positions[i1 * 3 + 1];
+        const z1 = e.positions[i1 * 3 + 2];
+        const x2 = e.positions[i2 * 3];
+        const y2 = e.positions[i2 * 3 + 1];
+        const z2 = e.positions[i2 * 3 + 2];
+        const x3 = e.positions[i3 * 3];
+        const y3 = e.positions[i3 * 3 + 1];
+        const z3 = e.positions[i3 * 3 + 2];
         
         s += "  0\n3DFACE\n  8\n" + layer + "\n";
         s += "1001\nWEBCAD\n1000\n" + e.id + "\n";
-        if (i === 0 && e.creationParams) {
-          s += "1000\nCREATION_PARAMS:" + JSON.stringify(e.creationParams) + "\n";
+        if (i === 0) {
+          if (e.creationParams) {
+            s += "1000\nCREATION_PARAMS:" + JSON.stringify(e.creationParams) + "\n";
+          }
+          if (e.features && e.features.length > 0) {
+            s += "1000\nFEATURES:" + JSON.stringify(e.features) + "\n";
+          }
+          if (e.baseBrepSnapshot) {
+            s += "1000\nBASE_BREP_SNAPSHOT:" + uint8ArrayToBase64(e.baseBrepSnapshot) + "\n";
+          }
+          s += "1000\nROTATION:" + JSON.stringify(e.rotation) + "\n";
+          s += "1000\nPOSITION:" + JSON.stringify(e.position) + "\n";
         }
-        s += " 10\n" + v1.x + "\n 20\n" + v1.y + "\n 30\n" + v1.z + "\n";
-        s += " 11\n" + v2.x + "\n 21\n" + v2.y + "\n 31\n" + v2.z + "\n";
-        s += " 12\n" + v3.x + "\n 22\n" + v3.y + "\n 32\n" + v3.z + "\n";
-        s += " 13\n" + v3.x + "\n 23\n" + v3.y + "\n 33\n" + v3.z + "\n";
+        s += " 10\n" + x1 + "\n 20\n" + y1 + "\n 30\n" + z1 + "\n";
+        s += " 11\n" + x2 + "\n 21\n" + y2 + "\n 31\n" + z2 + "\n";
+        s += " 12\n" + x3 + "\n 22\n" + y3 + "\n 32\n" + z3 + "\n";
+        s += " 13\n" + x3 + "\n 23\n" + y3 + "\n 33\n" + z3 + "\n";
       }
     }
 

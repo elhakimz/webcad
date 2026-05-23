@@ -28,6 +28,7 @@ import { Insert } from "../core/model/Insert"
 import { BlockDefinition } from "../core/model/Block"
 import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb, getLinetypeSettings, tessellateSpline } from "../core/engine/MathUtils"
 import { Spline } from "../core/model/Spline"
+import { DocumentConstraint, getPointCoords } from "../core/engine/SketchSolver"
 import { Note } from "../core/model/Note"
 import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
 import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview, EntitiesPreview } from "../core/commands/types"
@@ -43,10 +44,11 @@ export class Viewer {
   font: InstanceType<typeof Font> | null = null
   public directionalLight: THREE.DirectionalLight | null = null;
 
-  private isPanning = false
+  public isPanning = false
   private isLeftPanEnabled = false
   private hasPanned = false
   private panEnded = false
+  private viewportPanEnded = false
   private lastPanPos = new THREE.Vector2()
   private panStartX = 0
   private panStartY = 0
@@ -61,6 +63,9 @@ export class Viewer {
   private selectionBox: THREE.Line | null = null
   private shadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' = 'SHADED';
   public target: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
+  /** True when camera is locked to a flat orthographic view (TOP/FRONT/LEFT/RIGHT/BOTTOM/BACK). */
+  public isPlainView = true;
+  public currentViewName = 'TOP';
   public selectableMeshes: THREE.Mesh[] = [];
   public edgeLines: THREE.Object3D[] = [];
   private highlightedEntityIds: string[] = [];
@@ -84,6 +89,7 @@ export class Viewer {
   };
 
   private mainGroup: THREE.Group = new THREE.Group();
+  private constraintGroup: THREE.Group = new THREE.Group();
   private temporaryMeshGroup: THREE.Group = new THREE.Group();
   private modellingBg: THREE.Texture;
   private scriptingBg: THREE.Texture;
@@ -120,6 +126,7 @@ export class Viewer {
     this.scene.add(this.boundaryGroup);
     this.scene.add(this.baseLineGroup);
     this.scene.add(this.mainGroup);
+    this.scene.add(this.constraintGroup);
     this.scene.add(this.temporaryMeshGroup);
 
     this.gridRenderer = new GridRenderer(this.scene);
@@ -287,16 +294,20 @@ export class Viewer {
 
   set3DMode(enabled: boolean) {
     if (enabled) {
-      // Switch to Isometric view
+      // Switch to Isometric view — orbit enabled
       const size = (this.camera.top - this.camera.bottom) / 2;
       this.camera.up.set(0, 0, 1); // Z up for 3D
       this.camera.position.set(size, -size, size);
       this.camera.lookAt(0, 0, 0);
+      this.isPlainView = false;
+      this.currentViewName = 'ORTHOGONAL';
     } else {
-      // Switch to Top view
+      // Switch to Top view — orbit disabled
       this.camera.up.set(0, 1, 0); // Y up for 2D
       this.camera.position.set(0, 0, 500);
       this.camera.lookAt(0, 0, 0);
+      this.isPlainView = true;
+      this.currentViewName = 'TOP';
     }
     this.camera.updateProjectionMatrix();
     this.scheduleRender();
@@ -305,6 +316,11 @@ export class Viewer {
   setCameraView(view: string) {
     const size = (this.camera.top - this.camera.bottom) / 2 || 500;
     
+    // Plain (locked) views disable orbit; 3D/orthogonal views re-enable it
+    const plainViews = new Set(['TOP', 'BOTTOM', 'FRONT', 'BACK', 'LEFT', 'RIGHT']);
+    this.isPlainView = plainViews.has(view);
+    this.currentViewName = view;
+
     switch (view) {
       case 'TOP':
         this.camera.up.set(0, 1, 0);
@@ -506,6 +522,29 @@ export class Viewer {
     this.camera.lookAt(this.target);
     this.camera.updateProjectionMatrix();
     this.scheduleRender();
+  }
+
+  /**
+   * Pan the camera by screen-space pixel deltas.
+   * In plain views the camera position must move along the view plane axes,
+   * not just X/Y world coordinates (which breaks FRONT/LEFT/RIGHT views).
+   */
+  public applyPan(dx: number, dy: number) {
+    // Build the right and up axes of the current camera view
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    this.camera.getWorldDirection(new THREE.Vector3()); // ensure matrices fresh
+    right.crossVectors(this.camera.getWorldDirection(new THREE.Vector3()), this.camera.up).normalize();
+    up.copy(this.camera.up).normalize();
+
+    const panScale = 1 / this.camera.zoom;
+    // Panning right in screen space → move camera in -right direction
+    const panDelta = new THREE.Vector3()
+      .addScaledVector(right, -dx * panScale)
+      .addScaledVector(up, dy * panScale);
+
+    this.camera.position.add(panDelta);
+    this.target.add(panDelta);
   }
 
   updateGrid(spacing: number, enabled: boolean) {
@@ -848,6 +887,9 @@ export class Viewer {
     } else if (entity instanceof Hatch) {
       const color = this.resolveColor(entity.properties?.color, previewColor);
       obj = this.createHatchObject(entity, color);
+    } else if (entity instanceof Solid3D) {
+      const color = this.resolveColor(entity.properties?.color, previewColor);
+      obj = this.createSolid3DObject(entity, color);
     } else if (entity instanceof Insert) {
       if (this.getBlockCallback && this.getLayerPropertiesCallback) {
         const block = this.getBlockCallback(entity.blockName);
@@ -1345,16 +1387,43 @@ export class Viewer {
   }
 
   private setupEvents() {
+    // Track which mouse buttons are currently held for dual-button pan
+    const buttonsDown = new Set<number>();
+
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault()
+      
+      // Get the world position under the mouse before zooming
+      const worldPtBefore = this.screenToWorldActual(e.clientX, e.clientY);
+      
       const zoomAmount = e.deltaY > 0 ? 0.9 : 1.1
       this.camera.zoom *= zoomAmount
       this.camera.updateProjectionMatrix()
+      
+      // Get the world position under the mouse after zooming
+      const worldPtAfter = this.screenToWorldActual(e.clientX, e.clientY);
+      
+      // Shift camera and target to keep the point under the mouse exactly in place
+      const diff = new THREE.Vector3().subVectors(worldPtBefore, worldPtAfter);
+      this.camera.position.add(diff);
+      this.target.add(diff);
+      
       this.scheduleRender()
     }, { passive: false })
 
     this.canvas.addEventListener('pointerdown', (e) => {
-      if (e.button === 1 || (e.button === 0 && this.isLeftPanEnabled)) { 
+      buttonsDown.add(e.button);
+
+      // Dual-button pan: left (0) + right (2) pressed together or e.buttons is 3 (left + right held)
+      if ((buttonsDown.has(0) && buttonsDown.has(2)) || e.buttons === 3) {
+        this.isPanning = true;
+        this.lastPanPos.set(e.clientX, e.clientY);
+        this.canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+        return;
+      }
+
+      if (e.button === 1 || e.buttons === 4 || (e.button === 0 && this.isLeftPanEnabled)) { 
         this.isPanning = true;
         this.lastPanPos.set(e.clientX, e.clientY)
         if (this.isLeftPanEnabled) {
@@ -1366,30 +1435,68 @@ export class Viewer {
     })
 
     this.canvas.addEventListener('pointermove', (e) => {
+      // Auto-trigger pan if Left+Right (3) or Middle (4) are held down
+      if (!this.isPanning && (e.buttons === 3 || e.buttons === 4)) {
+        this.isPanning = true;
+        this.lastPanPos.set(e.clientX, e.clientY);
+        this.canvas.setPointerCapture(e.pointerId);
+      }
+
       if (this.isPanning) {
         if (this.isLeftPanEnabled) this.hasPanned = true
         const dx = e.clientX - this.lastPanPos.x
         const dy = e.clientY - this.lastPanPos.y
-        this.camera.position.x -= dx / this.camera.zoom
-        this.camera.position.y += dy / this.camera.zoom
-        this.target.x -= dx / this.camera.zoom
-        this.target.y += dy / this.camera.zoom
+        this.applyPan(dx, dy);
         this.lastPanPos.set(e.clientX, e.clientY)
         this.scheduleRender()
       }
     })
 
     this.canvas.addEventListener('pointerup', (e) => {
+      buttonsDown.delete(e.button);
+
+      // End dual-button pan when either button is released, or when buttons mask drops
+      if (e.button === 0 || e.button === 2) {
+        // Only end pan if it was started by dual-button (not by isLeftPanEnabled)
+        if (!this.isLeftPanEnabled) {
+          if (this.isPanning) {
+            this.viewportPanEnded = true;
+          }
+          this.isPanning = false;
+          try {
+            this.canvas.releasePointerCapture(e.pointerId);
+          } catch (err) {}
+        }
+      }
+
       if (e.button === 1) {
+        if (this.isPanning) {
+          this.viewportPanEnded = true;
+        }
         this.isPanning = false
-        this.canvas.releasePointerCapture(e.pointerId)
+        try {
+          this.canvas.releasePointerCapture(e.pointerId);
+        } catch (err) {}
       }
       if (e.button === 0 && this.isLeftPanEnabled) {
         this.isPanning = false;
         this.isLeftPanEnabled = false;
         this.hasPanned = false;
         this.panEnded = true;
-        this.canvas.releasePointerCapture(e.pointerId);
+        try {
+          this.canvas.releasePointerCapture(e.pointerId);
+        } catch (err) {}
+      }
+    })
+
+    // Clean up button state if pointer leaves the window
+    this.canvas.addEventListener('pointercancel', () => {
+      buttonsDown.clear();
+      if (!this.isLeftPanEnabled) {
+        if (this.isPanning) {
+          this.viewportPanEnded = true;
+        }
+        this.isPanning = false;
       }
     })
   }
@@ -1498,7 +1605,169 @@ export class Viewer {
       lines.userData = { layer };
     }
     lines.visible = isVisible;
-    this.mainGroup.add(lines);
+  }
+
+  updateConstraints(doc: any) {
+    this.constraintGroup.clear();
+    if (!doc || !doc.constraints || doc.constraints.length === 0) {
+      this.scheduleRender();
+      return;
+    }
+
+    for (const c of doc.constraints) {
+      let text = '';
+      let x = 0, y = 0;
+
+      if (c.type === 'fix') {
+        const pt = getPointCoords(doc, c.p1);
+        if (!pt) continue;
+        text = '⚓';
+        x = pt.x;
+        y = pt.y;
+      } else if (c.type === 'coincident') {
+        const pt = getPointCoords(doc, c.p1);
+        if (!pt) continue;
+        text = '•';
+        x = pt.x;
+        y = pt.y;
+      } else if (c.type === 'horizontal') {
+        const p1 = getPointCoords(doc, c.p1);
+        const p2 = getPointCoords(doc, c.p2);
+        if (!p1 || !p2) continue;
+        text = 'H';
+        x = (p1.x + p2.x) / 2;
+        y = (p1.y + p2.y) / 2;
+      } else if (c.type === 'vertical') {
+        const p1 = getPointCoords(doc, c.p1);
+        const p2 = getPointCoords(doc, c.p2);
+        if (!p1 || !p2) continue;
+        text = 'V';
+        x = (p1.x + p2.x) / 2;
+        y = (p1.y + p2.y) / 2;
+      } else if (c.type === 'distance') {
+        const p1 = getPointCoords(doc, c.p1);
+        const p2 = getPointCoords(doc, c.p2);
+        if (!p1 || !p2) continue;
+        
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 1e-6) {
+          const ux = dx / len;
+          const uy = dy / len;
+          const perpX = -uy;
+          const perpY = ux;
+          
+          const offsetDist = 6.0;
+          const dimLineLocation = {
+            x: (p1.x + p2.x) / 2 + perpX * offsetDist,
+            y: (p1.y + p2.y) / 2 + perpY * offsetDist
+          };
+          
+          const dim = new Dimension(`const_dim_${doc.constraints.indexOf(c)}`, 'ALIGNED', p1.x, p1.y, p2.x, p2.y, offsetDist);
+          dim.dimLineLocation = dimLineLocation;
+          dim.style = {
+            textHeight: 1.8,
+            arrowSize: 1.2,
+            offset: offsetDist,
+            gap: 0.8,
+            precision: 2,
+            DIMTOH: false,
+            DIMTAD: true
+          };
+          (dim as any).textOverride = `d = ${c.value.toFixed(2)}`;
+          
+          const units = doc.units || { type: 'decimal', precision: 2, scale: 1.0 };
+          const dimObj = this.createDimensionObject(dim, units, 6);
+          this.constraintGroup.add(dimObj);
+        }
+        continue;
+      } else if (c.type === 'parallel') {
+        const p1 = getPointCoords(doc, c.l1[0]);
+        const p2 = getPointCoords(doc, c.l1[1]);
+        if (p1 && p2) {
+          this.createConstraintSprite('//', (p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+        }
+        const p3 = getPointCoords(doc, c.l2[0]);
+        const p4 = getPointCoords(doc, c.l2[1]);
+        if (p3 && p4) {
+          this.createConstraintSprite('//', (p3.x + p4.x) / 2, (p3.y + p4.y) / 2);
+        }
+        continue;
+      } else if (c.type === 'perpendicular') {
+        const p1 = getPointCoords(doc, c.l1[0]);
+        const p2 = getPointCoords(doc, c.l1[1]);
+        if (p1 && p2) {
+          this.createConstraintSprite('⊥', (p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+        }
+        const p3 = getPointCoords(doc, c.l2[0]);
+        const p4 = getPointCoords(doc, c.l2[1]);
+        if (p3 && p4) {
+          this.createConstraintSprite('⊥', (p3.x + p4.x) / 2, (p3.y + p4.y) / 2);
+        }
+        continue;
+      }
+
+      if (text) {
+        let color = '#38bdf8';
+        if (text === 'H' || text === 'V') {
+          color = '#c084fc'; // Elegant premium purple
+        }
+        this.createConstraintSprite(text, x, y, color);
+      }
+    }
+
+    this.scheduleRender();
+  }
+
+  private createConstraintSprite(text: string, x: number, y: number, color = '#38bdf8') {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    
+    const fontSize = 28;
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    const textWidth = ctx.measureText(text).width;
+    
+    const paddingX = 6;
+    const paddingY = 6;
+    const width = textWidth + paddingX * 2;
+    const height = fontSize + paddingY * 2;
+    
+    canvas.width = width;
+    canvas.height = height;
+    
+    ctx.clearRect(0, 0, width, height);
+    
+    // Draw text with a high-contrast dark outline (glow effect) for premium aesthetics and clear readability
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    
+    // Thick dark glow outline first
+    ctx.strokeStyle = 'rgba(15, 23, 42, 0.95)'; // Dark Slate 900
+    ctx.lineWidth = 4;
+    ctx.strokeText(text, width / 2, height / 2);
+    
+    // Filled text in ACI / premium color
+    ctx.fillStyle = color;
+    ctx.fillText(text, width / 2, height / 2);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    
+    const material = new THREE.SpriteMaterial({ 
+      map: texture, 
+      transparent: true,
+      depthTest: false
+    });
+    const sprite = new THREE.Sprite(material);
+    
+    const worldHeight = 3.5; // Sleeker, more compact size suited for pure text
+    const aspectRatio = width / height;
+    sprite.scale.set(worldHeight * aspectRatio, worldHeight, 1);
+    sprite.position.set(x, y + 2.5, 0.1); // Reduced vertical offset to avoid distance dimension overlaps
+    
+    this.constraintGroup.add(sprite);
   }
 
   addSolid3D(entity: Solid3D, layer?: string, color?: number, isVisible = true) {
@@ -1506,11 +1775,6 @@ export class Viewer {
     if (entity.id) obj.name = entity.id;
     if (layer) obj.userData = { ...obj.userData, layer };
     obj.visible = isVisible;
-    
-    // Apply entity's persisted position and rotation on top of center
-    obj.position.add(new THREE.Vector3(entity.position.x, entity.position.y, entity.position.z));
-    const euler = new THREE.Euler(entity.rotation.x, entity.rotation.y, entity.rotation.z);
-    obj.quaternion.setFromEuler(euler);
     
     this.mainGroup.add(obj);
     const mesh = obj.children.find(child => child instanceof THREE.Mesh && child.userData.type === 'Solid3D') as THREE.Mesh;
@@ -2654,7 +2918,7 @@ export class Viewer {
     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(ext2Points), extMat));
 
     const value = entity.computeValue();
-    const text = FormatUtils.formatValue(value, units);
+    const text = (entity as any).textOverride !== undefined ? (entity as any).textOverride : FormatUtils.formatValue(value, units);
 
     const textMesh = this.createTextObject(text, style.textHeight, colorIndex, "osifont");
     const mesh = textMesh.children[0] as THREE.Mesh;
@@ -2943,12 +3207,13 @@ export class Viewer {
         grips.forEach(grip => {
           const x = grip.point.x;
           const y = grip.point.y;
+          const z = grip.point.z !== undefined ? grip.point.z : (entity.elevation || 0);
           
           // Create a small box for each grip
-          const p1 = new THREE.Vector3(x - size, y - size, 0);
-          const p2 = new THREE.Vector3(x + size, y - size, 0);
-          const p3 = new THREE.Vector3(x + size, y + size, 0);
-          const p4 = new THREE.Vector3(x - size, y + size, 0);
+          const p1 = new THREE.Vector3(x - size, y - size, z);
+          const p2 = new THREE.Vector3(x + size, y - size, z);
+          const p3 = new THREE.Vector3(x + size, y + size, z);
+          const p4 = new THREE.Vector3(x - size, y + size, z);
           
           points.push(p1, p2);
           points.push(p2, p3);
@@ -2977,19 +3242,31 @@ export class Viewer {
     }
 
     // Render Center Grip
-    if (entities.length > 0) {
+    const has3D = entities.some(entity => {
+      if (entity instanceof Solid3D) return true;
+      if (entity instanceof Insert) {
+        if (Insert.getBlockCallback) {
+          const block = Insert.getBlockCallback(entity.blockName);
+          return !!(block && block.entities.some(e => e instanceof Solid3D));
+        }
+      }
+      return false;
+    });
+
+    if (entities.length > 0 && !has3D) {
       const center = this.getCenterOfObjects(entities.map(e => e.id));
       if (center) {
         const centerPoints: THREE.Vector3[] = [];
         const x = center.x;
         const y = center.y;
         
+        const z = center.z;
         // Create a larger, distinct box with a cross for the center grip
         const centerSize = 8 / this.camera.zoom;
-        const p1 = new THREE.Vector3(x - centerSize, y - centerSize, 0);
-        const p2 = new THREE.Vector3(x + centerSize, y - centerSize, 0);
-        const p3 = new THREE.Vector3(x + centerSize, y + centerSize, 0);
-        const p4 = new THREE.Vector3(x - centerSize, y + centerSize, 0);
+        const p1 = new THREE.Vector3(x - centerSize, y - centerSize, z);
+        const p2 = new THREE.Vector3(x + centerSize, y - centerSize, z);
+        const p3 = new THREE.Vector3(x + centerSize, y + centerSize, z);
+        const p4 = new THREE.Vector3(x - centerSize, y + centerSize, z);
         
         centerPoints.push(p1, p2, p2, p3, p3, p4, p4, p1);
         centerPoints.push(p1, p3, p2, p4); // Inner cross
@@ -3004,7 +3281,7 @@ export class Viewer {
         const centerMesh = new THREE.LineSegments(centerGeo, centerMat);
         centerMesh.name = 'center_grip_marker';
         centerMesh.renderOrder = 1001; // Render on top of normal grips
-        centerMesh.userData = { centerGrip: { x, y } };
+        centerMesh.userData = { centerGrip: { x, y, z } };
         
         this.scene.add(centerMesh);
       }
@@ -3347,6 +3624,14 @@ export class Viewer {
     this.panEnded = false
   }
 
+  wasViewportPanEnded(): boolean {
+    return this.viewportPanEnded;
+  }
+
+  clearViewportPanEndedFlag() {
+    this.viewportPanEnded = false;
+  }
+
   getPanStartPosition() {
     return { x: this.panStartX, y: this.panStartY }
   }
@@ -3514,6 +3799,10 @@ export class Viewer {
         this.render();
       });
     }
+  }
+
+  requestRender() {
+    this.scheduleRender();
   }
 
   public onBeforeRender: () => void = () => {};

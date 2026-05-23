@@ -1,6 +1,45 @@
 import { Command, CommandResponse } from "./types"
 import { UnitsConfig } from "../model/Document"
 import { Point } from "../engine/MathUtils"
+import { FormatUtils } from "../engine/FormatUtils"
+
+function getCreationCoordinate(entity: any): { x: number, y: number, z?: number } {
+  if (entity.creationParams && entity.creationParams.params) {
+    const p = entity.creationParams.params;
+    if (p.x !== undefined && p.y !== undefined) {
+      return { x: p.x, y: p.y, z: p.z || 0 };
+    }
+  }
+  if (entity.x1 !== undefined && entity.y1 !== undefined) {
+    return { x: entity.x1, y: entity.y1, z: entity.elevation || 0 };
+  }
+  if (entity.cx !== undefined && entity.cy !== undefined) {
+    return { x: entity.cx, y: entity.cy, z: entity.elevation || 0 };
+  }
+  if (entity.position !== undefined) {
+    return { x: entity.position.x, y: entity.position.y, z: entity.position.z || 0 };
+  }
+  return { x: 0, y: 0, z: 0 };
+}
+
+function getObjectCenter(entity: any): { x: number, y: number, z?: number } {
+  const isSolid = entity.type === "Solid3D" || entity.constructor.name === "Solid3D";
+  if (isSolid && entity.position) {
+    return { x: entity.position.x, y: entity.position.y, z: entity.position.z || 0 };
+  }
+  if (entity.cx !== undefined && entity.cy !== undefined) {
+    return { x: entity.cx, y: entity.cy, z: entity.elevation || 0 };
+  }
+  if (typeof entity.getBoundingBox === 'function') {
+    const bbox = entity.getBoundingBox();
+    return {
+      x: (bbox.minX + bbox.maxX) / 2,
+      y: (bbox.minY + bbox.maxY) / 2,
+      z: entity.elevation || 0
+    };
+  }
+  return { x: 0, y: 0, z: 0 };
+}
 
 export class ScaleCommand implements Command {
   step = 0
@@ -15,12 +54,56 @@ export class ScaleCommand implements Command {
     }
   }
 
-  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
+  calculateFactor(y: number): number {
+    const dy = y - this.basePoint.y;
+    const factor = 1.0 + dy / 10.0;
+    return Math.max(0.01, factor);
+  }
+
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: any): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     if (this.step === 0 && val !== "") {
       this.targetIds = [val];
       this.step = 1;
-      return "Base point:";
+      return "Base point [Origin(default)/Creation(O)/Center(C)] <0,0,0>:";
+    }
+
+    if (this.step === 1) {
+      if (val === "O") {
+        if (doc && this.targetIds.length > 0) {
+          const entity = doc.getEntity(this.targetIds[0]);
+          if (entity) {
+            const pt = getCreationCoordinate(entity);
+            this.basePoint = { x: pt.x, y: pt.y };
+            this.step = 2;
+            return "Scale factor:";
+          }
+        }
+        this.basePoint = { x: 0, y: 0 };
+        this.step = 2;
+        return "Scale factor:";
+      }
+
+      if (val === "C") {
+        if (doc && this.targetIds.length > 0) {
+          const entity = doc.getEntity(this.targetIds[0]);
+          if (entity) {
+            const pt = getObjectCenter(entity);
+            this.basePoint = { x: pt.x, y: pt.y };
+            this.step = 2;
+            return "Scale factor:";
+          }
+        }
+        this.basePoint = { x: 0, y: 0 };
+        this.step = 2;
+        return "Scale factor:";
+      }
+
+      if (val === "") {
+        this.basePoint = { x: 0, y: 0 };
+        this.step = 2;
+        return "Scale factor:";
+      }
     }
 
     if (this.step === 2) {
@@ -43,9 +126,7 @@ export class ScaleCommand implements Command {
       this.step = 2
       return "Scale factor:"
     } else if (this.step === 2) {
-      const dist = Math.sqrt((x - this.basePoint.x) ** 2 + (y - this.basePoint.y) ** 2)
-      // Reference scale of 1.0 at distance 10
-      const factor = dist / 10.0
+      const factor = this.calculateFactor(y);
       const ids = [...this.targetIds];
       const baseX = this.basePoint.x;
       const baseY = this.basePoint.y;
@@ -56,12 +137,45 @@ export class ScaleCommand implements Command {
     return this.getPrompt();
   }
 
-  getPreview(x: number, y: number, _units: UnitsConfig): import('./types').PreviewObject | null {
+  getPreview(x: number, y: number, _units: UnitsConfig, doc?: any): import('./types').PreviewObject | null {
     if (this.step === 2) {
-      const dist = Math.sqrt((x - this.basePoint.x) ** 2 + (y - this.basePoint.y) ** 2);
-      return { type: 'scale_preview', factor: dist / 10.0, baseX: this.basePoint.x, baseY: this.basePoint.y };
+      const factor = this.calculateFactor(y);
+      if (doc && this.targetIds.length > 0) {
+        const previewEntities: any[] = [];
+        for (const id of this.targetIds) {
+          const entity = doc.getEntity(id);
+          if (entity) {
+            const cloned = entity.clone(entity.id + "_preview");
+            if (cloned.scale) {
+              cloned.scale(this.basePoint.x, this.basePoint.y, factor);
+            }
+            previewEntities.push(cloned);
+          }
+        }
+        return { type: 'entities', entities: previewEntities };
+      }
     }
     return null
+  }
+
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 1) {
+      return [
+        `Specify base point <0,0,0>`,
+        `[O] Object Creation Coordinate`,
+        `[C] Center of Object`,
+        `X: ${FormatUtils.formatValue(x, units)}`,
+        `Y: ${FormatUtils.formatValue(y, units)}`
+      ];
+    }
+    if (this.step === 2) {
+      const factor = this.calculateFactor(y);
+      return [
+        `Factor: ${factor.toFixed(2)}`,
+        `Move mouse up/down to adjust`
+      ];
+    }
+    return null;
   }
 
   getReferencePoints() {
@@ -75,7 +189,7 @@ export class ScaleCommand implements Command {
 
   getPrompt() {
     if (this.step === 0) return "Select objects:";
-    if (this.step === 1) return "Base point:";
+    if (this.step === 1) return "Base point [Origin(default)/Creation(O)/Center(C)] <0,0,0>:";
     return "Scale factor:";
   }
 }

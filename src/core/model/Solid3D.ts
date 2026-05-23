@@ -1,5 +1,110 @@
 import { Entity, BoundingBox } from "./Entity";
 
+export interface BoxCreationParams {
+  x: number;
+  y: number;
+  z: number;
+  dx: number;
+  dy: number;
+  dz: number;
+}
+
+export interface CylinderCreationParams {
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  height: number;
+}
+
+export interface SphereCreationParams {
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+}
+
+export interface ConeCreationParams {
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+  h: number;
+}
+
+export interface TorusCreationParams {
+  x: number;
+  y: number;
+  z: number;
+  r1: number;
+  r2: number;
+}
+
+export interface PolyhedronCreationParams {
+  points: [number, number, number][];
+  faces: number[][];
+}
+
+export interface HullCreationParams {
+  points: [number, number, number][];
+  shapeIds: string[];
+}
+
+export interface ExtrudeCreationParams {
+  points: { x: number; y: number }[];
+  height: number;
+  thickness: number;
+  isClosed: boolean;
+}
+
+export interface RevolveCreationParams {
+  points: { x: number; y: number }[];
+  axisPoint: [number, number, number];
+  axisDir: [number, number, number];
+  angle: number;
+  thickness: number;
+  isClosed: boolean;
+}
+
+export interface SweepCreationParams {
+  profileId: string;
+  spineId: string;
+  isSolid: boolean;
+  cornerMode?: string;
+}
+
+export type Solid3DCreationParams =
+  | { type: "box"; params: BoxCreationParams }
+  | { type: "cylinder"; params: CylinderCreationParams }
+  | { type: "sphere"; params: SphereCreationParams }
+  | { type: "cone"; params: ConeCreationParams }
+  | { type: "torus"; params: TorusCreationParams }
+  | { type: "polyhedron"; params: PolyhedronCreationParams }
+  | { type: "hull"; params: HullCreationParams }
+  | { type: "extrude"; params: ExtrudeCreationParams }
+  | { type: "revolve"; params: RevolveCreationParams }
+  | { type: "sweep"; params: SweepCreationParams };
+
+
+export interface GeometricSignature {
+  centroid?: { x: number; y: number; z: number };
+  normal?: { x: number; y: number; z: number };
+  area?: number;
+  faceType?: string;
+  faceIndex?: number;
+}
+
+export interface FeatureNode {
+  id: string;
+  type: "Extrude" | "Cut" | "Fillet" | "Scale" | "Sketch" | "Chamfer" | "Shell";
+  // The data needed to rebuild this specific step
+  parameters: Record<string, any>; 
+  // If this feature depends on a specific face (Topological Naming)
+  topologicalReference?: GeometricSignature; 
+  isActive: boolean;
+}
+
+
 export class Solid3D extends Entity {
   positions: number[];
   indices: number[];
@@ -7,8 +112,31 @@ export class Solid3D extends Entity {
   edgeLines?: number[][];
   position: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
   rotation: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
-  creationParams?: { type: string; params: any };
-  brepSnapshot?: Uint8Array;
+  private _creationParams?: Solid3DCreationParams;
+  private _brepSnapshot?: Uint8Array;
+  baseBrepSnapshot?: Uint8Array;
+  features: FeatureNode[] = [];
+
+  get brepSnapshot(): Uint8Array | undefined {
+    return this._brepSnapshot;
+  }
+
+  set brepSnapshot(value: Uint8Array | undefined) {
+    this._brepSnapshot = value;
+    if (value && !this.baseBrepSnapshot) {
+      this.baseBrepSnapshot = value;
+    }
+    this.ensureFeaturesFromCreationParams();
+  }
+
+  get creationParams(): Solid3DCreationParams | undefined {
+    return this._creationParams;
+  }
+
+  set creationParams(value: Solid3DCreationParams | undefined) {
+    this._creationParams = value;
+    this.ensureFeaturesFromCreationParams();
+  }
 
   get type(): string {
     return "Solid3D";
@@ -20,78 +148,138 @@ export class Solid3D extends Entity {
     this.indices = indices;
     this.faceMapping = faceMapping;
     this.edgeLines = edgeLines;
+    this.updateAbsolutePosition();
+    this.ensureFeaturesFromCreationParams();
+  }
+
+  ensureFeaturesFromCreationParams() {
+    if (this.features.length === 0) {
+      if (this.creationParams) {
+        this.features.push({
+          id: this.id + "_base",
+          type: this.creationParams.type === "extrude" ? "Extrude" : "Sketch",
+          parameters: { ...this.creationParams.params, primitiveType: this.creationParams.type },
+          isActive: true
+        });
+      } else if (this.brepSnapshot) {
+        this.features.push({
+          id: this.id + "_base",
+          type: "Sketch",
+          parameters: { primitiveType: "brep" },
+          isActive: true
+        });
+      }
+    }
+  }
+
+
+  updateAbsolutePosition() {
+    if (this.positions && this.positions.length > 0) {
+      const bbox = this.getBoundingBox3D();
+      this.position = {
+        x: (bbox.minX + bbox.maxX) / 2,
+        y: (bbox.minY + bbox.maxY) / 2,
+        z: (bbox.minZ + bbox.maxZ) / 2
+      };
+    } else {
+      this.position = { x: 0, y: 0, z: 0 };
+    }
   }
 
   move(dx: number, dy: number) {
-    for (let i = 0; i < this.positions.length; i += 3) {
-      this.positions[i] += dx;
-      this.positions[i + 1] += dy;
+    const pos = this.positions;
+    const len = pos.length;
+    for (let i = 0; i < len; i += 3) {
+      pos[i] += dx;
+      pos[i + 1] += dy;
     }
-    if (this.edgeLines) {
-      for (const edge of this.edgeLines) {
-        for (let i = 0; i < edge.length; i += 3) {
+    const edgeLines = this.edgeLines;
+    if (edgeLines) {
+      const numEdges = edgeLines.length;
+      for (let e = 0; e < numEdges; e++) {
+        const edge = edgeLines[e];
+        const edgeLen = edge.length;
+        for (let i = 0; i < edgeLen; i += 3) {
           edge[i] += dx;
           edge[i + 1] += dy;
         }
       }
     }
+    this.updateAbsolutePosition();
   }
 
   move3D(dx: number, dy: number, dz: number) {
-    for (let i = 0; i < this.positions.length; i += 3) {
-      this.positions[i] += dx;
-      this.positions[i + 1] += dy;
-      this.positions[i + 2] += dz;
+    const pos = this.positions;
+    const len = pos.length;
+    for (let i = 0; i < len; i += 3) {
+      pos[i] += dx;
+      pos[i + 1] += dy;
+      pos[i + 2] += dz;
     }
-    if (this.edgeLines) {
-      for (const edge of this.edgeLines) {
-        for (let i = 0; i < edge.length; i += 3) {
+    const edgeLines = this.edgeLines;
+    if (edgeLines) {
+      const numEdges = edgeLines.length;
+      for (let e = 0; e < numEdges; e++) {
+        const edge = edgeLines[e];
+        const edgeLen = edge.length;
+        for (let i = 0; i < edgeLen; i += 3) {
           edge[i] += dx;
           edge[i + 1] += dy;
           edge[i + 2] += dz;
         }
       }
     }
+    this.updateAbsolutePosition();
   }
 
   rotate(baseX: number, baseY: number, angleRad: number) {
     const cos = Math.cos(angleRad);
     const sin = Math.sin(angleRad);
-    for (let i = 0; i < this.positions.length; i += 3) {
-      const x = this.positions[i] - baseX;
-      const y = this.positions[i + 1] - baseY;
-      this.positions[i] = baseX + (x * cos - y * sin);
-      this.positions[i + 1] = baseY + (x * sin + y * cos);
+    const pos = this.positions;
+    const len = pos.length;
+    for (let i = 0; i < len; i += 3) {
+      const x = pos[i] - baseX;
+      const y = pos[i + 1] - baseY;
+      pos[i] = baseX + (x * cos - y * sin);
+      pos[i + 1] = baseY + (x * sin + y * cos);
     }
+    this.updateAbsolutePosition();
   }
 
   scale(baseX: number, baseY: number, factor: number) {
-    for (let i = 0; i < this.positions.length; i += 3) {
-      this.positions[i] = baseX + (this.positions[i] - baseX) * factor;
-      this.positions[i + 1] = baseY + (this.positions[i + 1] - baseY) * factor;
-      this.positions[i + 2] *= factor; // Scale Z as well
+    const pos = this.positions;
+    const len = pos.length;
+    for (let i = 0; i < len; i += 3) {
+      pos[i] = baseX + (pos[i] - baseX) * factor;
+      pos[i + 1] = baseY + (pos[i + 1] - baseY) * factor;
+      pos[i + 2] *= factor; // Scale Z as well
     }
+    this.updateAbsolutePosition();
   }
 
   mirror(p1: { x: number; y: number }, p2: { x: number; y: number }) {
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len === 0) return;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return;
+    const len = Math.sqrt(lenSq);
     const ux = dx / len;
     const uy = dy / len;
 
-    for (let i = 0; i < this.positions.length; i += 3) {
-      const x = this.positions[i] - p1.x;
-      const y = this.positions[i + 1] - p1.y;
+    const pos = this.positions;
+    const totalLen = pos.length;
+    for (let i = 0; i < totalLen; i += 3) {
+      const x = pos[i] - p1.x;
+      const y = pos[i + 1] - p1.y;
       // Project onto line
       const dot = x * ux + y * uy;
       const projX = dot * ux;
       const projY = dot * uy;
       // Reflect
-      this.positions[i] = p1.x + (2 * projX - x);
-      this.positions[i + 1] = p1.y + (2 * projY - y);
+      pos[i] = p1.x + (2 * projX - x);
+      pos[i + 1] = p1.y + (2 * projY - y);
     }
+    this.updateAbsolutePosition();
   }
 
   getBoundingBox(): BoundingBox {
@@ -100,9 +288,11 @@ export class Solid3D extends Entity {
     let maxX = -Infinity;
     let maxY = -Infinity;
 
-    for (let i = 0; i < this.positions.length; i += 3) {
-      const x = this.positions[i];
-      const y = this.positions[i + 1];
+    const pos = this.positions;
+    const len = pos.length;
+    for (let i = 0; i < len; i += 3) {
+      const x = pos[i];
+      const y = pos[i + 1];
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (x > maxX) maxX = x;
@@ -112,17 +302,15 @@ export class Solid3D extends Entity {
     return { minX, minY, maxX, maxY };
   }
 
-  hitTest(px: number, py: number, tolerance: number): boolean {
-    return false; // Signal: use 3D raycaster, not 2D geometric test
-  }
-
   getBoundingBox3D() {
     let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (let i = 0; i < this.positions.length; i += 3) {
-      const x = this.positions[i];
-      const y = this.positions[i + 1];
-      const z = this.positions[i + 2];
+    const pos = this.positions;
+    const len = pos.length;
+    for (let i = 0; i < len; i += 3) {
+      const x = pos[i];
+      const y = pos[i + 1];
+      const z = pos[i + 2];
       if (x < minX) minX = x;
       if (y < minY) minY = y;
       if (z < minZ) minZ = z;
@@ -150,6 +338,12 @@ export class Solid3D extends Entity {
     }
     if (this.brepSnapshot) {
       copy.brepSnapshot = new Uint8Array(this.brepSnapshot);
+    }
+    if (this.baseBrepSnapshot) {
+      copy.baseBrepSnapshot = new Uint8Array(this.baseBrepSnapshot);
+    }
+    if (this.features) {
+      copy.features = JSON.parse(JSON.stringify(this.features));
     }
     return copy;
   }

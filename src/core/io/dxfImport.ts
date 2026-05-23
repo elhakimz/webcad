@@ -16,7 +16,8 @@ import { Dimension } from "../model/Dimension";
 import { Donut } from "../model/Donut";
 import { Spline } from "../model/Spline";
 import { Note } from "../model/Note";
-import { Solid3D } from "../model/Solid3D";
+import { Solid3D, Solid3DCreationParams, FeatureNode } from "../model/Solid3D";
+import { base64ToUint8Array } from "../persistence/EntitySerializer";
 
 interface DXFGroup {
   code: number;
@@ -128,7 +129,11 @@ export class DXFImporter {
     const endCondition = isBlockSubSection ? "ENDBLK" : "ENDSEC";
     let currentLayerForFaces: string | null = null;
     let currentOriginalId: string | undefined = undefined;
-    let currentCreationParams: any = undefined;
+    let currentCreationParams: Solid3DCreationParams | undefined = undefined;
+    let currentFeatures: FeatureNode[] | undefined = undefined;
+    let currentBaseBrepSnapshot: Uint8Array | undefined = undefined;
+    let currentRotation: { x: number, y: number, z: number } | undefined = undefined;
+    let currentPosition: { x: number, y: number, z: number } | undefined = undefined;
     let accumulatedPositions: number[] = [];
     let accumulatedIndices: number[] = [];
     
@@ -154,6 +159,14 @@ export class DXFImporter {
           if (currentCreationParams) {
             s3d.creationParams = currentCreationParams;
             currentCreationParams = undefined; // Reset
+          }
+          if (currentFeatures) {
+            s3d.features = currentFeatures;
+            currentFeatures = undefined; // Reset
+          }
+          if (currentBaseBrepSnapshot) {
+            s3d.baseBrepSnapshot = currentBaseBrepSnapshot;
+            currentBaseBrepSnapshot = undefined; // Reset
           }
           doc.addEntity(s3d);
           currentLayerForFaces = null;
@@ -204,22 +217,61 @@ export class DXFImporter {
           }
         } else if (type === "3DFACE") {
           const layer = props[8] || "0";
-          const originalId = props[1000]; // Read XData!
           
-          let creationParams: any = undefined;
+          let originalId: string | undefined = undefined;
+          let creationParams: Solid3DCreationParams | undefined = undefined;
+          let features: FeatureNode[] | undefined = undefined;
+          let baseBrepSnapshot: Uint8Array | undefined = undefined;
+          let rotation: { x: number, y: number, z: number } | undefined = undefined;
+          let position: { x: number, y: number, z: number } | undefined = undefined;
+          
           for (const g of entityGroups) {
-            if (g.code === 1000 && g.value.startsWith("CREATION_PARAMS:")) {
-              const str = g.value.substring("CREATION_PARAMS:".length);
-              try {
-                creationParams = JSON.parse(str);
-              } catch (e) {
-                console.error("Failed to parse creationParams:", e);
+            if (g.code === 1000) {
+              if (g.value.startsWith("CREATION_PARAMS:")) {
+                const str = g.value.substring("CREATION_PARAMS:".length);
+                try {
+                  creationParams = JSON.parse(str);
+                } catch (e) {
+                  console.error("Failed to parse creationParams:", e);
+                }
+              } else if (g.value.startsWith("FEATURES:")) {
+                const str = g.value.substring("FEATURES:".length);
+                try {
+                  features = JSON.parse(str);
+                } catch (e) {
+                  console.error("Failed to parse features:", e);
+                }
+              } else if (g.value.startsWith("BASE_BREP_SNAPSHOT:")) {
+                const str = g.value.substring("BASE_BREP_SNAPSHOT:".length);
+                try {
+                  baseBrepSnapshot = base64ToUint8Array(str);
+                } catch (e) {
+                  console.error("Failed to parse baseBrepSnapshot:", e);
+                }
+              } else if (g.value.startsWith("ROTATION:")) {
+                const str = g.value.substring("ROTATION:".length);
+                try {
+                  rotation = JSON.parse(str);
+                } catch (err) {
+                  console.error("Failed to parse rotation:", err);
+                }
+              } else if (g.value.startsWith("POSITION:")) {
+                const str = g.value.substring("POSITION:".length);
+                try {
+                  position = JSON.parse(str);
+                } catch (err) {
+                  console.error("Failed to parse position:", err);
+                }
+              } else {
+                if (!originalId) {
+                  originalId = g.value;
+                }
               }
-              break;
             }
           }
-          if (creationParams) {
-            currentCreationParams = creationParams;
+          
+          if (!originalId) {
+            originalId = props[1000];
           }
           
           if (currentLayerForFaces && (currentLayerForFaces !== layer || currentOriginalId !== originalId)) {
@@ -230,9 +282,41 @@ export class DXFImporter {
               s3d.creationParams = currentCreationParams;
               currentCreationParams = undefined; // Reset
             }
+            if (currentFeatures) {
+              s3d.features = currentFeatures;
+              currentFeatures = undefined; // Reset
+            }
+            if (currentBaseBrepSnapshot) {
+              s3d.baseBrepSnapshot = currentBaseBrepSnapshot;
+              currentBaseBrepSnapshot = undefined; // Reset
+            }
+            if (currentRotation) {
+              s3d.rotation = currentRotation;
+              currentRotation = undefined; // Reset
+            }
+            if (currentPosition) {
+              s3d.position = currentPosition;
+              currentPosition = undefined; // Reset
+            }
             doc.addEntity(s3d);
             accumulatedPositions = [];
             accumulatedIndices = [];
+          }
+          
+          if (creationParams) {
+            currentCreationParams = creationParams;
+          }
+          if (features) {
+            currentFeatures = features;
+          }
+          if (baseBrepSnapshot) {
+            currentBaseBrepSnapshot = baseBrepSnapshot;
+          }
+          if (rotation) {
+            currentRotation = rotation;
+          }
+          if (position) {
+            currentPosition = position;
           }
           
           currentLayerForFaces = layer;
@@ -370,6 +454,21 @@ export class DXFImporter {
     if (currentLayerForFaces && accumulatedPositions.length > 0) {
       const s3d = new Solid3D(doc.getNextId("S3D"), accumulatedPositions, accumulatedIndices);
       s3d.layer = currentLayerForFaces;
+      if (currentCreationParams) {
+        s3d.creationParams = currentCreationParams;
+      }
+      if (currentFeatures) {
+        s3d.features = currentFeatures;
+      }
+      if (currentBaseBrepSnapshot) {
+        s3d.baseBrepSnapshot = currentBaseBrepSnapshot;
+      }
+      if (currentRotation) {
+        s3d.rotation = currentRotation;
+      }
+      if (currentPosition) {
+        s3d.position = currentPosition;
+      }
       doc.addEntity(s3d);
     }
     

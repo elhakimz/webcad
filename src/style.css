@@ -311,6 +311,12 @@ body {
   overflow: visible;
 }
 
+.pane-content {
+  flex-grow: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
 .pane-resizer {
   position: absolute;
   left: -4px;
@@ -541,22 +547,27 @@ body {
 #command-area {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--border-color);
-  padding: 5px 10px;
-  background-color: rgba(30, 30, 30, 0.50); /* 50% transparent dark */
-  backdrop-filter: blur(8px); /* Glass effect */
-  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background-color: rgba(30, 30, 30, 0.70); /* 70% transparent dark */
+  backdrop-filter: blur(12px); /* Strong glass effect */
+  -webkit-backdrop-filter: blur(12px);
   font-family: var(--font-mono); /* Console font */
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 15px;
+  width: 70%;
+  height: 110px;
   z-index: 1000;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transition: height 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .light-theme #command-area {
-  background-color: rgba(255, 255, 255, 0.50) !important;
+  background-color: rgba(255, 255, 255, 0.70) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.15);
 }
 
 #command-log {
@@ -570,8 +581,8 @@ body {
 
 #command-log-toggle {
   position: absolute;
-  top: 5px;
-  right: 10px;
+  top: 8px;
+  right: 12px;
   cursor: pointer;
   opacity: 0.7;
   transition: opacity 0.1s;
@@ -584,7 +595,7 @@ body {
 }
 
 #command-area.minimized {
-  height: 30px !important;
+  height: 36px !important;
 }
 
 #command-area.minimized #command-log {
@@ -593,6 +604,13 @@ body {
 
 #command-log::-webkit-scrollbar {
   display: none;
+}
+
+@media (max-width: 768px) {
+  #command-area {
+    width: 90%;
+    bottom: 10px;
+  }
 }
 
 #command-input-container {
@@ -1064,4 +1082,333 @@ body {
 
 .toast-info {
   border-left: 4px solid var(--accent-color); /* Blue */
+}
+
+/* Properties Window Tabs */
+.properties-tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 12px;
+  gap: 2px;
+}
+
+.properties-tab {
+  flex: 1;
+  text-align: center;
+  padding: 8px 6px;
+  cursor: pointer;
+  font-family: var(--font-family);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #777777;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.5px;
+}
+
+.properties-tab:hover {
+  color: var(--text-color);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.light-theme .properties-tab:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.properties-tab.active {
+  color: var(--accent-color);
+  border-bottom-color: var(--accent-color);
+  background-color: rgba(59, 130, 246, 0.08);
+}
+
+.light-theme .properties-tab.active {
+  background-color: rgba(0, 86, 179, 0.08);
+}
+
+/* Feature Tree Container */
+.feature-tree-container {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding-left: 6px;
+  margin-top: 4px;
+}
+
+/* Timeline Vertical Line (Precise 1px CAD line aligned with expand arrow) */
+.feature-tree-container::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  z-index: 1;
+}
+
+.light-theme .feature-tree-container::before {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.feature-node-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 2px;
+  z-index: 2;
+}
+
+.feature-node-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+  user-select: none;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.feature-node-item.inactive .feature-node-header {
+  opacity: 0.5;
+}
+
+.feature-node-header:hover {
+  background-color: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.15);
+}
+
+.light-theme .feature-node-header:hover {
+  background-color: rgba(0, 86, 179, 0.05);
+  border-color: rgba(0, 86, 179, 0.1);
+}
+
+/* Rounded square, flat, high-precision CAD badge style */
+.feature-node-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 3px;
+  font-size: 9px;
+  color: var(--accent-color);
+  font-weight: bold;
+  z-index: 3;
+  flex-shrink: 0;
+  box-shadow: none;
+}
+
+.light-theme .feature-node-icon {
+  background-color: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+.feature-node-title {
+  flex-grow: 1;
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--text-color);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  font-family: var(--font-family);
+  letter-spacing: 0.2px;
+}
+
+.feature-node-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.feature-node-action-btn {
+  background: none;
+  border: none;
+  color: #888888;
+  cursor: pointer;
+  font-size: 10px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  border-radius: 3px;
+}
+
+.feature-node-action-btn:hover {
+  color: var(--text-color);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.light-theme .feature-node-action-btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.feature-node-action-btn.btn-delete:hover {
+  color: var(--error-color) !important;
+  background-color: rgba(239, 68, 68, 0.12) !important;
+}
+
+.feature-node-action-btn.active-toggle.active {
+  color: var(--accent-color);
+}
+
+.feature-node-collapse-btn {
+  font-size: 7px;
+  transition: transform 0.2s;
+  color: #888888;
+  width: 12px;
+  text-align: center;
+  z-index: 3;
+}
+
+.feature-node-collapse-btn.expanded {
+  transform: rotate(90deg);
+  color: var(--accent-color);
+}
+
+/* Collapsible parameter fields panel - Indented & highly compact blueprint style */
+.feature-node-parameters {
+  display: none;
+  flex-direction: column;
+  padding: 4px 6px 6px 34px;
+  background-color: rgba(0, 0, 0, 0.15);
+  border-left: 1px dashed rgba(255, 255, 255, 0.08);
+  gap: 4px;
+  margin-top: 1px;
+  animation: slideDown 0.15s ease-out;
+}
+
+.light-theme .feature-node-parameters {
+  background-color: rgba(0, 0, 0, 0.02);
+  border-left: 1px dashed rgba(0, 0, 0, 0.08);
+}
+
+.feature-node-parameters.expanded {
+  display: flex;
+}
+
+.parameter-field-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
+}
+
+.parameter-field-label {
+  font-size: 9px;
+  color: #a0a0a0;
+  font-family: var(--font-mono);
+  letter-spacing: 0.2px;
+}
+
+.light-theme .parameter-field-label {
+  color: #666666;
+}
+
+.parameter-input {
+  width: 65px;
+  height: 18px;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  text-align: right;
+  transition: border-color 0.15s;
+}
+
+.parameter-input:focus {
+  border-color: var(--accent-color);
+  outline: none;
+}
+
+.add-feature-bar {
+  display: flex;
+  margin-top: 6px;
+  padding: 4px 6px;
+  justify-content: center;
+}
+
+.add-feature-btn {
+  background-color: rgba(59, 130, 246, 0.04);
+  border: 1px dashed rgba(59, 130, 246, 0.4);
+  color: var(--accent-color);
+  font-family: var(--font-family);
+  font-size: 9px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.add-feature-btn:hover {
+  background-color: var(--accent-color);
+  color: #ffffff;
+  border-style: solid;
+  border-color: var(--accent-color);
+  box-shadow: 0 1px 6px rgba(59, 130, 246, 0.2);
+}
+
+.add-feature-dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.add-feature-menu {
+  display: none;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background-color: var(--popover-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+  padding: 3px 0;
+  margin-bottom: 4px;
+}
+
+.add-feature-menu.show {
+  display: block;
+}
+
+.add-feature-menu-item {
+  padding: 5px 10px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-color);
+  cursor: pointer;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.3px;
+}
+
+.add-feature-menu-item:hover {
+  background-color: var(--accent-color);
+  color: #ffffff;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }

@@ -17,10 +17,29 @@ import { Note } from '../model/Note'
 import { Point } from '../model/Point'
 import { Solid3D } from '../model/Solid3D'
 
+export function uint8ArrayToBase64(arr: Uint8Array): string {
+  let binary = "";
+  const len = arr.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(arr[i]);
+  }
+  return btoa(binary);
+}
+
+export function base64ToUint8Array(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
 export class EntitySerializer {
 
   static serialize(entity: Entity, projectId: string): object {
-    const cp = (entity as any).creationParams
+    const cp = entity instanceof Solid3D ? entity.creationParams : undefined;
     return {
       id:             entity.id,
       projectId,
@@ -48,7 +67,7 @@ export class EntitySerializer {
     if (e instanceof Dimension) return { type: e.type, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, offset: e.offset, style: e.style, dimLineLocation: e.dimLineLocation }
     if (e instanceof Hatch)     return { boundaryVertices: e.boundaryVertices, pattern: e.pattern,
                                          patternScale: e.patternScale, angle: e.angle, color: e.color }
-    if (e instanceof Insert)    return { blockName: (e as any).blockName, x: (e as any).x, y: (e as any).y,
+    if (e instanceof Insert)    return { blockName: (e as any).blockName, x: (e as any).x, y: (e as any).y, z: (e as any).z,
                                          scaleX: e.scaleX, scaleY: e.scaleY, rotation: e.rotation }
     if (e instanceof Donut)     return { cx: (e as any).cx, cy: (e as any).cy,
                                          innerR: (e as any).innerR, outerR: (e as any).outerR }
@@ -56,10 +75,12 @@ export class EntitySerializer {
     if (e instanceof Trace)     return { x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, width: e.width }
     if (e instanceof Note)      return { targetEntityId: e.targetEntityId, anchorPoint: e.anchorPoint, bendPoint: e.bendPoint, text: e.text, height: e.height }
     if (e instanceof Point)     return { x: (e as any).x, y: (e as any).y }
-    if (e instanceof Solid3D)
+    if (e instanceof Solid3D) {
       // Geometry is in tessellation_cache — store only counts + transform
       return { positionCount: e.positions.length, indexCount: e.indices.length,
-               position: e.position, rotation: e.rotation }
+               position: e.position, rotation: e.rotation, features: e.features,
+               baseBrepSnapshot: e.baseBrepSnapshot ? uint8ArrayToBase64(e.baseBrepSnapshot) : undefined }
+    }
     return {}
   }
 
@@ -96,7 +117,7 @@ export class EntitySerializer {
         break;
       }
       case 'Hatch':     entity = new Hatch(row.id, d.boundaryVertices, d.pattern, d.patternScale, d.angle, d.color); break
-      case 'Insert':    entity = new Insert(row.id, d.blockName, d.x, d.y, d.scaleX, d.scaleY, d.rotation); break
+      case 'Insert':    entity = new Insert(row.id, d.blockName, d.x, d.y, d.scaleX, d.scaleY, d.rotation, d.z); break
       case 'Donut':     entity = new Donut(row.id, d.cx, d.cy, d.innerR, d.outerR); break
       case 'Solid':     entity = new Solid(row.id, d.vertices); break
       case 'Trace':     entity = new Trace(row.id, d.x1, d.y1, d.x2, d.y2, d.width); break
@@ -106,6 +127,9 @@ export class EntitySerializer {
         const s3d = new Solid3D(row.id, [], [])   // geometry filled by PersistenceService
         if (d.position) s3d.position = d.position
         if (d.rotation) s3d.rotation = d.rotation
+        if (d.features) s3d.features = d.features
+        if (d.baseBrepSnapshot) s3d.baseBrepSnapshot = base64ToUint8Array(d.baseBrepSnapshot)
+        s3d.ensureFeaturesFromCreationParams()
         entity = s3d; break
       }
       default: throw new Error(`Unknown entity type: ${row.type}`)

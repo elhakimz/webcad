@@ -46,20 +46,40 @@ export class NewCommand implements Command {
   getPrompt() { return "Start a new drawing? (Y/N):"; }
 }
 
+function getFormattedDateTime(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  return `DWG-${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
 export class DBSaveCommand implements Command {
+  projectName: string = "";
+
   onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse { 
-    const currentName = PersistenceService.getInstance().activeProjectName || "Untitled";
-    return `Enter project name to save to database <${currentName}>:`; 
+    const defaultName = getFormattedDateTime();
+    return `Enter project name to save to database <${defaultName}>:`; 
   }
 
   onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
-    const currentName = PersistenceService.getInstance().activeProjectName || "Untitled";
-    const projName = text.trim() || currentName;
-    return { action: "dbsave", projectName: projName };
+    const val = text.trim();
+    if (val !== "") {
+      if (this.projectName) {
+        this.projectName += " " + val;
+      } else {
+        this.projectName = val;
+      }
+    }
+    const finalName = this.projectName || getFormattedDateTime();
+    return { action: "dbsave", projectName: finalName };
   }
 
   getPrompt() { 
-    const currentName = PersistenceService.getInstance().activeProjectName || "Untitled";
-    return `Save project to database <${currentName}>:`; 
+    const defaultName = getFormattedDateTime();
+    return `Save project to database <${defaultName}>:`; 
   }
 }

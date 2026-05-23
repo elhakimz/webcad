@@ -166,4 +166,46 @@ describe('LoftCommand', () => {
     expect(res.result).toBeDefined()
     expect(cmd.step).toBe(4)
   })
+
+  it('should collect a Polyline with bulge and complete the loft', async () => {
+    const cmd = new LoftCommand()
+    
+    // Tombstone-like profile: bottom line, vertical sides, and a semi-circular top arc (bulge = 1.0)
+    const p1 = new Polyline('P1', [
+      { x: -5, y: -5, bulge: 0 },
+      { x: 5, y: -5, bulge: 0 },
+      { x: 5, y: 5, bulge: 1.0 }, // Bulged segment to the next vertex
+      { x: -5, y: 5, bulge: 0 }
+    ], true);
+    
+    const c1 = new Circle('C1', 0, 0, 2, 20); // Circle profile at elevation 20
+    
+    const mockDoc = {
+      getEntity: vi.fn().mockImplementation((id) => {
+        if (id === 'P1') return p1;
+        if (id === 'C1') return c1;
+        return null;
+      }),
+      facetres: 5.0
+    };
+    
+    // Select profiles
+    cmd.onInput('P1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    cmd.onInput('C1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    
+    expect(cmd.profiles).toHaveLength(2)
+    
+    // Press Enter to finish selection
+    cmd.onInput('', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    
+    // Mode Solid
+    cmd.onInput('Solid', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    
+    // Smooth Transition
+    const res = await cmd.onInput('Smooth', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any) as CommandAction
+    
+    expect(res.action).toBe('loft_result')
+    expect(res.result).toBeDefined()
+    expect(cmd.step).toBe(4)
+  })
 })

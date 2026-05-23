@@ -196,7 +196,7 @@ export class CursorRenderer {
       }
 
       if (mesh) {
-        mesh.position.set(snap.x, snap.y, 0);
+        mesh.position.set(snap.x, snap.y, snap.z !== undefined ? snap.z : 0);
         this.snapMarkerGroup.add(mesh);
       }
     }

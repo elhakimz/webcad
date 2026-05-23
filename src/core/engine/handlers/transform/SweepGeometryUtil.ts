@@ -235,7 +235,7 @@ export async function rebuildSweepGeometry(
   } else if (spineEntity instanceof Polyline && profileEntity instanceof Circle) {
     console.log("Using pure JS tube generation for Polyline and Circle to bypass OpenCascade failures.");
     
-    const { spinePoints } = extractSweepPoints(profileEntity, spineEntity, facetres);
+    const { spinePoints, profilePoints, profileCount } = extractSweepPoints(profileEntity, spineEntity, facetres);
     const allPositions: number[] = [];
     const allIndices: number[] = [];
     const sphereCenters: THREE.Vector3[] = [];
@@ -387,6 +387,28 @@ export async function rebuildSweepGeometry(
     geometry.setIndex(allIndices);
     geometry.computeVertexNormals();
     geometry.userData = { faceMapping, edgeLines };
+
+    // Background OCC solid registration to ensure CSG operations (which run inside OCC using shapeCache) work perfectly!
+    let brepSnapshot: Uint8Array | undefined = undefined;
+    try {
+      const isEllipse = false;
+      const occGeom = await occService.createSweep(profilePoints, spinePoints, isSolid, deflection, solidId, profileCount, cornerMode, isEllipse);
+      if (occGeom && occGeom.userData && occGeom.userData.brepSnapshot) {
+        brepSnapshot = occGeom.userData.brepSnapshot;
+      }
+    } catch (eOcc) {
+      console.warn("Background OCC sweep solid caching failed, but visual sweep will render perfectly:", eOcc);
+    }
+    
+    const positions = Array.from(geometry.getAttribute('position').array) as number[];
+    const indices = Array.from(geometry.getIndex()?.array || []) as number[];
+    return {
+      positions,
+      indices,
+      faceMapping: geometry.userData?.faceMapping,
+      edgeLines: geometry.userData?.edgeLines,
+      brepSnapshot: brepSnapshot
+    };
   } else {
     const { spinePoints, profilePoints, profileCount } = extractSweepPoints(profileEntity, spineEntity, facetres);
     const isEllipse = profileEntity instanceof Ellipse;

@@ -75,4 +75,24 @@ describe("Quadtree", () => {
     expect(unique.size).toBe(result.length)
     expect(result).toContain("cross")
   })
+
+  it("should respect configurable maxItems and maxDepth and forward them to children", () => {
+    // With maxItems = 2, inserting the 3rd item should trigger split
+    const qt = new Quadtree({ minX: 0, minY: 0, maxX: 100, maxY: 100 }, 0, 2, 2)
+    qt.insert({ id: "1", box: { minX: 10, minY: 10, maxX: 20, maxY: 20 } })
+    qt.insert({ id: "2", box: { minX: 60, minY: 60, maxX: 70, maxY: 70 } })
+
+    // Check that we haven't split yet
+    expect((qt as any).children).toBeNull()
+
+    // 3rd item triggers split because items.length (3) > maxItems (2)
+    qt.insert({ id: "3", box: { minX: 10, minY: 60, maxX: 20, maxY: 70 } })
+    expect((qt as any).children).not.toBeNull()
+    
+    // Check that each child was created with the correct maxItems and maxDepth values
+    for (const child of (qt as any).children) {
+      expect((child as any).maxItems).toBe(2)
+      expect((child as any).maxDepth).toBe(2)
+    }
+  })
 })

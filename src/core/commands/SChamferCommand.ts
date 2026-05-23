@@ -118,7 +118,7 @@ export class SChamferCommand implements Command {
     return "SCHAMFER Command";
   }
 
-  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+  getDynamicInput(_x: number, _y: number, _units: UnitsConfig): string[] | null {
     if (this.step === 1) return [`Distance: ${this.distance.toFixed(2)} (enter value)`];
     return null;
   }

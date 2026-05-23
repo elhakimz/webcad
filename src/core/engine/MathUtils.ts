@@ -52,11 +52,13 @@ export function evaluateSplinePoint(
   for (let j = 0; j <= degree; j++) {
     const cpIndex = span - degree + j;
     const cp = controlPoints[cpIndex] ?? controlPoints[controlPoints.length - 1] ?? { x: 0, y: 0 };
+    const cpZ = cp.z !== undefined ? cp.z : 0;
     if (d[j]) {
       d[j].x = cp.x;
       d[j].y = cp.y;
+      d[j].z = cpZ;
     } else {
-      d[j] = { x: cp.x, y: cp.y };
+      d[j] = { x: cp.x, y: cp.y, z: cpZ };
     }
   }
 
@@ -68,11 +70,12 @@ export function evaluateSplinePoint(
       const alpha = denom < 1e-9 ? 0 : (t - knots[left]) / denom;
       d[j].x = (1 - alpha) * d[j - 1].x + alpha * d[j].x;
       d[j].y = (1 - alpha) * d[j - 1].y + alpha * d[j].y;
+      d[j].z = (1 - alpha) * (d[j - 1].z ?? 0) + alpha * (d[j].z ?? 0);
     }
   }
   
   // Return a fresh Point object to maintain immutability of the returned coordinate
-  return { x: d[degree].x, y: d[degree].y };
+  return { x: d[degree].x, y: d[degree].y, z: d[degree].z };
 }
 
 export function tessellateSpline(controlPoints: Point[], degree: number, knots: number[], segments = 100): Point[] {
@@ -501,7 +504,8 @@ export function lineSegmentIntersection(line: Line, segStart: Point, segEnd: Poi
   const t = ((sx1 - lx1) * dy2 - (sy1 - ly1) * dx2) / denom;
   const u = ((sx1 - lx1) * dy1 - (sy1 - ly1) * dx1) / denom;
   
-    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+    // Only the polygon segment (u) must be bounded; the hatch line (t) is infinite
+    if (u >= 0 && u <= 1) {
     return { x: lx1 + t * dx1, y: ly1 + t * dy1 };
   }
   return null;
@@ -858,7 +862,8 @@ export function getEntityEntityIntersections(e1: unknown, e2: unknown): Point[] 
             const c2 = getCircleData(sub2);
             if (c1 && c2) {
                 const pts = getCircleCircleIntersections(c1.cx, c1.cy, c1.r, c2.cx, c2.cy, c2.r);
-                if (c1.isArc) results.push(...pts.filter(p => isPointOnArc(p, c1)));
+                if (c1.isArc && c2.isArc) results.push(...pts.filter(p => isPointOnArc(p, c1) && isPointOnArc(p, c2)));
+                else if (c1.isArc) results.push(...pts.filter(p => isPointOnArc(p, c1)));
                 else if (c2.isArc) results.push(...pts.filter(p => isPointOnArc(p, c2)));
                 else results.push(...pts);
             }
@@ -869,51 +874,62 @@ export function getEntityEntityIntersections(e1: unknown, e2: unknown): Point[] 
 }
 
 export function sortConnected(entities: (LineEntity | ArcEntity)[]): (LineEntity | ArcEntity)[] | null {
-  const sorted: (LineEntity | ArcEntity)[] = [];
-  const remaining = new Set(entities);
+  const EPS = 1e-3;
 
-  let current = entities[0];
-  sorted.push(current);
-  remaining.delete(current);
+  const startOf = (e: LineEntity | ArcEntity) =>
+    e instanceof LineEntity
+      ? { x: e.x1, y: e.y1 }
+      : { x: e.cx + e.r * Math.cos(e.startAngle), y: e.cy + e.r * Math.sin(e.startAngle) };
 
-  while (remaining.size > 0) {
+  const endOf = (e: LineEntity | ArcEntity) =>
+    e instanceof LineEntity
+      ? { x: e.x2, y: e.y2 }
+      : { x: e.cx + e.r * Math.cos(e.endAngle), y: e.cy + e.r * Math.sin(e.endAngle) };
+
+  // Build endpoint → [index, ...] map for O(1) neighbour lookup
+  const key = (x: number, y: number) => `${Math.round(x / EPS)},${Math.round(y / EPS)}`;
+  const endMap = new Map<string, number[]>();
+
+  entities.forEach((e, i) => {
+    const sk = key(startOf(e).x, startOf(e).y);
+    const ek = key(endOf(e).x, endOf(e).y);
+    if (!endMap.has(sk)) endMap.set(sk, []);
+    if (!endMap.has(ek)) endMap.set(ek, []);
+    endMap.get(sk)!.push(i);
+    endMap.get(ek)!.push(i);
+  });
+
+  const used = new Set<number>();
+  const sorted: (LineEntity | ArcEntity)[] = [entities[0]];
+  used.add(0);
+
+  while (sorted.length < entities.length) {
+    const cur = sorted[sorted.length - 1];
+    const curEnd = endOf(cur);
+    const candidates = endMap.get(key(curEnd.x, curEnd.y)) ?? [];
+
     let found = false;
-    for (const entity of remaining) {
-      const cEnd = (current instanceof LineEntity) 
-        ? { x: current.x2, y: current.y2 } 
-        : { x: current.cx + current.r * Math.cos(current.endAngle), y: current.cy + current.r * Math.sin(current.endAngle) };
-      const eStart = (entity instanceof LineEntity) 
-        ? { x: entity.x1, y: entity.y1 } 
-        : { x: entity.cx + entity.r * Math.cos(entity.startAngle), y: entity.cy + entity.r * Math.sin(entity.startAngle) };
-      const eEnd = (entity instanceof LineEntity) 
-        ? { x: entity.x2, y: entity.y2 } 
-        : { x: entity.cx + entity.r * Math.cos(entity.endAngle), y: entity.cy + entity.r * Math.sin(entity.endAngle) };
+    for (const idx of candidates) {
+      if (used.has(idx)) continue;
+      const e = entities[idx];
+      used.add(idx);
 
-      if (distancePointToPoint(cEnd.x, cEnd.y, eStart.x, eStart.y) < 1e-3) {
-        sorted.push(entity);
-        remaining.delete(entity);
-        current = entity;
-        found = true;
-        break;
-      } else if (distancePointToPoint(cEnd.x, cEnd.y, eEnd.x, eEnd.y) < 1e-3) {
-        // Deep-clone the entity prior to reversing to protect model integrity
-        const reversedEntity = entity.clone(entity.id);
-        if (reversedEntity instanceof LineEntity) {
-          const temp = { x: reversedEntity.x1, y: reversedEntity.y1 };
-          reversedEntity.x1 = reversedEntity.x2; reversedEntity.y1 = reversedEntity.y2;
-          reversedEntity.x2 = temp.x; reversedEntity.y2 = temp.y;
+      const eStart = startOf(e);
+      if (Math.abs(eStart.x - curEnd.x) < EPS && Math.abs(eStart.y - curEnd.y) < EPS) {
+        sorted.push(e);
+      } else {
+        // Reverse a clone to protect model integrity
+        const rev = e.clone(e.id);
+        if (rev instanceof LineEntity) {
+          [rev.x1, rev.y1, rev.x2, rev.y2] = [rev.x2, rev.y2, rev.x1, rev.y1];
         } else {
-          const temp = reversedEntity.startAngle;
-          reversedEntity.startAngle = reversedEntity.endAngle;
-          reversedEntity.endAngle = temp;
-          reversedEntity.ccw = !reversedEntity.ccw;
+          [rev.startAngle, rev.endAngle] = [rev.endAngle, rev.startAngle];
+          rev.ccw = !rev.ccw;
         }
-        sorted.push(reversedEntity);
-        remaining.delete(entity);
-        current = reversedEntity;
-        found = true;
-        break;
+        sorted.push(rev);
       }
+      found = true;
+      break;
     }
     if (!found) return null;
   }

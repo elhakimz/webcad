@@ -4,8 +4,9 @@ import { NotificationManager } from "./NotificationManager";
 
 export class ProjectToolWindow {
   private container: HTMLElement;
-  private selectEl!: HTMLSelectElement;
+  private projectListContainer!: HTMLElement;
   private fileListContainer!: HTMLElement;
+  private activeProject: string = '';
 
   constructor(
     private toolWindow: ToolWindow,
@@ -40,7 +41,7 @@ export class ProjectToolWindow {
     });
 
     const label = document.createElement('label');
-    label.textContent = 'Active Project Folder:';
+    label.textContent = 'Project Folders:';
     Object.assign(label.style, {
       fontSize: '11px',
       fontWeight: 'bold',
@@ -50,27 +51,19 @@ export class ProjectToolWindow {
       letterSpacing: '0.5px'
     });
 
-    this.selectEl = document.createElement('select');
-    Object.assign(this.selectEl.style, {
-      background: 'var(--bg-color)',
-      color: 'var(--text-color)',
+    this.projectListContainer = document.createElement('div');
+    Object.assign(this.projectListContainer.style, {
+      maxHeight: '120px',
+      overflowY: 'auto',
       border: '1px solid var(--border-color)',
       borderRadius: 'var(--radius-sm)',
-      padding: '5px 8px',
-      fontSize: '12px',
-      fontFamily: 'var(--font-family)',
-      outline: 'none',
-      cursor: 'pointer',
-      width: '100%',
+      background: 'var(--bg-color)',
+      padding: '5px',
       boxSizing: 'border-box'
     });
 
-    this.selectEl.addEventListener('change', () => {
-      this.loadProjectFiles(this.selectEl.value);
-    });
-
     selectionWrapper.appendChild(label);
-    selectionWrapper.appendChild(this.selectEl);
+    selectionWrapper.appendChild(this.projectListContainer);
     this.container.appendChild(selectionWrapper);
 
     // Refresh Button inside toolbar/header
@@ -146,25 +139,99 @@ export class ProjectToolWindow {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const projects: string[] = await response.json();
 
-      this.selectEl.innerHTML = '';
+      this.projectListContainer.innerHTML = '';
       if (projects.length === 0) {
-        const option = document.createElement('option');
-        option.textContent = '-- No Projects --';
-        option.value = '';
-        this.selectEl.appendChild(option);
+        const emptyMsg = document.createElement('div');
+        emptyMsg.textContent = 'No projects found.';
+        Object.assign(emptyMsg.style, {
+          color: 'var(--text-muted)',
+          fontSize: '11px',
+          padding: '12px',
+          textAlign: 'center',
+          fontStyle: 'italic',
+          fontFamily: 'var(--font-family)'
+        });
+        this.projectListContainer.appendChild(emptyMsg);
         this.renderFileList([]);
         return;
       }
 
-      projects.forEach(p => {
-        const option = document.createElement('option');
-        option.value = p;
-        option.textContent = p;
-        this.selectEl.appendChild(option);
+      const list = document.createElement('ul');
+      Object.assign(list.style, {
+        listStyle: 'none',
+        padding: '0',
+        margin: '0',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '2px'
       });
 
-      // Load files for first project
-      this.loadProjectFiles(projects[0]);
+      projects.forEach(projectName => {
+        const item = document.createElement('li');
+        item.innerHTML = `
+          <span style="font-family: var(--font-mono); font-size: 11px;">${projectName}</span>
+        `;
+        Object.assign(item.style, {
+          padding: '6px 8px',
+          cursor: 'pointer',
+          borderRadius: 'var(--radius-sm)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          transition: 'background-color 0.15s, border-color 0.15s',
+          border: '1px solid transparent',
+          marginBottom: '2px'
+        });
+
+        const updateHighlight = () => {
+          if (this.activeProject === projectName) {
+            item.style.backgroundColor = 'var(--accent-color)';
+            item.style.color = '#ffffff';
+            item.style.borderColor = 'var(--accent-color)';
+          } else {
+            item.style.backgroundColor = '';
+            item.style.color = 'var(--text-color)';
+            item.style.borderColor = 'transparent';
+          }
+        };
+
+        item.addEventListener('mouseover', () => {
+          if (this.activeProject !== projectName) {
+            item.style.backgroundColor = 'rgba(59, 130, 246, 0.08)';
+            item.style.borderColor = 'rgba(59, 130, 246, 0.2)';
+          }
+        });
+        item.addEventListener('mouseout', () => {
+          updateHighlight();
+        });
+
+        item.addEventListener('click', () => {
+          this.activeProject = projectName;
+          // Refresh highlighting on all siblings
+          Array.from(list.children).forEach((child: any) => {
+            if (child._updateHighlight) child._updateHighlight();
+          });
+          this.loadProjectFiles(projectName);
+        });
+
+        (item as any)._updateHighlight = updateHighlight;
+        updateHighlight();
+        list.appendChild(item);
+      });
+
+      this.projectListContainer.appendChild(list);
+
+      // Load files for initial project
+      if (projects.length > 0) {
+        const initialProject = projects.includes(this.scadEditor.currentProject) 
+          ? this.scadEditor.currentProject 
+          : projects[0];
+        this.activeProject = initialProject;
+        Array.from(list.children).forEach((child: any) => {
+          if (child._updateHighlight) child._updateHighlight();
+        });
+        this.loadProjectFiles(initialProject);
+      }
     } catch (e) {
       console.error("Failed to load projects:", e);
       NotificationManager.getInstance().show("Failed to fetch project folders", "error");
@@ -178,6 +245,7 @@ export class ProjectToolWindow {
     }
 
     try {
+      this.scadEditor.currentProject = projectName;
       const response = await fetch(`/api/files/scad/projects/${projectName}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const files: string[] = await response.json();
@@ -247,6 +315,8 @@ export class ProjectToolWindow {
       // Load file into code editor on click
       item.addEventListener('click', async () => {
         try {
+          this.scadEditor.currentProject = projectName;
+          this.scadEditor.currentFile = fileName;
           const response = await fetch(`/api/files/scad/projects/${projectName}/${fileName}`);
           if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
           const content = await response.text();

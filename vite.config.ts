@@ -17,6 +17,15 @@ const fileStoragePlugin = (): Plugin => ({
           fs.mkdirSync(scadProjectsDir, { recursive: true });
         }
 
+        // GET /api/files-absolute-path - Get absolute path info
+        if (req.method === 'GET' && req.url.startsWith('/api/files-absolute-path/')) {
+          const subPath = decodeURIComponent(req.url.substring('/api/files-absolute-path/'.length));
+          const filePath = path.join(filesDir, subPath);
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ absolutePath: path.resolve(filePath) }));
+          return;
+        }
+
         // GET /api/files - List files
         if (req.method === 'GET' && req.url === '/api/files') {
           const files = fs.readdirSync(filesDir).filter(f => f.endsWith('.dxf'));

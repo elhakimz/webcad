@@ -1,0 +1,962 @@
+  0
+SECTION
+  2
+HEADER
+  9
+$ACADVER
+  1
+AC1015
+  0
+ENDSEC
+  0
+SECTION
+  2
+TABLES
+  0
+TABLE
+  2
+LTYPE
+ 70
+1
+  0
+LTYPE
+  2
+CONTINUOUS
+ 70
+0
+  3
+Solid line
+ 72
+65
+ 73
+0
+ 40
+0.0
+  0
+ENDTAB
+  0
+TABLE
+  2
+LAYER
+ 70
+1
+  0
+LAYER
+  2
+0
+ 70
+0
+ 62
+7
+  6
+CONTINUOUS
+  0
+ENDTAB
+  0
+ENDSEC
+  0
+SECTION
+  2
+BLOCKS
+  0
+ENDSEC
+  0
+SECTION
+  2
+ENTITIES
+  0
+POLYLINE
+  8
+PAPER_BORDER
+ 66
+1
+ 70
+1
+  0
+VERTEX
+  8
+PAPER_BORDER
+ 10
+0
+ 20
+0
+ 30
+0.0
+  0
+VERTEX
+  8
+PAPER_BORDER
+ 10
+297
+ 20
+0
+ 30
+0.0
+  0
+VERTEX
+  8
+PAPER_BORDER
+ 10
+297
+ 20
+210
+ 30
+0.0
+  0
+VERTEX
+  8
+PAPER_BORDER
+ 10
+0
+ 20
+210
+ 30
+0.0
+  0
+VERTEX
+  8
+PAPER_BORDER
+ 10
+0
+ 20
+0
+ 30
+0.0
+  0
+SEQEND
+  0
+POLYLINE
+  8
+BORDER_FRAME
+ 66
+1
+ 70
+1
+  0
+VERTEX
+  8
+BORDER_FRAME
+ 10
+20
+ 20
+10
+ 30
+0.0
+  0
+VERTEX
+  8
+BORDER_FRAME
+ 10
+287
+ 20
+10
+ 30
+0.0
+  0
+VERTEX
+  8
+BORDER_FRAME
+ 10
+287
+ 20
+200
+ 30
+0.0
+  0
+VERTEX
+  8
+BORDER_FRAME
+ 10
+20
+ 20
+200
+ 30
+0.0
+  0
+VERTEX
+  8
+BORDER_FRAME
+ 10
+20
+ 20
+10
+ 30
+0.0
+  0
+SEQEND
+  0
+POLYLINE
+  8
+TITLE_BLOCK
+ 66
+1
+ 70
+1
+  0
+VERTEX
+  8
+TITLE_BLOCK
+ 10
+167
+ 20
+10
+ 30
+0.0
+  0
+VERTEX
+  8
+TITLE_BLOCK
+ 10
+287
+ 20
+10
+ 30
+0.0
+  0
+VERTEX
+  8
+TITLE_BLOCK
+ 10
+287
+ 20
+40
+ 30
+0.0
+  0
+VERTEX
+  8
+TITLE_BLOCK
+ 10
+167
+ 20
+40
+ 30
+0.0
+  0
+VERTEX
+  8
+TITLE_BLOCK
+ 10
+167
+ 20
+10
+ 30
+0.0
+  0
+SEQEND
+  0
+LINE
+  8
+TITLE_BLOCK
+ 10
+167
+ 20
+25
+ 30
+0
+ 11
+287
+ 21
+25
+ 31
+0
+  0
+LINE
+  8
+TITLE_BLOCK
+ 10
+247
+ 20
+10
+ 30
+0
+ 11
+247
+ 21
+25
+ 31
+0
+  0
+MTEXT
+  8
+TITLE_TEXT
+ 10
+172
+ 20
+30
+ 30
+0.0
+ 40
+3.2
+ 41
+110
+  1
+M12 HEX HEAD BOLT PROFILE
+ 50
+0
+ 71
+1
+  0
+MTEXT
+  8
+TITLE_TEXT
+ 10
+172
+ 20
+20
+ 30
+0.0
+ 40
+1.8
+ 41
+70
+  1
+DRAWING NO:
+ 50
+0
+ 71
+1
+  0
+MTEXT
+  8
+TITLE_TEXT
+ 10
+172
+ 20
+14
+ 30
+0.0
+ 40
+2.5
+ 41
+70
+  1
+CAD-BOLT-001
+ 50
+0
+ 71
+1
+  0
+MTEXT
+  8
+TITLE_TEXT
+ 10
+252
+ 20
+20
+ 30
+0.0
+ 40
+1.8
+ 41
+30
+  1
+SCALE:
+ 50
+0
+ 71
+1
+  0
+MTEXT
+  8
+TITLE_TEXT
+ 10
+252
+ 20
+14
+ 30
+0.0
+ 40
+2.5
+ 41
+30
+  1
+1:1
+ 50
+0
+ 71
+1
+  0
+POLYLINE
+  8
+OUTLINE
+ 66
+1
+ 70
+1
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+132.5
+ 20
+105
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+181
+ 20
+105
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+182.5
+ 20
+106.5
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+182.5
+ 20
+109.5
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+181
+ 20
+111
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+132.5
+ 20
+111
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+132.5
+ 20
+105
+ 30
+0.0
+  0
+SEQEND
+  0
+POLYLINE
+  8
+OUTLINE
+ 66
+1
+ 70
+1
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+132.5
+ 20
+105
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+181
+ 20
+105
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+182.5
+ 20
+103.5
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+182.5
+ 20
+100.5
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+181
+ 20
+99
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+132.5
+ 20
+99
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+132.5
+ 20
+105
+ 30
+0.0
+  0
+SEQEND
+  0
+POLYLINE
+  8
+OUTLINE
+ 66
+1
+ 70
+1
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+124.5
+ 20
+95.5
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+132.5
+ 20
+95.5
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+132.5
+ 20
+114.5
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+124.5
+ 20
+114.5
+ 30
+0.0
+  0
+VERTEX
+  8
+OUTLINE
+ 10
+124.5
+ 20
+95.5
+ 30
+0.0
+  0
+SEQEND
+  0
+LINE
+  8
+OUTLINE
+ 10
+124.5
+ 20
+100.25
+ 30
+0
+ 11
+132.5
+ 21
+100.25
+ 31
+0
+  0
+LINE
+  8
+OUTLINE
+ 10
+124.5
+ 20
+109.75
+ 30
+0
+ 11
+132.5
+ 21
+109.75
+ 31
+0
+  0
+LINE
+  8
+THREADS
+ 10
+147.5
+ 20
+110.1
+ 30
+0
+ 11
+181
+ 21
+110.1
+ 31
+0
+  0
+LINE
+  8
+THREADS
+ 10
+147.5
+ 20
+99.9
+ 30
+0
+ 11
+181
+ 21
+99.9
+ 31
+0
+  0
+LINE
+  8
+THREADS
+ 10
+147.5
+ 20
+99
+ 30
+0
+ 11
+147.5
+ 21
+111
+ 31
+0
+  0
+HATCH
+  8
+HATCH
+  2
+ANSI31
+ 70
+0
+ 71
+0
+ 41
+1.5
+ 52
+0
+ 91
+1
+ 92
+0
+ 93
+6
+ 10
+132.5
+ 20
+105
+ 10
+181
+ 20
+105
+ 10
+182.5
+ 20
+106.5
+ 10
+182.5
+ 20
+109.5
+ 10
+181
+ 20
+111
+ 10
+132.5
+ 20
+111
+ 73
+1
+ 75
+0
+ 76
+0
+ 98
+0
+  0
+HATCH
+  8
+HATCH
+  2
+ANSI31
+ 70
+0
+ 71
+0
+ 41
+1.5
+ 52
+0
+ 91
+1
+ 92
+0
+ 93
+6
+ 10
+132.5
+ 20
+105
+ 10
+181
+ 20
+105
+ 10
+182.5
+ 20
+103.5
+ 10
+182.5
+ 20
+100.5
+ 10
+181
+ 20
+99
+ 10
+132.5
+ 20
+99
+ 73
+1
+ 75
+0
+ 76
+0
+ 98
+0
+  0
+LINE
+  8
+CENTER
+ 10
+116.5
+ 20
+105
+ 30
+0
+ 11
+190.5
+ 21
+105
+ 31
+0
+  0
+DIMENSION
+  8
+DIMENSIONS
+ 70
+1
+ 10
+132.5
+ 20
+99
+ 30
+0.0
+ 13
+132.5
+ 23
+99
+ 33
+0.0
+ 14
+182.5
+ 24
+99
+ 34
+0.0
+ 40
+2.5
+  1
+50.00
+ 50
+0
+  0
+DIMENSION
+  8
+DIMENSIONS
+ 70
+1
+ 10
+124.5
+ 20
+114.5
+ 30
+0.0
+ 13
+124.5
+ 23
+114.5
+ 33
+0.0
+ 14
+132.5
+ 24
+114.5
+ 34
+0.0
+ 40
+2.5
+  1
+8.00
+ 50
+0
+  0
+DIMENSION
+  8
+DIMENSIONS
+ 70
+1
+ 10
+182.5
+ 20
+99
+ 30
+0.0
+ 13
+182.5
+ 23
+99
+ 33
+0.0
+ 14
+182.5
+ 24
+111
+ 34
+0.0
+ 40
+2.5
+  1
+12.00
+ 50
+90
+  0
+DIMENSION
+  8
+DIMENSIONS
+ 70
+1
+ 10
+124.5
+ 20
+95.5
+ 30
+0.0
+ 13
+124.5
+ 23
+95.5
+ 33
+0.0
+ 14
+124.5
+ 24
+114.5
+ 34
+0.0
+ 40
+2.5
+  1
+19.00
+ 50
+90
+  0
+MTEXT
+  8
+NOTES
+ 10
+132.5
+ 20
+139.5
+ 30
+0.0
+ 40
+3.5
+ 41
+200
+  1
+M12 HEX HEAD BOLT - SECTIONAL PROFILE VIEW
+ 50
+0
+ 71
+1
+  0
+MTEXT
+  8
+NOTES
+ 10
+132.5
+ 20
+134.5
+ 30
+0.0
+ 40
+2.2
+ 41
+150
+  1
+ALL DIMENSIONS IN MILLIMETERS
+ 50
+0
+ 71
+1
+  0
+ENDSEC
+  0
+EOF

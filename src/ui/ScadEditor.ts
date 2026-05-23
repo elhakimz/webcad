@@ -12,6 +12,7 @@ import { Polyline } from "../core/model/Polyline";
 import { Insert } from "../core/model/Insert";
 import { Entity } from "../core/model/Entity";
 import { NotificationManager } from "./NotificationManager";
+import { PersistenceService } from "../core/persistence/PersistenceService";
 
 class ScadInputDialog {
   private overlay: HTMLElement;
@@ -229,6 +230,7 @@ export class ScadEditor {
       <div class="scad-toolbar" style="display: flex; gap: 5px; padding: 5px; background: var(--panel-bg); border-bottom: 1px solid var(--border-color); flex-wrap: wrap;">
         <button id="scad-custom-btn" class="scad-action-btn" style="flex: 1; font-size: 11px; padding: 4px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-weight: bold; background: var(--panel-bg); color: var(--text-color); cursor: pointer;">Customize</button>
         <button id="scad-run-btn" class="scad-action-btn scad-run-btn" style="flex: 1; font-size: 11px; padding: 4px; border: none; border-radius: var(--radius-sm); font-weight: bold; background: #28a745; color: white; cursor: pointer;">Run Script</button>
+        <button id="scad-addtodoc-btn" class="scad-action-btn" style="flex: 1; font-size: 11px; padding: 4px; border: none; border-radius: var(--radius-sm); font-weight: bold; background: #3b82f6; color: white; cursor: pointer;">Add to Doc</button>
       </div>
       <div class="scad-toolbar" style="display: flex; gap: 5px; padding: 5px; background: var(--panel-bg); border-bottom: 1px solid var(--border-color); flex-wrap: wrap;">
         <button id="scad-load-btn" class="scad-action-btn" style="flex: 1; font-size: 11px; padding: 4px;">Load Project</button>
@@ -352,6 +354,9 @@ difference() {
 
     const saveBtn = editorInner.querySelector('#scad-save-btn')!;
     saveBtn.addEventListener('click', () => this.saveProject());
+
+    const addToDocBtn = editorInner.querySelector('#scad-addtodoc-btn')!;
+    addToDocBtn.addEventListener('click', () => this.addToModellingDoc());
 
     const export3dBtn = editorInner.querySelector('#scad-export-3d-btn')!;
     export3dBtn.addEventListener('click', () => this.export3DBlock());
@@ -712,6 +717,62 @@ difference() {
     }
   }
 
+  private async addToModellingDoc() {
+    if (!this.lastGeometries || this.lastGeometries.length === 0) {
+      NotificationManager.getInstance().show("No compiled geometries. Run the script first.", "error");
+      return;
+    }
+    if (!this.app) {
+      NotificationManager.getInstance().show("No modelling app context available.", "error");
+      return;
+    }
+
+    let added = 0;
+    for (const geo of this.lastGeometries) {
+      // 2D CAD entities — add directly
+      if (geo instanceof Entity) {
+        this.app.addEntity(geo.clone(this.app.doc.getNextId(geo.id.split('-')[0] || 'ENT')), true, true);
+        added++;
+        continue;
+      }
+
+      // 3D BufferGeometry — convert to Solid3D with brepSnapshot
+      if (geo && geo.getAttribute && geo.getAttribute('position')) {
+        const positions = Array.from(geo.getAttribute('position').array) as number[];
+        const indices = geo.index ? Array.from(geo.index.array) as number[] : [];
+        const faceMapping = geo.userData?.faceMapping;
+        const edgeLines = geo.userData?.edgeLines;
+        const brepSnapshot = geo.userData?.brepSnapshot ?? geo.userData?.brepBytes;
+
+        const entityId = this.app.doc.getNextId('SOLID');
+        const solid = new Solid3D(entityId, positions, indices, faceMapping, edgeLines);
+        solid.brepSnapshot = brepSnapshot;
+        if (geo.userData?.color !== undefined) {
+          solid.properties.color = geo.userData.color;
+        }
+
+        this.app.addEntity(solid, true, true);
+
+        // Persist the BRep so modelling ops (fillet, boolean, etc.) work immediately
+        if (solid.brepSnapshot) {
+          try {
+            await PersistenceService.getInstance().persistBRepNow(solid, this.app.doc);
+          } catch (e) {
+            console.warn('[ScadEditor] persistBRepNow failed for solid', entityId, e);
+          }
+        }
+        added++;
+      }
+    }
+
+    if (added > 0) {
+      this.app.syncFromDocument();
+      NotificationManager.getInstance().show(`Added ${added} object${added > 1 ? 's' : ''} to the modelling document.`, 'success');
+    } else {
+      NotificationManager.getInstance().show('No valid geometries could be added.', 'error');
+    }
+  }
+
   private export3DBlock() {
     if (!this.lastGeometries || this.lastGeometries.length === 0) {
       NotificationManager.getInstance().show("No compiled geometries to export. Please run the script first.", "error");
@@ -741,11 +802,15 @@ difference() {
           const indices = geo.index ? Array.from(geo.index.array) as number[] : [];
           const faceMapping = geo.userData?.faceMapping;
           const edgeLines = geo.userData?.edgeLines;
-          const brepSnapshot = geo.userData?.brepSnapshot;
+          // Support both the old format and the new high-performance brepBytes format
+          const brepSnapshot = geo.userData?.brepSnapshot || geo.userData?.brepBytes;
 
           const entityId = this.app.doc.getNextId("SOLID");
           const solid = new Solid3D(entityId, positions, indices, faceMapping, edgeLines);
           solid.brepSnapshot = brepSnapshot;
+          if (geo.userData?.color !== undefined) {
+            solid.properties.color = geo.userData.color;
+          }
           entities.push(solid);
         });
 
@@ -756,28 +821,50 @@ difference() {
 
         this.app.doc.blocks.addBlock(blockName, { x: 0, y: 0 }, entities);
 
-        // Save block as STEP to /files/blocks/3D/
+        // Save block as BREP to /files/blocks/3D/
         (async () => {
           try {
-            const solidWithSnapshot = entities.find(e => e.brepSnapshot && e.brepSnapshot.length > 0);
+            // Robust check for ArrayBuffer, Uint8Array, or serialized object
+
+            console.log("entities: ", entities);
+
+            const solidWithSnapshot = entities.find(e => {
+              if (!e.brepSnapshot) return false;
+              if (e.brepSnapshot.length > 0) return true; // Uint8Array
+              if (e.brepSnapshot.byteLength > 0) return true; // ArrayBuffer
+              if (typeof e.brepSnapshot === 'object' && Object.keys(e.brepSnapshot).length > 0) return true; // Serialized Object
+              return false;
+            });
+            
+            console.log("solidWithSnapshot: ", solidWithSnapshot);
+
             if (solidWithSnapshot && solidWithSnapshot.brepSnapshot) {
-              const response = await fetch(`/api/files/blocks/3D/${blockName}.step`, {
+              // Final safety cast for the fetch body
+              let finalBytes = solidWithSnapshot.brepSnapshot;
+              if (finalBytes instanceof ArrayBuffer) {
+                finalBytes = new Uint8Array(finalBytes);
+              } else if (!(finalBytes instanceof Uint8Array)) {
+                finalBytes = new Uint8Array(Object.values(finalBytes));
+              }
+
+              // Use .brep extension because the data is now a zero-lag Native B-Rep dump
+              const response = await fetch(`/api/files/blocks/3D/${blockName}.brep`, {
                 method: 'POST',
-                body: solidWithSnapshot.brepSnapshot
+                body: finalBytes
               });
               if (response.ok) {
-                console.log(`Saved 3D block STEP to blocks/3D/${blockName}.step`);
+                console.log(`Saved 3D block BREP to blocks/3D/${blockName}.brep`);
               } else {
-                console.error(`Failed to save 3D block STEP: ${response.statusText}`);
+                console.error(`Failed to save 3D block BREP: ${response.statusText}`);
               }
             } else {
-              console.warn("No brepSnapshot found to save 3D block as STEP file.");
+              console.error("No brep bytes found to save 3D block.");
             }
 
             // Save 256x256 PNG thumbnail
             await this.saveBlockThumbnail(blockName, '3D');
           } catch (err) {
-            console.error(`Error saving 3D block STEP to disk:`, err);
+            console.error(`Error saving 3D block BREP to disk:`, err);
           }
         })();
 

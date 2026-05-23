@@ -27,7 +27,7 @@ export class GizmoRenderer {
   private readonly ARROW_HEAD_RAD = 1.5;
   private readonly SHAFT_RAD = 0.3;
   private readonly RING_RADIUS = 55;
-  private readonly RING_TUBE_RAD = 0.1; // Reduced further from 0.2
+  private readonly RING_TUBE_RAD = 1.2; // Increased from 0.1 to provide a generous click hit-test tolerance
   private readonly RING_SEGMENTS = 64;
   private readonly HANDLE_OPACITY = 0.85;
   private readonly HIGHLIGHT_COLOR = 0xddc040;

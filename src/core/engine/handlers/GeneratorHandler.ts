@@ -68,6 +68,9 @@ export class GeneratorHandler implements ActionHandler {
             const entityId = doc.getNextId("SOLID");
             const solid = new Solid3D(entityId, positions, indices, faceMapping, edgeLines);
             solid.brepSnapshot = brepSnapshot;
+            if (geo.userData?.color !== undefined) {
+              solid.properties.color = geo.userData.color;
+            }
             solids3D.push(solid);
           }
         });
@@ -83,59 +86,101 @@ export class GeneratorHandler implements ActionHandler {
             const occ = OpenCascadeService.getInstance();
             
             // Generate a temp ID for our final shape and load the children into the worker cache
-            let currentBaseId = doc.getNextId("S");
+            const currentBaseId = doc.getNextId("S");
             
-            // Let's cache each individual child shape in the worker
+            // Load each child that has a brepSnapshot; track which ones succeeded
+            const loadedChildIds: string[] = [];
             for (let i = 0; i < solids3D.length; i++) {
               const child = solids3D[i];
               const childId = `${currentBaseId}_child_${i}`;
-              
-              // Register it in worker cache
               if (child.brepSnapshot) {
-                await occ.importBRep(childId, child.brepSnapshot);
+                try {
+                  await occ.importBRep(childId, child.brepSnapshot);
+                  loadedChildIds.push(childId);
+                } catch (err) {
+                  console.warn(`[GeneratorHandler] Failed to import child ${i} into OCC worker:`, err);
+                }
+              } else {
+                console.warn(`[GeneratorHandler] Child solid ${i} has no brepSnapshot — skipping.`);
               }
             }
 
-            // Chain fuse operations together
-            let currentShapeId = `${currentBaseId}_child_0`;
-            for (let i = 1; i < solids3D.length; i++) {
-              const nextShapeId = `${currentBaseId}_child_${i}`;
+            // Chain fuse operations over the successfully loaded children
+            let currentShapeId = loadedChildIds[0] ?? null;
+            for (let i = 1; i < loadedChildIds.length; i++) {
+              const nextShapeId = loadedChildIds[i];
               const fusedId = `${currentBaseId}_fused_${i}`;
-              
               try {
-                const fusePercent = 70 + Math.round((i / solids3D.length) * 15);
-                progress.update(fusePercent, `Boolean fusing component ${i + 1}/${solids3D.length}...`);
-                const geom = await occ.createBoolean("fuse", currentShapeId, nextShapeId, fusedId);
+                const fusePercent = 70 + Math.round((i / loadedChildIds.length) * 15);
+                progress.update(fusePercent, `Boolean fusing component ${i + 1}/${loadedChildIds.length}...`);
+                await occ.createBoolean("fuse", currentShapeId!, nextShapeId, fusedId);
                 currentShapeId = fusedId;
               } catch (err) {
-                console.warn(`[GeneratorHandler] Sibling fuse step ${i} failed, falling back to compound:`, err);
+                console.warn(`[GeneratorHandler] Sibling fuse step ${i} failed, keeping accumulated shape:`, err);
               }
             }
 
-            // Retrieve final fused shape snapshot from worker
-            try {
-              progress.update(85, "Exporting fused solid geometry snapshot...");
-              const brepSnapshot = await occ.exportBRep(currentShapeId);
-              
-              // Re-import to construct clean geometry
-              const finalGeomData = await occ.importBRep(`${currentBaseId}_final`, brepSnapshot);
-              
-              if (finalGeomData && finalGeomData.positions) {
-                finalSolid = new Solid3D(
-                  currentBaseId,
-                  finalGeomData.positions,
-                  finalGeomData.indices,
-                  finalGeomData.faceMapping,
-                  finalGeomData.edgeLines
-                );
-                finalSolid.brepSnapshot = brepSnapshot;
+            // Tier 1: export/reimport the fused (or best-effort) shape
+            if (currentShapeId) {
+              try {
+                progress.update(85, "Exporting fused solid geometry snapshot...");
+                const brepSnapshot = await occ.exportBRep(currentShapeId);
+                const finalGeomData = await occ.importBRep(`${currentBaseId}_final`, brepSnapshot);
+                if (finalGeomData && finalGeomData.positions) {
+                  finalSolid = new Solid3D(
+                    currentBaseId,
+                    finalGeomData.positions,
+                    finalGeomData.indices,
+                    finalGeomData.faceMapping,
+                    finalGeomData.edgeLines
+                  );
+                  finalSolid.brepSnapshot = brepSnapshot;
+                  if (solids3D[0]?.properties?.color !== undefined) {
+                    finalSolid.properties.color = solids3D[0].properties.color;
+                  }
+                }
+              } catch (err) {
+                console.warn(`[GeneratorHandler] Fuse export failed, trying compound fallback:`, err);
               }
-            } catch (err) {
-              console.error(`[GeneratorHandler] Failed to compound/fuse siblings:`, err);
+            }
+
+            // Tier 2: compound fallback over all loaded children
+            if (!finalSolid && loadedChildIds.length > 0) {
+              try {
+                progress.update(88, "Creating compound fallback solid...");
+                const compoundId = `${currentBaseId}_compound`;
+                const compoundGeo = await occ.createCompound(loadedChildIds, compoundId, 0.1);
+                if (compoundGeo && compoundGeo.userData?.brepSnapshot) {
+                  finalSolid = new Solid3D(
+                    currentBaseId,
+                    Array.from(compoundGeo.getAttribute('position').array) as number[],
+                    compoundGeo.index ? Array.from(compoundGeo.index.array) as number[] : [],
+                    compoundGeo.userData.faceMapping,
+                    compoundGeo.userData.edgeLines
+                  );
+                  finalSolid.brepSnapshot = compoundGeo.userData.brepSnapshot;
+                  if (solids3D[0]?.properties?.color !== undefined) {
+                    finalSolid.properties.color = solids3D[0].properties.color;
+                  }
+                }
+              } catch (compoundErr) {
+                console.warn(`[GeneratorHandler] Compound fallback also failed:`, compoundErr);
+              }
+            }
+
+            // Tier 3: last resort — use first solid with a valid brepSnapshot directly
+            if (!finalSolid) {
+              const firstValid = solids3D.find(s => s.brepSnapshot);
+              if (firstValid) {
+                console.warn(`[GeneratorHandler] All merge strategies failed — placing first valid solid as fallback.`);
+                finalSolid = firstValid;
+              } else {
+                console.error(`[GeneratorHandler] No valid solid with brepSnapshot — nothing will be placed.`);
+              }
             }
 
             // Cleanup temp shape caches in worker
-            const tempIds = [`${currentBaseId}_final`];
+            const tempIds = [`${currentBaseId}_final`, `${currentBaseId}_compound`];
             for (let i = 0; i < solids3D.length; i++) {
               tempIds.push(`${currentBaseId}_child_${i}`);
               tempIds.push(`${currentBaseId}_fused_${i}`);
@@ -148,9 +193,12 @@ export class GeneratorHandler implements ActionHandler {
 
         // Add the final solid to the document
         progress.update(90, "Applying translation and committing to CAD database...");
+        const isPathBased = params.path !== undefined || params.spine !== undefined;
         if (finalSolid) {
-          // Move the solid to the desired insertion point!
-          finalSolid.move3D(pt.x, pt.y, 0);
+          // Move the solid to the desired insertion point only if it is NOT a path-based generator
+          if (!isPathBased) {
+            finalSolid.move3D(pt.x, pt.y, 0);
+          }
           
           // Add to document
           addEntity(finalSolid, true, true);
@@ -163,7 +211,7 @@ export class GeneratorHandler implements ActionHandler {
 
         // Translate and add any other entities (like 2D Lines, Circles etc)
         otherEntities.forEach(ent => {
-          if ('move' in ent && typeof ent.move === 'function') {
+          if (!isPathBased && 'move' in ent && typeof ent.move === 'function') {
             ent.move(pt.x, pt.y);
           }
           addEntity(ent, true, true);

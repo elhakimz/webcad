@@ -30,7 +30,6 @@ echo("Hex Head Height:", head_h);
 
 union() {
     // 1. Threaded Shank (Zigzag Profile Revolved around Z-Axis)
-    color("gold") {
         // Generate the 2D zigzag points along the positive X half-plane
         zigzag_pts = [
             for (i = [0 : num_threads - 1]) each [
@@ -53,10 +52,9 @@ union() {
         rotate_extrude(angle=360) {
             polygon(points=profile_pts);
         }
-    }
+    
 
     // 2. Beveled Hexagonal Head
-    color("teal") {
         // Intersect the hexagon prism with a chamfering cone to create a professional top bevel
         intersection() {
             // (a) Hexagonal Prism
@@ -73,7 +71,7 @@ union() {
                 }
             }
         }
-    }
+    
 }
 
 echo("--- BOLT GENERATION COMPLETE ---");

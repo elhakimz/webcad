@@ -19,6 +19,7 @@ export interface AppContext {
   onStatusBarUpdate(layer: Layer): void;
   onLayersChange(): void;
   onEntitiesChange?(): void;
+  onFilesChange?(): void;
 }
 
 export interface ActionHandler {

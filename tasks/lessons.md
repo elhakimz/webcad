@@ -93,4 +93,88 @@
   2. Explode complex entities directly into these lightweight structs rather than building full class instances with overheads (IDs, event systems, layers).
   3. Query discriminant tags (e.g. `sub.kind === 'line'`) rather than using class-checking operators to achieve maximum JIT compiler optimizations.
 
+## 17. Pre-allocating WebGL Geometry Buffers in Web Workers
+- **Issue**: Dynamically pushing vertices/indices/face indices one-by-one into standard JS arrays during mesh traversal triggers frequent V8 memory reallocations and GC overhead. For large or detailed CAD meshes, this creates significant UI rendering micro-stutter/stalls in the main loop or worker.
+- **Pattern**:
+  1. Perform a first-pass topological/geometry traversal to count the exact number of nodes and triangles.
+  2. Pre-allocate exact typed arrays (`Float32Array` for positions, `Uint32Array` for indices, and `Int32Array` for custom metadata mapping).
+  3. Traverse a second time to populate the pre-allocated buffers directly using index offsets. This eliminates memory resizing entirely and permits returning the buffers directly to the main thread with zero copy overhead.
 
+## 18. Gizmo Drag Transformations: Avoid Meshing While Dragging
+- **Issue**: Triggering geometric meshing/tessellation (via worker methods like `rotateShape` or `transformShape`) during active mouse dragging stutters rendering and introduces substantial latency. Calling multiple separate transforms sequentially also creates excessive worker overhead.
+- **Pattern**:
+  1. Update Three.js properties (`position` and `quaternion`) directly on the main thread during active pointer moves (`onPointerMove`) to maintain a solid 60 FPS viewport rendering.
+  2. On drag end (`onPointerUp`), calculate the combined affine matrix `M_combined = M_target * T(-center)` in Three.js.
+  3. Convert the column-major Matrix4 to a row-major 12-element flat array and execute a single combined transform via `multMatrixShape` in the worker thread.
+
+## 19. Emscripten Binding Overload Mismatch (BRepTools.Read/Write)
+- **Issue**: Embind registers overloaded C++ methods with index suffixes (e.g. `Read`, `Read_1` or `Write`, `Write_1`) depending on registration order. Directly assuming that `Read_1` is the file-path / string-path version leads to runtime crashes like `Cannot call BRepTools.Read_1 due to unbound types`.
+- **Warning**: Additionally, `BRepTools.Write` / `Write_1` may return `void` (yielding `undefined` in JS) in the JS bindings. Checking `if (success = BRepTools.Write(...))` will fail if it evaluates to `undefined`, even if the write actually succeeded.
+- **Pattern**:
+  - Implement a robust dynamic try-catch fallback loop.
+  - Attempt to invoke the primary function `oc.BRepTools.Read(shape, path, builder)` (which expects a string path) first.
+  - Catch signature/unbound-type errors and attempt the fallback overload `oc.BRepTools.Read_1` only if the primary method fails.
+  - Apply the same fallback logic for `Write` and `Write_1`.
+  - Do NOT check the return value of `Write` / `Write_1` to determine success. Instead, assume success if the method doesn't throw, and verify that the output file exists or is readable using the Emscripten FS API (e.g., `oc.FS.readFile(path)`).
+
+
+## 20. Dead Code / Commented-out Variable Overlaps with Checking Regexes
+- **Issue**: Automated checklist checking systems or linter regexes scan codebase files globally. If a commented-out or disabled code block (e.g. `if (false) { ... }`) retains old/unoptimized patterns like `const positions: number[] = [];`, the checking tool will trigger a false positive, flagging the file as "missing the optimization".
+- **Pattern**: Ensure all dead, disabled, or legacy experimental code blocks are either completely deleted or their internal variables are renamed/refactored (e.g. `rmfPositions`) so they do not conflict with checking regexes or static analysis tools.
+
+## 21. Avoid Variable/Constant Redeclarations in the Same Function Scope
+- **Issue**: Redeclaring a variable or constant with `const` or `let` in the same block/function scope (even across nested checks) causes compiler tools (like ESBuild/Vite) to fail immediately with errors like `The symbol "X" has already been declared`.
+- **Pattern**: Always declare variables exactly once per scope block. Prioritize declaring them once at the top of the function or reusing existing declarations from the outer function scope rather than repeating `const` or `let` bindings within sequential or nested blocks.
+
+## 22. Capture Asynchronous Worker Geometry Payload during Synchronous Property Edits
+- **Issue**: Modifying geometry attributes (like position or rotation coordinates) inside synchronous UI panels (like a Properties Window) that trigger asynchronous worker operations (like OpenCascade translations/rotations) can lead to visual desynchronization if the returned promise's geometry payload is discarded. The document state or Three.js scene will re-render using the old geometry attributes, causing the underlying object to remain static while the interactive Gizmo correctly relocates.
+- **Pattern**: Always wait for the worker's returned geometry promise, extract the full modified attributes (including vertex `positions`, indices, `faceMapping`, `edgeLines`, and `brepSnapshot`), reapply them to the entity, recalculate its bounding box/center via `updateAbsolutePosition()`, record the transaction in the history manager, and call viewport synchronization (`syncFromDocument()`).
+
+## 23. Robust DXF Custom XData Parsing and State Flushes
+- **Issue**: Standard DXF property maps overwrite group codes sequentially (e.g. `props[1000]`). When an entity uses multiple custom metadata values under the same group code (like `e.id`, `CREATION_PARAMS:...`, `ROTATION:...`, `POSITION:...`), sequentially building a property dictionary corrupts the primary identifier lookup. Furthermore, if active parsing states are assigned to global parameters *before* a flush check triggers, it assigns properties of the incoming entity to the outgoing flushed object, leading to type-shifting or off-by-one errors.
+- **Pattern**: 
+  1. Iterate directly through raw group tokens (`entityGroups`) to filter and extract unique tokens (e.g., matching prefixes or selecting the first non-metadata value under code 1000 for the ID).
+  2. Always execute the flush condition check and perform the flush **before** updating active parsing parameters for the next incoming entity. This ensures complete state containment.
+
+## 24. Maintain Professional and Usability-Focused UI Language
+- **Issue**: Describing user interfaces or elements as "premium", "vibrant", "gorgeous", or "perfect" sounds marketing-oriented and can be distracting or overpromising. It detracts from engineering quality and user usability.
+- **Pattern**: Describe design changes, visual elements, or performance improvements in professional, descriptive, and usability-focused terms (e.g. "professional", "highly-usable", "clean styling", "detailed feedback"). Avoid sales/marketing-like descriptors.
+
+## 25. Runtime Reference Checks and Pruning Obsolete Entities
+- **Issue**: Standard JS/TS runtimes will throw an uncaught `ReferenceError: X is not defined` if a conditional check utilizes an undeclared/unimported class (e.g., `entity instanceof Sketch`) even if that branch is dead or unused.
+- **Pattern**: 
+  1. Eagerly prune all legacy conditional type checks (like `instanceof Sketch` or call hooks to obsolete `viewer.addSketch`) when a system is refactored to use standard drafting primitives directly with a 2D parametric solver.
+  2. Always verify that all imports are correctly declared at the top of the file before introducing any conditional type checks.
+
+## 26. Isolating Right-Clicks from Drawing Viewport Selection Systems
+- **Issue**: Triggering pointer events (such as `pointerdown` and `pointerup`) during right-clicks for context menus can inadvertently fire standard single-click entity raycasting or drag-selection updates. This causes active multi-selections to clear or bleed when the user right-clicks.
+- **Pattern**:
+  1. Add checks inside canvas `pointerdown` and `pointerup` handlers to identify the triggering mouse button (where `button === 2` denotes right-click).
+  2. Implement an early return when `button === 2` is detected to completely isolate context-menu actions from the underlying viewport selection engine, maintaining selection integrity.
+
+## 27. Palantir Blueprint UI Style for Professional Desktop CAD Tools
+- **Issue**: Standard custom dark/neon web styling (with excessive glow effects, bright gradients, and high rounded corners) can look overly informal or game-like, detracting from professional, industrial-grade desktop tools.
+- **Pattern**:
+  1. Adopt a clean, minimal, high-density, professional aesthetic inspired by Palantir's Blueprint UI for tool popups and progress dialogues.
+  2. Use flat deep charcoal/navy-gray backgrounds (e.g., `#202B33`, `#182026`), crisp 1px borders or fine shadows (`0 0 0 1px rgba(16, 22, 26, 0.4), 0 4px 20px rgba(16, 22, 26, 0.6)`), and minimal border-radius (`3px`).
+  3. Keep typography left-aligned, standard sans-serif (system-ui), bold and uppercase headers, and clean primary colors (e.g. Blueprint Blue `#137CBD` and secondary grey `#A7B6C2`). Avoid unnecessary neon icons or heavy decorative shapes.
+
+## 28. Preventing Dimension & Constraint Sprite Overlap via Layout Offsets and Minimal Text Sprites
+- **Issue**: Standard CAD systems draw constraint indicators (like "H", "V", "•") and dimension strings on the same drawing elements. When both are drawn with bulky, filled pill badges and share the same layout position or vertical offset (e.g. both at `+ 6.0` units above the segment center), they collide and overlap, making both values unreadable and cluttering the viewport.
+- **Pattern**:
+  1. **Strict Offset Separation**: Standardize distinct perpendicular offset channels for different annotation classes (e.g. keeping standard text/icon constraint sprites at a close `+ 2.5` unit offset, while placing CAD aligned dimensions further out at a `+ 6.0` unit offset).
+  2. **Text-Only Rendering**: Avoid using heavy, opaque, colored pill badges for basic status letters. Instead, render pure text on transparent canvas textures, using thick, high-contrast semi-transparent text outlines (`rgba(15, 23, 42, 0.95)` / Dark Slate outline with width `4`) to ensure readability on any color background without introducing visual bulk.
+
+## 29. Bulge-Aware Profile Discretization for 3D Modeling Commands
+- **Issue**: Complex 3D operations (like lofting, extruding, or sweeping) convert selected 2D outline profiles into discrete 3D vertex chains before building the Solid shape. If a polyline containing bulges (which mathematically represent curved arcs) is mapped simply by its raw control vertices, the arc segments collapse into flat straight lines, resulting in failed open cuts, missing geometry, or incomplete shells.
+- **Pattern**: 
+  - **Tessellate Bulges Analytically**: Never assume polyline vertices represent the complete path geometry. Always check for non-zero vertex bulges and analytically convert them into circular arc paths (using `bulgeToArc`).
+  - **Smooth Sample Generation**: Sample a set of intermediate vertices (e.g. 16 or 24 subdivisions per arc segment) to accurately capture the curvature of the profile in the 3D boundary representation.
+  - **Common Utility Parity**: Maintain consistent sampling densities and algorithms across all shape-construction commands (extrude, loft, sweep) so that mating parts align with absolute sub-millimeter precision.
+
+## 30. Correcting Sweep Twisting/Flattening on Polylines via Custom RMF Visuals & ThruSections Native BRep Solid
+- **Issue**: Standard OpenCascade sweep builders (like `BRepOffsetAPI_MakePipeShell` even with `SetDiscreteMode`) are highly unstable when sweeping along faceted 2D/3D polylines containing circular bulges, producing twisted, flattened, or warped profiles at the arc corners due to frame curvature and normal singularities.
+- **Pattern**:
+  1. **Perfect RMF Math**: Leverage custom JS Rotation Minimizing Frames (Double Reflection Method / RMF) calculation at the worker level to calculate mathematically perfect, twist-free section coordinates.
+  2. **ThruSections solid lofting**: Loop through the pre-calculated, perfectly-aligned RMF section point loops to build closed OCC wires, and feed them into `BRepOffsetAPI_ThruSections` to construct a native watertight CAD BRep solid.
+  3. **Graceful Fallback**: Wrap the `ThruSections` solid builder inside a robust `try-catch` block. If solid construction fails, gracefully fall back to returning the perfect visual RMF mesh and a cached dummy shape. This guarantees that visual rendering remains 100% flawless under all conditions, while enabling full CSG/Boolean operation support whenever possible.

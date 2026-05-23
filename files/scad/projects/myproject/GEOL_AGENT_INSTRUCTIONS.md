@@ -54,6 +54,10 @@ Custom primitive shapes and treated solids.
 * `prismoid(size1, size2, h, shift, orient, align, center)`: Parametric rectangular prismoid and pyramids.
 * `rounded_prismoid(size1, size2, h, r, r1, r2, shift, orient, align, center)`: Rectangular prismoids with rounded vertical edges.
 * `right_triangle(size, orient, align, center)`: 3D right triangular prism.
+* `teardrop2d(r, d, ang, cap_h)`: Makes a high-performance 2D teardrop profile.
+* `teardrop(r, d, l, h, ang, cap_h, orient, align)`: Makes a watertight 3D teardrop solid (extruded along Y/XZ plane).
+* `onion(cap_h, r, d, maxang, h, orient, align)`: Creates a watertight 3D spherical portion with a conical hat revolved profile in positive right half-plane.
+* `narrowing_strut(w, l, wall, ang, orient, align)`: Makes a rectangular strut with a triangular converging top.
 
 ### 🌀 GEOL/shape_cyl.scad
 High-performance, library-free cylinders, tapered cones, hollow tubes, and torus rings.

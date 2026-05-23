@@ -15,7 +15,7 @@ export class SphereCommand implements Command {
     this.occService = OpenCascadeService.getInstance();
   }
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: any, z?: number): CommandResponse | Promise<CommandResponse> {
+  onPoint(x: number, y: number, id: string, _units: UnitsConfig, doc?: any, z?: number): CommandResponse | Promise<CommandResponse> {
     const currentZ = z !== undefined ? z : 0;
     
     if (this.step === 0) {
@@ -35,7 +35,7 @@ export class SphereCommand implements Command {
     return "Specify radius:";
   }
 
-  onInput(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: any): CommandResponse | Promise<CommandResponse> | undefined {
+  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: any): CommandResponse | Promise<CommandResponse> | undefined {
     const val = text.trim().toUpperCase();
 
     if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
@@ -75,7 +75,7 @@ export class SphereCommand implements Command {
     });
   }
 
-  getPreview(x: number, y: number, units: UnitsConfig) {
+  getPreview(x: number, y: number, _units: UnitsConfig) {
     if (this.step === 1 && this.center) {
       const dx = x - this.center.x;
       const dy = y - this.center.y;

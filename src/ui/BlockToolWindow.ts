@@ -204,7 +204,7 @@ export class BlockToolWindow {
       const fileList: string[] = await response.json();
       
       // Filter out files
-      const extension = this.activeTab === 'solid' ? '.step' : '.dxf';
+      const extension = this.activeTab === 'solid' ? '.brep' : '.dxf';
       const blockFiles = fileList.filter(f => f.toLowerCase().endsWith(extension));
 
       this.renderBlocks(blockFiles);
@@ -247,32 +247,47 @@ export class BlockToolWindow {
     });
 
     files.forEach(filename => {
-      const blockName = filename.replace(/\.(step|dxf)$/i, '').toUpperCase();
+      const blockName = filename.replace(/\.(brep|dxf)$/i, '').toUpperCase();
       const badgeText = this.activeTab === 'solid' ? '3D' : '2D';
       const badgeBg = this.activeTab === 'solid' ? 'rgba(235, 94, 40, 0.15)' : 'rgba(59, 130, 246, 0.15)';
       const badgeColor = this.activeTab === 'solid' ? 'var(--error-color)' : 'var(--accent-color)';
 
       const item = document.createElement('li');
+      const actionText = this.activeTab === 'solid' ? 'Edit Solid' : 'Edit Sketch';
       item.innerHTML = `
         <div style="display: flex; align-items: center; gap: 8px;">
           <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-color); font-weight: 600;">${blockName}</span>
         </div>
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <button class="place-btn" style="
-            background: var(--accent-color);
-            color: #ffffff;
-            border: none;
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <button class="insert-btn" title="Insert as reusable block reference at origin" style="
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--accent-color);
+            border: 1px solid rgba(59, 130, 246, 0.3);
             border-radius: var(--radius-sm);
-            padding: 3px 8px;
+            padding: 3px 6px;
             font-size: 9px;
             font-weight: bold;
             cursor: pointer;
             font-family: var(--font-family);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.3px;
             transition: all 0.15s ease;
-          ">Place</button>
-          <span style="background: ${badgeBg}; color: ${badgeColor}; padding: 2px 6px; border-radius: var(--radius-sm); font-size: 9px; font-weight: bold; font-family: var(--font-mono);">${badgeText}</span>
+          ">Block</button>
+          <button class="import-btn" title="Import directly as native editable entity at origin" style="
+            background: var(--accent-color);
+            color: #ffffff;
+            border: none;
+            border-radius: var(--radius-sm);
+            padding: 4px 6px;
+            font-size: 9px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: var(--font-family);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            transition: all 0.15s ease;
+          ">${actionText}</button>
+          <span style="background: ${badgeBg}; color: ${badgeColor}; padding: 3px 5px; border-radius: var(--radius-sm); font-size: 9px; font-weight: bold; font-family: var(--font-mono);">${badgeText}</span>
         </div>
       `;
       Object.assign(item.style, {
@@ -288,22 +303,39 @@ export class BlockToolWindow {
         borderBottom: '1px solid rgba(255,255,255,0.03)'
       });
 
-      // Hover styles for button
-      const placeBtn = item.querySelector('.place-btn') as HTMLElement;
-      placeBtn.addEventListener('mouseenter', () => {
-        placeBtn.style.opacity = '0.9';
-        placeBtn.style.transform = 'scale(1.05)';
+      // Hover styles for buttons
+      const insertBtn = item.querySelector('.insert-btn') as HTMLElement;
+      insertBtn.addEventListener('mouseenter', () => {
+        insertBtn.style.opacity = '0.9';
+        insertBtn.style.transform = 'scale(1.05)';
       });
-      placeBtn.addEventListener('mouseleave', () => {
-        placeBtn.style.opacity = '1';
-        placeBtn.style.transform = 'none';
+      insertBtn.addEventListener('mouseleave', () => {
+        insertBtn.style.opacity = '1';
+        insertBtn.style.transform = 'none';
       });
 
-      // Click to place directly at 0,0,0
-      placeBtn.addEventListener('click', async (e) => {
+      const importBtn = item.querySelector('.import-btn') as HTMLElement;
+      importBtn.addEventListener('mouseenter', () => {
+        importBtn.style.opacity = '0.9';
+        importBtn.style.transform = 'scale(1.05)';
+      });
+      importBtn.addEventListener('mouseleave', () => {
+        importBtn.style.opacity = '1';
+        importBtn.style.transform = 'none';
+      });
+
+      // Click to insert reusable block directly at 0,0,0
+      insertBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         this.hidePopup();
-        await this.handleBlockImport(filename, blockName, true);
+        await this.handleBlockImport(filename, blockName, true, false);
+      });
+
+      // Click to import native editable solid/sketch directly at 0,0,0
+      importBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        this.hidePopup();
+        await this.handleBlockImport(filename, blockName, false, true);
       });
 
       // Hover behavior: popup the thumbnail
@@ -333,8 +365,9 @@ export class BlockToolWindow {
     this.tabContentContainer.appendChild(list);
   }
 
-  private async handleBlockImport(filename: string, blockName: string, shouldPlaceAtOrigin = false) {
-    NotificationManager.getInstance().show(`Importing block "${blockName}"...`, "info");
+  private async handleBlockImport(filename: string, blockName: string, shouldInsertAtOrigin = false, importAsEditable = false) {
+    const actionLabel = importAsEditable ? "Importing editable" : "Importing block";
+    NotificationManager.getInstance().show(`${actionLabel} "${blockName}"...`, "info");
 
     try {
       if (this.activeTab === 'solid') {
@@ -348,14 +381,30 @@ export class BlockToolWindow {
         const entityId = this.app.doc.getNextId("SOLID");
         const deflection = 0.1 / (this.app.doc.facetres || 5.0);
 
-        // Import step through web worker
+        // Import BRep through web worker
         const geomData = await OpenCascadeService.getInstance().importBRep(entityId, bytes, deflection);
         if (!geomData || !geomData.positions || geomData.positions.length === 0) {
-          throw new Error("No mesh data generated from STEP block");
+          throw new Error("No mesh data generated from BRep block");
         }
 
         const solid = new Solid3D(entityId, geomData.positions, geomData.indices, geomData.faceMapping, geomData.edgeLines);
         solid.brepSnapshot = bytes;
+
+        if (importAsEditable) {
+          // Directly add to document
+          this.app.addEntity(solid);
+          this.app.viewer.render();
+          this.app.triggerObjectsWindowUpdate();
+
+          if(solid.brepSnapshot !== undefined){
+            NotificationManager.getInstance().show(`Imported BRep block "${blockName}" as native editable solid!`, "success");
+          }else{
+            NotificationManager.getInstance().show(`Imported BRep block "${blockName}" as non editable solid!`, "success");
+          
+          }
+          
+          return;
+        }
 
         // Register block
         this.app.doc.blocks.addBlock(blockName, { x: 0, y: 0 }, [solid]);
@@ -377,6 +426,19 @@ export class BlockToolWindow {
           throw new Error("No drawing entities parsed from DXF block");
         }
 
+        if (importAsEditable) {
+          // Directly add entities to the main document with fresh IDs
+          for (const entity of entities) {
+            const prefix = entity.id.replace(/\d+.*$/, "");
+            entity.id = this.app.doc.getNextId(prefix);
+            this.app.addEntity(entity);
+          }
+          this.app.viewer.render();
+          this.app.triggerObjectsWindowUpdate();
+          NotificationManager.getInstance().show(`Imported DXF block "${blockName}" as native editable sketch!`, "success");
+          return;
+        }
+
         // Register block
         this.app.doc.blocks.addBlock(blockName, { x: 0, y: 0 }, entities);
       }
@@ -384,14 +446,14 @@ export class BlockToolWindow {
       NotificationManager.getInstance().show(`Block "${blockName}" registered successfully!`, "success");
       this.app.triggerObjectsWindowUpdate();
 
-      if (shouldPlaceAtOrigin) {
-        // Directly place block at 0,0,0
+      if (shouldInsertAtOrigin) {
+        // Directly insert block at 0,0,0
         const insertId = this.app.doc.getNextId("INSERT");
         const insertEntity = new Insert(insertId, blockName, 0, 0, 1, 1, 0);
         this.app.addEntity(insertEntity);
         this.app.viewer.render();
         this.app.triggerObjectsWindowUpdate();
-        NotificationManager.getInstance().show(`Placed block "${blockName}" at (0, 0, 0)!`, "success");
+        NotificationManager.getInstance().show(`Inserted block "${blockName}" at (0, 0, 0)!`, "success");
       } else {
         // Automatically trigger interactive block insertion
         await this.app.execute("INSERT");

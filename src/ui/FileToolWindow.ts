@@ -1,8 +1,9 @@
 import { ToolWindow } from "./ToolWindow"
 import files from "../files.json"
-import { DXFImporter } from "../core/io/dxfImport"
 import { App } from "../app"
 import { NotificationManager } from "./NotificationManager"
+import { IOHandler } from "../core/engine/handlers/IOHandler"
+import { GeneratorProgressModal } from "./GeneratorProgressModal"
 
 export class FileToolWindow {
   private container: HTMLElement;
@@ -58,7 +59,7 @@ export class FileToolWindow {
       const name = prompt('Enter file name to save:', this.app.doc.id || 'drawing1');
       if (name) {
         try {
-          const id = await this.app.persistence.saveProject(
+          await this.app.persistence.saveProject(
             this.app.doc, 
             name,
             this.app.viewer.canvas.toDataURL('image/jpeg', 0.5)
@@ -173,13 +174,20 @@ export class FileToolWindow {
       loadBtn.style.cursor = 'pointer';
       
       loadBtn.onclick = async () => {
+        const progress = new GeneratorProgressModal("Loading Project");
+        progress.show();
         try {
-          await this.app.persistence.loadProject(item.id, this.app.doc, this.app);
+          await this.app.persistence.loadProject(item.id, this.app.doc, this.app, (percent, status) => {
+            progress.update(percent, status);
+          });
           this.app.triggerLayersWindowUpdate();
           NotificationManager.getInstance().show(`Loaded ${item.name}`, 'success');
         } catch (e) {
           console.error(e);
           NotificationManager.getInstance().show(`Failed to load: ${e}`, 'error');
+        } finally {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          progress.close();
         }
       };
       
@@ -261,16 +269,29 @@ export class FileToolWindow {
 
   private async loadFile(filename: string) {
     try {
-      const response = await fetch(`/files/${filename}`);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const text = await response.text();
+      const ioHandler = new IOHandler();
+      const appContext = {
+        doc: this.app.doc,
+        viewer: this.app.viewer,
+        cmd: this.app.cmd,
+        drafting: this.app.drafting,
+        selectedEntityIds: this.app.selectedEntityIds,
+        addEntity: (e: any, rh: any, ucl: any) => this.app.addEntity(e, rh, ucl),
+        syncFromDocument: () => this.app.syncFromDocument(),
+        updateLayerVisibility: () => this.app.updateLayerVisibility(),
+        terminateActiveCommand: () => this.app.terminateActiveCommand(),
+        onStatusBarUpdate: (l: any) => { if (this.app.statusBarUpdate) this.app.statusBarUpdate(l); },
+        onLayersChange: () => { if (this.app.layersWindowUpdate) this.app.layersWindowUpdate(); },
+        onEntitiesChange: () => { if (this.app.objectsWindowUpdate) this.app.objectsWindowUpdate(); }
+      };
+
+      await ioHandler.handle({
+        action: 'load',
+        filename: filename
+      } as any, appContext as any);
       
-      this.app.doc.clear();
-      const importer = new DXFImporter();
-      importer.import(text, this.app.doc);
-      this.app.syncFromDocument();
       this.app.triggerLayersWindowUpdate();
-      console.log(`Loaded ${filename}`);
+      NotificationManager.getInstance().show(`Loaded ${filename}`, 'success');
     } catch (e) {
       console.error(e);
       NotificationManager.getInstance().show(`Failed to load file: ${e}`, 'error');

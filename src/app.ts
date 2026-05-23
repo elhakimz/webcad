@@ -22,6 +22,7 @@ import { Hatch } from "./core/model/Hatch"
 import { getAllPatternNames } from "./core/io/Patterns"
 import { Insert } from "./core/model/Insert"
 import { Spline } from "./core/model/Spline"
+import { solveDocumentConstraints, DocumentConstraint, DocumentPointRef, getPointCoords } from "./core/engine/SketchSolver"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import { Note } from "./core/model/Note"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
@@ -31,6 +32,7 @@ import * as THREE from "three"
 
 import { Layer } from "./core/model/Layer"
 import { DynamicInput } from "./ui/DynamicInput"
+import { DynamicMenu } from "./ui/DynamicMenu"
 import { ResultDispatcher } from "./core/engine/handlers/ResultDispatcher"
 import { GeneratorHandler } from "./core/engine/handlers/GeneratorHandler"
 import { LayerHandler } from "./core/engine/handlers/LayerHandler"
@@ -86,13 +88,18 @@ export class App {
   private statusBarUpdate: ((layer: Layer) => void) | null = null
   private layersWindowUpdate: (() => void) | null = null
   private objectsWindowUpdate: (() => void) | null = null
+  private filesWindowUpdate: (() => void) | null = null
   private promptUpdate: (() => void) | null = null;
   public propertiesWindow: any = null;
+  public sketchToolWindow: any = null;
   private dispatcher: ResultDispatcher;
   public activeGrip: { entityId: string, gripId: string, startPoint: { x: number, y: number } } | null = null;
   public activeCenterGrip: { center: {x: number, y: number}, mode: 'move'|'scale'|'rotate', startMouse: {x: number, y: number}, startScreenMouse: {x: number, y: number}, originalEntities: import('./core/model/Entity').Entity[] } | null = null;
   public setPropertiesWindow(pw: any) {
     this.propertiesWindow = pw;
+  }
+  public setSketchToolWindow(stw: any) {
+    this.sketchToolWindow = stw;
   }
   private lastMode3d: boolean = false;
   currentZ: number = 0;
@@ -103,8 +110,10 @@ export class App {
     this.promptUpdate = updateFn;
   }
   private dynamicInput: DynamicInput;
+  private dynamicMenu: DynamicMenu;
   private lastScreenX: number = 0;
   private lastScreenY: number = 0;
+  public contextMenuVisible: boolean = false;
 
   setLayersWindowUpdate(updateFn: () => void) {
     this.layersWindowUpdate = updateFn;
@@ -120,6 +129,14 @@ export class App {
 
   triggerObjectsWindowUpdate() {
     if (this.objectsWindowUpdate) this.objectsWindowUpdate();
+  }
+
+  setFilesWindowUpdate(updateFn: () => void) {
+    this.filesWindowUpdate = updateFn;
+  }
+
+  triggerFilesWindowUpdate() {
+    if (this.filesWindowUpdate) this.filesWindowUpdate();
   }
 
   setCommandLine(printFn: (msg: string) => void) {
@@ -189,6 +206,7 @@ export class App {
 
     this.dispatcher = new ResultDispatcher();
     this.dynamicInput = new DynamicInput();
+    this.dynamicMenu = new DynamicMenu();
     
     this.dynamicInput.onInputSubmitted(async (text) => {
       const res = await this.inputText(text);
@@ -500,6 +518,17 @@ export class App {
   }
 
   move(screenX: number, screenY: number, ctrlKey = false, shiftKey = false) {
+    if (this.viewer.isPanningActive()) {
+      if (this.selectionStartPoint) {
+        this.selectionStartPoint = null;
+        if (this.selectionBoxEl) {
+          document.body.removeChild(this.selectionBoxEl);
+          this.selectionBoxEl = null;
+        }
+      }
+      return;
+    }
+
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
     
     if (this.activeCenterGrip) {
@@ -546,12 +575,58 @@ export class App {
         const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
         const { x, y } = snapped;
         
-        // Create ghost preview
-        const cloned = entity.clone(entity.id + '_preview');
-        if (cloned.moveGrip) {
-          cloned.moveGrip(this.activeGrip.gripId, { x, y });
+        const isConstrained = this.doc.constraints && this.doc.constraints.some(c => {
+          if (c.type === 'parallel' || c.type === 'perpendicular') {
+            return c.l1[0].entityId === this.activeGrip!.entityId ||
+                   c.l1[1].entityId === this.activeGrip!.entityId ||
+                   c.l2[0].entityId === this.activeGrip!.entityId ||
+                   c.l2[1].entityId === this.activeGrip!.entityId;
+          } else {
+            return c.p1.entityId === this.activeGrip!.entityId ||
+                   ('p2' in c && (c as any).p2.entityId === this.activeGrip!.entityId);
+          }
+        });
+
+        if (isConstrained) {
+          const mockDoc: any = {
+            entities: new Map<string, Entity>(),
+            getEntity(id: string) { return this.entities.get(id); },
+            updateSpatialIndex() {}
+          };
+          this.doc.entities.forEach((ent, id) => {
+            mockDoc.entities.set(id, ent.clone(id));
+          });
+
+          const clonedTarget = mockDoc.getEntity(this.activeGrip.entityId);
+          if (clonedTarget && clonedTarget.moveGrip) {
+            clonedTarget.moveGrip(this.activeGrip.gripId, { x, y });
+          }
+
+          const lockedPoint = {
+            entityId: this.activeGrip.entityId,
+            pointId: this.activeGrip.gripId
+          };
+
+          try {
+            solveDocumentConstraints(mockDoc, this.doc.constraints, lockedPoint);
+          } catch (err) {
+            console.error("Constraint solver error during mousemove preview:", err);
+          }
+
+          const previewEntities: Entity[] = [];
+          mockDoc.entities.forEach((ent: Entity) => {
+            previewEntities.push(ent);
+          });
+
+          this.viewer.setPreview({ type: 'entities', entities: previewEntities } as any, this.doc.units);
+        } else {
+          // Create ghost preview
+          const cloned = entity.clone(entity.id + '_preview');
+          if (cloned.moveGrip) {
+            cloned.moveGrip(this.activeGrip.gripId, { x, y });
+          }
+          this.viewer.setPreview(cloned, this.doc.units);
         }
-        this.viewer.setPreview(cloned, this.doc.units);
         
         this.updateDynamicInput(x, y, screenX, screenY, true);
         return;
@@ -730,6 +805,9 @@ export class App {
   }
 
   updateDynamicInput(x: number, y: number, screenX: number, screenY: number, force: boolean = false) {
+    if (this.contextMenuVisible) {
+      return;
+    }
     if (this.cmd.active && this.cmd.active.getDynamicInput) {
       const lines = this.cmd.active.getDynamicInput(x, y, this.doc.units);
       if (lines) {
@@ -775,7 +853,331 @@ export class App {
     this.dynamicInput.focus();
   }
 
+  getClosestPointRef(worldX: number, worldY: number, entityId: string): DocumentPointRef | null {
+    const entity = this.doc.getEntity(entityId);
+    if (!entity) return null;
+
+    let closestPointId = '';
+    let minDistance = Infinity;
+
+    const checkPoint = (pointId: string, px: number, py: number) => {
+      const dist = Math.sqrt((worldX - px) ** 2 + (worldY - py) ** 2);
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestPointId = pointId;
+      }
+    };
+
+    if (entity instanceof Line) {
+      checkPoint('start', entity.x1, entity.y1);
+      checkPoint('end', entity.x2, entity.y2);
+    } else if (entity instanceof Circle) {
+      checkPoint('center', entity.cx, entity.cy);
+    } else if (entity instanceof Arc) {
+      checkPoint('center', entity.cx, entity.cy);
+      checkPoint('start', entity.cx + entity.r * Math.cos(entity.startAngle), entity.cy + entity.r * Math.sin(entity.startAngle));
+      checkPoint('end', entity.cx + entity.r * Math.cos(entity.endAngle), entity.cy + entity.r * Math.sin(entity.endAngle));
+    } else if (entity instanceof Polyline) {
+      entity.vertices.forEach((v, idx) => {
+        checkPoint(`vertex_${idx}`, v.x, v.y);
+      });
+    }
+
+    if (closestPointId) {
+      return { entityId, pointId: closestPointId };
+    }
+    return null;
+  }
+
+  applyDirectConstraint(c: DocumentConstraint) {
+    if (!this.doc.constraints) {
+      this.doc.constraints = [];
+    }
+
+    // Check for duplicate constraint
+    const isDuplicate = this.doc.constraints.some(existing => {
+      if (existing.type !== c.type) return false;
+      
+      const arePointRefsEqual = (r1: DocumentPointRef, r2: DocumentPointRef) => 
+        r1.entityId === r2.entityId && r1.pointId === r2.pointId;
+
+      if (existing.type === 'fix' && c.type === 'fix') {
+        return arePointRefsEqual(existing.p1, c.p1);
+      }
+      
+      if (('p1' in existing && 'p2' in existing) && ('p1' in c && 'p2' in c)) {
+        return (arePointRefsEqual(existing.p1, c.p1) && arePointRefsEqual(existing.p2, c.p2)) ||
+               (arePointRefsEqual(existing.p1, c.p2) && arePointRefsEqual(existing.p2, c.p1));
+      }
+      
+      if (('l1' in existing && 'l2' in existing) && ('l1' in c && 'l2' in c)) {
+        const matchDirect = (
+          (arePointRefsEqual(existing.l1[0], c.l1[0]) && arePointRefsEqual(existing.l1[1], c.l1[1]) ||
+           arePointRefsEqual(existing.l1[0], c.l1[1]) && arePointRefsEqual(existing.l1[1], c.l1[0])) &&
+          (arePointRefsEqual(existing.l2[0], c.l2[0]) && arePointRefsEqual(existing.l2[1], c.l2[1]) ||
+           arePointRefsEqual(existing.l2[0], c.l2[1]) && arePointRefsEqual(existing.l2[1], c.l2[0]))
+        );
+        const matchSwapped = (
+          (arePointRefsEqual(existing.l1[0], c.l2[0]) && arePointRefsEqual(existing.l1[1], c.l2[1]) ||
+           arePointRefsEqual(existing.l1[0], c.l2[1]) && arePointRefsEqual(existing.l1[1], c.l2[0])) &&
+          (arePointRefsEqual(existing.l2[0], c.l1[0]) && arePointRefsEqual(existing.l2[1], c.l1[1]) ||
+           arePointRefsEqual(existing.l2[0], c.l1[1]) && arePointRefsEqual(existing.l2[1], c.l1[0]))
+        );
+        return matchDirect || matchSwapped;
+      }
+      return false;
+    });
+
+    if (isDuplicate) {
+      this.printToCommandLine("Constraint is already applied.");
+      return;
+    }
+
+    this.doc.history.startTransaction(this.doc.constraints);
+    this.doc.constraints.push(c);
+
+    try {
+      solveDocumentConstraints(this.doc, this.doc.constraints);
+    } catch (err) {
+      console.error("Constraint solver execution failed:", err);
+      this.printToCommandLine("Conflict: Solver could not resolve constraints.");
+      this.doc.constraints.pop();
+      this.doc.history.commitTransaction(this.doc.constraints);
+      return;
+    }
+
+    this.doc.history.commitTransaction(this.doc.constraints);
+
+    // Refresh representations in Three.js and on-screen
+    this.viewer.updateConstraints(this.doc);
+    this.doc.entities.forEach(ent => {
+      this.addEntity(ent, false, false);
+    });
+
+    // Re-render highlights and grips for currently selected entities
+    this.viewer.setHighlight(Array.from(this.selectedEntityIds));
+    const selectedEntitiesForGrips = Array.from(this.selectedEntityIds)
+      .map(id => this.doc.getEntity(id))
+      .filter((ent): ent is Entity => ent !== undefined);
+    this.viewer.renderGrips(selectedEntitiesForGrips);
+
+    this.viewer.requestRender();
+    this.printToCommandLine(`Constraint '${c.type}' applied successfully.`);
+  }
+
+  showDraftingContextMenu(screenX: number, screenY: number) {
+    if (this.cmd.active) {
+      return;
+    }
+    this.contextMenuVisible = true;
+
+    const worldPt = this.viewer.screenToWorld(screenX, screenY);
+    const selectedIds = Array.from(this.selectedEntityIds);
+    const selectedEntities = selectedIds
+      .map(id => this.doc.getEntity(id))
+      .filter((ent): ent is Entity => ent !== undefined);
+
+    const headers: string[] = ["APPLY SKETCH RELATION"];
+    const options: string[] = [];
+
+    // Case 1: Grip active
+    if (this.activeGrip) {
+      headers.push(`Grip: ${this.activeGrip.entityId.split('_')[0]} (${this.activeGrip.gripId})`);
+      options.push("Fix Coordinate", "Cancel Grip Edit");
+      
+      this.dynamicMenu.show(screenX, screenY, headers, options);
+      this.dynamicMenu.onOptionClicked((option) => {
+        if (option === "Fix Coordinate" && this.activeGrip) {
+          const coords = getPointCoords(this.doc, { entityId: this.activeGrip.entityId, pointId: this.activeGrip.gripId });
+          if (coords) {
+            this.applyDirectConstraint({
+              type: 'fix',
+              p1: { entityId: this.activeGrip.entityId, pointId: this.activeGrip.gripId },
+              x: coords.x,
+              y: coords.y
+            });
+          }
+        } else if (option === "Cancel Grip Edit") {
+          this.activeGrip = null;
+          this.viewer.setPreview(null);
+          this.printToCommandLine("*Cancel Grip Edit*");
+          this.viewer.requestRender();
+        }
+        this.dynamicMenu.hide();
+        this.contextMenuVisible = false;
+      });
+      return;
+    }
+
+    // Case 2: No entities selected
+    if (selectedEntities.length === 0) {
+      return;
+    }
+
+    // Case 3: Exactly 1 entity selected
+    if (selectedEntities.length === 1) {
+      const ent = selectedEntities[0];
+      headers.push(`Selection: 1 ${ent.constructor.name} (${ent.id.split('_')[0]})`);
+
+      if (ent instanceof Line) {
+        options.push("Horizontal", "Vertical", "Fix", "Cancel");
+      } else if (ent instanceof Circle || ent instanceof Arc) {
+        options.push("Fix Center", "Cancel");
+      } else {
+        options.push("Fix", "Cancel");
+      }
+
+      this.dynamicMenu.show(screenX, screenY, headers, options);
+      this.dynamicMenu.onOptionClicked((option) => {
+        if (option === "Horizontal" && ent instanceof Line) {
+          this.applyDirectConstraint({
+            type: 'horizontal',
+            p1: { entityId: ent.id, pointId: 'start' },
+            p2: { entityId: ent.id, pointId: 'end' }
+          });
+        } else if (option === "Vertical" && ent instanceof Line) {
+          this.applyDirectConstraint({
+            type: 'vertical',
+            p1: { entityId: ent.id, pointId: 'start' },
+            p2: { entityId: ent.id, pointId: 'end' }
+          });
+        } else if (option === "Fix") {
+          const closestRef = this.getClosestPointRef(worldPt.x, worldPt.y, ent.id);
+          if (closestRef) {
+            const coords = getPointCoords(this.doc, closestRef);
+            if (coords) {
+              this.applyDirectConstraint({ type: 'fix', p1: closestRef, x: coords.x, y: coords.y });
+            }
+          }
+        } else if (option === "Fix Center" && (ent instanceof Circle || ent instanceof Arc)) {
+          const ref = { entityId: ent.id, pointId: 'center' };
+          const coords = getPointCoords(this.doc, ref);
+          if (coords) {
+            this.applyDirectConstraint({ type: 'fix', p1: ref, x: coords.x, y: coords.y });
+          }
+        }
+        this.dynamicMenu.hide();
+        this.contextMenuVisible = false;
+      });
+      return;
+    }
+
+    // Case 4: Exactly 2 entities selected
+    if (selectedEntities.length === 2) {
+      const ent1 = selectedEntities[0];
+      const ent2 = selectedEntities[1];
+      headers.push(`Selection: ${ent1.constructor.name} + ${ent2.constructor.name}`);
+
+      const hasLine1 = ent1 instanceof Line;
+      const hasLine2 = ent2 instanceof Line;
+
+      if (hasLine1 && hasLine2) {
+        options.push("Coincident", "Parallel", "Perpendicular", "Distance", "Cancel");
+      } else if (hasLine1 || hasLine2) {
+        options.push("Coincident", "Distance", "Cancel");
+      } else {
+        options.push("Coincident", "Distance", "Cancel");
+      }
+
+      this.dynamicMenu.show(screenX, screenY, headers, options);
+      this.dynamicMenu.onOptionClicked((option) => {
+        if (option === "Cancel") {
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+          return;
+        }
+
+        // Auto-resolve points based on mouse proximity
+        const ref1 = this.getClosestPointRef(worldPt.x, worldPt.y, ent1.id);
+        const ref2 = this.getClosestPointRef(worldPt.x, worldPt.y, ent2.id);
+
+        if (!ref1 || !ref2) {
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+          return;
+        }
+
+        if (option === "Coincident") {
+          this.applyDirectConstraint({
+            type: 'coincident',
+            p1: ref1,
+            p2: ref2
+          });
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+        } else if (option === "Parallel" && ent1 instanceof Line && ent2 instanceof Line) {
+          this.applyDirectConstraint({
+            type: 'parallel',
+            l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }],
+            l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
+          });
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+        } else if (option === "Perpendicular" && ent1 instanceof Line && ent2 instanceof Line) {
+          this.applyDirectConstraint({
+            type: 'perpendicular',
+            l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }],
+            l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
+          });
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+        } else if (option === "Distance") {
+          this.dynamicMenu.hide();
+          
+          const coords1 = getPointCoords(this.doc, ref1);
+          const coords2 = getPointCoords(this.doc, ref2);
+          if (!coords1 || !coords2) return;
+
+          const currentLen = Math.sqrt((coords2.x - coords1.x) ** 2 + (coords2.y - coords1.y) ** 2);
+
+          // Prompt for distance input
+          const canvasRect = this.viewer.canvas.getBoundingClientRect();
+          const vx = canvasRect.left + canvasRect.width / 2 - 80;
+          const vy = canvasRect.top + canvasRect.height / 2 - 40;
+
+          this.dynamicInput.show(
+            vx,
+            vy,
+            ["SET TARGET DISTANCE", `Current: ${currentLen.toFixed(3)}`],
+            [],
+            true,
+            [],
+            "Type exact distance and press Enter",
+            currentLen.toFixed(3)
+          );
+
+          this.dynamicInput.onInputSubmitted((text) => {
+            const val = parseFloat(text);
+            if (!isNaN(val) && val > 0) {
+              this.applyDirectConstraint({
+                type: 'distance',
+                p1: ref1,
+                p2: ref2,
+                value: val
+              });
+            } else {
+              this.printToCommandLine("Invalid distance value.");
+            }
+            this.dynamicInput.hide();
+            this.contextMenuVisible = false;
+          });
+        }
+      });
+      return;
+    }
+  }
+
   pointerDown(screenX: number, screenY: number, button: number = 0, shiftKey: boolean = false) {
+    if (this.contextMenuVisible) {
+      this.dynamicMenu.hide();
+      this.dynamicInput.hide();
+      this.contextMenuVisible = false;
+    }
+
+    if (button === 2) {
+      return;
+    }
+
     const worldPt = this.viewer.screenToWorld(screenX, screenY);
     
     // Check for grips first
@@ -815,6 +1217,36 @@ export class App {
             if (dist <= gripTolerance) {
               this.activeGrip = { entityId: entity.id, gripId: grip.id, startPoint: { ...grip.point } };
 
+              if (this.sketchToolWindow) {
+                if (entity instanceof Polyline) {
+                  if (grip.id.startsWith('midpoint_') || grip.id.startsWith('center_')) {
+                    const idxStr = grip.id.split('_')[1];
+                    const segKey = `${entity.id}::segment_${idxStr}`;
+                    this.sketchToolWindow.selectedElementIds.clear();
+                    this.sketchToolWindow.selectedElementIds.add(segKey);
+                    this.sketchToolWindow.refresh();
+                  } else if (grip.id.startsWith('vertex_')) {
+                    const idxStr = grip.id.split('_')[1];
+                    const refKey = `${entity.id}::vertex_${idxStr}`;
+                    this.sketchToolWindow.selectedPointRefs.clear();
+                    this.sketchToolWindow.selectedPointRefs.add(refKey);
+                    this.sketchToolWindow.refresh();
+                  }
+                } else {
+                  if (grip.id === 'start' || grip.id === 'end') {
+                    const refKey = `${entity.id}::${grip.id}`;
+                    this.sketchToolWindow.selectedPointRefs.clear();
+                    this.sketchToolWindow.selectedPointRefs.add(refKey);
+                    this.sketchToolWindow.refresh();
+                  } else if (grip.id === 'center') {
+                    const refKey = `${entity.id}::center`;
+                    this.sketchToolWindow.selectedPointRefs.clear();
+                    this.sketchToolWindow.selectedPointRefs.add(refKey);
+                    this.sketchToolWindow.refresh();
+                  }
+                }
+              }
+
               return; // Stop processing, start dragging
             }
           }
@@ -835,7 +1267,22 @@ export class App {
     this.selectionStartPoint = { x: worldPt.x, y: worldPt.y, screenX, screenY };
   }
 
-  async pointerUp(screenX: number, screenY: number, isShift = false, isCtrl = false): Promise<CommandResponse | undefined> {
+  async pointerUp(screenX: number, screenY: number, isShift = false, isCtrl = false, button: number = 0): Promise<CommandResponse | undefined> {
+    if (this.viewer.wasViewportPanEnded()) {
+      setTimeout(() => this.viewer.clearViewportPanEndedFlag(), 100);
+      return;
+    }
+
+    if (this.viewer.wasPanEnded()) {
+      this.viewer.clearPanEndedFlag();
+      this.terminateActiveCommand();
+      return "Pan completed.";
+    }
+
+    if (button === 2) {
+      return;
+    }
+
     if (this.activeCenterGrip) {
       const worldPt = this.viewer.screenToWorld(screenX, screenY);
       const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
@@ -879,7 +1326,8 @@ export class App {
       this.activeCenterGrip = null;
       this.viewer.setPreview(null);
       
-      // Refresh grips
+      // Refresh highlights and grips
+      this.viewer.setHighlight(Array.from(this.selectedEntityIds));
       const selectedEntities = Array.from(this.selectedEntityIds)
         .map(id => this.doc.getEntity(id))
         .filter((e): e is Entity => e !== undefined);
@@ -895,17 +1343,65 @@ export class App {
         const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
         const { x, y } = snapped;
         
-        this.doc.history.startTransaction();
-        const beforeState = entity.clone(entity.id);
-        entity.moveGrip(this.activeGrip.gripId, { x, y });
-        this.doc.recordTransform(beforeState, entity);
-        this.addEntity(entity, true, false); // Update entity in doc
-        this.doc.history.commitTransaction();
+        const isConstrained = this.doc.constraints && this.doc.constraints.some(c => {
+          if (c.type === 'parallel' || c.type === 'perpendicular') {
+            return c.l1[0].entityId === this.activeGrip!.entityId ||
+                   c.l1[1].entityId === this.activeGrip!.entityId ||
+                   c.l2[0].entityId === this.activeGrip!.entityId ||
+                   c.l2[1].entityId === this.activeGrip!.entityId;
+          } else {
+            return c.p1.entityId === this.activeGrip!.entityId ||
+                   ('p2' in c && (c as any).p2.entityId === this.activeGrip!.entityId);
+          }
+        });
+
+        if (isConstrained) {
+          this.doc.history.startTransaction(this.doc.constraints);
+          
+          const beforeStates = new Map<string, Entity>();
+          this.doc.entities.forEach((ent, id) => {
+            beforeStates.set(id, ent.clone(id));
+          });
+
+          entity.moveGrip(this.activeGrip.gripId, { x, y });
+
+          const lockedPoint = {
+            entityId: this.activeGrip.entityId,
+            pointId: this.activeGrip.gripId
+          };
+
+          try {
+            solveDocumentConstraints(this.doc, this.doc.constraints, lockedPoint);
+          } catch (err) {
+            console.error("Constraint solver error during mouseup commit:", err);
+          }
+
+          this.doc.entities.forEach((ent, id) => {
+            const before = beforeStates.get(id);
+            if (before) {
+              const changed = JSON.stringify(before) !== JSON.stringify(ent);
+              if (changed) {
+                this.doc.recordTransform(before, ent);
+                this.addEntity(ent, false, false);
+              }
+            }
+          });
+
+          this.doc.history.commitTransaction(this.doc.constraints);
+        } else {
+          this.doc.history.startTransaction(this.doc.constraints);
+          const beforeState = entity.clone(entity.id);
+          entity.moveGrip(this.activeGrip.gripId, { x, y });
+          this.doc.recordTransform(beforeState, entity);
+          this.addEntity(entity, true, false); // Update entity in doc
+          this.doc.history.commitTransaction(this.doc.constraints);
+        }
         
         this.activeGrip = null;
         this.viewer.setPreview(null);
         
-        // Refresh grips
+        // Refresh highlights and grips
+        this.viewer.setHighlight(Array.from(this.selectedEntityIds));
         const selectedEntities = Array.from(this.selectedEntityIds)
           .map(id => this.doc.getEntity(id))
           .filter((e): e is Entity => e !== undefined);
@@ -1018,21 +1514,26 @@ export class App {
           }
         });
       }
+    }
 
+    const activeName = this.cmd.active?.constructor.name;
+    const wantsSubEntity = (activeName === 'SFilletCommand' || activeName === 'SChamferCommand' || activeName === 'ShellCommand') || (this.cmd.active === null && this.selectionMode === 'SURFACE');
+
+    if (subEntity && wantsSubEntity) {
       if (subEntity.edgeIndex !== undefined) {
         this.selectedEdge = { entityId: subEntity.entity.id, edgeIndex: subEntity.edgeIndex };
         this.viewer.highlightEdge(subEntity.entity.id, subEntity.edgeIndex);
         
         const text = `EDGE:${subEntity.entity.id}:${subEntity.edgeIndex}`;
         const res = await this.cmd.inputString(text, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);
-        await this.handleResult(res);
-        return; // Return early to prevent full object selection & gizmo attachment
+        const resResult = await this.handleResult(res);
+        return resResult; // Return early to prevent full object selection & gizmo attachment
       } else if (subEntity.faceIndex !== undefined) {
         this.selectedFaces.push({ entityId: subEntity.entity.id, faceIndex: subEntity.faceIndex });
         
         const text = `FACE:${subEntity.entity.id}:${subEntity.faceIndex}`;
         const res = await this.cmd.inputString(text, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);
-        await this.handleResult(res);
+        const resResult = await this.handleResult(res);
         
         if (this.selectedFaces.length > 2) {
           this.selectedFaces.shift();
@@ -1061,14 +1562,13 @@ export class App {
 
           }
         }
-        return; // Return early to prevent full object selection & gizmo attachment
+        return resResult; // Return early to prevent full object selection & gizmo attachment
       }
     }
     const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
     const { x, y } = snapped;
 
     // Handle initial selection step for edit commands if clicking an entity
-    const activeName = this.cmd.active?.constructor.name;
     const isEditCommand = this.isEditCommand(activeName);
     const isSelectionStep = this.isInSelectionStep();
     let tolerance = 5 / this.viewer.camera.zoom;
@@ -1293,13 +1793,15 @@ export class App {
         terminateActiveCommand: () => this.terminateActiveCommand(),
         onStatusBarUpdate: (l) => { if (this.statusBarUpdate) this.statusBarUpdate(l); },
         onLayersChange: () => { if (this.layersWindowUpdate) this.layersWindowUpdate(); },
-        onEntitiesChange: () => { if (this.objectsWindowUpdate) this.objectsWindowUpdate(); }
+        onEntitiesChange: () => { if (this.objectsWindowUpdate) this.objectsWindowUpdate(); },
+        onFilesChange: () => { if (this.filesWindowUpdate) this.filesWindowUpdate(); }
       };
 
       const actionResult = await (async () => {
-          this.doc.history.startTransaction();
+          this.doc.history.startTransaction(this.doc.constraints);
           const res = await this.dispatcher.dispatch(result as CommandAction, appContext);
-          this.doc.history.commitTransaction();
+          this.viewer.updateConstraints(this.doc);
+          this.doc.history.commitTransaction(this.doc.constraints);
           return res;
       })();
 
@@ -1409,6 +1911,7 @@ export class App {
     for (const entity of this.doc.getAllEntities()) {
       this.addEntity(entity, false, false);
     }
+    this.viewer.updateConstraints(this.doc);
     this.viewer.render();
     
     if (this.propertiesWindow) {
@@ -1423,6 +1926,12 @@ export class App {
   }
 
   public updateGizmoAttachment() {
+    const activeCmdName = this.cmd.active?.constructor.name;
+    if (activeCmdName === 'BooleanCommand') {
+      this.gizmoManager.detach();
+      return;
+    }
+
     if (this.selectedEntityIds.size === 1) {
       const id = Array.from(this.selectedEntityIds)[0];
       const entity = this.doc.getEntity(id);
@@ -1478,6 +1987,9 @@ export class App {
     this.viewer.setActivePointMarker(null, null);
     this.viewer.setBaseLine(null, null);
     this.viewer.clearBoundaryMarkers();
+    this.viewer.setHighlight(Array.from(this.selectedEntityIds));
+    this.updateGizmoAttachment();
+    this.updatePropertiesWindow();
     this.viewer.render();
   }
 

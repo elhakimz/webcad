@@ -4,6 +4,8 @@ import { HistoryManager } from "./HistoryManager"
 import { LayerManager } from "./Layer"
 import { BlockManager } from "./Block"
 import { Quadtree } from "../engine/Quadtree"
+import { Insert } from "./Insert"
+import { DocumentConstraint } from "../engine/SketchSolver"
 
 export interface UnitsConfig {
   type: 'decimal' | 'architectural' | 'metric';
@@ -14,6 +16,7 @@ export interface UnitsConfig {
 export interface IDocument {
   id?: string;
   entities: Map<string, Entity>;
+  constraints: DocumentConstraint[];
   units: UnitsConfig;
   dimtoh: boolean;
   dimtad: boolean;
@@ -45,13 +48,14 @@ export interface IDocument {
 export class Document implements IDocument {
   id?: string;
   entities: Map<string, Entity> = new Map()
+  constraints: DocumentConstraint[] = []
   history = new HistoryManager()
   layers = new LayerManager()
   blocks = new BlockManager()
   units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 }
   dimtoh: boolean = false;
   dimtad: boolean = false;
-  facetres: number = 5.0;
+  facetres: number = 1.0;
   currentElevation: number = 0;
   currentThickness: number = 0;
   private spatialIndex: Quadtree
@@ -61,10 +65,12 @@ export class Document implements IDocument {
   constructor() {
     // Large bound for drafting space
     this.spatialIndex = new Quadtree({ minX: -1000000, minY: -1000000, maxX: 1000000, maxY: 1000000 })
+    Insert.getBlockCallback = (blockName: string) => this.blocks.getBlock(blockName);
   }
 
   clear() {
     this.entities.clear();
+    this.constraints = [];
     this.history.clear();
     this.idCounters.clear();
     this.spatialIndex.clear();
@@ -86,6 +92,20 @@ export class Document implements IDocument {
     this.spatialIndex.remove(id)
     this.removalsCount++
     
+    // Filter out constraints referencing the deleted entity ID
+    this.constraints = this.constraints.filter(c => {
+      const p1 = (c as any).p1;
+      const p2 = (c as any).p2;
+      const l1 = (c as any).l1;
+      const l2 = (c as any).l2;
+      
+      if (p1 && p1.entityId === id) return false;
+      if (p2 && p2.entityId === id) return false;
+      if (l1 && (l1[0].entityId === id || l1[1].entityId === id)) return false;
+      if (l2 && (l2[0].entityId === id || l2[1].entityId === id)) return false;
+      return true;
+    });
+
     if (this.removalsCount >= 100) {
       this.rebuildSpatialIndex()
     }
@@ -144,6 +164,10 @@ export class Document implements IDocument {
       (entity) => this.addEntity(entity),
       (id, dx, dy, dz) => {
         OpenCascadeService.getInstance().transformShape(id, dx, dy, dz);
+      },
+      undefined,
+      (constraints) => {
+        this.constraints = constraints;
       }
     )
   }
@@ -155,6 +179,10 @@ export class Document implements IDocument {
       (entity) => this.addEntity(entity),
       (id, dx, dy, dz) => {
         OpenCascadeService.getInstance().transformShape(id, dx, dy, dz);
+      },
+      undefined,
+      (constraints) => {
+        this.constraints = constraints;
       }
     )
   }

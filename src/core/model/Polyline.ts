@@ -101,10 +101,14 @@ export class Polyline extends Entity {
     
     // Vertex grips
     this.vertices.forEach((v, i) => {
-      grips.push({ id: `vertex_${i}`, point: { x: v.x, y: v.y }, type: 'endpoint' });
+      grips.push({ id: `vertex_${i}`, point: { x: v.x, y: v.y, z: v.z !== undefined ? v.z : this.elevation }, type: 'endpoint' });
     });
     
     const addSegmentGrips = (v1: PolylineVertex, v2: PolylineVertex, i: number) => {
+      const z1 = v1.z !== undefined ? v1.z : this.elevation;
+      const z2 = v2.z !== undefined ? v2.z : this.elevation;
+      const midZ = (z1 + z2) / 2;
+
       if (Math.abs(v1.bulge) > 1e-6) {
         const arc = bulgeToArc(v1, v2, v1.bulge);
         if (arc) {
@@ -119,12 +123,12 @@ export class Polyline extends Entity {
           const midAngle = arc.startAngle + diff / 2;
           grips.push({ 
             id: `midpoint_${i}`, 
-            point: { x: arc.cx + arc.r * Math.cos(midAngle), y: arc.cy + arc.r * Math.sin(midAngle) }, 
+            point: { x: arc.cx + arc.r * Math.cos(midAngle), y: arc.cy + arc.r * Math.sin(midAngle), z: midZ }, 
             type: 'midpoint' 
           });
           grips.push({ 
             id: `center_${i}`, 
-            point: { x: arc.cx, y: arc.cy }, 
+            point: { x: arc.cx, y: arc.cy, z: midZ }, 
             type: 'center' 
           });
           return;
@@ -132,7 +136,7 @@ export class Polyline extends Entity {
       }
       grips.push({ 
         id: `midpoint_${i}`, 
-        point: { x: (v1.x + v2.x) / 2, y: (v1.y + v2.y) / 2 }, 
+        point: { x: (v1.x + v2.x) / 2, y: (v1.y + v2.y) / 2, z: midZ }, 
         type: 'midpoint' 
       });
     };

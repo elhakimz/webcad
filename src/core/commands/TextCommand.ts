@@ -11,7 +11,7 @@ export class TextCommand implements Command {
   currentMouseX = 0
   currentMouseY = 0
 
-  onPoint(x: number, y: number, _id: string, _units: UnitsConfig, doc?: IDocument): CommandResponse {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig, _doc?: IDocument): CommandResponse {
     if (this.step === 0) {
       this.startPt = { x, y }
       this.step = 1

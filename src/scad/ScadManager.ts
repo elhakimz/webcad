@@ -85,7 +85,7 @@ export class ScadManager {
       }
       lastIndex = imp.matchIndex + imp.length;
       
-      let resolvedPath = this.resolvePath(currentDir, imp.relativePath);
+      const resolvedPath = this.resolvePath(currentDir, imp.relativePath);
       let fileKey = `${imp.type}:${resolvedPath}`;
       
       if (visiting.has(resolvedPath)) {
@@ -118,6 +118,23 @@ export class ScadManager {
             fileKey = fallbackKey;
           }
         }
+
+        // Active project ("myproject") workspace library fallback (e.g. for BOSL/GEOL)
+        if (!response.ok) {
+          const projectUrl = `/api/files/scad/projects/myproject/${resolvedPath}`;
+          const projectResponse = await fetch(projectUrl);
+          if (projectResponse.ok) {
+            response = projectResponse;
+          }
+        }
+
+        if (!response.ok && fallbackPath !== resolvedPath) {
+          const projectUrl = `/api/files/scad/projects/myproject/${fallbackPath}`;
+          const projectResponse = await fetch(projectUrl);
+          if (projectResponse.ok) {
+            response = projectResponse;
+          }
+        }
         
         if (!response.ok) {
           throw new Error(`Failed to load ${resolvedPath} (and fallback ${fallbackPath}): ${response.statusText}`);
@@ -134,7 +151,8 @@ export class ScadManager {
         if (imp.type === "use") {
           const filtered = importedNodes.filter(node =>
             node.type === "ModuleDef" ||
-            node.type === "FunctionDef"
+            node.type === "FunctionDef" ||
+            node.type === "Assignment"
           );
           bodyNodes.push(...filtered);
         } else {
@@ -174,6 +192,10 @@ export class ScadManager {
       };
       
       const geometryTree = this.evaluator.evaluate(ast, overrides, logger);
+      console.log("SCAD GEOMETRY TREE:", JSON.stringify(geometryTree, (key, value) => {
+        if (key === "points" || key === "faces") return `[Array: ${value.length}]`;
+        return value;
+      }, 2));
       const geometries = await this.executor.execute(geometryTree);
       
       return {

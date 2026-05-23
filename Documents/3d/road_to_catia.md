@@ -4,7 +4,7 @@ This document establishes the strategic engineering and mathematical roadmap for
 
 ---
 
-## 🏛️ Architectural Overview
+## Architectural Overview
 
 Professional mechanical CAD engines are built on four distinct pillars that manage geometric creation, relational constraint satisfaction, and history propagation.
 
@@ -12,61 +12,45 @@ Professional mechanical CAD engines are built on four distinct pillars that mana
 graph TD
     classDef main fill:#1e1e24,stroke:#3f3f46,stroke-width:2px,color:#fafafa;
     classDef sub fill:#27272a,stroke:#52525b,stroke-width:1px,color:#e4e4e7;
-    
-    A[WebCAD Parametric Core]:::main --> B[1. 2D Sketcher & Constraint Solver]:::sub
-    A --> C[2. Parametric Feature DAG & Regen]:::sub
+
+    A[WebCAD Parametric Core]:::main --> B[1. Parametric Feature DAG & Regen]:::sub
+    A --> C[2. 2D Sketcher & Constraint Solver]:::sub
     A --> D[3. Advanced BRep Surfacing]:::sub
     A --> E[4. Assembly & Kinematic Mates]:::sub
 
-    B --> B1["Planar Degrees of Freedom (DoF) Tracker"]
-    B --> B2["Levenberg-Marquardt Solver (2D Constraint Graph)"]
-    
-    C --> C1["Directed Acyclic Graph (DAG) history tree"]
-    C --> C2["Topological Naming & Edge-Tracking Database"]
-    
+    B --> B1["Directed Acyclic Graph (DAG) history tree"]
+    B --> B2["Topological Naming & Edge-Tracking Database"]
+    B --> B3["Dirty-flag partial regen"]
+
+    C --> C1["Planar Degrees of Freedom (DoF) Tracker"]
+    C --> C2["Levenberg-Marquardt Solver (2D Constraint Graph)"]
+    C --> C3["Rigid-body sub-graph decomposition"]
+
     D --> D1["G1/G2 Continuity Surfaces (B-Spline transitions)"]
     D --> D2["Solid Modifiers (Shelling, Thin-Wall, Draft Angles)"]
-    
+    D --> D3["Curvature comb & zebra stripe diagnostics"]
+
     E --> E1["3D Spatial Mate Engine (Axis-to-Axis, Planar Face)"]
     E --> E2["Dynamic Degrees-of-Freedom Assembly Solver"]
 ```
 
 ---
 
-## 1. 2D Sketcher & Geometric Constraint Solver (GCS)
+## Why this ordering matters
 
-In CATIA and Inventor, all 3D solid features originate from fully-constrained 2D Sketches. We must move beyond simple coordinates to a constraint-based sketching system.
+The milestones follow a strict dependency chain. The **Parametric Feature DAG is the foundation** — without it, surfaces and sketches are direct-mode geometry that must be torn out and rebuilt once history is introduced. The GCS Sketcher is the entry point for every feature, so the DAG must exist before sketcher output has anywhere meaningful to go. Advanced surfacing and assemblies sit naturally on top of the established infrastructure.
 
-### 📐 The Constraint Schema
-To support professional drafting, the sketcher maps mathematical relations between points, lines, circles, and arcs:
-
-| Constraint Type | Mathematical Relation / Equation | Objective Function Value |
-| :--- | :--- | :--- |
-| **Coincident** | $P_1(x_1, y_1) - P_2(x_2, y_2) = 0$ | Distance squared between points $\rightarrow 0$ |
-| **Horizontal** | $P_1(y_1) - P_2(y_2) = 0$ | Delta $Y \rightarrow 0$ |
-| **Vertical** | $P_1(x_1) - P_2(x_2) = 0$ | Delta $X \rightarrow 0$ |
-| **Parallel** | $(P_2 - P_1) \times (P_4 - P_3) = 0$ | Determinant of line direction vectors $\rightarrow 0$ |
-| **Perpendicular** | $(P_2 - P_1) \cdot (P_4 - P_3) = 0$ | Dot product of line direction vectors $\rightarrow 0$ |
-| **Tangent** | Distance from circle center $C$ to line $L = R$ | Distance equation minus Radius $\rightarrow 0$ |
-| **Concentric** | $C_1(x_1, y_1) - C_2(x_2, y_2) = 0$ | Distance squared between circle centers $\rightarrow 0$ |
-| **Dimensional** | $\| P_2 - P_1 \| - D_{\text{target}} = 0$ | Euclidean distance minus dimension value $\rightarrow 0$ |
-
-### 🧠 Solver Implementation Strategy
-To solve these equations in real-time, we must integrate a Planar Geometric Constraint Solver (GCS):
-1. **Degrees of Freedom (DoF) Calculation:** Track under-constrained, fully-constrained, and over-defined entities dynamically. Highlight under-constrained entities in **Blue**, fully-constrained in **Green**, and conflicts in **Red**.
-2. **Graph-Based Decomposition:** Decompose the constraints into a bipartite graph of variables (coordinates) and equations (constraints). Identify independent closed sub-graphs to solve smaller systems sequentially rather than one massive system.
-3. **Non-Linear Least Squares Solver:** Solve the equations using an iterative numerical solver (such as the **Levenberg-Marquardt** or **Powell's Dog-Leg** algorithm):
-   $$\mathbf{J}^T \mathbf{J} \Delta \mathbf{x} = -\mathbf{J}^T \mathbf{F}(\mathbf{x})$$
-   Where $\mathbf{J}$ is the Jacobian matrix of constraint derivatives, and $\mathbf{F}(\mathbf{x})$ is the vector of constraint errors.
-
-> [!TIP]
-> Exposing OpenCascade's `gp_Elips` and `Geom2d_BSplineCurve` will allow sketchers to handle advanced ellipses and splines, which is essential for high-fidelity mechanical design profiles.
+```
+[ Milestone 1 ] ──► [ Milestone 2 ] ──► [ Milestone 3 ] ──► [ Milestone 4 ]
+Parametric DAG       GCS Sketcher       Surfacing & Shells   Assemblies & Mates
+& Topo Naming        & Solver           & STEP Import
+```
 
 ---
 
-## 2. Parametric Feature DAG & Topological Naming (Regen)
+## Milestone 1: Parametric Feature DAG & Topological Naming
 
-A professional CAD model is not static; it is a compiled recipe. Modifying `Sketch1` must automatically propagate, recalculating `Extrude1` and re-applying `Fillet1` flawlessly.
+A professional CAD model is not static; it is a compiled recipe. Modifying `Sketch1` must automatically propagate, recalculating `Extrude1` and re-applying `Fillet1` flawlessly. This infrastructure must exist before any other parametric feature is built.
 
 ```
        [Sketch 1]
@@ -78,28 +62,105 @@ A professional CAD model is not static; it is a compiled recipe. Modifying `Sket
        [Union 1] (Final Model)
 ```
 
-### 🌲 Directed Acyclic Graph (DAG) Structure
-Every feature (Sketch, Extrude, Chamfer, Thread, Cut) is registered as a node in a DAG:
-* **Feature Execution:** Running a `REGEN` command walks the DAG topologically, executing each node's `execute()` sequence.
-* **Rollback Pointer:** Allows the user to drag a history bar to any historical node, freezing downstream features and letting them edit sketches in-context.
+### Directed Acyclic Graph (DAG) structure
 
-### 🏷️ Topological Naming Problem (TNS)
-The biggest challenge in parametric history modification is **The Topological Naming Problem**. 
+Every feature (Sketch, Extrude, Chamfer, Thread, Cut) is a node in a DAG:
 
-> [!WARNING]
-> If a user modifies `Sketch1` such that the number of extruded faces changes from 4 to 6, a downstream `Fillet1` bound to "Edge ID 3" will either apply to the wrong edge or fail completely.
+- **Feature execution:** A `REGEN` command walks the DAG topologically, calling each node's `execute()` in order.
+- **Rollback pointer:** Allows the user to drag a history bar to any historical node, freezing downstream features and letting them edit sketches in-context.
+- **Partial regen (dirty-flag propagation):** Full DAG walks on every parameter change are too slow for complex models. Nodes carry a `dirty` flag; only nodes downstream of a changed node re-execute. This is essential for interactive performance and must be designed in from the start, not retrofitted.
 
-To resolve this, we must build a Topological Naming System:
-1. **Tracking Database:** Do not reference edges by index. Instead, name them based on their historical parents:
-   $$\text{Edge ID} = \text{Face}_{\text{Left}} \cap \text{Face}_{\text{Right}}$$
-2. **Generation Tracking:** An edge produced by an extrude is tagged as `Extrude_1_Face_3_Lateral_Edge_2`.
-3. **OpenCascade Selection Tracking:** Utilize OpenCascade's `BRepTools_Reactions` or `TNaming_NamedShape` to track which faces/edges were generated, modified, or deleted by each operation, ensuring downstream feature bindings survive complex sketch updates.
+```typescript
+interface FeatureNode {
+  id: string;
+  type: 'sketch' | 'extrude' | 'fillet' | 'shell' | 'cut' | 'loft' | 'sweep';
+  dirty: boolean;
+  inputs: string[];   // upstream node IDs
+  outputs: string[];  // downstream node IDs
+  params: Record<string, unknown>;
+  execute(context: RegenContext): Promise<void>;
+  invalidate(): void; // marks self and all downstream nodes dirty
+}
+```
+
+### Topological Naming Problem (TNS)
+
+The hardest challenge in parametric history modification. If a user modifies `Sketch1` such that the number of extruded faces changes from 4 to 6, a downstream `Fillet1` bound to "Edge ID 3" will either apply to the wrong edge or fail completely.
+
+> **Important:** TNS is the hardest unsolved problem in open-source parametric CAD. FreeCAD spent nearly a decade on it. OpenCascade's `TNaming` subsystem is powerful but requires threading naming through every single OCC operation from the ground up — it cannot be retrofitted after the fact. Budget significant time accordingly.
+
+**Recommended two-phase approach:**
+
+**Phase 1 — Semantic tagging (ship this first):**
+Name edges and faces by their generation semantics rather than indices. Accept that rename failures will require manual reselection from the user; this is workable for a v1 parametric system.
+
+$$\text{Edge ID} = \text{Face}_{\text{Left}} \cap \text{Face}_{\text{Right}}$$
+
+An edge produced by an extrude is tagged `Extrude_1_Face_3_Lateral_Edge_2`. Downstream features bind to this string token. When a regen changes the face count, unresolved bindings surface as warnings rather than silent corruption.
+
+**Phase 2 — OCC TNaming instrumentation:**
+Add `TNaming_Builder` annotations to every OCC operation in `OCCWorker.ts`. This enables proper `TNaming_Selector` lookups so downstream feature bindings survive complex sketch updates automatically. This is a substantial instrumentation effort and belongs after Phase 1 is proven in production.
+
+### Undo/redo model migration
+
+The current `HistoryManager` is a flat stack of entity operations. In a DAG-based system, undo means "remove the last feature from the DAG and regen from the dirty point." This is a fundamentally different model and the transition requires its own design pass before Milestone 1 begins. Both systems cannot coexist without a clear migration boundary.
 
 ---
 
-## 3. Advanced Surface Modeling (G1/G2 Continuity)
+## Milestone 2: 2D Sketcher & Geometric Constraint Solver (GCS)
 
-Automotive design, aerospace, and high-end consumer products (such as CATIA's core domains) require advanced surface creation rather than simple prismatic blocks.
+In CATIA and Inventor, all 3D solid features originate from fully-constrained 2D Sketches. We must move beyond simple coordinates to a constraint-based sketching system.
+
+### The constraint schema
+
+| Constraint Type | Mathematical Relation | Objective Function |
+| :--- | :--- | :--- |
+| **Coincident** | $P_1(x_1, y_1) - P_2(x_2, y_2) = 0$ | Distance² between points $\rightarrow 0$ |
+| **Horizontal** | $P_1(y_1) - P_2(y_2) = 0$ | Delta $Y \rightarrow 0$ |
+| **Vertical** | $P_1(x_1) - P_2(x_2) = 0$ | Delta $X \rightarrow 0$ |
+| **Parallel** | $(P_2 - P_1) \times (P_4 - P_3) = 0$ | Determinant of direction vectors $\rightarrow 0$ |
+| **Perpendicular** | $(P_2 - P_1) \cdot (P_4 - P_3) = 0$ | Dot product of direction vectors $\rightarrow 0$ |
+| **Tangent (line–circle)** | $\text{dist}(C, L) - R = 0$ | Distance from center to line minus radius $\rightarrow 0$ |
+| **Tangent (arc–arc)** | $\hat{t}_1(s) - \hat{t}_2(s) = 0$ | Matching tangent unit vectors at contact point $\rightarrow 0$ |
+| **Concentric** | $C_1(x_1, y_1) - C_2(x_2, y_2) = 0$ | Distance² between circle centers $\rightarrow 0$ |
+| **Dimensional** | $\|P_2 - P_1\| - D_{\text{target}} = 0$ | Euclidean distance minus dimension value $\rightarrow 0$ |
+| **Equal length** | $\|P_2 - P_1\| - \|P_4 - P_3\| = 0$ | Difference of segment lengths $\rightarrow 0$ |
+| **Symmetric** | $P_{\text{mid}} - \frac{P_1 + P_2}{2} = 0$ | Midpoint offset from axis of symmetry $\rightarrow 0$ |
+| **Midpoint** | $P_m - \frac{P_{\text{start}} + P_{\text{end}}}{2} = 0$ | Point distance from segment midpoint $\rightarrow 0$ |
+
+Note that the tangent constraint has two distinct formulations. The line–circle form is the distance equation. Arc–arc and spline tangency require matching the tangent *vector* at the contact point, which is a different equation family and must be implemented separately.
+
+### Solver implementation strategy
+
+**Step 1 — Fixed and reference geometry.**
+Before solving, establish anchored reference geometry (construction lines, ground-fixed points). Without at least one fixed anchor, a fully-constrained sketch still floats freely in the plane — the solver finds a valid solution but not necessarily where the user intended.
+
+**Step 2 — Rigid-body sub-graph decomposition.**
+Decompose the constraint graph into a bipartite graph of variables (point coordinates) and equations (constraints). Identify independent closed sub-graphs and solve each as a smaller system sequentially. Without this, a 50-entity sketch presents a 100-variable system to the solver when it could be 10 independent 8-variable sub-systems, each converging in milliseconds. FreeCAD's open-source `planegcs` library is a directly applicable reference implementation.
+
+**Step 3 — Non-Linear Least Squares Solver.**
+
+$$\mathbf{J}^T \mathbf{J} \, \Delta \mathbf{x} = -\mathbf{J}^T \mathbf{F}(\mathbf{x})$$
+
+Where $\mathbf{J}$ is the Jacobian matrix of constraint derivatives and $\mathbf{F}(\mathbf{x})$ is the vector of constraint errors. Use **Levenberg-Marquardt** or **Powell's Dog-Leg** as the iterative solver.
+
+### DoF visualization
+
+Track and display constraint status dynamically:
+
+| State | Color | Meaning |
+| :--- | :--- | :--- |
+| Under-constrained | Blue | Entity still has free degrees of freedom |
+| Fully constrained | Green | Entity is completely determined |
+| Over-defined / conflict | Red | Contradictory constraints applied |
+
+> **Tip:** Exposing OpenCascade's `gp_Elips` and `Geom2d_BSplineCurve` will allow the sketcher to handle advanced ellipses and splines, which is essential for high-fidelity mechanical design profiles.
+
+---
+
+## Milestone 3: Advanced Surface Modeling & STEP Import
+
+### Surface continuity levels
 
 ```
   G0 (Positional)      G1 (Tangency)      G2 (Curvature Continuous)
@@ -108,76 +169,124 @@ Automotive design, aerospace, and high-end consumer products (such as CATIA's co
        │   │              (     )                (     )
 ```
 
-### 🏁 Surface Continuity Levels
-We must expose surface continuity options in sweeps and lofts:
+| Level | Definition | Visual result |
+| :--- | :--- | :--- |
+| **G0** | Surfaces touch; no angle constraint | Sharp edge at boundary |
+| **G1** | Surfaces share tangent vectors along the boundary | Smooth join; light reflections break abruptly |
+| **G2** | Surfaces share curvature (matching second derivatives) | Reflective zebra stripes flow unbroken across the joint |
 
-1. **G0 (Positional):** Surfaces touch, but there is a sharp angle at the boundary (e.g. sharp chamfer join).
-2. **G1 (Tangential):** Surfaces join smoothly, sharing tangent vectors along the shared edge (e.g., standard round fillet). Light reflections break abruptly.
-3. **G2 (Curvature Continuous):** Surfaces share the same rate of curvature change at the boundary. Reflective zebra stripes flow perfectly across G2 joints without breaks.
+### Enforcing G2 — what it actually requires
 
-### 📐 OpenCascade Surfacing Pipelines
-To support G2 surfacing, we will implement these advanced OpenCascade interfaces:
+Matching tangent vectors is G1. G2 requires matching the *rate of change of curvature* — the second derivative of the surface — along the shared boundary. In practice this means:
 
-*   **GeomFill_Sweep:** Sweeps a 2D profile along a primary guide curve (spine) while maintaining orientation relative to auxiliary **guide curves** to shape complex organic geometries.
-*   **Geom_BSplineSurface:** Generates customizable NURBS surfaces defined by arrays of control points, weights, knots, and multiplicities.
-*   **BRepOffsetAPI_MakeThruSections:** Creates smooth lofts across multiple open or closed profiles, utilizing tangent constraints (`SetSmoothing`) to enforce G1 or G2 continuity at the end profiles.
+- The surface must have polynomial degree ≥ 3 in both parametric directions.
+- When calling `BRepOffsetAPI_MakeThruSections`, `SetSmoothing(true)` yields G1 by default. Achieving true G2 requires building explicit compatible boundary conditions using `GeomFill_BoundWithSurf` (or equivalent), specifying curvature-matching tangent frames at each profile.
 
-### 🍉 Solid Thickness & Shelling
-*   **BRepOffsetAPI_MakeOffsetShape:** Provides true solid hollowing (**Shelling**), allowing the user to select specific faces to remove, creating thin-walled enclosures with highly precise internal offsets.
-*   **Draft Angles (`BRepOffsetAPI_DraftAngle`):** Taper vertical faces relative to a pull direction, which is essential for injection-molded plastic parts to slip cleanly out of physical tooling.
+This is a non-trivial OCC workflow. Do not conflate "smooth loft" with "G2 loft" in the UI or documentation.
+
+### OpenCascade surfacing pipelines
+
+- **`GeomFill_Sweep`:** Sweeps a 2D profile along a spine curve while maintaining orientation relative to auxiliary guide curves, enabling complex organic geometries.
+- **`Geom_BSplineSurface`:** Generates NURBS surfaces defined by arrays of control points, weights, knots, and multiplicities.
+- **`BRepOffsetAPI_MakeThruSections`:** Smooth lofts across multiple profiles with tangent constraints (`SetSmoothing`) for G1/G2 end continuity.
+
+### Solid modifiers
+
+- **`BRepOffsetAPI_MakeOffsetShape` (Shelling):** True solid hollowing — select faces to remove, creating thin-walled enclosures with precise internal offsets.
+- **`BRepOffsetAPI_DraftAngle` (Draft angles):** Taper vertical faces relative to a pull direction; required for injection-molded plastic parts.
+
+### Diagnostic surface quality tools
+
+G2 surfacing without visualization tools is nearly unusable in practice. These diagnostics are as important as the surfacing operations themselves:
+
+- **Curvature comb:** A rendered comb of normals along a curve or surface edge, scaled by local curvature. Discontinuities in comb length indicate G1 failures; discontinuities in comb direction indicate G0 failures.
+- **Zebra stripe shader:** A fragment shader that renders alternating light/dark bands on the model surface. G0 joints show broken stripes; G1 joints show angled breaks; G2 joints show continuous flowing stripes.
+
+Both can be implemented as Three.js custom `ShaderMaterial` passes on the existing `Viewer` render pipeline.
+
+### STEP import
+
+The `ComponentInstance` interface (Milestone 4) implies STEP import as the feeder for external components. `STEPControl_Reader` is available in the existing OCC build and should be exposed in this milestone rather than deferred, so the surfacing and STEP pipelines share the same OCC integration work.
 
 ---
 
-## 4. Assemblies & Kinematic Constraints
+## Milestone 4: Assemblies & Kinematic Constraints
 
-Inventor and CATIA coordinate assemblies of multiple separate components using mating relations.
+### Assembly structure
 
-### 🧩 Assembly Structure
-Components are stored as independent solid entities and mapped to the scene graph using affine transformation matrices ($[R \mid T]$).
+Components are independent solid entities positioned in the scene via affine transformation matrices. The `ComponentInstance` interface:
 
 ```typescript
 interface ComponentInstance {
   id: string;
-  sourceFile: string; // References nested STEP file block
-  transform: number[]; // 4x4 coordinate transform matrix relative to assembly root
+  componentId: string;         // references an entry in the component registry
+  transform: THREE.Matrix4;    // 4×4 world-space transform relative to assembly root
   constraints: AssemblyConstraint[];
+}
+
+interface ComponentRegistry {
+  components: Map<string, ComponentDefinition>;
+}
+
+interface ComponentDefinition {
+  id: string;
+  name: string;
+  sourceFile?: string;         // optional path to STEP file for external components
+  document?: Document;         // in-memory geometry for components defined within the session
 }
 ```
 
-### 🤝 Mating Constraint Engine
-Assemblies are constructed using kinematic mating conditions:
+Note: `transform` must be a typed `THREE.Matrix4` (or equivalent explicit 4×4 type), not a flat `number[]`. A flat 16-element array with no enforced layout is a bug source at every matrix multiply.
 
-*   **Mate / Flush:** Restricts positional displacement by aligning the planar normals of two solid faces ($\mathbf{n}_1 \cdot \mathbf{n}_2 = \pm 1$).
-*   **Insert / Axis-to-Axis:** Align concentric holes by locking two cylindrical axes in alignment, which is essential for fastening screws, bolts, and shafts.
-*   **Degrees of Freedom (DoF) Dynamic Assembly Solver:** Employs a spatial numerical solver that adjusts the transform matrices ($[R \mid T]$) of each component instance to satisfy all active mate equations, blocking illegal transformations while allowing accurate kinematic movement previews.
+### Mating constraint engine
+
+| Constraint | Mathematical condition | DoF removed |
+| :--- | :--- | :--- |
+| **Mate / Flush** | $\mathbf{n}_1 \cdot \mathbf{n}_2 = \pm 1$ and $d = 0$ | 3 (1 rotation + 2 translation) |
+| **Insert / Axis-to-Axis** | Cylindrical axes aligned and concentric | 4 (2 rotation + 2 translation) |
+| **Angle** | $\cos^{-1}(\mathbf{n}_1 \cdot \mathbf{n}_2) = \theta$ | 1 (rotation about shared normal) |
+| **Distance** | $\|P_1 - P_2\| = d_{\text{target}}$ | 1 (translation along axis) |
+
+The mate solver adjusts component `transform` matrices to satisfy all active constraint equations while leaving remaining DoF free for kinematic motion preview.
+
+### Phased assembly delivery
+
+A useful intermediate milestone: basic assembly without a mate solver. Let users place parts manually using transform gizmos with no constraint enforcement. This ships real value (multi-body scene composition, STEP import review) while the constraint solver is being built in parallel.
 
 ---
 
-## 📅 Phased Implementation Plan
+## Phased implementation plan
 
-To systematically build these features, we will divide the development into four distinct, logical milestones:
+### Milestone 1 — Parametric Feature DAG
 
-```
-[ Milestone 1 ] ──► [ Milestone 2 ] ──► [ Milestone 3 ] ──► [ Milestone 4 ]
-Surfacing & Shells    Parametric History     GCS Sketcher Solver   Assemblies & Mates
-```
+- Design and implement the DAG node graph with dirty-flag partial regen.
+- Implement Phase 1 topological naming (semantic string tags on faces/edges).
+- Migrate undo/redo from the flat `HistoryManager` to DAG-rollback model.
+- Build the interactive History sidebar with rollback bar.
 
-### Milestone 1: Advanced Solid & Surface Operations (Surfacing)
-*   **Surfaces:** Implement custom NURBS surface construction via boundary curves and coordinate point arrays.
-*   **Shelling & Drafts:** Wrap `BRepOffsetAPI_MakeOffsetShape` to enable solid hollowing, and `BRepOffsetAPI_DraftAngle` for mechanical taper features.
-*   **Continuity:** Add G1/G2 smoothing toggle options to sweeps, lofts, and edge fillets.
+### Milestone 2 — GCS Sketcher
 
-### Milestone 2: Parametric DAG & Topological Naming (History)
-*   **DAG Engine:** Implement a feature-based Directed Acyclic Graph tree in WebCAD.
-*   **Tree UI:** Build an interactive History sidebar list with a drag-and-drop Rollback bar.
-*   **Topological Tracking:** Expose OpenCascade's modified shape reactions to dynamically track and update downstream edge selections when upstream parameters change.
+- Build the dedicated 2D sketching sub-mode in the viewport.
+- Implement fixed/reference geometry anchoring.
+- Integrate rigid-body sub-graph decomposition ahead of the solver.
+- Integrate Levenberg-Marquardt GCS for Coincident, Horizontal, Vertical, Parallel, Perpendicular, Tangent, Concentric, Dimensional, Equal, Symmetric, and Midpoint constraints.
+- Implement DoF visual coloring (blue / green / red).
+- Expose `Geom2d_BSplineCurve` and `gp_Elips` for advanced sketch curves.
 
-### Milestone 3: Planar Sketcher & Numerical Solver (GCS)
-*   **Constraint Sketch Canvas:** Build a dedicated 2D Sketching sub-mode inside the viewport.
-*   **Planar Solver:** Integrate a Levenberg-Marquardt numeric GCS for Horizontal, Tangent, Coincident, and Dimensional constraint solving.
-*   **DoF UI:** Implement visual coloring indicating under-constrained and fully-constrained lines.
+### Milestone 3 — Advanced Surfacing & STEP Import
 
-### Milestone 4: Assembly Component Modeler (Assemblies)
-*   **Scene Graph:** Introduce multi-instance nested component referencing.
-*   **Kinematic Engine:** Build planar mate and concentric insert axis assembly solvers.
-*   **DOF Assembly Preview:** Enable dynamic kinematic movement testing in the viewport.
+- Expose `STEPControl_Reader` for STEP file import.
+- Implement NURBS surface construction via `Geom_BSplineSurface`.
+- Add G1 and true G2 loft/sweep continuity options with correct boundary conditions.
+- Wrap `BRepOffsetAPI_MakeOffsetShape` for shelling.
+- Wrap `BRepOffsetAPI_DraftAngle` for mechanical taper features.
+- Implement curvature comb and zebra stripe diagnostic shaders.
+- Begin Phase 2 TNaming instrumentation (`TNaming_Builder` on all OCC operations).
+
+### Milestone 4 — Assembly Component Modeler
+
+- Introduce multi-instance component registry with `THREE.Matrix4` transforms.
+- Build manual placement mode with gizmo-based component positioning.
+- Implement mate / flush and axis-to-axis kinematic constraint solver.
+- Enable kinematic DoF motion preview in the viewport.
+- Complete Phase 2 TNaming so downstream feature bindings survive assembly-level regen.

@@ -2,14 +2,17 @@ import { ActionHandler, AppContext } from "./types";
 import { CommandAction, CommandResponse } from "../../commands/types";
 import { OpenCascadeService } from "../../io/OpenCascadeService";
 import { PersistenceService } from "../../persistence/PersistenceService";
+import { Solid3D } from "../../model/Solid3D";
+import { Solid3DReevaluator } from "../Solid3DReevaluator";
+import { GeneratorProgressModal } from "../../../ui/GeneratorProgressModal";
 
 export class SystemHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['finish', 'undo', 'redo', 'regen', 'delete', 'close', 'unitsSet'].includes(action.action);
+    return ['finish', 'undo', 'redo', 'regen', 'delete', 'close', 'unitsSet', 'rebuild'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, viewer, terminateActiveCommand } = context;
+    const { doc, viewer, terminateActiveCommand, syncFromDocument, addEntity } = context;
 
     if (action.action === 'unitsSet') {
       doc.units.type = action.type as 'decimal' | 'architectural' | 'metric';
@@ -77,6 +80,73 @@ export class SystemHandler implements ActionHandler {
         context.onEntitiesChange();
       }
       return `Deleted ${action.ids.length} objects.`;
+    }
+
+    if (action.action === 'rebuild' && action.id) {
+      const entity = doc.getEntity(action.id);
+      if (!entity) {
+        return `ERROR: Object "${action.id}" not found.`;
+      }
+      
+      if (!(entity instanceof Solid3D)) {
+        return `ERROR: Object "${action.id}" is not a Solid3D entity. Only Solid3D objects can be rebuilt.`;
+      }
+
+      const progress = new GeneratorProgressModal("Rebuilding Parametric Solid");
+      progress.show();
+      progress.update(20, `Evaluating features for "${action.id}"...`);
+
+      const before = entity.clone(entity.id) as Solid3D;
+      
+      try {
+        const facetres = doc.facetres || 5.0;
+        const geom = await Solid3DReevaluator.reevaluate(entity, facetres, doc);
+        
+        progress.update(60, "Updating mesh geometry data...");
+        entity.positions = Array.from(geom.getAttribute('position').array) as number[];
+        entity.indices = geom.getIndex() ? Array.from(geom.getIndex()!.array) : [];
+        if (geom.userData) {
+          entity.faceMapping = geom.userData.faceMapping;
+          entity.edgeLines = geom.userData.edgeLines;
+          entity.brepSnapshot = geom.userData.brepSnapshot;
+        }
+        entity.updateAbsolutePosition();
+        
+        progress.update(80, "Rehydrating persistence cache...");
+        // Save tessellation cache for fast loading
+        const deflection = 0.1 / facetres;
+        if (entity.positions.length > 0) {
+          PersistenceService.getInstance().cache.saveTessellation(entity.id, PersistenceService.getInstance().activeProjectId || "default", entity.positions, entity.indices, deflection);
+        }
+
+        // Persist the BRep snapshots so modelling operations work immediately
+        if (entity.brepSnapshot) {
+          try {
+            await PersistenceService.getInstance().persistBRepNow(entity, doc);
+          } catch (e) {
+            console.warn('[Rebuild] persistBRepNow failed for solid', entity.id, e);
+          }
+        }
+        
+        doc.history.startTransaction(doc.constraints);
+        doc.recordTransform(before, entity);
+        doc.history.commitTransaction(doc.constraints);
+        
+        addEntity(entity, false, false);
+        syncFromDocument();
+        terminateActiveCommand();
+        
+        progress.update(100, "Rebuild complete.");
+        await new Promise(resolve => setTimeout(resolve, 500));
+        progress.close();
+
+        return `Object "${action.id}" successfully rebuilt and cache rehydrated.`;
+      } catch (err: any) {
+        progress.close();
+        console.error("Parametric rebuild failed:", err);
+        syncFromDocument();
+        return `ERROR: Rebuild failed - ${err.message || err.toString()}`;
+      }
     }
 
     return undefined;

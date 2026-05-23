@@ -78,5 +78,38 @@ export class Arc extends Entity {
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }
+
+  getGrips(): import("./Entity").Grip[] {
+    const startPt = {
+      x: this.cx + this.r * Math.cos(this.startAngle),
+      y: this.cy + this.r * Math.sin(this.startAngle)
+    };
+    const endPt = {
+      x: this.cx + this.r * Math.cos(this.endAngle),
+      y: this.cy + this.r * Math.sin(this.endAngle)
+    };
+    return [
+      { id: 'center', point: { x: this.cx, y: this.cy }, type: 'center' },
+      { id: 'start', point: startPt, type: 'endpoint' },
+      { id: 'end', point: endPt, type: 'endpoint' }
+    ];
+  }
+
+  moveGrip(gripId: string, newPosition: { x: number; y: number }): void {
+    if (gripId === 'center') {
+      this.cx = newPosition.x;
+      this.cy = newPosition.y;
+    } else if (gripId === 'start') {
+      const dx = newPosition.x - this.cx;
+      const dy = newPosition.y - this.cy;
+      this.startAngle = Math.atan2(dy, dx);
+      this.r = Math.sqrt(dx * dx + dy * dy);
+    } else if (gripId === 'end') {
+      const dx = newPosition.x - this.cx;
+      const dy = newPosition.y - this.cy;
+      this.endAngle = Math.atan2(dy, dx);
+      this.r = Math.sqrt(dx * dx + dy * dy);
+    }
+  }
 }
 

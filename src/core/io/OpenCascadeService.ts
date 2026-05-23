@@ -59,13 +59,32 @@ export class OpenCascadeService {
   private buildGeometry(data: any): THREE.BufferGeometry {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
-    geometry.setIndex(data.indices);
+    if (data.indices instanceof Uint32Array || data.indices instanceof Uint16Array) {
+      geometry.setIndex(new THREE.Uint32BufferAttribute(data.indices, 1));
+    } else {
+      geometry.setIndex(data.indices);
+    }
     geometry.computeVertexNormals();
+    
+    // FIX: Guarantee valid Uint8Array regardless of worker transfer mechanics
+    let validBrep = data.brepBytes ?? data.brepSnapshot;
+    if (validBrep instanceof ArrayBuffer) {
+      validBrep = new Uint8Array(validBrep);
+    } else if (validBrep && typeof validBrep === 'object' && !(validBrep instanceof Uint8Array)) {
+      // Handles cases where the worker wrapper serialized the buffer to JSON
+      validBrep = new Uint8Array(Object.values(validBrep));
+    }
+
+    if(validBrep==undefined){
+       console.error("[ERROR] [buildGeometry] NO validBrep ",validBrep);
+  
+    }
     
     geometry.userData = {
       faceMapping: data.faceMapping,
       edgeLines: data.edgeLines,
-      brepSnapshot: data.brepBytes ?? undefined
+      brepSnapshot: validBrep,
+      brepBytes: validBrep
     };
     
     return geometry;
@@ -181,6 +200,11 @@ export class OpenCascadeService {
     return this.buildGeometry(data);
   }
 
+  async createCompound(childrenIds: string[], entityId: string, deflection?: number): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createCompound(childrenIds, entityId, deflection);
+    return this.buildGeometry(data);
+  }
+
   async createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number, rotA?: {x:number, y:number, z:number}, rotB?: {x:number, y:number, z:number}, centerA?: {x:number, y:number, z:number}, centerB?: {x:number, y:number, z:number}): Promise<THREE.BufferGeometry> {
     const data = await (this.client as any).createBoolean(operation, idA, idB, entityId, deflection, rotA, rotB, centerA, centerB);
     return this.buildGeometry(data);
@@ -228,12 +252,12 @@ export class OpenCascadeService {
     return this.buildGeometry(data);
   }
 
-  async filletSolidFace(entityId: string, faceIndex: number, radius: number, deflection?: number): Promise<THREE.BufferGeometry> {
+  async filletSolidFace(entityId: string, faceIndex: number, radius: number, _deflection?: number): Promise<THREE.BufferGeometry> {
     const data = await this.client.filletSolidFace(entityId, faceIndex, radius);
     return this.buildGeometry(data);
   }
 
-  async chamferSolidFace(entityId: string, faceIndex: number, radius: number, deflection?: number): Promise<THREE.BufferGeometry> {
+  async chamferSolidFace(entityId: string, faceIndex: number, radius: number, _deflection?: number): Promise<THREE.BufferGeometry> {
     const data = await this.client.chamferSolidFace(entityId, faceIndex, radius);
     return this.buildGeometry(data);
   }

@@ -2,6 +2,7 @@ import { ActionHandler, AppContext } from "../types";
 import { CommandAction, CommandResponse } from "../../../commands/types";
 import { Solid3D } from "../../../model/Solid3D";
 import { rebuildSweepGeometry } from "./SweepGeometryUtil";
+import { GeneratorProgressModal } from "../../../../ui/GeneratorProgressModal.js";
 
 export class SweepHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -23,8 +24,14 @@ export class SweepHandler implements ActionHandler {
       const facetres = doc.facetres || 5.0;
       const deflection = 0.1 / facetres;
 
+      const progress = new GeneratorProgressModal("Sweep Operation");
+      progress.show();
+
       try {
+        progress.update(15, "Analyzing profile and spine paths...");
         const solidId = doc.getNextId("S3D");
+        
+        progress.update(45, "Executing OpenCascade sweep kernel...");
         const geomData = await rebuildSweepGeometry(
           profileEntity,
           spineEntity,
@@ -35,6 +42,7 @@ export class SweepHandler implements ActionHandler {
           action.cornerMode
         );
 
+        progress.update(80, "Generating solid boundary representation...");
         const solid = new Solid3D(solidId, geomData.positions, geomData.indices, geomData.faceMapping, geomData.edgeLines);
         solid.brepSnapshot = geomData.brepSnapshot;
         solid.creationParams = {
@@ -46,9 +54,16 @@ export class SweepHandler implements ActionHandler {
         viewer.clearHighlight();
         context.syncFromDocument();
 
+        progress.update(100, "Sweep successfully completed!");
+        await new Promise(resolve => setTimeout(resolve, 300));
+
         return "Sweep completed.";
       } catch (e: any) {
+        progress.update(0, `Error: ${e.message || e}`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
         return `Sweep failed: ${e.message}`;
+      } finally {
+        progress.close();
       }
     }
   }

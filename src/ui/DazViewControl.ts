@@ -212,6 +212,7 @@ export class DazViewControl {
 
   private onViewChange(view: string) {
     console.log(`View changed to: ${view}`);
+    this.currentView = view;
     this.rotateCubeToFace(view);
     this.viewer.setCameraView(view);
   }

@@ -6,6 +6,7 @@ import { Solid3D } from '../model/Solid3D'
 import { OpenCascadeService } from '../io/OpenCascadeService'
 import { v4 as uuidv4 } from 'uuid'
 import { rebuildSweepGeometry } from '../engine/handlers/transform/SweepGeometryUtil'
+import { Solid3DReevaluator } from '../engine/Solid3DReevaluator'
 
 export class PersistenceService {
   private static instance: PersistenceService;
@@ -97,11 +98,11 @@ export class PersistenceService {
 
       // If it's a 3D solid without creation params (e.g. boolean result),
       // save its BREP data to the cache DB.
-      if (ent instanceof Solid3D && !(ent as any).creationParams) {
+      if (ent instanceof Solid3D && !ent.creationParams) {
         // Bug 3 fix: use the in-memory brepSnapshot on the entity first —
         // avoids a worker round-trip and works even if the shape is not
         // currently registered in the worker (e.g. right after loadProject).
-        const existingSnapshot = (ent as any).brepSnapshot as Uint8Array | undefined;
+        const existingSnapshot = ent.brepSnapshot;
         if (existingSnapshot && existingSnapshot.length > 0) {
           if (this.cache.isInMemory()) {
             await this.db.saveBRep(ent.id, projectId, existingSnapshot);
@@ -163,11 +164,14 @@ export class PersistenceService {
     return projectId
   }
 
-  async loadProject(projectId: string, doc: Document, app: any): Promise<void> {
+  async loadProject(projectId: string, doc: Document, app: any, onProgress?: (percent: number, status: string) => void): Promise<void> {
     // Bug 2 fix: suppress auto-save while loading so that syncFromDocument()
     // at the end of this method does not trigger a premature save before all
     // shapes are registered in the OCC worker.
     this.isLoading = true;
+    if (onProgress) {
+      onProgress(10, "Fetching project metadata...");
+    }
     const proj = await this.db.getProject(projectId)
     if (!proj) throw new Error(`Project ${projectId} not found`)
 
@@ -175,6 +179,10 @@ export class PersistenceService {
     this.activeProjectName = proj.name
     doc.id = projectId
     doc.clear() // clear existing before loading
+    
+    if (onProgress) {
+      onProgress(20, "Rehydrating document settings...");
+    }
     doc.units = proj.settings.units
     doc.facetres = proj.settings.facetres
     doc.dimtoh = proj.settings.dimtoh
@@ -186,6 +194,9 @@ export class PersistenceService {
     }
 
     // Load layers
+    if (onProgress) {
+      onProgress(30, "Rehydrating drawing layers...");
+    }
     const layers = await this.db.getLayersForProject(projectId)
     for (const l of layers) {
       if (l.name !== "0") {
@@ -203,10 +214,25 @@ export class PersistenceService {
     }
 
     // Load entities
+    if (onProgress) {
+      onProgress(40, "Fetching entities from database...");
+    }
     const entRows = await this.db.getEntitiesForProject(projectId)
+    const total = entRows.length;
 
-    for (const row of entRows) {
+    for (let i = 0; i < total; i++) {
+      const row = entRows[i];
       const ent = EntitySerializer.deserialize(row)
+      
+      const percent = 40 + Math.round((i / total) * 55); // 40% to 95%
+      let entityDesc = `${row.type || 'entity'} (${row.id})`;
+      if (ent instanceof Solid3D) {
+        const cp = ent.creationParams;
+        entityDesc = cp ? `solid ${cp.type} (${ent.id})` : `CSG shape (${ent.id})`;
+      }
+      if (onProgress) {
+        onProgress(percent, `Rehydrating entity ${i + 1}/${total}: ${entityDesc}...`);
+      }
 
       if (ent instanceof Solid3D) {
         // Try to load tessellation first for instant display
@@ -243,6 +269,7 @@ export class PersistenceService {
             }
           }
         }
+        ent.updateAbsolutePosition()
       }
 
       doc.addEntity(ent)
@@ -252,36 +279,56 @@ export class PersistenceService {
     // Bug 2 fix: clear isLoading BEFORE syncFromDocument so any
     // scheduleAutoSave triggered by syncFromDocument is suppressed during load.
     this.isLoading = false;
+    if (onProgress) {
+      onProgress(97, "Updating spatial indexing...");
+    }
+    doc.updateSpatialIndex()
+    if (onProgress) {
+      onProgress(99, "Synchronizing viewport view...");
+    }
     app.syncFromDocument()
+    if (onProgress) {
+      onProgress(100, "Successfully loaded!");
+    }
   }
 
   private async rebuildFromCreationParams(entity: Solid3D, facetres: number, doc: Document): Promise<void> {
-    const { type, params } = entity.creationParams!
+    const cp = entity.creationParams!
     const deflection = 0.1 / (facetres ?? 5.0)
     try {
+      if (entity.brepSnapshot) {
+        try {
+          await this.occ.importBRep(entity.id, entity.brepSnapshot, deflection);
+          console.log(`[PersistenceService] Rehydrated from B-Rep snapshot for ${entity.id}`);
+          return;
+        } catch (err) {
+          console.error(`[PersistenceService] Failed to import B-Rep snapshot for ${entity.id}:`, err);
+        }
+      }
+
       let geoData;
-      switch (type) {
-        case 'box': geoData = await this.occ.createBox(params.x, params.y, params.z, params.dx, params.dy, params.dz, deflection, entity.id); break
-        case 'cylinder': geoData = await this.occ.createCylinder(params.x, params.y, params.z, params.radius, params.height, deflection, entity.id); break
-        case 'sphere': geoData = await this.occ.createSphere(params.x, params.y, params.z, params.r, deflection, entity.id); break
-        case 'cone': geoData = await this.occ.createCone(params.x, params.y, params.z, params.r, params.h, deflection, entity.id); break
-        case 'polyhedron': geoData = await this.occ.createPolyhedron(params.points, params.faces, deflection, entity.id); break
-        case 'hull': geoData = await this.occ.createConvexHull(params.points, params.shapeIds, deflection, entity.id); break
-        case 'torus': geoData = await this.occ.createTorus(params.x, params.y, params.z, params.r1, params.r2, deflection, entity.id); break
-        case 'extrude': geoData = await this.occ.createExtrude(params.points, params.height, params.thickness, deflection, params.isClosed, entity.id); break
-        case 'revolve': geoData = await this.occ.createRevolve(params.points, params.axisPoint, params.axisDir, params.angle, params.thickness, deflection, params.isClosed, entity.id); break
+      switch (cp.type) {
+        case 'box': geoData = await this.occ.createBox(cp.params.x, cp.params.y, cp.params.z, cp.params.dx, cp.params.dy, cp.params.dz, deflection, entity.id); break
+        case 'cylinder': geoData = await this.occ.createCylinder(cp.params.x, cp.params.y, cp.params.z, cp.params.radius, cp.params.height, deflection, entity.id); break
+        case 'sphere': geoData = await this.occ.createSphere(cp.params.x, cp.params.y, cp.params.z, cp.params.r, deflection, entity.id); break
+        case 'cone': geoData = await this.occ.createCone(cp.params.x, cp.params.y, cp.params.z, cp.params.r, cp.params.h, deflection, entity.id); break
+        case 'polyhedron': geoData = await this.occ.createPolyhedron(cp.params.points, cp.params.faces, deflection, entity.id); break
+        case 'hull': geoData = await this.occ.createConvexHull(cp.params.points, cp.params.shapeIds, deflection, entity.id); break
+        case 'torus': geoData = await this.occ.createTorus(cp.params.x, cp.params.y, cp.params.z, cp.params.r1, cp.params.r2, deflection, entity.id); break
+        case 'extrude': geoData = await this.occ.createExtrude(cp.params.points, cp.params.height, cp.params.thickness, deflection, cp.params.isClosed, entity.id); break
+        case 'revolve': geoData = await this.occ.createRevolve(cp.params.points, cp.params.axisPoint, cp.params.axisDir, cp.params.angle, cp.params.thickness, deflection, cp.params.isClosed, entity.id); break
         case 'sweep': {
-          const profileEntity = doc.getEntity(params.profileId);
-          const spineEntity = doc.getEntity(params.spineId);
+          const profileEntity = doc.getEntity(cp.params.profileId);
+          const spineEntity = doc.getEntity(cp.params.spineId);
           if (profileEntity && spineEntity) {
             const geomData = await rebuildSweepGeometry(
               profileEntity,
               spineEntity,
-              params.isSolid,
+              cp.params.isSolid,
               facetres,
               deflection,
               entity.id,
-              params.cornerMode
+              cp.params.cornerMode
             );
             entity.positions = geomData.positions;
             entity.indices = geomData.indices;
@@ -291,11 +338,11 @@ export class PersistenceService {
               entity.brepSnapshot = geomData.brepSnapshot;
             }
           } else {
-            console.warn(`[PersistenceService] Sweep profile/spine entities not found in document: profileId=${params.profileId}, spineId=${params.spineId}`);
+            console.warn(`[PersistenceService] Sweep profile/spine entities not found in document: profileId=${cp.params.profileId}, spineId=${cp.params.spineId}`);
           }
           return;
         }
-        default: console.warn(`[PersistenceService] Unknown creationParams type: ${type}`)
+        default: console.warn(`[PersistenceService] Unknown creationParams type: ${(cp as any).type}`)
       }
       if (geoData) {
         const attr = geoData.getAttribute('position') as any;
@@ -319,8 +366,8 @@ export class PersistenceService {
    */
   async persistBRepNow(entity: Solid3D, doc: Document): Promise<void> {
     if (!this.activeProjectId) return;
-    console.log("[PersistenceService] [persistBRepNow] BREP SNAPSHOT EXISTS? ", (entity as any).brepSnapshot)
-    const brepBytes = (entity as any).brepSnapshot;
+    console.log("[PersistenceService] [persistBRepNow] BREP SNAPSHOT EXISTS? ", entity.brepSnapshot)
+    const brepBytes = entity.brepSnapshot;
     if (!brepBytes || brepBytes.length < 50) {
       console.warn(`[Persistence] persistBRepNow: skipping ${entity.id} — snapshot is empty or too small (${brepBytes?.length ?? 0} bytes)`);
       return;

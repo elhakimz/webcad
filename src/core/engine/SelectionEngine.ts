@@ -11,6 +11,7 @@ import { Dimension } from "../model/Dimension";
 import { Spline } from "../model/Spline";
 import { Solid3D } from "../model/Solid3D";
 import { Donut } from "../model/Donut";
+import { Insert } from "../model/Insert";
 import { IDocument } from "../model/Document";
 import * as MathUtils from "./MathUtils";
 import { bulgeToArc } from "./MathUtils";
@@ -30,7 +31,7 @@ export class SelectionEngine {
         y >= box.minY - tolerance &&
         y <= box.maxY + tolerance
       ) {
-        if (this.isPointNearEntity(x, y, entity, tolerance)) {
+        if (this.isPointNearEntity(x, y, entity, tolerance, undefined)) {
           return entity;
         }
       }
@@ -51,7 +52,7 @@ export class SelectionEngine {
         if (entity) {
             if (selectableEntities && !selectableEntities.includes(entity)) continue;
 
-            if (this.isPointNearEntity(x, y, entity, tolerance)) {
+            if (this.isPointNearEntity(x, y, entity, tolerance, doc)) {
                 const idx = allEntities.indexOf(entity);
                 if (idx > maxIdx) {
                     maxIdx = idx;
@@ -63,7 +64,30 @@ export class SelectionEngine {
     return topEntity;
   }
 
-  private static isPointNearEntity(px: number, py: number, entity: Entity, tolerance: number): boolean {
+  private static isPointNearEntity(px: number, py: number, entity: Entity, tolerance: number, doc?: IDocument): boolean {
+    if (entity instanceof Insert) {
+      const block = (doc && doc.blocks) ? doc.blocks.getBlock(entity.blockName) : (Insert.getBlockCallback ? Insert.getBlockCallback(entity.blockName) : null);
+      if (block) {
+        const tx = px - entity.x;
+        const ty = py - entity.y;
+        const angleRad = -entity.rotation * (Math.PI / 180);
+        const rx = tx * Math.cos(angleRad) - ty * Math.sin(angleRad);
+        const ry = tx * Math.sin(angleRad) + ty * Math.cos(angleRad);
+        const lx = rx / entity.scaleX + block.basePoint.x;
+        const ly = ry / entity.scaleY + block.basePoint.y;
+        const scaledTolerance = tolerance / Math.min(Math.abs(entity.scaleX), Math.abs(entity.scaleY));
+
+        for (const subEntity of block.entities) {
+          if (this.isPointNearEntity(lx, ly, subEntity, scaledTolerance, doc)) {
+            return true;
+          }
+        }
+      }
+      // Fallback: Click directly near the insertion point
+      const distToOrigin = Math.sqrt((px - entity.x) ** 2 + (py - entity.y) ** 2);
+      return distToOrigin <= tolerance;
+    }
+
     if (entity.hitTest) {
       return entity.hitTest(px, py, tolerance);
     }

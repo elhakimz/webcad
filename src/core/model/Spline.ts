@@ -81,7 +81,7 @@ export class Spline extends Entity {
   getGrips(): import("./Entity").Grip[] {
     return this.controlPoints.map((p, i) => ({
       id: `cp_${i}`,
-      point: { x: p.x, y: p.y },
+      point: { x: p.x, y: p.y, z: p.z !== undefined ? p.z : this.elevation },
       type: 'custom'
     }));
   }

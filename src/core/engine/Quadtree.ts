@@ -8,8 +8,6 @@ export interface QuadtreeItem {
 export class Quadtree {
   private items: QuadtreeItem[] = [];
   private children: Quadtree[] | null = null;
-  private maxItems = 10;
-  private maxDepth = 10;
 
   /**
    * Shared reverse lookup: id → set of all nodes currently holding that item.
@@ -21,6 +19,8 @@ export class Quadtree {
   constructor(
     private bounds: BoundingBox,
     private depth: number = 0,
+    private maxItems: number = 10,
+    private maxDepth: number = 10,
     reverseMap?: Map<string, Set<Quadtree>>
   ) {
     this.reverseMap = reverseMap ?? new Map();
@@ -69,10 +69,10 @@ export class Quadtree {
 
     // Pass the shared reverseMap reference to all children
     this.children = [
-      new Quadtree({ minX: x + subWidth, minY: y + subHeight, maxX: x + subWidth * 2, maxY: y + subHeight * 2 }, this.depth + 1, this.reverseMap), // Top-Right
-      new Quadtree({ minX: x, minY: y + subHeight, maxX: x + subWidth, maxY: y + subHeight * 2 }, this.depth + 1, this.reverseMap), // Top-Left
-      new Quadtree({ minX: x, minY: y, maxX: x + subWidth, maxY: y + subHeight }, this.depth + 1, this.reverseMap), // Bottom-Left
-      new Quadtree({ minX: x + subWidth, minY: y, maxX: x + subWidth * 2, maxY: y + subHeight }, this.depth + 1, this.reverseMap) // Bottom-Right
+      new Quadtree({ minX: x + subWidth, minY: y + subHeight, maxX: x + subWidth * 2, maxY: y + subHeight * 2 }, this.depth + 1, this.maxItems, this.maxDepth, this.reverseMap), // Top-Right
+      new Quadtree({ minX: x, minY: y + subHeight, maxX: x + subWidth, maxY: y + subHeight * 2 }, this.depth + 1, this.maxItems, this.maxDepth, this.reverseMap), // Top-Left
+      new Quadtree({ minX: x, minY: y, maxX: x + subWidth, maxY: y + subHeight }, this.depth + 1, this.maxItems, this.maxDepth, this.reverseMap), // Bottom-Left
+      new Quadtree({ minX: x + subWidth, minY: y, maxX: x + subWidth * 2, maxY: y + subHeight }, this.depth + 1, this.maxItems, this.maxDepth, this.reverseMap) // Bottom-Right
     ];
   }
 
@@ -144,14 +144,14 @@ export class Quadtree {
   }
 
   clear() {
-    this.items = [];
-    // Clear the shared map once at whichever node clear() is called on.
-    // All nodes share the same reference, so this resets the entire tree's index.
+    this._clearRecursive();
     this.reverseMap.clear();
+  }
+
+  private _clearRecursive() {
+    this.items = [];
     if (this.children) {
-      for (const child of this.children) {
-        child.clear();
-      }
+      for (const child of this.children) child._clearRecursive();
       this.children = null;
     }
   }

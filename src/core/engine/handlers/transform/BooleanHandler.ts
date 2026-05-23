@@ -38,6 +38,10 @@ export class BooleanHandler implements ActionHandler {
       // Add new solid
       addEntity(solid, true, false); // recordHistory=true, useCurrentLayer=false
 
+      // Clear selection and select the newly created solid
+      context.selectedEntityIds.clear();
+      context.selectedEntityIds.add(solid.id);
+
       if (solid.brepSnapshot != undefined) {
         // Persist BREP and update entity metadata immediately
         await PersistenceService.getInstance().persistBRepNow(solid, doc);

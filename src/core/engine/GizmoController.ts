@@ -42,12 +42,13 @@ export class GizmoController {
       this.setupTranslateDragPlane(camera, handle, target.position);
       this.dragStartHitPt.copy(this.raycastOntoPlane(mouseNDC, camera) || target.position);
     } else if (handle.type === 'rotate') {
-      this.setupRotateDragPlane(handle, target.position);
+      this.setupRotateDragPlane(handle, target.position, target.quaternion);
       const hitPt = this.raycastOntoPlane(mouseNDC, camera);
       if (hitPt) {
         this.dragStartHitPt.copy(hitPt);
         const localHit = hitPt.clone().sub(target.position);
-        this.axisStartAngle = this.computeAngleOnPlane(localHit, handle.normal!);
+        const rotAxis = handle.normal!.clone().applyQuaternion(target.quaternion);
+        this.axisStartAngle = this.computeAngleOnPlane(localHit, rotAxis);
       }
     }
   }
@@ -62,9 +63,9 @@ export class GizmoController {
     this.dragPlaneNormal.copy(dir).negate(); // Normal points towards camera
   }
 
-  private setupRotateDragPlane(handle: HandleDescriptor, originPt: THREE.Vector3) {
+  private setupRotateDragPlane(handle: HandleDescriptor, originPt: THREE.Vector3, targetQuat: THREE.Quaternion) {
     this.dragPlaneOrigin.copy(originPt);
-    this.dragPlaneNormal.copy(handle.normal!);
+    this.dragPlaneNormal.copy(handle.normal!).applyQuaternion(targetQuat);
   }
 
   public onDragMove(mouseNDC: THREE.Vector2, camera: THREE.Camera, target: THREE.Object3D): boolean {
@@ -89,7 +90,7 @@ export class GizmoController {
       target.position.copy(this.dragStartPos).add(delta);
     } else {
       // Rotate the local axis direction by the gizmo's rotation to get world direction!
-      const axisDir = this.activeHandle!.dir!.clone().applyQuaternion(target.quaternion);
+      const axisDir = this.activeHandle!.dir!.clone().applyQuaternion(this.dragStartQuat);
       const projectedLength = delta.dot(axisDir);
       target.position.copy(this.dragStartPos).addScaledVector(axisDir, projectedLength);
     }
@@ -97,8 +98,8 @@ export class GizmoController {
 
   private applyRotate(currentHitPt: THREE.Vector3, target: THREE.Object3D) {
     // Rotate the local axis normal by the gizmo's rotation to get world axis!
-    const rotAxis = this.activeHandle!.normal!.clone().applyQuaternion(target.quaternion);
-    const localStart = this.dragStartHitPt.clone().sub(this.dragStartPos);
+    const rotAxis = this.activeHandle!.normal!.clone().applyQuaternion(this.dragStartQuat);
+    const _localStart = this.dragStartHitPt.clone().sub(this.dragStartPos);
     const localCurrent = currentHitPt.clone().sub(this.dragStartPos);
 
     const angleCurrent = this.computeAngleOnPlane(localCurrent, rotAxis);
@@ -112,7 +113,7 @@ export class GizmoController {
     target.quaternion.copy(this.dragStartQuat).premultiply(rotQuat);
   }
 
-  public onDragEnd(target: THREE.Object3D) {
+  public onDragEnd(_target: THREE.Object3D) {
     this.activeHandle = null;
   }
 

@@ -468,7 +468,7 @@ export class ObjectsWindow {
     const entity = this.app.doc.getEntity(id);
     if (entity) {
       if (confirm(`Are you sure you want to delete object ${id}?`)) {
-        this.app.doc.history.startTransaction();
+        this.app.doc.history.startTransaction(this.app.doc.constraints);
         this.app.doc.recordRemove(entity);
         this.app.doc.removeEntity(id);
         this.app.viewer.removeObject(id);
@@ -481,7 +481,7 @@ export class ObjectsWindow {
           }
         }
         this.app.doc.updateSpatialIndex();
-        this.app.doc.history.commitTransaction();
+        this.app.doc.history.commitTransaction(this.app.doc.constraints);
 
         this.app.selectedEntityIds.delete(id);
         this.app.syncFromDocument();

@@ -23,10 +23,10 @@ function computeConvexHull3D(pts: Point3D[]): number[][] {
   if (pts.length < 4) {
     throw new Error("Need at least 4 points.");
   }
-  const points = pts.map(p => ({
-    x: p.x + (Math.random() - 0.5) * 1e-7,
-    y: p.y + (Math.random() - 0.5) * 1e-7,
-    z: p.z + (Math.random() - 0.5) * 1e-7
+  const points = pts.map((p, idx) => ({
+    x: p.x + Math.sin(idx * 1.7 + 0.1) * 1e-7,
+    y: p.y + Math.sin(idx * 2.3 + 0.2) * 1e-7,
+    z: p.z + Math.sin(idx * 2.9 + 0.3) * 1e-7
   }));
 
   const getSignedDistance = (plane: Plane3D, p: Point3D) => {
@@ -176,6 +176,38 @@ function computeConvexHull3D(pts: Point3D[]): number[][] {
   return faces.map(f => f.v);
 }
 
+function downsamplePoints(pts: Point3D[], maxPoints: number = 150): Point3D[] {
+  if (pts.length <= maxPoints) return pts;
+  
+  let minX = Infinity, maxX = -Infinity;
+  let minY = Infinity, maxY = -Infinity;
+  let minZ = Infinity, maxZ = -Infinity;
+  let iminX = 0, imaxX = 0, iminY = 0, imaxY = 0, iminZ = 0, imaxZ = 0;
+  
+  const len = pts.length;
+  for (let i = 0; i < len; i++) {
+    const p = pts[i];
+    if (p.x < minX) { minX = p.x; iminX = i; }
+    if (p.x > maxX) { maxX = p.x; imaxX = i; }
+    if (p.y < minY) { minY = p.y; iminY = i; }
+    if (p.y > maxY) { maxY = p.y; imaxY = i; }
+    if (p.z < minZ) { minZ = p.z; iminZ = i; }
+    if (p.z > maxZ) { maxZ = p.z; imaxZ = i; }
+  }
+  
+  const extremes = new Set<number>([iminX, imaxX, iminY, imaxY, iminZ, imaxZ]);
+  const result: Point3D[] = [];
+  extremes.forEach(idx => result.push(pts[idx]));
+  
+  const step = Math.ceil(len / maxPoints);
+  for (let i = 0; i < len; i += step) {
+    if (!extremes.has(i)) {
+      result.push(pts[i]);
+    }
+  }
+  return result;
+}
+
 export class HullCommand implements Command {
   selectedIds: string[] = [];
   clickedPoints: Point3D[] = [];
@@ -294,7 +326,8 @@ export class HullCommand implements Command {
 
     if (allPts.length >= 4) {
       try {
-        const faces = computeConvexHull3D(allPts);
+        const sampledPts = downsamplePoints(allPts, 150);
+        const faces = computeConvexHull3D(sampledPts);
         const addedEdges = new Set<string>();
         for (const face of faces) {
           for (let j = 0; j < 3; j++) {
@@ -304,8 +337,8 @@ export class HullCommand implements Command {
             if (addedEdges.has(key)) continue;
             addedEdges.add(key);
 
-            const p1 = allPts[idx1];
-            const p2 = allPts[idx2];
+            const p1 = sampledPts[idx1];
+            const p2 = sampledPts[idx2];
             const line = new Line(`hull_edge_${key}`, p1.x, p1.y, p2.x, p2.y, p1.z, p2.z - p1.z);
             line.properties.color = 0xFFA500;
             entities.push(line);

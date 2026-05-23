@@ -83,3 +83,32 @@ export class DBSaveCommand implements Command {
     return `Save project to database <${defaultName}>:`; 
   }
 }
+
+export class DBLoadCommand implements Command {
+  projectName: string = "";
+
+  onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse {
+    return "Enter project name to load from database (or ? for list):";
+  }
+
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
+    const val = text.trim();
+    if (val === "?") {
+      return { action: "dblistFiles" };
+    }
+    if (val !== "") {
+      if (this.projectName) {
+        this.projectName += " " + val;
+      } else {
+        this.projectName = val;
+      }
+    }
+    const finalName = this.projectName;
+    if (!finalName) return "Project name required. Load project from database:";
+    return { action: "dbload", projectName: finalName };
+  }
+
+  getPrompt() {
+    return "Load project from database (or ? for list):";
+  }
+}

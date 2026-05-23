@@ -1,18 +1,108 @@
 export class GeneratorProgressModal {
-  private overlay: HTMLElement;
-  private statusText: HTMLElement;
-  private progressBar: HTMLElement;
-  private percentText: HTMLElement;
+  private overlay?: HTMLElement;
+  private statusText?: HTMLElement;
+  private progressBar?: HTMLElement;
+  private percentText?: HTMLElement;
 
   constructor(title: string = "Parametric Generation") {
-    // Inject animation styles dynamically if not present
+    if (typeof document === 'undefined') return;
+
+    // Inject Blueprint-style theme-aware rules dynamically if not present
     if (!document.getElementById('scad-progress-styles')) {
       const style = document.createElement('style');
       style.id = 'scad-progress-styles';
       style.textContent = `
-        @keyframes progress-bar-stripes {
-          from { background-position: 15px 0; }
-          to { background-position: 0 0; }
+        .scad-progress-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(16, 22, 26, 0.7);
+          backdrop-filter: blur(2px);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 99999;
+          font-family: var(--font-family), system-ui, -apple-system, sans-serif;
+        }
+        .light-theme .scad-progress-overlay {
+          background-color: rgba(245, 248, 250, 0.75);
+        }
+        .scad-progress-container {
+          background-color: var(--panel-bg, #202B33);
+          border: 1px solid var(--border-color, rgba(16, 22, 26, 0.15));
+          padding: 20px 24px;
+          color: var(--text-color, #F5F8FA);
+          width: 420px;
+          border-radius: 3px;
+          box-shadow: 0 0 0 1px rgba(16, 22, 26, 0.4), 0 4px 20px rgba(16, 22, 26, 0.6);
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .light-theme .scad-progress-container {
+          box-shadow: 0 0 0 1px rgba(16, 22, 26, 0.15), 0 4px 20px rgba(16, 22, 26, 0.15);
+          border-color: var(--border-color, #ccc);
+        }
+        .scad-progress-title {
+          margin: 0;
+          color: var(--text-color, #F5F8FA);
+          font-size: 11px;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          font-weight: 600;
+          text-align: left;
+        }
+        .scad-progress-divider {
+          border-top: 1px solid var(--border-color, rgba(16, 22, 26, 0.15));
+          width: 100%;
+          margin: 10px 0 14px 0;
+          opacity: 0.6;
+        }
+        .scad-progress-text-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          width: 100%;
+          margin-bottom: 6px;
+        }
+        .scad-progress-status {
+          margin: 0;
+          font-size: 12px;
+          color: var(--text-color, #A7B6C2);
+          opacity: 0.85;
+          text-overflow: ellipsis;
+          overflow: hidden;
+          white-space: nowrap;
+          flex-grow: 1;
+          margin-right: 15px;
+          text-align: left;
+        }
+        .scad-progress-percent {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--accent-color, #137CBD);
+          text-align: right;
+          flex-shrink: 0;
+        }
+        .scad-progress-bar-outer {
+          width: 100%;
+          height: 6px;
+          background-color: rgba(16, 22, 26, 0.35);
+          border-radius: 3px;
+          overflow: hidden;
+          position: relative;
+        }
+        .light-theme .scad-progress-bar-outer {
+          background-color: rgba(16, 22, 26, 0.08);
+        }
+        .scad-progress-bar-inner {
+          width: 0%;
+          height: 100%;
+          background-color: var(--accent-color, #137CBD);
+          transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          border-radius: 3px;
         }
       `;
       document.head.appendChild(style);
@@ -20,112 +110,47 @@ export class GeneratorProgressModal {
 
     this.overlay = document.createElement('div');
     this.overlay.className = 'scad-progress-overlay';
-    Object.assign(this.overlay.style, {
-      position: 'fixed',
-      top: '0',
-      left: '0',
-      width: '100%',
-      height: '100%',
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      backdropFilter: 'blur(5px)',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      zIndex: '99999', // Ensure it sits on top of everything
-      fontFamily: 'var(--font-mono), monospace'
-    });
 
     const container = document.createElement('div');
-    Object.assign(container.style, {
-      backgroundColor: 'var(--panel-bg, #1a1a1a)',
-      border: '1px solid var(--border-color, #333)',
-      padding: '30px',
-      color: 'var(--text-color, #eee)',
-      width: '450px',
-      borderRadius: '8px',
-      boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: '20px'
-    });
+    container.className = 'scad-progress-container';
 
     const titleEl = document.createElement('h3');
-    titleEl.textContent = `⚡ ${title}`;
-    Object.assign(titleEl.style, {
-      margin: '0',
-      color: 'var(--accent-color, #00f0ff)',
-      fontSize: '16px',
-      letterSpacing: '1px',
-      textTransform: 'uppercase',
-      fontWeight: 'bold'
-    });
+    titleEl.className = 'scad-progress-title';
+    titleEl.textContent = title;
     container.appendChild(titleEl);
 
+    const divider = document.createElement('div');
+    divider.className = 'scad-progress-divider';
+    container.appendChild(divider);
+
+    const textRow = document.createElement('div');
+    textRow.className = 'scad-progress-text-row';
+
     this.statusText = document.createElement('p');
-    this.statusText.textContent = "Initializing generator...";
-    Object.assign(this.statusText.style, {
-      margin: '0',
-      fontSize: '13px',
-      textAlign: 'center',
-      opacity: '0.9',
-      minHeight: '20px',
-      width: '100%',
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap'
-    });
-    container.appendChild(this.statusText);
-
-    const barOuter = document.createElement('div');
-    Object.assign(barOuter.style, {
-      width: '100%',
-      height: '12px',
-      backgroundColor: '#111',
-      borderRadius: '6px',
-      border: '1px solid #333',
-      overflow: 'hidden',
-      position: 'relative'
-    });
-
-    this.progressBar = document.createElement('div');
-    Object.assign(this.progressBar.style, {
-      width: '0%',
-      height: '100%',
-      background: 'linear-gradient(90deg, #00f0ff, #7000ff)',
-      transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-      position: 'relative',
-      borderRadius: '4px'
-    });
-
-    const stripes = document.createElement('div');
-    Object.assign(stripes.style, {
-      position: 'absolute',
-      top: '0',
-      left: '0',
-      right: '0',
-      bottom: '0',
-      background: 'linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent)',
-      backgroundSize: '15px 15px',
-      animation: 'progress-bar-stripes 1s linear infinite'
-    });
-    this.progressBar.appendChild(stripes);
-    barOuter.appendChild(this.progressBar);
-    container.appendChild(barOuter);
+    this.statusText.className = 'scad-progress-status';
+    this.statusText.textContent = "Initializing...";
+    textRow.appendChild(this.statusText);
 
     this.percentText = document.createElement('div');
+    this.percentText.className = 'scad-progress-percent';
     this.percentText.textContent = "0%";
-    Object.assign(this.percentText.style, {
-      fontSize: '12px',
-      fontWeight: 'bold',
-      color: 'var(--accent-color, #00f0ff)'
-    });
-    container.appendChild(this.percentText);
+    textRow.appendChild(this.percentText);
 
+    container.appendChild(textRow);
+
+    const barOuter = document.createElement('div');
+    barOuter.className = 'scad-progress-bar-outer';
+
+    this.progressBar = document.createElement('div');
+    this.progressBar.className = 'scad-progress-bar-inner';
+    barOuter.appendChild(this.progressBar);
+
+    container.appendChild(barOuter);
     this.overlay.appendChild(container);
   }
 
   public update(percent: number, status: string) {
+    if (typeof document === 'undefined' || !this.progressBar || !this.percentText || !this.statusText) return;
     percent = Math.min(100, Math.max(0, percent));
     this.progressBar.style.width = `${percent}%`;
     this.percentText.textContent = `${Math.round(percent)}%`;
@@ -133,10 +158,12 @@ export class GeneratorProgressModal {
   }
 
   public show() {
+    if (typeof document === 'undefined' || !this.overlay) return;
     document.body.appendChild(this.overlay);
   }
 
   public close() {
+    if (typeof document === 'undefined' || !this.overlay) return;
     this.overlay.remove();
   }
 }

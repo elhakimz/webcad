@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Solid3D } from '../model/Solid3D';
+import { Insert } from '../model/Insert';
 import { Entity } from '../model/Entity';
 import { IDocument } from '../model/Document';
 import * as MathUtils from './MathUtils';
@@ -39,7 +40,7 @@ export class Selection3DEngine {
     selectableMeshes: THREE.Mesh[],
     doc: IDocument,
     selectableEntities: Entity[]
-  ): Solid3D | null {
+  ): Entity | null {
     Selection3DEngine.raycaster.setFromCamera(ndc, camera);
 
     const meshes = this.getSolid3DMeshes(selectableMeshes, selectableEntities);
@@ -52,7 +53,7 @@ export class Selection3DEngine {
     const entityId = hit.object.userData.entityId;
     const entity = doc.getEntity(entityId);
 
-    if (entity instanceof Solid3D) return entity;
+    if (entity instanceof Solid3D || entity instanceof Insert) return entity;
     return null;
   }
 
@@ -64,7 +65,7 @@ export class Selection3DEngine {
     selectableMeshes: THREE.Mesh[],
     doc: IDocument,
     selectableEntities: Entity[]
-  ): Solid3D | null {
+  ): Entity | null {
     Selection3DEngine.raycaster.setFromCamera(ndc, camera);
 
     const meshes = this.getSolid3DMeshes(selectableMeshes, selectableEntities);
@@ -99,7 +100,7 @@ export class Selection3DEngine {
     this.lastClickWorldY = worldY;
 
     const entity = doc.getEntity(hit.object.userData.entityId);
-    if (entity instanceof Solid3D) return entity;
+    if (entity instanceof Solid3D || entity instanceof Insert) return entity;
     return null;
   }
 
@@ -111,7 +112,7 @@ export class Selection3DEngine {
     doc: IDocument,
     selectableEntities: Entity[],
     mode: 'EDGE' | 'FACE'
-  ): { entity: Solid3D, faceIndex?: number, edgeIndex?: number } | null {
+  ): { entity: Entity, faceIndex?: number, edgeIndex?: number } | null {
     if (mode === 'FACE') {
       Selection3DEngine.raycaster.setFromCamera(ndc, camera);
       const meshes = this.getSolid3DMeshes(selectableMeshes, selectableEntities);
@@ -121,7 +122,7 @@ export class Selection3DEngine {
       
       const hit = intersects[0];
       const entity = doc.getEntity(hit.object.userData.entityId);
-      if (!(entity instanceof Solid3D)) return null;
+      if (!(entity instanceof Solid3D || entity instanceof Insert)) return null;
       
       const triangleIndex = hit.faceIndex;
       if (triangleIndex !== undefined && triangleIndex !== null) {
@@ -130,6 +131,8 @@ export class Selection3DEngine {
         if (faceMapping && triangleIndex < faceMapping.length) {
           const mappedFaceIndex = faceMapping[triangleIndex];
           return { entity, faceIndex: mappedFaceIndex };
+        } else {
+          return { entity, faceIndex: 0 };
         }
       }
     } else if (mode === 'EDGE') {
@@ -153,7 +156,7 @@ export class Selection3DEngine {
       const edgeIndex = hit.userData.edgeIndex as number;
 
       const entity = doc.getEntity(entityId);
-      if (entity instanceof Solid3D) {
+      if (entity instanceof Solid3D || entity instanceof Insert) {
         return { entity, edgeIndex };
       }
     }
@@ -168,14 +171,14 @@ export class Selection3DEngine {
     edgeLines: THREE.Object3D[],
     doc: IDocument,
     selectableEntities: Entity[]
-  ): { entity: Solid3D, faceIndex?: number, edgeIndex?: number } | null {
+  ): { entity: Entity, faceIndex?: number, edgeIndex?: number } | null {
     // 1. Try to find edges first with a smaller tolerance for "smart" mode
     const selectableIds = new Set(selectableEntities.map(e => e.id));
     const filteredEdgeLines = edgeLines.filter(l => l.userData.entityId && selectableIds.has(l.userData.entityId));
 
     if (filteredEdgeLines.length > 0) {
       const edgeRaycaster = new THREE.Raycaster();
-      const screenTolerance = 50; // 50 pixels tolerance for easier edge picking (matches stable history)
+      const screenTolerance = 8; // 8 pixels tolerance: tight enough for edge picking, falls through to face when over face interior
       const worldTolerance = screenTolerance / camera.zoom;
       
       edgeRaycaster.params.Line = { threshold: worldTolerance };
@@ -188,7 +191,7 @@ export class Selection3DEngine {
         const edgeIndex = hit.userData.edgeIndex as number;
 
         const entity = doc.getEntity(entityId);
-        if (entity instanceof Solid3D) {
+        if (entity instanceof Solid3D || entity instanceof Insert) {
           return { entity, edgeIndex };
         }
       }
@@ -202,7 +205,7 @@ export class Selection3DEngine {
     if (intersects.length > 0) {
       const hit = intersects[0];
       const entity = doc.getEntity(hit.object.userData.entityId);
-      if (entity instanceof Solid3D) {
+      if (entity instanceof Solid3D || entity instanceof Insert) {
         const triangleIndex = hit.faceIndex;
         if (triangleIndex !== undefined && triangleIndex !== null) {
           const mesh = hit.object as THREE.Mesh;
@@ -210,6 +213,8 @@ export class Selection3DEngine {
           if (faceMapping && triangleIndex < faceMapping.length) {
             const mappedFaceIndex = faceMapping[triangleIndex];
             return { entity, faceIndex: mappedFaceIndex };
+          } else {
+            return { entity, faceIndex: 0 };
           }
         }
       }
@@ -309,7 +314,7 @@ export class Selection3DEngine {
     selectableMeshes: THREE.Mesh[],
     doc: IDocument,
     selectableEntities: Entity[]
-  ): Solid3D | null {
+  ): Entity | null {
     return this.getSolid3DAt(ndc, camera, selectableMeshes, doc, selectableEntities);
   }
 

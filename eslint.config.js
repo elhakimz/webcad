@@ -3,6 +3,15 @@ import tsPlugin from "@typescript-eslint/eslint-plugin";
 
 export default [
   {
+    ignores: [
+      "Documents/**",
+      "dist/**",
+      "node_modules/**",
+      "public/**",
+      "scratch/**"
+    ]
+  },
+  {
     files: ["**/*.ts"],
     languageOptions: {
       parser: tsParser,
@@ -22,4 +31,4 @@ export default [
       "no-console": "off"
     }
   }
-]
+]

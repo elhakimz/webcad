@@ -1,6 +1,5 @@
 import { Entity } from '../model/Entity';
 import { IDocument } from '../model/Document';
-import { Layer } from '../model/Layer';
 import { Line } from '../model/Line';
 import { Arc } from '../model/Arc';
 import { Circle } from '../model/Circle';
@@ -17,7 +16,7 @@ import { Donut } from '../model/Donut';
 import { Solid } from '../model/Solid';
 import { Trace } from '../model/Trace';
 import { Note } from '../model/Note';
-import { tessellateSpline, bulgeToArc, generateHatchLines, clipLineWithPolygon } from '../engine/MathUtils';
+import { bulgeToArc, generateHatchLines, clipLineWithPolygon } from '../engine/MathUtils';
 
 const DEFAULT_HATCH_PLOT_WIDTH = 0.13;
 const DEFAULT_DIMENSION_PLOT_WIDTH = 0.13;
@@ -516,7 +515,7 @@ export class PlotSVGRenderer {
     entity: MText,
     toSVG: (x: number, y: number) => { x: number; y: number },
     toLen: (l: number) => number,
-    color: string,
+    _color: string,
   ): string {
     const parts: string[] = [];
     const h = toLen(entity.textHeight || 2.5);

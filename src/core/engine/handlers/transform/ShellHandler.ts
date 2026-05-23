@@ -22,6 +22,12 @@ export class ShellHandler implements ActionHandler {
       }
 
       try {
+        // Ensure the shape is in the OCC worker cache (may be missing for externally-loaded solids)
+        const solidEntity = entity as any;
+        if (solidEntity.brepSnapshot) {
+          try { await OpenCascadeService.getInstance().importBRep(entityId, solidEntity.brepSnapshot); } catch (_) {}
+        }
+
         const geometry = await OpenCascadeService.getInstance().makeThickSolid(entityId, faceIndices, thickness, (action as any).removeFaces);
         
         const positions = Array.from(geometry.getAttribute('position').array) as number[];
@@ -32,6 +38,24 @@ export class ShellHandler implements ActionHandler {
         const newSolid = new Solid3D(entityId, positions, indices, faceMapping, edgeLines);
         newSolid.brepSnapshot = geometry.userData?.brepSnapshot;
         newSolid.layer = entity.layer;
+        
+        // Propagate features and creationParams
+        newSolid.creationParams = entity.creationParams;
+        if (entity.features) {
+          newSolid.features = JSON.parse(JSON.stringify(entity.features));
+        }
+        
+        // Append Shell feature node
+        newSolid.features.push({
+          id: `${entityId}_feat_${Date.now()}`,
+          type: "Shell",
+          parameters: {
+            thickness: thickness,
+            faceIndices: faceIndices,
+            removeFaces: (action as any).removeFaces !== false
+          },
+          isActive: true
+        });
         
         // Update entity in document
         doc.recordTransform(entity, newSolid);

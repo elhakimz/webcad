@@ -77,4 +77,29 @@ describe('HullCommand', () => {
     expect(lines.length).toBeGreaterThan(0)
     expect(lines[0].properties.color).toBe(0xFFA500)
   })
+
+  it('should be 100% deterministic and produce identical outputs on repeated calls', () => {
+    const cmd1 = new HullCommand()
+    cmd1.onPoint(0, 0, 'entity_1', units, undefined, 0)
+    cmd1.onPoint(10, 0, 'entity_1', units, undefined, 0)
+    cmd1.onPoint(0, 10, 'entity_1', units, undefined, 0)
+    const preview1 = cmd1.getPreview(10, 10, units) as any
+
+    const cmd2 = new HullCommand()
+    cmd2.onPoint(0, 0, 'entity_1', units, undefined, 0)
+    cmd2.onPoint(10, 0, 'entity_1', units, undefined, 0)
+    cmd2.onPoint(0, 10, 'entity_1', units, undefined, 0)
+    const preview2 = cmd2.getPreview(10, 10, units) as any
+
+    const lines1 = preview1.entities.filter((e: any) => e instanceof Line) as Line[]
+    const lines2 = preview2.entities.filter((e: any) => e instanceof Line) as Line[]
+
+    expect(lines1.length).toBe(lines2.length)
+    for (let i = 0; i < lines1.length; i++) {
+      expect(lines1[i].x1).toBe(lines2[i].x1)
+      expect(lines1[i].y1).toBe(lines2[i].y1)
+      expect(lines1[i].x2).toBe(lines2[i].x2)
+      expect(lines1[i].y2).toBe(lines2[i].y2)
+    }
+  })
 })

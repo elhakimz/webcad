@@ -20,20 +20,38 @@ export class HistoryManager {
     this.undoStack = [];
     this.redoStack = [];
     this.currentTransaction = [];
+    this.undoConstraintsStack = [];
+    this.redoConstraintsStack = [];
+    this.currentConstraintsBefore = null;
   }
   private undoStack: HistoryRecord[][] = []
   private redoStack: HistoryRecord[][] = []
   private currentTransaction: HistoryRecord[] = []
+  private undoConstraintsStack: any[][] = []
+  private redoConstraintsStack: any[][] = []
+  private currentConstraintsBefore: any[] | null = null
 
-  startTransaction() {
-    this.currentTransaction = []
+  startTransaction(currentConstraints?: any[]) {
+    this.currentTransaction = [];
+    if (currentConstraints) {
+      this.currentConstraintsBefore = JSON.parse(JSON.stringify(currentConstraints));
+    } else {
+      this.currentConstraintsBefore = null;
+    }
   }
 
-  commitTransaction() {
-    if (this.currentTransaction.length > 0) {
-      this.undoStack.push(this.currentTransaction)
-      this.redoStack = []
-      this.currentTransaction = []
+  commitTransaction(currentConstraintsAfter?: any[]) {
+    if (this.currentTransaction.length > 0 || this.currentConstraintsBefore !== null) {
+      this.undoStack.push(this.currentTransaction);
+      this.currentTransaction = [];
+      
+      const before = this.currentConstraintsBefore || [];
+      const after = currentConstraintsAfter ? JSON.parse(JSON.stringify(currentConstraintsAfter)) : [];
+      this.undoConstraintsStack.push([before, after]);
+      
+      this.redoStack = [];
+      this.redoConstraintsStack = [];
+      this.currentConstraintsBefore = null;
     }
   }
 
@@ -66,10 +84,16 @@ export class HistoryManager {
     removeEntity: (id: string) => void,
     addEntity: (entity: Entity) => void,
     onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => void,
-    onSolidBRepRestore?: (id: string, brep: Uint8Array) => void
+    onSolidBRepRestore?: (id: string, brep: Uint8Array) => void,
+    onConstraintsRestore?: (constraints: any[]) => void
   ) {
     const transaction = this.undoStack.pop()
+    const constraintsPair = this.undoConstraintsStack.pop()
     if (!transaction) return
+
+    if (constraintsPair && onConstraintsRestore) {
+      onConstraintsRestore(constraintsPair[0]);
+    }
 
     const redoTransaction: HistoryRecord[] = []
 
@@ -99,12 +123,14 @@ export class HistoryManager {
           
           // Calculate delta for Solid3D if callback provided
           if (onSolidTransform && (entity instanceof Solid3D)) {
-            const posBefore = (record.entity as any).position || { x: 0, y: 0, z: 0 };
-            const posAfter = (entity as any).position || { x: 0, y: 0, z: 0 };
+            const posBefore = record.entity instanceof Solid3D
+              ? record.entity.position
+              : { x: 0, y: 0, z: 0 };
+            const posAfter = entity.position;
             const dx = posBefore.x - posAfter.x;
             const dy = posBefore.y - posAfter.y;
             const dz = posBefore.z - posAfter.z;
-            
+
             if (dx !== 0 || dy !== 0 || dz !== 0) {
               onSolidTransform(entity.id, dx, dy, dz);
             }
@@ -121,6 +147,9 @@ export class HistoryManager {
     }
 
     this.redoStack.push(redoTransaction)
+    if (constraintsPair) {
+      this.redoConstraintsStack.push(constraintsPair)
+    }
   }
 
   redo(
@@ -128,10 +157,16 @@ export class HistoryManager {
     removeEntity: (id: string) => void,
     addEntity: (entity: Entity) => void,
     onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => void,
-    onSolidBRepRestore?: (id: string, brep: Uint8Array) => void
+    onSolidBRepRestore?: (id: string, brep: Uint8Array) => void,
+    onConstraintsRestore?: (constraints: any[]) => void
   ) {
     const transaction = this.redoStack.pop()
+    const constraintsPair = this.redoConstraintsStack.pop()
     if (!transaction) return
+
+    if (constraintsPair && onConstraintsRestore) {
+      onConstraintsRestore(constraintsPair[1]);
+    }
 
     const undoTransaction: HistoryRecord[] = []
 
@@ -159,12 +194,14 @@ export class HistoryManager {
               
               // Calculate delta for Solid3D if callback provided
               if (onSolidTransform && (entity instanceof Solid3D)) {
-                const posBefore = (record.entity as any).position || { x: 0, y: 0, z: 0 };
-                const posAfter = (entity as any).position || { x: 0, y: 0, z: 0 };
+                const posBefore = record.entity instanceof Solid3D
+                  ? record.entity.position
+                  : { x: 0, y: 0, z: 0 };
+                const posAfter = entity.position;
                 const dx = posBefore.x - posAfter.x;
                 const dy = posBefore.y - posAfter.y;
                 const dz = posBefore.z - posAfter.z;
-                
+
                 if (dx !== 0 || dy !== 0 || dz !== 0) {
                   onSolidTransform(entity.id, dx, dy, dz);
                 }
@@ -181,6 +218,9 @@ export class HistoryManager {
     }
 
     this.undoStack.push(undoTransaction)
+    if (constraintsPair) {
+      this.undoConstraintsStack.push(constraintsPair)
+    }
   }
 
   canUndo() {

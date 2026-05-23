@@ -2,12 +2,27 @@ import { ToolWindow } from "./ToolWindow";
 import { Entity } from "../core/model/Entity";
 import { App } from "../app";
 import { Solid3D } from "../core/model/Solid3D";
-import { Polyline } from "../core/model/Polyline";
+import { Insert } from "../core/model/Insert";
 import { OpenCascadeService } from "../core/io/OpenCascadeService";
+import * as THREE from 'three';
+import { Solid3DReevaluator } from "../core/engine/Solid3DReevaluator";
+
+
+const GLYPHS: Record<string, string> = {
+  "Sketch": "▱",
+  "Extrude": "▰",
+  "Cut": "✂",
+  "Fillet": "⌒",
+  "Scale": "⤢",
+  "Chamfer": "⏃",
+  "Shell": "⏍"
+};
 
 export class PropertiesWindow {
   private container: HTMLElement;
   private currentEntities: Entity[] = [];
+  private activeTab: 'entity' | 'features' = 'entity';
+  private expandedFeatures: Set<string> = new Set();
 
   constructor(private toolWindow: ToolWindow, private app: App) {
     this.container = document.createElement('div');
@@ -39,6 +54,45 @@ export class PropertiesWindow {
   private renderSingle(entity: Entity) {
     this.container.innerHTML = '';
     
+    if (entity instanceof Solid3D) {
+      const solid = entity as Solid3D;
+      
+      // Render tab bar
+      const tabBar = document.createElement('div');
+      tabBar.className = 'properties-tab-bar';
+      
+      const entityTab = document.createElement('div');
+      entityTab.className = `properties-tab ${this.activeTab === 'entity' ? 'active' : ''}`;
+      entityTab.textContent = 'Entity';
+      entityTab.addEventListener('click', () => {
+        this.activeTab = 'entity';
+        this.renderSingle(entity);
+      });
+      
+      const featuresTab = document.createElement('div');
+      featuresTab.className = `properties-tab ${this.activeTab === 'features' ? 'active' : ''}`;
+      featuresTab.textContent = 'Features';
+      featuresTab.addEventListener('click', () => {
+        this.activeTab = 'features';
+        this.renderSingle(entity);
+      });
+      
+      tabBar.appendChild(entityTab);
+      tabBar.appendChild(featuresTab);
+      this.container.appendChild(tabBar);
+      
+      if (this.activeTab === 'entity') {
+        this.renderEntityFields(solid);
+      } else {
+        this.renderFeaturesTab(solid);
+      }
+    } else {
+      this.activeTab = 'entity'; // Reset
+      this.renderEntityFields(entity);
+    }
+  }
+
+  private renderEntityFields(entity: Entity) {
     const title = document.createElement('div');
     title.style.fontWeight = 'bold';
     title.style.marginBottom = '10px';
@@ -103,6 +157,307 @@ export class PropertiesWindow {
       this.addPropertyField("Faces", (solid.indices.length / 3).toString(), true);
       const vol = this.calculateVolume(solid.positions, solid.indices);
       this.addPropertyField("Volume", vol.toFixed(2), true);
+    } else if (entity instanceof Insert) {
+      const ins = entity;
+      this.addNumberField("Pos X", ins.x, (val) => { this.updateProperty(ins, 'x', val); });
+      this.addNumberField("Pos Y", ins.y, (val) => { this.updateProperty(ins, 'y', val); });
+      this.addNumberField("Pos Z", ins.z || 0, (val) => { this.updateProperty(ins, 'z', val); });
+      
+      this.addPropertyField("R X", "0", true);
+      this.addPropertyField("R Y", "0", true);
+      this.addNumberField("R Z", ins.rotation, (val) => { this.updateProperty(ins, 'rotation', val); });
+    }
+  }
+
+  private renderFeaturesTab(solid: Solid3D) {
+    const container = document.createElement('div');
+    container.className = 'feature-tree-container';
+    
+    solid.features.forEach((feat) => {
+      const isBase = feat.id.endsWith('_base');
+      const item = document.createElement('div');
+      item.className = `feature-node-item ${!feat.isActive ? 'inactive' : ''}`;
+      
+      const header = document.createElement('div');
+      header.className = 'feature-node-header';
+      
+      // Collapse arrow
+      const arrow = document.createElement('span');
+      arrow.className = `feature-node-collapse-btn ${this.expandedFeatures.has(feat.id) ? 'expanded' : ''}`;
+      arrow.textContent = '▶';
+      header.appendChild(arrow);
+      
+      // Icon
+      const icon = document.createElement('div');
+      icon.className = 'feature-node-icon';
+      icon.textContent = GLYPHS[feat.type] || '■';
+      header.appendChild(icon);
+      
+      // Title
+      const title = document.createElement('div');
+      title.className = 'feature-node-title';
+      title.textContent = feat.type + (isBase ? ' (Base)' : '');
+      header.appendChild(title);
+      
+      // Actions
+      const actions = document.createElement('div');
+      actions.className = 'feature-node-actions';
+      
+      // Visibility Toggle
+      const toggle = document.createElement('button');
+      toggle.className = `feature-node-action-btn active-toggle ${feat.isActive ? 'active' : ''}`;
+      toggle.textContent = feat.isActive ? '👁' : '❌';
+      toggle.title = feat.isActive ? 'Suppress Feature' : 'Activate Feature';
+      toggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        feat.isActive = !feat.isActive;
+        this.triggerReevaluate(solid);
+      });
+      actions.appendChild(toggle);
+      
+      // Delete (Non-base only)
+      if (!isBase) {
+        const delBtn = document.createElement('button');
+        delBtn.className = 'feature-node-action-btn btn-delete';
+        delBtn.textContent = '🗑';
+        delBtn.title = 'Delete Feature';
+        delBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = solid.features.indexOf(feat);
+          if (idx > -1) {
+            solid.features.splice(idx, 1);
+            this.expandedFeatures.delete(feat.id);
+            this.triggerReevaluate(solid);
+          }
+        });
+        actions.appendChild(delBtn);
+      }
+      
+      header.appendChild(actions);
+      
+      // Header toggle collapse logic
+      header.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.feature-node-action-btn')) return;
+        
+        const isExpanded = this.expandedFeatures.has(feat.id);
+        if (isExpanded) {
+          this.expandedFeatures.delete(feat.id);
+        } else {
+          this.expandedFeatures.add(feat.id);
+        }
+        this.renderSingle(solid);
+      });
+      
+      item.appendChild(header);
+      
+      // Parameters Panel
+      const params = feat.parameters;
+      const paramContainer = document.createElement('div');
+      paramContainer.className = `feature-node-parameters ${this.expandedFeatures.has(feat.id) ? 'expanded' : ''}`;
+      
+      if (feat.type === "Sketch" || feat.type === "Extrude") {
+        const primType = params.primitiveType || solid.creationParams?.type;
+        if (primType === "box") {
+          paramContainer.appendChild(this.createParamRow("x", params.x ?? 0, (v) => { params.x = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("y", params.y ?? 0, (v) => { params.y = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("z", params.z ?? 0, (v) => { params.z = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("dx", params.dx ?? 1, (v) => { params.dx = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("dy", params.dy ?? 1, (v) => { params.dy = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("dz", params.dz ?? 1, (v) => { params.dz = v; this.triggerReevaluate(solid); }));
+        } else if (primType === "cylinder") {
+          paramContainer.appendChild(this.createParamRow("x", params.x ?? 0, (v) => { params.x = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("y", params.y ?? 0, (v) => { params.y = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("z", params.z ?? 0, (v) => { params.z = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("radius", params.radius ?? 1, (v) => { params.radius = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("height", params.height ?? 1, (v) => { params.height = v; this.triggerReevaluate(solid); }));
+        } else if (primType === "sphere") {
+          paramContainer.appendChild(this.createParamRow("x", params.x ?? 0, (v) => { params.x = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("y", params.y ?? 0, (v) => { params.y = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("z", params.z ?? 0, (v) => { params.z = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("r", params.r ?? 1, (v) => { params.r = v; this.triggerReevaluate(solid); }));
+        } else if (primType === "cone") {
+          paramContainer.appendChild(this.createParamRow("x", params.x ?? 0, (v) => { params.x = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("y", params.y ?? 0, (v) => { params.y = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("z", params.z ?? 0, (v) => { params.z = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("r", params.r ?? 1, (v) => { params.r = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("h", params.h ?? 1, (v) => { params.h = v; this.triggerReevaluate(solid); }));
+        } else if (primType === "torus") {
+          paramContainer.appendChild(this.createParamRow("x", params.x ?? 0, (v) => { params.x = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("y", params.y ?? 0, (v) => { params.y = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("z", params.z ?? 0, (v) => { params.z = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("r1", params.r1 ?? 2, (v) => { params.r1 = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("r2", params.r2 ?? 0.5, (v) => { params.r2 = v; this.triggerReevaluate(solid); }));
+        } else if (primType === "extrude") {
+          paramContainer.appendChild(this.createParamRow("height", params.height ?? 1, (v) => { params.height = v; this.triggerReevaluate(solid); }));
+          paramContainer.appendChild(this.createParamRow("thickness", params.thickness ?? 0, (v) => { params.thickness = v; this.triggerReevaluate(solid); }));
+        }
+      } else if (feat.type === "Fillet") {
+        paramContainer.appendChild(this.createParamRow("radius", params.radius ?? 1.0, (v) => { params.radius = v; this.triggerReevaluate(solid); }));
+        if (params.edgeIndex !== undefined) {
+          paramContainer.appendChild(this.createParamRow("edgeIndex", params.edgeIndex, (v) => { params.edgeIndex = v; this.triggerReevaluate(solid); }));
+        } else if (params.faceIndex !== undefined) {
+          paramContainer.appendChild(this.createParamRow("faceIndex", params.faceIndex, (v) => { params.faceIndex = v; this.triggerReevaluate(solid); }));
+        } else {
+          paramContainer.appendChild(this.createParamRow("edgeIndex", 0, (v) => { params.edgeIndex = v; this.triggerReevaluate(solid); }));
+        }
+      } else if (feat.type === "Scale") {
+        paramContainer.appendChild(this.createParamRow("factorX", params.factorX ?? params.factor ?? 1.0, (v) => { params.factorX = v; this.triggerReevaluate(solid); }));
+        paramContainer.appendChild(this.createParamRow("factorY", params.factorY ?? params.factor ?? 1.0, (v) => { params.factorY = v; this.triggerReevaluate(solid); }));
+        paramContainer.appendChild(this.createParamRow("factorZ", params.factorZ ?? params.factor ?? 1.0, (v) => { params.factorZ = v; this.triggerReevaluate(solid); }));
+      } else if (feat.type === "Cut") {
+        paramContainer.appendChild(this.createParamRow("x", params.x ?? 0, (v) => { params.x = v; this.triggerReevaluate(solid); }));
+        paramContainer.appendChild(this.createParamRow("y", params.y ?? 0, (v) => { params.y = v; this.triggerReevaluate(solid); }));
+        paramContainer.appendChild(this.createParamRow("z", params.z ?? 0, (v) => { params.z = v; this.triggerReevaluate(solid); }));
+        paramContainer.appendChild(this.createParamRow("dx", params.dx ?? 1, (v) => { params.dx = v; this.triggerReevaluate(solid); }));
+        paramContainer.appendChild(this.createParamRow("dy", params.dy ?? 1, (v) => { params.dy = v; this.triggerReevaluate(solid); }));
+        paramContainer.appendChild(this.createParamRow("dz", params.dz ?? 1, (v) => { params.dz = v; this.triggerReevaluate(solid); }));
+      } else if (feat.type === "Chamfer") {
+        paramContainer.appendChild(this.createParamRow("distance", params.distance ?? 1.0, (v) => { params.distance = v; this.triggerReevaluate(solid); }));
+        if (params.edgeIndex !== undefined) {
+          paramContainer.appendChild(this.createParamRow("edgeIndex", params.edgeIndex, (v) => { params.edgeIndex = v; this.triggerReevaluate(solid); }));
+        } else if (params.faceIndex !== undefined) {
+          paramContainer.appendChild(this.createParamRow("faceIndex", params.faceIndex, (v) => { params.faceIndex = v; this.triggerReevaluate(solid); }));
+        } else {
+          paramContainer.appendChild(this.createParamRow("edgeIndex", 0, (v) => { params.edgeIndex = v; this.triggerReevaluate(solid); }));
+        }
+      } else if (feat.type === "Shell") {
+        paramContainer.appendChild(this.createParamRow("thickness", params.thickness ?? 1.0, (v) => { params.thickness = v; this.triggerReevaluate(solid); }));
+        const faceIndicesVal = Array.isArray(params.faceIndices) ? params.faceIndices.join(', ') : String(params.faceIndices ?? '');
+        paramContainer.appendChild(this.createParamRow("faceIndices", faceIndicesVal, (v) => {
+          if (typeof v === 'string') {
+            params.faceIndices = v.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+          } else if (typeof v === 'number') {
+            params.faceIndices = [v];
+          }
+          this.triggerReevaluate(solid);
+        }));
+      }
+      
+      item.appendChild(paramContainer);
+      container.appendChild(item);
+    });
+    
+    this.container.appendChild(container);
+    
+    // Add dropdown menu at bottom
+    const addBar = document.createElement('div');
+    addBar.className = 'add-feature-bar';
+    
+    const dropdown = document.createElement('div');
+    dropdown.className = 'add-feature-dropdown';
+    
+    const btn = document.createElement('button');
+    btn.className = 'add-feature-btn';
+    btn.textContent = '+ Add Feature';
+    
+    const menu = document.createElement('div');
+    menu.className = 'add-feature-menu';
+    
+    const featTypes = [
+      { type: "Fillet", label: "⌒ Fillet", defaultParams: { radius: 1.0, edgeIndex: 0 } },
+      { type: "Chamfer", label: "⏃ Chamfer", defaultParams: { distance: 1.0, edgeIndex: 0 } },
+      { type: "Shell", label: "⏍ Shell", defaultParams: { thickness: 1.0, faceIndices: [] } },
+      { type: "Scale", label: "⤢ Scale", defaultParams: { factorX: 1.0, factorY: 1.0, factorZ: 1.0 } },
+      { type: "Cut", label: "✂ Box Cut", defaultParams: { x: 0, y: 0, z: 0, dx: 2, dy: 2, dz: 2 } }
+    ];
+    
+    featTypes.forEach(ft => {
+      const item = document.createElement('div');
+      item.className = 'add-feature-menu-item';
+      item.textContent = ft.label;
+      item.addEventListener('click', () => {
+        const newFeat = {
+          id: `${solid.id}_feat_${Date.now()}`,
+          type: ft.type as any,
+          parameters: { ...ft.defaultParams },
+          isActive: true
+        };
+        solid.features.push(newFeat);
+        this.expandedFeatures.add(newFeat.id);
+        menu.classList.remove('show');
+        this.triggerReevaluate(solid);
+      });
+      menu.appendChild(item);
+    });
+    
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      menu.classList.toggle('show');
+    });
+    
+    document.addEventListener('click', () => {
+      menu.classList.remove('show');
+    });
+    
+    dropdown.appendChild(btn);
+    dropdown.appendChild(menu);
+    addBar.appendChild(dropdown);
+    this.container.appendChild(addBar);
+  }
+
+  private createParamRow(label: string, value: any, onChange: (val: any) => void): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'parameter-field-row';
+    
+    const lbl = document.createElement('span');
+    lbl.className = 'parameter-field-label';
+    lbl.textContent = label;
+    row.appendChild(lbl);
+    
+    const input = document.createElement('input');
+    input.className = 'parameter-input';
+    input.value = typeof value === 'number' ? value.toFixed(3).replace(/\.?0+$/, '') : String(value ?? '');
+    
+    const handleValueChange = () => {
+      const parsed = parseFloat(input.value);
+      onChange(isNaN(parsed) ? input.value : parsed);
+    };
+    
+    input.addEventListener('change', handleValueChange);
+    input.addEventListener('blur', handleValueChange);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        handleValueChange();
+        input.blur();
+      }
+    });
+    
+    row.appendChild(input);
+    return row;
+  }
+
+  private async triggerReevaluate(solid: Solid3D) {
+    const before = solid.clone(solid.id) as Solid3D;
+    const tempId = solid.id;
+    const occ = OpenCascadeService.getInstance();
+    const deflection = 0.1 / ((this.app.doc as any).facetres || 5.0);
+    
+    try {
+      const facetres = (this.app.doc as any).facetres || 5.0;
+      const geom = await Solid3DReevaluator.reevaluate(solid, facetres, this.app.doc);
+      
+      solid.positions = Array.from(geom.getAttribute('position').array) as number[];
+      solid.indices = geom.getIndex() ? Array.from(geom.getIndex()!.array) : [];
+      if (geom.userData) {
+        solid.faceMapping = geom.userData.faceMapping;
+        solid.edgeLines = geom.userData.edgeLines;
+        solid.brepSnapshot = geom.userData.brepSnapshot;
+      }
+      solid.updateAbsolutePosition();
+      
+      this.app.doc.history.startTransaction();
+      this.app.doc.recordTransform(before, solid);
+      this.app.doc.history.commitTransaction();
+      
+      this.app.addEntity(solid, false, false);
+      this.app.syncFromDocument();
+      
+      this.renderSingle(solid);
+      
+    } catch (err: any) {
+      console.error("Parametric rebuild failed:", err);
+      this.app.syncFromDocument();
+      this.app.printToCommandLine(`Error: Parametric rebuild failed - ${err.message || err.toString()}`);
     }
   }
 
@@ -260,54 +615,134 @@ export class PropertiesWindow {
   }
 
   private updateSolidPos(solid: Solid3D, axis: 'x' | 'y' | 'z', value: number) {
-    this.app.doc.history.startTransaction();
-    const before = solid.clone(solid.id);
-    
     const dx = axis === 'x' ? value - solid.position.x : 0;
     const dy = axis === 'y' ? value - solid.position.y : 0;
     const dz = axis === 'z' ? value - solid.position.z : 0;
     
-    solid.position[axis] = value;
+    if (dx === 0 && dy === 0 && dz === 0) return;
     
-    this.app.doc.recordTransform(before, solid);
-    this.app.doc.history.commitTransaction();
+    const before = solid.clone(solid.id) as Solid3D;
     
-    // Sync with worker if it's a transform!
-    if (dx !== 0 || dy !== 0 || dz !== 0) {
-        OpenCascadeService.getInstance().transformShape(solid.id, dx, dy, dz).then(() => {
-            this.app.syncFromDocument();
-        }).catch((err: any) => {
-            console.error("Failed to sync transform to worker:", err);
-            this.app.syncFromDocument();
-        });
-    } else {
-        this.app.syncFromDocument();
+    const isRawMesh = !solid.creationParams && !solid.brepSnapshot;
+    if (isRawMesh) {
+      solid.move3D(dx, dy, dz);
+      
+      this.app.doc.history.startTransaction();
+      this.app.doc.recordTransform(before, solid);
+      this.app.doc.history.commitTransaction();
+      
+      this.app.addEntity(solid, false, false);
+      this.app.syncFromDocument();
+      return;
     }
+    
+    const importPromise = solid.brepSnapshot 
+      ? OpenCascadeService.getInstance().importBRep(solid.id, solid.brepSnapshot)
+      : Promise.resolve();
+      
+    importPromise.then(() => {
+      return OpenCascadeService.getInstance().transformShape(solid.id, dx, dy, dz);
+    }).then((geom) => {
+      solid.positions = Array.from(geom.attributes.position.array);
+      solid.indices = geom.index ? Array.from(geom.index.array) : [];
+      if (geom.userData) {
+        solid.faceMapping = geom.userData.faceMapping;
+        solid.edgeLines = geom.userData.edgeLines;
+        solid.brepSnapshot = geom.userData.brepSnapshot;
+      }
+      solid.updateAbsolutePosition();
+      
+      this.app.doc.history.startTransaction();
+      this.app.doc.recordTransform(before, solid);
+      this.app.doc.history.commitTransaction();
+      
+      this.app.addEntity(solid, false, false);
+      this.app.syncFromDocument();
+    }).catch((err: unknown) => {
+      console.error("Failed to sync transform to worker:", err);
+      this.app.syncFromDocument();
+    });
   }
 
   private updateSolidRot(solid: Solid3D, axis: 'x' | 'y' | 'z', value: number) {
-    this.app.doc.history.startTransaction();
-    const before = solid.clone(solid.id);
-    
     const drx = axis === 'x' ? value - solid.rotation.x : 0;
     const dry = axis === 'y' ? value - solid.rotation.y : 0;
     const drz = axis === 'z' ? value - solid.rotation.z : 0;
     
-    solid.rotation[axis] = value;
+    if (drx === 0 && dry === 0 && drz === 0) return;
     
-    this.app.doc.recordTransform(before, solid);
-    this.app.doc.history.commitTransaction();
+    const before = solid.clone(solid.id) as Solid3D;
     
-    if (drx !== 0 || dry !== 0 || drz !== 0) {
-        OpenCascadeService.getInstance().rotateShape(solid.id, drx, dry, drz, solid.position.x, solid.position.y, solid.position.z).then(() => {
-            this.app.syncFromDocument();
-        }).catch((err: any) => {
-            console.error("Failed to sync transform to worker:", err);
-            this.app.syncFromDocument();
-        });
-    } else {
-        this.app.syncFromDocument();
+    const isRawMesh = !solid.creationParams && !solid.brepSnapshot;
+    if (isRawMesh) {
+      const center = new THREE.Vector3(solid.position.x, solid.position.y, solid.position.z);
+      const euler = new THREE.Euler(drx, dry, drz, 'XYZ');
+      const quat = new THREE.Quaternion().setFromEuler(euler);
+      
+      const pos = solid.positions;
+      const len = pos.length;
+      const v = new THREE.Vector3();
+      for (let i = 0; i < len; i += 3) {
+        v.set(pos[i], pos[i + 1], pos[i + 2]).sub(center).applyQuaternion(quat).add(center);
+        pos[i] = v.x;
+        pos[i + 1] = v.y;
+        pos[i + 2] = v.z;
+      }
+      
+      const edgeLines = solid.edgeLines;
+      if (edgeLines) {
+        const numEdges = edgeLines.length;
+        for (let e = 0; e < numEdges; e++) {
+          const edge = edgeLines[e];
+          const edgeLen = edge.length;
+          for (let i = 0; i < edgeLen; i += 3) {
+            v.set(edge[i], edge[i + 1], edge[i + 2]).sub(center).applyQuaternion(quat).add(center);
+            edge[i] = v.x;
+            edge[i + 1] = v.y;
+            edge[i + 2] = v.z;
+          }
+        }
+      }
+      
+      solid.rotation[axis] = value;
+      solid.updateAbsolutePosition();
+      
+      this.app.doc.history.startTransaction();
+      this.app.doc.recordTransform(before, solid);
+      this.app.doc.history.commitTransaction();
+      
+      this.app.addEntity(solid, false, false);
+      this.app.syncFromDocument();
+      return;
     }
+    
+    const importPromise = solid.brepSnapshot 
+      ? OpenCascadeService.getInstance().importBRep(solid.id, solid.brepSnapshot)
+      : Promise.resolve();
+      
+    importPromise.then(() => {
+      return OpenCascadeService.getInstance().rotateShape(solid.id, drx, dry, drz, solid.position.x, solid.position.y, solid.position.z);
+    }).then((geom) => {
+      solid.positions = Array.from(geom.attributes.position.array);
+      solid.indices = geom.index ? Array.from(geom.index.array) : [];
+      if (geom.userData) {
+        solid.faceMapping = geom.userData.faceMapping;
+        solid.edgeLines = geom.userData.edgeLines;
+        solid.brepSnapshot = geom.userData.brepSnapshot;
+      }
+      solid.rotation[axis] = value;
+      solid.updateAbsolutePosition();
+      
+      this.app.doc.history.startTransaction();
+      this.app.doc.recordTransform(before, solid);
+      this.app.doc.history.commitTransaction();
+      
+      this.app.addEntity(solid, false, false);
+      this.app.syncFromDocument();
+    }).catch((err: unknown) => {
+      console.error("Failed to sync transform to worker:", err);
+      this.app.syncFromDocument();
+    });
   }
 
   private calculateVolume(positions: number[], indices: number[]): number {

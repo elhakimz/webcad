@@ -118,4 +118,49 @@ describe('ScaleCommand', () => {
       'Move mouse up/down to adjust'
     ])
   })
+
+  it('should scale instantly with a single argument (factor) and default base point 0,0,0', () => {
+    const cmd = new ScaleCommand(['L1'])
+    expect(cmd.step).toBe(1)
+
+    const res = cmd.onInput('3.5', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as CommandAction
+    expect(cmd.step).toBe(0)
+    expect(res.action).toBe('scale')
+    expect(res.ids).toEqual(['L1'])
+    expect(res.factor).toBe(3.5)
+    expect(res.baseX).toBe(0)
+    expect(res.baseY).toBe(0)
+  })
+
+  it('should scale instantly through coordinate and factor inputs in step 1', () => {
+    const cmd = new ScaleCommand(['L1'])
+    expect(cmd.step).toBe(1)
+
+    // Simulating SCALE O 2.5
+    // First, O is entered:
+    const mockEntity = {
+      id: 'L1',
+      creationParams: {
+        type: 'box',
+        params: { x: 12, y: 34, z: 0 }
+      }
+    }
+    const mockDoc = {
+      getEntity: (id: string) => id === 'L1' ? mockEntity : null
+    }
+
+    const res1 = cmd.onInput('O', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc)
+    expect(cmd.step).toBe(2)
+    expect(cmd.basePoint.x).toBe(12)
+    expect(cmd.basePoint.y).toBe(34)
+    expect(res1).toBe('Scale factor:')
+
+    // Second, factor 1.8 is entered:
+    const res2 = cmd.onInput('1.8', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as CommandAction
+    expect(cmd.step).toBe(0)
+    expect(res2.action).toBe('scale')
+    expect(res2.factor).toBe(1.8)
+    expect(res2.baseX).toBe(12)
+    expect(res2.baseY).toBe(34)
+  })
 })

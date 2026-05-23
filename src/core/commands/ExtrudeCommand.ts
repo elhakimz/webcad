@@ -1,19 +1,21 @@
-import { Command, CommandResponse } from "./types"
+import { Command, CommandResponse, PreviewObject } from "./types"
 import { UnitsConfig, IDocument } from "../model/Document"
-import { FormatUtils } from "../engine/FormatUtils"
 import { Entity } from "../model/Entity"
 import { Polyline } from "../model/Polyline"
 import { Circle } from "../model/Circle"
 import { Spline } from "../model/Spline"
 import { Solid3D } from "../model/Solid3D"
+import { Line } from "../model/Line"
 import { OpenCascadeService } from "../io/OpenCascadeService.js";
 import { bulgeToArc } from "../engine/MathUtils";
+import { FormatUtils } from "../engine/FormatUtils";
 
 export class ExtrudeCommand implements Command {
   step = 0
   selectedEntity: Entity | null = null
   height = 0
   thickness = 0
+  basePt: { x: number; y: number; z: number } | null = null
   occService: OpenCascadeService
 
   constructor() {
@@ -24,21 +26,54 @@ export class ExtrudeCommand implements Command {
     if (this.step === 0) {
       if (entity instanceof Polyline || entity instanceof Circle || entity instanceof Spline) {
         this.selectedEntity = entity;
+        const elevation = entity.elevation || 0;
+        let bx = 0, by = 0;
+        
+        if (entity instanceof Circle) {
+          bx = entity.cx;
+          by = entity.cy;
+        } else if (entity instanceof Polyline && entity.vertices.length > 0) {
+          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+          entity.vertices.forEach(v => {
+            if (v.x < minX) minX = v.x;
+            if (v.x > maxX) maxX = v.x;
+            if (v.y < minY) minY = v.y;
+            if (v.y > maxY) maxY = v.y;
+          });
+          bx = (minX + maxX) / 2;
+          by = (minY + maxY) / 2;
+        } else if (entity instanceof Spline && entity.sampledPoints.length > 0) {
+          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+          entity.sampledPoints.forEach(v => {
+            if (v.x < minX) minX = v.x;
+            if (v.x > maxX) maxX = v.x;
+            if (v.y < minY) minY = v.y;
+            if (v.y > maxY) maxY = v.y;
+          });
+          bx = (minX + maxX) / 2;
+          by = (minY + maxY) / 2;
+        }
+        
+        this.basePt = { x: bx, y: by, z: elevation };
         this.step = 1;
       }
     }
   }
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse | Promise<CommandResponse> {
+  onPoint(_x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument): CommandResponse | Promise<CommandResponse> {
     if (this.step === 0) {
       return "Select profile (Polyline, Circle, Spline):";
     }
     
     if (this.step === 1) {
-      // User clicked a point for height
-      // We can't easily determine height from a single click in 2D without a base point
-      // So we fallback to prompting for height input!
-      return "Specify height:";
+      if (!this.basePt) return "Error: Profile not selected.";
+      const height = y - this.basePt.y;
+      this.height = height;
+      if (this.isOpenProfile()) {
+        this.step = 2;
+        return this.getPrompt();
+      }
+      return this.executeExtrude(id, doc);
     }
     
     return this.getPrompt();
@@ -52,7 +87,6 @@ export class ExtrudeCommand implements Command {
     }
 
     if (this.step === 0) {
-      // User typed ID
       if (doc) {
         const entity = doc.getEntity(val);
         if (entity) {
@@ -64,18 +98,19 @@ export class ExtrudeCommand implements Command {
     }
     
     if (this.step === 1) {
-      // User typed height
       const h = parseFloat(val);
       if (!isNaN(h) && h !== 0) {
         this.height = h;
+        if (this.isOpenProfile()) {
+          this.step = 2;
+          return this.getPrompt();
+        }
         return this.executeExtrude(id, doc);
       }
       return "Invalid height. Specify height:";
     }
     
     if (this.step === 2) {
-
-      // User typed thickness
       const t = parseFloat(val);
       if (!isNaN(t)) {
         this.thickness = t;
@@ -95,9 +130,8 @@ export class ExtrudeCommand implements Command {
     return false; // Circle is always closed
   }
 
-
-  private executeExtrude(id: string, doc?: IDocument): Promise<CommandResponse> {
-    if (!this.selectedEntity) return Promise.resolve("No profile selected.");
+  private getProfilePoints(): { points: { x: number; y: number; z: number }[]; isClosed: boolean } {
+    if (!this.selectedEntity) return { points: [], isClosed: false };
     
     let points: {x: number, y: number, z: number}[] = [];
     let isClosed = false;
@@ -140,7 +174,6 @@ export class ExtrudeCommand implements Command {
         }
       }
       
-      // If not closed, add the last vertex!
       if (!this.selectedEntity.closed && count > 0) {
         const lastV = this.selectedEntity.vertices[count - 1];
         points.push({ x: lastV.x, y: lastV.y, z: elevation });
@@ -148,7 +181,6 @@ export class ExtrudeCommand implements Command {
       
       isClosed = this.selectedEntity.closed;
     } else if (this.selectedEntity instanceof Circle) {
-      // Sample N points without repeating the start — closure is passed explicitly
       const segments = 32;
       for (let i = 0; i < segments; i++) {
         const angle = (i / segments) * 2 * Math.PI;
@@ -163,6 +195,15 @@ export class ExtrudeCommand implements Command {
       points = this.selectedEntity.sampledPoints.map(v => ({ x: v.x, y: v.y, z: elevation }));
       isClosed = this.selectedEntity.isClosed;
     }
+    
+    return { points, isClosed };
+  }
+
+  private executeExtrude(id: string, doc?: IDocument): Promise<CommandResponse> {
+    if (!this.selectedEntity) return Promise.resolve("No profile selected.");
+    
+    const { points, isClosed } = this.getProfilePoints();
+    if (points.length === 0) return Promise.resolve("No profile points sampled.");
     
     const facetres = doc ? doc.facetres : 5.0;
     const deflection = 0.1 / facetres;
@@ -190,12 +231,47 @@ export class ExtrudeCommand implements Command {
 
   getPrompt() {
     if (this.step === 0) return "EXTRUDE Select profile (Polyline, Circle, Spline):";
-    if (this.step === 1) return "Specify height:";
+    if (this.step === 1) return "Specify height (move mouse up/down or enter value):";
     if (this.step === 2) return "Specify thickness for open profile:";
     return "";
   }
 
-  getPreview(x: number, y: number, units: UnitsConfig) {
+  getPreview(x: number, y: number, _units: UnitsConfig, _doc?: IDocument): PreviewObject | null {
+    if (this.step === 1 && this.selectedEntity && this.basePt) {
+      const h = y - this.basePt.y;
+      const { points, isClosed } = this.getProfilePoints();
+      if (points.length === 0) return null;
+      
+      const entities: Entity[] = [];
+      const elevation = this.selectedEntity.elevation || 0;
+      const count = points.length;
+      const limit = isClosed ? count : count - 1;
+      
+      for (let i = 0; i < limit; i++) {
+        const p1 = points[i];
+        const p2 = points[(i + 1) % count];
+        
+        entities.push(new Line("b" + i, p1.x, p1.y, p2.x, p2.y, elevation));
+        entities.push(new Line("t" + i, p1.x, p1.y, p2.x, p2.y, elevation + h));
+      }
+      
+      for (let i = 0; i < count; i++) {
+        const p = points[i];
+        entities.push(new Line("v" + i, p.x, p.y, p.x, p.y, elevation, h));
+      }
+      
+      return { type: 'entities' as const, entities };
+    }
+    return null;
+  }
+
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 1 && this.basePt) {
+      const h = y - this.basePt.y;
+      return [
+        `H: ${FormatUtils.formatDistance(h, units)}`
+      ];
+    }
     return null;
   }
 }

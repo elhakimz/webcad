@@ -522,8 +522,8 @@ export class CsgExecutor {
         break;
       }
       case "torus": {
-        let r1 = p.r1 !== undefined ? p.r1 : (p[0] ?? 1);
-        let r2 = p.r2 !== undefined ? p.r2 : (p[1] ?? 0.2);
+        const r1 = p.r1 !== undefined ? p.r1 : (p[0] ?? 1);
+        const r2 = p.r2 !== undefined ? p.r2 : (p[1] ?? 0.2);
         validate(r1, r2);
         if (r1 <= 0 || r2 <= 0) {
           throw new Error(`Torus radii must be positive, got r1=${r1}, r2=${r2}`);
@@ -589,6 +589,83 @@ export class CsgExecutor {
         }
         if (formattedPoints.length >= 3) {
           geo = await this.occ.createExtrude(formattedPoints, 0.001, undefined, deflection, true, id);
+        }
+        break;
+      }
+      case "sweep": {
+        const spine = p.path ?? p.spine ?? p[0] ?? [];
+        let profile = p.profile ?? p[1] ?? 1.0;
+
+        // Coerce profile to number if it is a numeric string (from generator UI)
+        if (typeof profile === "string") {
+          const parsed = Number(profile);
+          if (!isNaN(parsed)) {
+            profile = parsed;
+          }
+        }
+
+        const isSolid = p.isSolid ?? p.solid ?? p[2] ?? true;
+        // Default cornerMode to "DEFAULT" (uses stable non-collapsing custom JS RMF sweep generator)
+        const cornerMode = p.cornerMode ?? p[3] ?? "DEFAULT";
+
+        const spinePoints = spine.map((pt: any) => {
+          if (Array.isArray(pt)) {
+            return { x: pt[0] ?? 0, y: pt[1] ?? 0, z: pt[2] ?? 0 };
+          }
+          if (pt && typeof pt === 'object') {
+            return { x: pt.x ?? 0, y: pt.y ?? 0, z: pt.z ?? 0 };
+          }
+          return { x: 0, y: 0, z: 0 };
+        });
+
+        let profilePoints: { x: number; y: number; z: number }[] = [];
+        const isEllipse = false;
+
+        if (Array.isArray(profile)) {
+          profilePoints = profile.map((pt: any) => {
+            if (Array.isArray(pt)) {
+              return { x: pt[0] ?? 0, y: pt[1] ?? 0, z: pt[2] ?? 0 };
+            }
+            if (pt && typeof pt === 'object') {
+              return { x: pt.x ?? 0, y: pt.y ?? 0, z: pt.z ?? 0 };
+            }
+            return { x: 0, y: 0, z: 0 };
+          });
+        } else if (typeof profile === "number") {
+          // Parse radius robustly from either number or string
+          let radius = 1.0;
+          const rawRadius = p.radius ?? p.r;
+          if (rawRadius !== undefined && rawRadius !== null) {
+            const parsed = Number(rawRadius);
+            if (!isNaN(parsed)) {
+              radius = parsed;
+            }
+          } else {
+            radius = (profile > 0 && profile <= 2.5) ? profile : 1.0;
+          }
+
+          const sides = profile > 2 ? Math.floor(profile) : 32;
+          for (let i = 0; i < sides; i++) {
+            const angle = (2 * Math.PI * i) / sides;
+            profilePoints.push({
+              x: radius * Math.cos(angle),
+              y: radius * Math.sin(angle),
+              z: 0
+            });
+          }
+        }
+
+        if (spinePoints.length >= 2 && profilePoints.length >= 3) {
+          geo = await this.occ.createSweep(
+            profilePoints,
+            spinePoints,
+            isSolid,
+            deflection,
+            id,
+            1, // Correct profileCount (always 1 for single-spine primitive sweep)
+            cornerMode,
+            isEllipse
+          );
         }
         break;
       }

@@ -239,6 +239,7 @@ const solidToolbar = new SolidToolbar(async (cmd) => {
 
 const fileToolbar = new ToolWindow("file", "File Operations")
 const fileToolWindow = new FileToolWindow(fileToolbar, app)
+app.setFilesWindowUpdate(() => fileToolWindow.renderTableBody())
 mainArea.insertBefore(fileToolbar.getElement(), toolWindowBar.getElement().nextSibling);
 toolWindowBar.addWindow("F", fileToolbar)
 

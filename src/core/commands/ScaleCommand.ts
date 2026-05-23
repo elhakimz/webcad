@@ -104,6 +104,18 @@ export class ScaleCommand implements Command {
         this.step = 2;
         return "Scale factor:";
       }
+
+      const num = parseFloat(val);
+      if (!isNaN(num)) {
+        this.basePoint = { x: 0, y: 0 };
+        const ids = [...this.targetIds];
+        const factor = num;
+        const baseX = this.basePoint.x;
+        const baseY = this.basePoint.y;
+        this.step = 0;
+        this.targetIds = [];
+        return { action: "scale", ids, factor, baseX, baseY } as CommandResponse;
+      }
     }
 
     if (this.step === 2) {

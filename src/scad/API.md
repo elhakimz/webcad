@@ -36,6 +36,39 @@ Creates a custom 3D polyhedron shape from a list of 3D vertices and a list of po
 
 ---
 
+## 2D CAD Drafting & Primitives
+
+### Standard 2D Region Primitives
+These primitives generate 2D region outlines, which can be combined or extruded.
+*   **`square(size, center)`**: Rectangle of `size` (single number or `[x, y]`).
+*   **`circle(r | d)`**: Circle with radius `r` or diameter `d`.
+*   **`polygon(points)`**: Custom polygon boundary from coordinate list `[[x1,y1], [x2,y2], ...]`.
+
+### High-Fidelity 2D CAD Primitives (`2d.*`)
+These modules draw high-fidelity drafting elements directly into the active document context, making them fully snappable, selectable, and ready for true DXF export.
+*   **`2d.line(p1, p2 | x1, y1, x2, y2, color, layer)`**: A 2D drafting line.
+*   **`2d.circle(center | cx, cy, r | d, color, layer)`**: A high-fidelity circle.
+*   **`2d.arc(center | cx, cy, r, start_angle, end_angle, ccw, color, layer)`**: A 2D drafting arc with angles in degrees.
+*   **`2d.polyline(points, closed, color, layer)`**: A snappable 2D polyline, where points can be `[x,y]` arrays or objects with bulge parameters `[x, y, bulge]`.
+*   **`2d.mtext(text, center | cx, cy, height, width, rotation, color, layer)`**: High-fidelity multi-line technical text.
+*   **`2d.text(text, center | cx, cy, height, rotation, color, layer)`**: Single-line text.
+*   **`2d.hatch(pattern, points, scale, angle, color, layer)`**: Fills a 2D closed loop contour with drafting pattern hatching (e.g. `"ANSI31"`).
+
+---
+
+## Technical Dimensioning Annotations (`dim.*`)
+
+These modules draw professional snappable dimension annotations. They automatically measure distances and place technical dimension arrows, extension lines, and labels.
+
+*   **`dim.linear(p1, p2, offset, color, layer)`**: Horizontal or vertical dimensioning between `p1` and `p2` placed at `offset`.
+*   **`dim.aligned(p1, p2, offset, color, layer)`**: Aligned dimensioning measuring the direct diagonal distance.
+*   **`dim.angular(p1, p2, offset, color, layer)`**: Angular dimension line.
+*   **`dim.radial(p1, p2, offset, color, layer)`**: Radius dimensioning for circles/arcs.
+*   **`dim.diameter(p1, p2, offset, color, layer)`**: Diameter dimensioning.
+*   **`dim.dimension(type, p1, p2, offset, color, layer)`**: Generic dimension annotation where type can be `"LINEAR"`, `"ALIGNED"`, `"ANGULAR"`, `"RADIUS"`, or `"DIAMETER"`.
+
+---
+
 ## Boolean Operations
 
 All boolean operations support an arbitrary number of children. Multiple children are automatically unioned if necessary.
@@ -72,7 +105,29 @@ Moves children by the specified vector.
 Rotates children around the X, Y, and Z axes (in degrees).
 
 ### `scale([x, y, z]) { ... }`
-*(Experimental)* Scales children. Currently uses non-uniform B-Rep scaling.
+Scales children. Uses non-uniform B-Rep scaling.
+
+### `mirror([x, y, z]) { ... }`
+Mirrors children across a plane perpendicular to the specified vector.
+
+### `linear_extrude(height, center) { ... }`
+Extrudes 2D region primitives (e.g. `circle`, `square`, `polygon`) into 3D shapes along the Z-axis.
+*   **`height`**: Height of the extrusion. Default: `1`.
+*   **`center`**: If `true`, the extruded solid is centered along the Z-axis. Default: `false`.
+
+---
+
+## Modular Design & Libraries
+
+WebCAD fully supports OpenSCAD's modular directory structure, recursive imports, and standard library architectures like **BOSL**.
+
+### `include <path>` / `include "path"`
+Imports all variables, constants, functions, modules, and top-level geometry from the target file into the current scope.
+*   **Example**: `include <BOSL/constants.scad>`
+
+### `use <path>` / `use "path"`
+Imports only the functions and modules defined in the target file. It completely ignores top-level variable declarations, constants, and geometry instantiations, preventing them from polluting your main file's scope.
+*   **Example**: `use <BOSL/threading.scad>`
 
 ---
 
@@ -97,6 +152,13 @@ difference() {
   cube(20);
   hole([10, 10, 0]);
 }
+```
+
+### Functions (User Defined)
+Functions allow you to compute values or construct customized data records.
+```javascript
+function double(x) = x * 2;
+function add(a, b) = a + b;
 ```
 
 ### Control Flow

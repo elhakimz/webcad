@@ -1,6 +1,5 @@
 import { Command, CommandResponse } from "./types"
 import { UnitsConfig, IDocument } from "../model/Document"
-import { FormatUtils } from "../engine/FormatUtils"
 import { Entity } from "../model/Entity"
 import { Polyline } from "../model/Polyline"
 import { Circle } from "../model/Circle"
@@ -31,7 +30,7 @@ export class RevolveCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument, z?: number): CommandResponse | Promise<CommandResponse> {
+  onPoint(x: number, y: number, _id: string, _units: UnitsConfig, _doc?: IDocument, z?: number): CommandResponse | Promise<CommandResponse> {
     const currentZ = z !== undefined ? z : 0;
 
     if (this.step === 0) {
@@ -214,7 +213,7 @@ export class RevolveCommand implements Command {
     return "";
   }
 
-  getPreview(x: number, y: number, units: UnitsConfig) {
+  getPreview(_x: number, _y: number, _units: UnitsConfig) {
     return null;
   }
 }

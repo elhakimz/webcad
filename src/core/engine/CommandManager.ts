@@ -37,7 +37,7 @@ import { SketchCommand } from "../commands/SketchCommand"
 import { ShapeCommand } from "../commands/ShapeCommand"
 import { LayerCommand } from "../commands/LayerCommand"
 import { LinetypeCommand } from "../commands/LinetypeCommand"
-import { SaveCommand, LoadCommand, NewCommand, DBSaveCommand } from "../commands/IOCommands"
+import { SaveCommand, LoadCommand, NewCommand, DBSaveCommand, DBLoadCommand } from "../commands/IOCommands"
 import { UnitsCommand } from "../commands/UnitsCommand"
 import { FilletCommand } from "../commands/FilletCommand"
 import { SFilletCommand } from "../commands/SFilletCommand"
@@ -80,7 +80,8 @@ import { RevolveCommand } from "../commands/RevolveCommand.js"
 import { BooleanCommand } from "../commands/BooleanCommand.js"
 import { LoftCommand } from "../commands/LoftCommand.js"
 import { Entity } from "../model/Entity.js"
-import { RegenCommand } from "../commands/RegenCommand"
+import { RebuildCommand } from "../commands/RebuildCommand"
+
 
 
 type CommandFactory = (selection?: string[]) => Command | CommandResponse;
@@ -203,6 +204,13 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["DIMTOH", () => new DimTohCommand()],
   ["DIMTAD", () => new DimTadCommand()],
   ["DBSAVE", () => new DBSaveCommand()],
+  ["DBLOAD", () => new DBLoadCommand()],
+  ["REBUILD", (selection) => {
+    if (selection && selection.length > 0) {
+      return { action: "rebuild", id: selection[0] };
+    }
+    return new RebuildCommand();
+  }],
 ]);
 
 export class CommandManager {

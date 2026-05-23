@@ -1,34 +1,74 @@
 import * as AST from "../ast/Nodes";
 import { Scope } from "./Scope";
 import { EvaluatedGeometry } from "./Geometry";
+import {
+  isNumericVector,
+  fastAddVectors,
+  fastAddScalar,
+  fastSubtractVectors,
+  fastMultiplyScalar,
+  fastDivideScalar,
+  fastMultiplyMatrices
+} from "./FastMath";
 
 function add(a: any, b: any): any {
   if (Array.isArray(a) && Array.isArray(b)) {
+    if (isNumericVector(a) && isNumericVector(b) && a.length === b.length) {
+      return fastAddVectors(a, b);
+    }
     const len = Math.min(a.length, b.length);
     const res = [];
     for (let i = 0; i < len; i++) res.push(add(a[i], b[i]));
     return res;
   }
-  if (Array.isArray(a)) return a.map(x => add(x, b));
-  if (Array.isArray(b)) return b.map(x => add(a, x));
+  if (Array.isArray(a)) {
+    if (isNumericVector(a) && typeof b === "number") {
+      return fastAddScalar(a, b);
+    }
+    return a.map(x => add(x, b));
+  }
+  if (Array.isArray(b)) {
+    if (isNumericVector(b) && typeof a === "number") {
+      return fastAddScalar(b, a);
+    }
+    return b.map(x => add(a, x));
+  }
   return a + b;
 }
 
 function subtract(a: any, b: any): any {
   if (Array.isArray(a) && Array.isArray(b)) {
+    if (isNumericVector(a) && isNumericVector(b) && a.length === b.length) {
+      return fastSubtractVectors(a, b);
+    }
     const len = Math.min(a.length, b.length);
     const res = [];
     for (let i = 0; i < len; i++) res.push(subtract(a[i], b[i]));
     return res;
   }
-  if (Array.isArray(a)) return a.map(x => subtract(x, b));
-  if (Array.isArray(b)) return b.map(x => subtract(a, x));
+  if (Array.isArray(a)) {
+    if (isNumericVector(a) && typeof b === "number") {
+      return fastAddScalar(a, -b);
+    }
+    return a.map(x => subtract(x, b));
+  }
+  if (Array.isArray(b)) {
+    if (isNumericVector(b) && typeof a === "number") {
+      return fastAddScalar(fastMultiplyScalar(b, -1), a);
+    }
+    return b.map(x => subtract(a, x));
+  }
   return a - b;
 }
 
 function multiply(a: any, b: any): any {
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length > 0 && Array.isArray(a[0]) && b.length > 0 && Array.isArray(b[0])) {
+      const isANumeric = a.every(row => Array.isArray(row) && row.every(x => typeof x === "number"));
+      const isBNumeric = b.every(row => Array.isArray(row) && row.every(x => typeof x === "number"));
+      if (isANumeric && isBNumeric && a[0].length === b.length) {
+        return fastMultiplyMatrices(a, b);
+      }
       const M = a.length;
       const N = a[0].length;
       const P = b[0].length;
@@ -74,8 +114,18 @@ function multiply(a: any, b: any): any {
     for (let i = 0; i < len; i++) res.push(multiply(a[i], b[i]));
     return res;
   }
-  if (Array.isArray(a)) return a.map(x => multiply(x, b));
-  if (Array.isArray(b)) return b.map(x => multiply(a, x));
+  if (Array.isArray(a)) {
+    if (isNumericVector(a) && typeof b === "number") {
+      return fastMultiplyScalar(a, b);
+    }
+    return a.map(x => multiply(x, b));
+  }
+  if (Array.isArray(b)) {
+    if (isNumericVector(b) && typeof a === "number") {
+      return fastMultiplyScalar(b, a);
+    }
+    return b.map(x => multiply(a, x));
+  }
   return a * b;
 }
 
@@ -86,8 +136,15 @@ function divide(a: any, b: any): any {
     for (let i = 0; i < len; i++) res.push(divide(a[i], b[i]));
     return res;
   }
-  if (Array.isArray(a)) return a.map(x => divide(x, b));
-  if (Array.isArray(b)) return b.map(x => divide(a, x));
+  if (Array.isArray(a)) {
+    if (isNumericVector(a) && typeof b === "number" && b !== 0) {
+      return fastDivideScalar(a, b);
+    }
+    return a.map(x => divide(x, b));
+  }
+  if (Array.isArray(b)) {
+    return b.map(x => divide(a, x));
+  }
   return a / b;
 }
 
@@ -194,7 +251,8 @@ export class ScadEvaluator {
 
     // Handle children() call
     if (node.name === "children") {
-      const parentChildren = scope.get("$children_nodes") || scope.get("$children");
+      // Read from $children_list (the AST array); $children is now the integer count.
+      const parentChildren = scope.get("$children_list") ?? scope.get("$children");
       const parentScope = scope.get("$children_scope");
       if (!parentChildren || !Array.isArray(parentChildren) || parentChildren.length === 0) {
         return [];
@@ -227,7 +285,7 @@ export class ScadEvaluator {
     }
 
     // Check for built-in primitives
-    if (["cube", "sphere", "cylinder", "torus", "cone", "polyhedron", "square", "circle", "polygon",
+    if (["cube", "sphere", "cylinder", "torus", "cone", "polyhedron", "square", "circle", "polygon", "sweep",
          "line", "circle2d", "arc2d", "polyline2d", "mtext2d", "text2d", "hatch2d", "dimension2d",
          "2d.line", "2d.circle", "2d.arc", "2d.polyline", "2d.mtext", "2d.text", "2d.hatch",
          "dim.linear", "dim.aligned", "dim.angular", "dim.radial", "dim.diameter", "dim.dimension"].includes(node.name)) {
@@ -262,13 +320,21 @@ export class ScadEvaluator {
       moduleDef.parameters.forEach((param, i) => {
         let val = args[param.name] ?? args[i]; // Try named first, then positional
         if (val === undefined && param.defaultValue) {
-          val = this.evaluateExpression(param.defaultValue, scope);
+          // Use newScope so later params can reference earlier ones (e.g. r2=r1)
+          val = this.evaluateExpression(param.defaultValue, newScope);
         }
         newScope.set(param.name, val);
       });
       
+      // $children must be an integer (count) per OpenSCAD spec.
+      // BOSL modules iterate: for (i=[0:1:$children-1]) children(i)
+      // If $children is an array, $children-1 = NaN → range is empty → children swallowed.
+      // Inherit $fn/$fa/$fs from call site (special vars propagate dynamically)
+      if (newScope.get("$fn") === undefined) newScope.set("$fn", scope.get("$fn") ?? 32);
+      if (newScope.get("$fa") === undefined) newScope.set("$fa", scope.get("$fa") ?? 12);
+      if (newScope.get("$fs") === undefined) newScope.set("$fs", scope.get("$fs") ?? 2);
       newScope.set("$children", node.children.length);
-      newScope.set("$children_nodes", node.children);
+      newScope.set("$children_list", node.children);
       newScope.set("$children_scope", scope);
 
       return this.evaluateBody(moduleDef.body, newScope);
@@ -295,7 +361,12 @@ export class ScadEvaluator {
     const list = Array.isArray(range) ? range : [range];
     for (const val of list) {
       const newScope = scope.extend();
-      newScope.set(node.variables[0], val);
+      if (node.variables.length > 1 && Array.isArray(val)) {
+        // Multi-variable destructuring: for ([x, y] = points)
+        node.variables.forEach((v: string, i: number) => newScope.set(v, val[i]));
+      } else {
+        newScope.set(node.variables[0], val);
+      }
       results.push(...this.evaluateBody(node.body, newScope));
     }
 
@@ -651,7 +722,7 @@ export class ScadEvaluator {
           funcDef.parameters.forEach((param, i) => {
             let val = args[param.name] ?? args[i];
             if (val === undefined && param.defaultValue) {
-              val = this.evaluateExpression(param.defaultValue, scope);
+              val = this.evaluateExpression(param.defaultValue, newScope);
             }
             newScope.set(param.name, val);
           });

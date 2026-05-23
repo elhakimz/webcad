@@ -4,6 +4,8 @@ export class DynamicInput {
   private optionsElement!: HTMLElement;
   private controlsElement: HTMLElement;
   private footerElement: HTMLElement;
+  private defaultInputSubmittedCallback?: (text: string) => void;
+  private defaultOptionClickedCallback?: (option: string) => void;
   private onInputSubmittedCallback?: (text: string) => void;
   private onOptionClickedCallback?: (option: string) => void;
   private hasControls: boolean = false;
@@ -233,10 +235,19 @@ export class DynamicInput {
 
   hide() {
     this.element.style.display = 'none';
+    if (this.defaultInputSubmittedCallback) {
+      this.onInputSubmittedCallback = this.defaultInputSubmittedCallback;
+    }
+    if (this.defaultOptionClickedCallback) {
+      this.onOptionClickedCallback = this.defaultOptionClickedCallback;
+    }
   }
 
   onInputSubmitted(callback: (text: string) => void) {
     this.onInputSubmittedCallback = callback;
+    if (!this.defaultInputSubmittedCallback) {
+      this.defaultInputSubmittedCallback = callback;
+    }
   }
 
   focus() {
@@ -247,6 +258,9 @@ export class DynamicInput {
 
   onOptionClicked(callback: (option: string) => void) {
     this.onOptionClickedCallback = callback;
+    if (!this.defaultOptionClickedCallback) {
+      this.defaultOptionClickedCallback = callback;
+    }
   }
 
   destroy() {

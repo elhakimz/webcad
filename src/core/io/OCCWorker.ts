@@ -13,7 +13,33 @@ function cacheShape(entityId: string, shape: any) {
   }
 
   // Use the robust detachShape helper to ensure the cached shape is independent
-  const copy = detachShape(oc, shape);
+  let copy = detachShape(oc, shape);
+
+  // Extract single SOLID if the shape is a COMPOUND containing exactly one SOLID
+  if (oc && copy && !copy.IsNull()) {
+    try {
+      const typeVal = copy.ShapeType()?.value ?? copy.ShapeType();
+      if (typeVal === 0) { // TopAbs_COMPOUND
+        const solids: any[] = [];
+        const exp = new oc.TopExp_Explorer_2(copy, oc.TopAbs_ShapeEnum.TopAbs_SOLID, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        while (exp.More()) {
+          solids.push(exp.Current());
+          exp.Next();
+        }
+        exp.delete();
+
+        if (solids.length === 1) {
+          const solidCopy = detachShape(oc, solids[0]);
+          copy.delete();
+          copy = solidCopy;
+          console.log(`[Worker] cacheShape: Extracted single SOLID from COMPOUND for ${entityId}`);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Worker] cacheShape: Failed to extract solid:`, e.message);
+    }
+  }
+
   shapeCache.set(entityId, copy);
 }
 
@@ -242,6 +268,89 @@ let STEP_Writer_Ctor: any = null;
 let STEP_Reader_Ctor: any = null;
 
 function findStepConstructors(oc: any) {
+  // Debug log keys of BRepTools and progress classes
+  try {
+    const brepKeys = oc.BRepTools ? Object.keys(oc.BRepTools) : [];
+    self.postMessage({ type: 'log', message: `[Worker] BRepTools keys: ${brepKeys.join(', ')}` });
+    
+    const progressKeys = Object.keys(oc).filter(k => k.includes('ProgressRange') || k.includes('Message_Progress'));
+    self.postMessage({ type: 'log', message: `[Worker] Progress/Message keys: ${progressKeys.join(', ')}` });
+
+    const binToolsKeys = Object.keys(oc).filter(k => k.includes('BinTools'));
+    self.postMessage({ type: 'log', message: `[Worker] BinTools keys: ${binToolsKeys.join(', ')}` });
+
+    if (oc.BinTools) {
+      self.postMessage({ type: 'log', message: `[Worker] oc.BinTools methods: ${Object.keys(oc.BinTools).join(', ')}` });
+    }
+
+    if (oc.Message_ProgressIndicator) {
+      const protoKeys = Object.getOwnPropertyNames(oc.Message_ProgressIndicator.prototype);
+      self.postMessage({ type: 'log', message: `[Worker] Message_ProgressIndicator prototype keys: ${protoKeys.join(', ')}` });
+    }
+
+    const rangeKeys = Object.keys(oc).filter(k => k.toLowerCase().includes('range'));
+    self.postMessage({ type: 'log', message: `[Worker] Range keys in oc: ${rangeKeys.join(', ')}` });
+
+    const shapeSetKeys = Object.keys(oc).filter(k => k.toLowerCase().includes('shapeset'));
+    self.postMessage({ type: 'log', message: `[Worker] ShapeSet keys in oc: ${shapeSetKeys.join(', ')}` });
+
+    for (const ssk of ['BRepTools_ShapeSet', 'BRepTools_ShapeSet_1', 'BRepTools_ShapeSet_2']) {
+      if (oc[ssk]) {
+        try {
+          const testSet = new oc[ssk]();
+          const instanceKeys = Object.getOwnPropertyNames(testSet);
+          self.postMessage({ type: 'log', message: `[Worker] ${ssk} instance keys: ${instanceKeys.join(', ')}` });
+          testSet.delete();
+        } catch (err: any) {
+          self.postMessage({ type: 'log', message: `[Worker] ${ssk} instantiation failed: ${err.message}` });
+        }
+      }
+    }
+
+    try {
+      if (oc.Handle_Message_ProgressIndicator_1) {
+        const handle = new oc.Handle_Message_ProgressIndicator_1();
+        const ind = handle.get();
+        if (ind) {
+          self.postMessage({ type: 'log', message: `[Worker] Got raw Message_ProgressIndicator from handle.` });
+          
+          let pr: any = null;
+          if (ind.NewScope_1) {
+            pr = ind.NewScope_1();
+            self.postMessage({ type: 'log', message: `[Worker] Successfully called NewScope_1.` });
+          } else if (ind.NewScope) {
+            pr = ind.NewScope();
+            self.postMessage({ type: 'log', message: `[Worker] Successfully called NewScope.` });
+          }
+          if (pr) {
+            self.postMessage({ type: 'log', message: `[Worker] NewScope returned object of constructor: ${pr.constructor ? pr.constructor.name : 'unknown'}` });
+            pr.delete();
+          }
+        }
+        handle.delete();
+      }
+    } catch (err: any) {
+      self.postMessage({ type: 'log', message: `[Worker] ProgressRange creation test failed: ${err.message}` });
+    }
+
+    for (const fn of ['Write', 'Write_1', 'Write_2', 'Write_3', 'Read', 'Read_1', 'Read_2', 'Read_3']) {
+      if (oc.BRepTools && oc.BRepTools[fn]) {
+        self.postMessage({ type: 'log', message: `[Worker] BRepTools.${fn}.length (arg count): ${oc.BRepTools[fn].length}` });
+      }
+    }
+
+    for (const hk of ['Handle_Message_ProgressIndicator', 'Handle_Message_ProgressIndicator_1', 'Handle_Message_ProgressIndicator_2']) {
+      if (oc[hk]) {
+        try {
+          const hkProtoKeys = Object.getOwnPropertyNames(oc[hk].prototype);
+          self.postMessage({ type: 'log', message: `[Worker] ${hk} prototype keys: ${hkProtoKeys.join(', ')}` });
+        } catch (_) {}
+      }
+    }
+  } catch (e: any) {
+    self.postMessage({ type: 'log', message: `[Worker] Failed to debug log: ${e.message}` });
+  }
+
   // Find Writer
   for (const k of ['STEPControl_Writer_1', 'STEPControl_Writer', 'STEPControl_Writer_2']) {
     if (typeof oc[k] !== 'function') continue;
@@ -412,6 +521,185 @@ function importShapeFromBytes(oc: any, entityId: string, bytes: Uint8Array): any
   }
 }
 
+function exportShapeToNativeBRep(oc: any, shape: any, entityId: string): Uint8Array | undefined {
+  if (!oc || !shape || shape.IsNull()) {
+    self.postMessage({ type: 'log', message: `[Worker][ERROR] exportShapeToNativeBRep: Shape is null or oc is undefined` });
+    return undefined;
+  }
+  
+  const path = `/cache_${entityId}.data`; // Absolute path starting with /
+  try {
+    try { oc.FS.unlink(path); } catch (_) { }
+    let success = false;
+
+    // 1. Attempt to create a safe dummy progress object
+    let progress: any = null;
+    let prHandle: any = null;
+    try {
+      if (oc.Message_ProgressRange) {
+        progress = new oc.Message_ProgressRange();
+      } else if (oc.Handle_Message_ProgressIndicator_1) {
+        prHandle = new oc.Handle_Message_ProgressIndicator_1();
+        const indObj = prHandle.get();
+        if (indObj) {
+          if (indObj.NewScope_1) progress = indObj.NewScope_1();
+          else if (indObj.NewScope) progress = indObj.NewScope();
+        }
+      }
+    } catch (e) { /* ignore */ }
+
+    // 2. Try all known B-Rep bindings
+    const writeFns = ['Write', 'Write_1', 'Write_2', 'Write_3'];
+    for (const fnName of writeFns) {
+      if (oc.BRepTools && oc.BRepTools[fnName]) {
+        // Build list of functions we want to call (with & without progress)
+        const attempts = [
+          () => oc.BRepTools[fnName](shape, path, progress),
+          () => oc.BRepTools[fnName](shape, path, undefined),
+          () => oc.BRepTools[fnName](shape, path, null),
+          () => oc.BRepTools[fnName](shape, path)
+        ];
+
+        for (const attempt of attempts) {
+          try {
+            attempt();
+            let fileExists = false;
+            try {
+              oc.FS.stat(path);
+              fileExists = true;
+            } catch (_) {}
+            if (fileExists) {
+              const bytes = oc.FS.readFile(path) as Uint8Array;
+              if (bytes && bytes.length > 0) {
+                success = true;
+                break;
+              }
+            }
+          } catch (e) { } // Ignore unbound/type errors
+        }
+      }
+      if (success) break;
+    }
+
+    if (progress && progress.delete) { try { progress.delete(); } catch (_) {} }
+    if (prHandle && prHandle.delete) { try { prHandle.delete(); } catch (_) {} }
+
+    // 3. Verify it actually wrote data
+    if (success) {
+      const bytes = oc.FS.readFile(path) as Uint8Array;
+      try { oc.FS.unlink(path); } catch (_) { }
+      if (bytes && bytes.length > 0) {
+        return bytes; // Native B-Rep Success!
+      }
+    }
+  } catch (e) { }
+
+  // 4. FATAL FALLBACK: If BRepTools is broken in this WASM build, use STEP
+  self.postMessage({ type: 'log', message: `[Worker] Native BREP failed for ${entityId}. Transparently falling back to STEP cache.` });
+  try {
+    const bytes = exportShapeToBytes(oc, shape, entityId);
+    if (bytes && bytes.length > 0) {
+      return bytes;
+    }
+  } catch (e: any) {
+    self.postMessage({ type: 'log', message: `[Worker] CRITICAL: Both BREP and STEP caching failed for ${entityId}: ${e.message}` });
+  }
+
+  return undefined;
+}
+
+function importShapeFromNativeBRep(oc: any, entityId: string, bytes: Uint8Array): any {
+  const path = `/imp_${entityId}.data`; // Absolute path starting with /
+  try { oc.FS.unlink(path); } catch (_) { }
+  oc.FS.writeFile(path, new Uint8Array(bytes));
+
+  let shape = new oc.TopoDS_Shape();
+  const builder = new oc.BRep_Builder();
+
+  let progress: any = null;
+  let prHandle: any = null;
+  try {
+    if (oc.Message_ProgressRange) {
+      progress = new oc.Message_ProgressRange();
+    } else if (oc.Handle_Message_ProgressIndicator_1) {
+      prHandle = new oc.Handle_Message_ProgressIndicator_1();
+      const indObj = prHandle.get();
+      if (indObj) {
+        if (indObj.NewScope_1) progress = indObj.NewScope_1();
+        else if (indObj.NewScope) progress = indObj.NewScope();
+      }
+    }
+  } catch (e) { }
+
+  let success = false;
+  const readFns = ['Read', 'Read_1', 'Read_2', 'Read_3'];
+  for (const fnName of readFns) {
+    if (oc.BRepTools && oc.BRepTools[fnName]) {
+      const attempts = [
+        () => oc.BRepTools[fnName](shape, path, builder, progress),
+        () => oc.BRepTools[fnName](shape, path, builder, undefined),
+        () => oc.BRepTools[fnName](shape, path, builder, null),
+        () => oc.BRepTools[fnName](shape, path, builder)
+      ];
+
+      for (const attempt of attempts) {
+        try {
+          attempt();
+          if (shape && !shape.IsNull()) {
+            success = true;
+            break;
+          }
+        } catch (e) { }
+      }
+    }
+    if (success) break;
+  }
+
+  if (progress && progress.delete) { try { progress.delete(); } catch (_) {} }
+  if (prHandle && prHandle.delete) { try { prHandle.delete(); } catch (_) {} }
+  builder.delete();
+  try { oc.FS.unlink(path); } catch (_) { }
+
+  // If BREP read failed, it was likely cached using the STEP fallback!
+  if (!success || shape.IsNull()) {
+    try {
+      shape = importShapeFromBytes(oc, entityId, bytes);
+    } catch (e) { }
+  }
+
+  if (!shape || shape.IsNull()) {
+    throw new Error(`Read failed for ${entityId} (Both BREP and STEP readers failed)`);
+  }
+
+  return shape;
+}
+
+// Intercept self.postMessage calls to automatically extract transferable TypedArray buffers
+const originalPostMessage = self.postMessage.bind(self);
+self.postMessage = (message: any, transferOrOptions?: any) => {
+  if (message && typeof message === 'object' && message.payload) {
+    const payload = message.payload;
+    const transfer: Transferable[] = [];
+    if (payload.positions && payload.positions.buffer instanceof ArrayBuffer) {
+      transfer.push(payload.positions.buffer);
+    }
+    if (payload.indices && payload.indices.buffer instanceof ArrayBuffer) {
+      transfer.push(payload.indices.buffer);
+    }
+    if (payload.faceMapping && payload.faceMapping.buffer instanceof ArrayBuffer) {
+      transfer.push(payload.faceMapping.buffer);
+    }
+    if (payload.brepBytes && payload.brepBytes.buffer instanceof ArrayBuffer) {
+      transfer.push(payload.brepBytes.buffer);
+    }
+    if (transfer.length > 0) {
+      (originalPostMessage as any)(message, transfer);
+      return;
+    }
+  }
+  (originalPostMessage as any)(message, transferOrOptions);
+};
+
 self.onmessage = async (e) => {
   const { type, payload, id } = e.data;
 
@@ -492,7 +780,7 @@ self.onmessage = async (e) => {
       cacheShape(entityId, shape);
 
       // Export BRep Bytes inline
-      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, shape, entityId);
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection || 0.1);
@@ -556,7 +844,7 @@ self.onmessage = async (e) => {
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
 
       // Export BRep Bytes
-      const brepBytes = exportShapeToBytes(oc, newShape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, newShape, entityId);
 
       fillet.delete();
 
@@ -618,7 +906,7 @@ self.onmessage = async (e) => {
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
 
       // Export BRep Bytes
-      const brepBytes = exportShapeToBytes(oc, newShape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, newShape, entityId);
 
       chamfer.delete();
 
@@ -689,7 +977,7 @@ self.onmessage = async (e) => {
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
 
       // Export BRep Bytes
-      const brepBytes = exportShapeToBytes(oc, newShape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, newShape, entityId);
 
       fillet.delete();
 
@@ -940,7 +1228,7 @@ self.onmessage = async (e) => {
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
 
       // Export BRep Bytes
-      const brepBytes = exportShapeToBytes(oc, newShape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, newShape, entityId);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
@@ -1013,7 +1301,7 @@ self.onmessage = async (e) => {
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
 
       // Export BRep Bytes
-      const brepBytes = exportShapeToBytes(oc, newShape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, newShape, entityId);
 
       chamfer.delete();
 
@@ -1057,7 +1345,7 @@ self.onmessage = async (e) => {
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, shape, entityId);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
@@ -1118,7 +1406,7 @@ self.onmessage = async (e) => {
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, shape, entityId);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
@@ -1167,7 +1455,7 @@ self.onmessage = async (e) => {
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, shape, entityId);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
@@ -1215,7 +1503,7 @@ self.onmessage = async (e) => {
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, shape, entityId);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
@@ -1263,7 +1551,7 @@ self.onmessage = async (e) => {
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, shape, entityId);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
@@ -1305,7 +1593,7 @@ self.onmessage = async (e) => {
       }
 
       const faceShapes: any[] = [];
-      let totalFacesCount = faces.length;
+      const totalFacesCount = faces.length;
       let degenerateEdgesSkipped = 0;
       let edgeCreationFailures = 0;
       let wireAdditionFailures = 0;
@@ -1435,60 +1723,208 @@ self.onmessage = async (e) => {
       if (faceShapes.length === 0) {
         throw new Error("No valid faces could be created from the polyhedron specification.");
       }
-      const sewing = createSewing(oc, 1e-4);
+      let sewing = createSewing(oc, 1e-4);
       for (const face of faceShapes) {
         sewing.Add(face);
       }
-      if (oc.Handle_Message_ProgressIndicator_1) {
-        const range = new oc.Handle_Message_ProgressIndicator_1();
-        sewing.Perform(range);
-        range.delete();
-      } else if (oc.Handle_Message_ProgressIndicator) {
-        const range = new oc.Handle_Message_ProgressIndicator();
-        sewing.Perform(range);
-        range.delete();
-      } else if (oc.Message_ProgressRange) {
-        const range = new oc.Message_ProgressRange();
-        sewing.Perform(range);
-        range.delete();
-      } else {
-        sewing.Perform();
-      }
+      
+      const performSewing = (sewer: any) => {
+        if (oc.Handle_Message_ProgressIndicator_1) {
+          const range = new oc.Handle_Message_ProgressIndicator_1();
+          sewer.Perform(range);
+          range.delete();
+        } else if (oc.Handle_Message_ProgressIndicator) {
+          const range = new oc.Handle_Message_ProgressIndicator();
+          sewer.Perform(range);
+          range.delete();
+        } else if (oc.Message_ProgressRange) {
+          const range = new oc.Message_ProgressRange();
+          sewer.Perform(range);
+          range.delete();
+        } else {
+          sewer.Perform();
+        }
+      };
+
+      performSewing(sewing);
       let shape = sewing.SewedShape();
 
-      const nakedLines: number[][] = [];
-      try {
-        const edgeFaceMap = new oc.TopTools_IndexedDataMapOfShapeListOfShape();
-        oc.TopExp.MapShapesAndAncestors(
-          shape, 
-          oc.TopAbs_ShapeEnum.TopAbs_EDGE, 
-          oc.TopAbs_ShapeEnum.TopAbs_FACE, 
-          edgeFaceMap
-        );
-        const nbEdges = edgeFaceMap.Extent();
-        for (let i = 1; i <= nbEdges; i++) {
-          const faceList = edgeFaceMap.FindFromIndex(i);
-          if (faceList.Extent() === 1) {
-            const edge = oc.TopoDS.Edge_1(edgeFaceMap.FindKey(i));
-            const firstVertex = oc.TopExp.FirstVertex(edge);
-            const lastVertex = oc.TopExp.LastVertex(edge);
-            if (!firstVertex.IsNull() && !lastVertex.IsNull()) {
-              const p1 = oc.BRep_Tool.Pnt(firstVertex);
-              const p2 = oc.BRep_Tool.Pnt(lastVertex);
-              nakedLines.push([p1.X(), p1.Y(), p1.Z(), p2.X(), p2.Y(), p2.Z()]);
-              p1.delete();
-              p2.delete();
+      const getNakedLinesList = (shp: any): number[][] => {
+        const list: number[][] = [];
+        try {
+          const edgeFaceMap = new oc.TopTools_IndexedDataMapOfShapeListOfShape();
+          oc.TopExp.MapShapesAndAncestors(
+            shp, 
+            oc.TopAbs_ShapeEnum.TopAbs_EDGE, 
+            oc.TopAbs_ShapeEnum.TopAbs_FACE, 
+            edgeFaceMap
+          );
+          const nbEdges = edgeFaceMap.Extent();
+          for (let i = 1; i <= nbEdges; i++) {
+            const faceList = edgeFaceMap.FindFromIndex(i);
+            if (faceList.Extent() === 1) {
+              const edge = oc.TopoDS.Edge_1(edgeFaceMap.FindKey(i));
+              const firstVertex = oc.TopExp.FirstVertex(edge);
+              const lastVertex = oc.TopExp.LastVertex(edge);
+              if (!firstVertex.IsNull() && !lastVertex.IsNull()) {
+                const p1 = oc.BRep_Tool.Pnt(firstVertex);
+                const p2 = oc.BRep_Tool.Pnt(lastVertex);
+                list.push([p1.X(), p1.Y(), p1.Z(), p2.X(), p2.Y(), p2.Z()]);
+                p1.delete();
+                p2.delete();
+              }
+              firstVertex.delete();
+              lastVertex.delete();
+              edge.delete();
             }
-            firstVertex.delete();
-            lastVertex.delete();
-            edge.delete();
+            faceList.delete();
           }
-          faceList.delete();
+          edgeFaceMap.delete();
+        } catch (e) {
+          console.warn("Error finding naked edges:", e);
         }
-        edgeFaceMap.delete();
-      } catch (e) {
-        console.warn("Error finding naked edges:", e);
+        return list;
+      };
+
+      let nakedLines = getNakedLinesList(shape);
+
+      if (nakedLines.length > 0) {
+        self.postMessage({ type: 'log', message: `[Worker] Polyhedron sewing left ${nakedLines.length} naked edges. Attempting automatic watertight cover-face sealing...` });
+        
+        // 1. Calculate centroid of all input vertices
+        let avgX = 0, avgY = 0, avgZ = 0;
+        let validPtCount = 0;
+        for (const pt of points) {
+          const x = pt.x !== undefined ? pt.x : (pt[0] ?? 0);
+          const y = pt.y !== undefined ? pt.y : (pt[1] ?? 0);
+          const z = pt.z !== undefined ? pt.z : (pt[2] ?? 0);
+          avgX += x;
+          avgY += y;
+          avgZ += z;
+          validPtCount++;
+        }
+        if (validPtCount > 0) {
+          avgX /= validPtCount;
+          avgY /= validPtCount;
+          avgZ /= validPtCount;
+        }
+
+        // 2. Generate cover faces for each naked edge
+        const coverFaces: any[] = [];
+        try {
+          const edgeFaceMap = new oc.TopTools_IndexedDataMapOfShapeListOfShape();
+          oc.TopExp.MapShapesAndAncestors(
+            shape, 
+            oc.TopAbs_ShapeEnum.TopAbs_EDGE, 
+            oc.TopAbs_ShapeEnum.TopAbs_FACE, 
+            edgeFaceMap
+          );
+          const nbEdges = edgeFaceMap.Extent();
+          for (let i = 1; i <= nbEdges; i++) {
+            const faceList = edgeFaceMap.FindFromIndex(i);
+            if (faceList.Extent() === 1) {
+              const edge = oc.TopoDS.Edge_1(edgeFaceMap.FindKey(i));
+              const firstVertex = oc.TopExp.FirstVertex(edge);
+              const lastVertex = oc.TopExp.LastVertex(edge);
+              if (!firstVertex.IsNull() && !lastVertex.IsNull()) {
+                const p1 = oc.BRep_Tool.Pnt(firstVertex);
+                const p2 = oc.BRep_Tool.Pnt(lastVertex);
+                let dist = 0;
+                try { dist = p1.Distance(p2); } catch (_) {}
+                if (dist > 1e-6) {
+                  const pCenter = new oc.gp_Pnt_3(avgX, avgY, (p1.Z() + p2.Z()) / 2);
+                  const e1 = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+                  const e2 = new oc.BRepBuilderAPI_MakeEdge_3(p2, pCenter);
+                  const e3 = new oc.BRepBuilderAPI_MakeEdge_3(pCenter, p1);
+                  if (e1.IsDone() && e2.IsDone() && e3.IsDone()) {
+                    const makeWire = new oc.BRepBuilderAPI_MakeWire_2(e1.Edge());
+                    makeWire.Add_1(e2.Edge());
+                    makeWire.Add_1(e3.Edge());
+                    if (makeWire.IsDone()) {
+                      const makeFace = new oc.BRepBuilderAPI_MakeFace_15(makeWire.Wire(), false);
+                      if (makeFace.IsDone()) {
+                        const face = detachShape(oc, makeFace.Face());
+                        coverFaces.push(face);
+                      }
+                      makeFace.delete();
+                    }
+                    makeWire.delete();
+                  }
+                  e1.delete();
+                  e2.delete();
+                  e3.delete();
+                  pCenter.delete();
+                }
+                p1.delete();
+                p2.delete();
+              }
+              firstVertex.delete();
+              lastVertex.delete();
+              edge.delete();
+            }
+            faceList.delete();
+          }
+          edgeFaceMap.delete();
+        } catch (e: any) {
+          console.warn("[Worker] Auto-repair edge extraction failed:", e.message);
+        }
+
+        if (coverFaces.length > 0) {
+          self.postMessage({ type: 'log', message: `[Worker] Generated ${coverFaces.length} watertight cover faces. Re-sewing shape...` });
+          sewing.delete();
+          sewing = createSewing(oc, 1e-4);
+          for (const face of faceShapes) {
+            sewing.Add(face);
+          }
+          for (const face of coverFaces) {
+            sewing.Add(face);
+            faceShapes.push(face);
+          }
+          performSewing(sewing);
+          shape = sewing.SewedShape();
+          nakedLines = getNakedLinesList(shape);
+          self.postMessage({ type: 'log', message: `[Worker] Re-sewing complete. Remaining naked edges: ${nakedLines.length}` });
+        } else {
+          self.postMessage({ type: 'log', message: `[Worker] No valid cover faces could be generated.` });
+        }
       }
+
+      if (nakedLines.length > 0) {
+        self.postMessage({ type: 'log', message: `[Worker] Polyhedron sewing with 1e-4 tolerance failed (naked edges: ${nakedLines.length}). Retrying with 1e-3...` });
+        sewing.delete();
+        sewing = createSewing(oc, 1e-3);
+        for (const face of faceShapes) {
+          sewing.Add(face);
+        }
+        performSewing(sewing);
+        shape = sewing.SewedShape();
+        nakedLines = getNakedLinesList(shape);
+      }
+
+      if (nakedLines.length > 0) {
+        self.postMessage({ type: 'log', message: `[Worker] Polyhedron sewing with 1e-3 tolerance failed (naked edges: ${nakedLines.length}). Retrying with 1e-2...` });
+        sewing.delete();
+        sewing = createSewing(oc, 1e-2);
+        for (const face of faceShapes) {
+          sewing.Add(face);
+        }
+        performSewing(sewing);
+        shape = sewing.SewedShape();
+        nakedLines = getNakedLinesList(shape);
+      }
+
+      if (nakedLines.length > 0) {
+        self.postMessage({ type: 'log', message: `[Worker] Polyhedron sewing with 1e-2 tolerance failed (naked edges: ${nakedLines.length}). Retrying with 1e-1...` });
+        sewing.delete();
+        sewing = createSewing(oc, 1e-1);
+        for (const face of faceShapes) {
+          sewing.Add(face);
+        }
+        performSewing(sewing);
+        shape = sewing.SewedShape();
+        nakedLines = getNakedLinesList(shape);
+      }
+
 
       let isSolid = false;
       if (nakedLines.length === 0) {
@@ -1529,7 +1965,7 @@ self.onmessage = async (e) => {
       }
 
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, shape, entityId);
 
       if (geometryData.positions.length === 0) {
         throw new Error("No geometry generated from shape. Positions array is empty.");
@@ -1593,6 +2029,7 @@ self.onmessage = async (e) => {
                   node.delete();
                 }
                 triangulation.delete();
+                trans.delete();
               }
               loc.delete();
               face.delete();
@@ -1732,7 +2169,7 @@ self.onmessage = async (e) => {
       }
 
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, shape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, shape, entityId);
 
       sewing.delete();
       for (const v of vertices) v.delete();
@@ -1920,7 +2357,7 @@ self.onmessage = async (e) => {
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, resultShape, entityId || "temp");
+      const brepBytes = exportShapeToNativeBRep(oc, resultShape, entityId || "temp");
 
       if (!entityId) {
         resultShape.delete();
@@ -2025,8 +2462,8 @@ self.onmessage = async (e) => {
         const M = profilePoints.length;
         const N = spinePoints.length;
 
-        const positions: number[] = [];
-        const indices: number[] = [];
+        const rmfPositions: number[] = [];
+        const rmfIndices: number[] = [];
 
         // Compute tangents at spine points
         const tangents: { x: number, y: number, z: number }[] = [];
@@ -2191,7 +2628,7 @@ self.onmessage = async (e) => {
             const py = spinePoints[i].y + x * X.y + y * Y.y + z * T.y;
             const pz = spinePoints[i].z + x * X.z + y * Y.z + z * T.z;
 
-            positions.push(px, py, pz);
+            rmfPositions.push(px, py, pz);
           }
         }
 
@@ -2205,57 +2642,305 @@ self.onmessage = async (e) => {
             const v3 = (i + 1) * M + next_j;
             const v4 = i * M + next_j;
 
-            indices.push(v1, v2, v3);
-            indices.push(v1, v3, v4);
+            rmfIndices.push(v1, v2, v3);
+            rmfIndices.push(v1, v3, v4);
           }
         }
 
         // Add caps if solid is requested
         if (isSolid) {
           // Start cap
-          const startCenterIdx = positions.length / 3;
-          positions.push(spinePoints[0].x, spinePoints[0].y, spinePoints[0].z);
+          const startCenterIdx = rmfPositions.length / 3;
+          rmfPositions.push(spinePoints[0].x, spinePoints[0].y, spinePoints[0].z);
           for (let j = 0; j < M; j++) {
-            indices.push(startCenterIdx, (j + 1) % M, j); // Counter-clockwise
+            rmfIndices.push(startCenterIdx, (j + 1) % M, j); // Counter-clockwise
           }
 
           // End cap
-          const endCenterIdx = positions.length / 3;
-          positions.push(spinePoints[N - 1].x, spinePoints[N - 1].y, spinePoints[N - 1].z);
+          const endCenterIdx = rmfPositions.length / 3;
+          rmfPositions.push(spinePoints[N - 1].x, spinePoints[N - 1].y, spinePoints[N - 1].z);
           for (let j = 0; j < M; j++) {
             const v1 = (N - 1) * M + j;
             const v2 = (N - 1) * M + (j + 1) % M;
-            indices.push(endCenterIdx, v1, v2); // Counter-clockwise
+            rmfIndices.push(endCenterIdx, v1, v2); // Counter-clockwise
           }
         }
 
         const geometryData = {
-          positions: positions,
-          indices: indices,
+          positions: rmfPositions,
+          indices: rmfIndices,
           normal: [] // Three.js can compute normals
         };
 
-        // Cache DUMMY shape for persistence!
-        if (entityId) {
-          const p1 = new oc.gp_Pnt_3(0, 0, 0);
-          const p2 = new oc.gp_Pnt_3(1, 1, 1);
-          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
-          const dummyShape = makeEdge.Edge();
-          cacheShape(entityId, dummyShape);
-          p1.delete();
-          p2.delete();
-          makeEdge.delete();
+        // Construct section wires and build native BRep solid using BRepOffsetAPI_ThruSections
+        const buildWireFromPoints = (pts: {x: number, y: number, z: number}[], isClosed: boolean): any => {
+          let cleanPts = pts;
+          let shouldClose = isClosed;
+          
+          if (pts.length >= 3) {
+            const pFirst = pts[0];
+            const pLast = pts[pts.length - 1];
+            const dx = pLast.x - pFirst.x;
+            const dy = pLast.y - pFirst.y;
+            const dz = pLast.z - pFirst.z;
+            const dSq = dx*dx + dy*dy + dz*dz;
+            if (dSq < 1e-8) {
+              cleanPts = pts.slice(0, -1);
+              shouldClose = true;
+            }
+          }
+
+          const wireMaker = new oc.BRepBuilderAPI_MakeWire_1();
+          for (let k = 0; k < cleanPts.length - 1; k++) {
+            const p1 = new oc.gp_Pnt_3(cleanPts[k].x, cleanPts[k].y, cleanPts[k].z);
+            const p2 = new oc.gp_Pnt_3(cleanPts[k+1].x, cleanPts[k+1].y, cleanPts[k+1].z);
+            
+            // Prevent zero-length edge creation
+            const dx = cleanPts[k+1].x - cleanPts[k].x;
+            const dy = cleanPts[k+1].y - cleanPts[k].y;
+            const dz = cleanPts[k+1].z - cleanPts[k].z;
+            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            
+            if (dist > 1e-4) {
+              const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+              if (makeEdge.IsDone()) {
+                wireMaker.Add_1(makeEdge.Edge());
+              }
+              makeEdge.delete();
+            }
+            p1.delete();
+            p2.delete();
+          }
+          if (shouldClose && cleanPts.length >= 3) {
+            const pLast = cleanPts[cleanPts.length - 1];
+            const pFirst = cleanPts[0];
+            
+            // Prevent zero-length closing edge creation
+            const dx = pLast.x - pFirst.x;
+            const dy = pLast.y - pFirst.y;
+            const dz = pLast.z - pFirst.z;
+            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            
+            if (dist > 1e-4) {
+              const p1 = new oc.gp_Pnt_3(pLast.x, pLast.y, pLast.z);
+              const p2 = new oc.gp_Pnt_3(pFirst.x, pFirst.y, pFirst.z);
+              const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+              if (makeEdge.IsDone()) {
+                wireMaker.Add_1(makeEdge.Edge());
+              }
+              p1.delete();
+              p2.delete();
+              makeEdge.delete();
+            }
+          }
+          const wire = detachShape(oc, wireMaker.Wire());
+          wireMaker.delete();
+          return wire;
+        };
+
+        let brepBytes: any = null;
+        let successSolid = false;
+        try {
+          const wires: any[] = [];
+          for (let i = 0; i < N; i++) {
+            const sectionPts: {x: number, y: number, z: number}[] = [];
+            for (let j = 0; j < M; j++) {
+              const idx = (i * M + j) * 3;
+              sectionPts.push({
+                x: rmfPositions[idx],
+                y: rmfPositions[idx + 1],
+                z: rmfPositions[idx + 2]
+              });
+            }
+            const wire = buildWireFromPoints(sectionPts, isSolid);
+            wires.push(wire);
+          }
+
+          // Use BRepOffsetAPI_ThruSections to build a watertight solid lofted through the RMF sections
+          const thruSections = new oc.BRepOffsetAPI_ThruSections(isSolid, true, 1e-6);
+          for (const wire of wires) {
+            thruSections.AddWire(wire);
+          }
+          thruSections.Build();
+
+          if (thruSections.IsDone()) {
+            const solidShape = detachShape(oc, thruSections.Shape());
+            if (entityId) {
+              cacheShape(entityId, solidShape);
+            }
+            brepBytes = exportShapeToNativeBRep(oc, solidShape, entityId || "temp");
+            if (!entityId) {
+              solidShape.delete();
+            }
+            successSolid = true;
+            console.log("[Worker] RMF Sweep successfully built native BRep solid via ThruSections.");
+          }
+
+          thruSections.delete();
+          for (const wire of wires) {
+            wire.delete();
+          }
+        } catch (eSolid) {
+          console.warn("[Worker] Failed to create native BRep solid via ThruSections, attempting fallback:", eSolid);
         }
 
-        // Note: No BRep available for this specific path
-        self.postMessage({ type: 'createSweep', success: true, payload: { ...geometryData, brepBytes: null }, id });
+        if (!successSolid) {
+          console.log("[Worker] ThruSections failed or incomplete. Attempting MakePipeShell fallback...");
+          let fallbackSweepBuilder: any = null;
+          let profileWire: any = null;
+          try {
+            const firstSectionPts: {x: number, y: number, z: number}[] = [];
+            for (let j = 0; j < M; j++) {
+              const idx = j * 3;
+              firstSectionPts.push({
+                x: rmfPositions[idx],
+                y: rmfPositions[idx + 1],
+                z: rmfPositions[idx + 2]
+              });
+            }
+            profileWire = buildWireFromPoints(firstSectionPts, isSolid);
+
+            fallbackSweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spineWire);
+
+            // Set transition mode based on cornerMode
+            if (cornerMode === 'MITER') {
+              fallbackSweepBuilder.SetTransitionMode(oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner);
+            } else if (cornerMode === 'ROUND') {
+              fallbackSweepBuilder.SetTransitionMode(oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RoundCorner);
+            } else {
+              fallbackSweepBuilder.SetTransitionMode(oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_Transformed);
+            }
+
+            // Set mode to prevent twisting, matching normal sweep
+            let fallbackModeSuccess = false;
+            try {
+              fallbackSweepBuilder.SetDiscreteMode();
+              fallbackModeSuccess = true;
+            } catch (eDiscrete) {
+              console.warn("[Worker] Fallback SetDiscreteMode failed, trying other modes.", eDiscrete);
+            }
+
+            if (!fallbackModeSuccess) {
+              if (isFlat) {
+                const dirZ = new oc.gp_Dir_4(0, 0, 1);
+                try {
+                  fallbackSweepBuilder.SetMode_3(dirZ);
+                  fallbackModeSuccess = true;
+                } catch (e1) {
+                  try {
+                    const ax2 = new oc.gp_Ax2_2(new oc.gp_Pnt_3(0, 0, 0), dirZ, new oc.gp_Dir_4(1, 0, 0));
+                    fallbackSweepBuilder.SetMode_2(ax2);
+                    fallbackModeSuccess = true;
+                    ax2.delete();
+                  } catch (e2) {}
+                }
+                dirZ.delete();
+                if (!fallbackModeSuccess) {
+                  fallbackSweepBuilder.SetMode_1(false);
+                }
+              } else {
+                fallbackSweepBuilder.SetMode_1(false);
+              }
+            }
+
+            // Add the closed profile wire
+            fallbackSweepBuilder.Add_1(profileWire, false, false);
+
+            fallbackSweepBuilder.Build();
+
+            if (fallbackSweepBuilder.IsDone()) {
+              if (isSolid) {
+                const solidSuccess = fallbackSweepBuilder.MakeSolid();
+                if (!solidSuccess) {
+                  console.warn("[Worker] MakePipeShell fallback MakeSolid returned false.");
+                }
+              }
+              const solidShape = detachShape(oc, fallbackSweepBuilder.Shape());
+              if (entityId) {
+                cacheShape(entityId, solidShape);
+              }
+              brepBytes = exportShapeToNativeBRep(oc, solidShape, entityId || "temp");
+              if (!entityId) {
+                solidShape.delete();
+              }
+              successSolid = true;
+              console.log("[Worker] RMF Sweep fallback successfully built native BRep solid via MakePipeShell.");
+            } else {
+              console.warn("[Worker] MakePipeShell fallback builder was not done.");
+            }
+          } catch (eFallback) {
+            console.warn("[Worker] MakePipeShell fallback failed:", eFallback);
+          } finally {
+            if (profileWire) {
+              try { profileWire.delete(); } catch(e) {}
+            }
+            if (fallbackSweepBuilder) {
+              try { fallbackSweepBuilder.delete(); } catch(e) {}
+            }
+          }
+        }
+
+        if (!successSolid) {
+          // Fallback to dummy shape so that rendering still works perfectly!
+          if (entityId) {
+            const p1 = new oc.gp_Pnt_3(0, 0, 0);
+            const p2 = new oc.gp_Pnt_3(1, 1, 1);
+            const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+            const dummyShape = makeEdge.Edge();
+            cacheShape(entityId, dummyShape);
+            p1.delete();
+            p2.delete();
+            makeEdge.delete();
+          }
+          brepBytes = null;
+        }
+
+        // Return the visual geometry calculated by the RMF method along with the BRep bytes (if built)
+        self.postMessage({ type: 'createSweep', success: true, payload: { ...geometryData, brepBytes }, id });
         return;
       } else {
         // Use MakePipeShell for multiple profiles
         sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spineWire);
 
-        // Set mode to Frenet to make profile rotate with spine
-        sweepBuilder.SetMode_1(true); // true = Frenet mode
+        // Set mode to prevent twisting.
+        let success = false;
+        try {
+          // Set discrete parallel transport mode to prevent twisting on polylines with bulges
+          // @ts-ignore
+          sweepBuilder.SetDiscreteMode();
+          console.log("[Worker] Sweep using SetDiscreteMode successfully set.");
+          success = true;
+        } catch (eDiscrete) {
+          console.warn("[Worker] SetDiscreteMode failed. Falling back to constant BiNormal or Corrected Frenet.", eDiscrete);
+        }
+
+        if (!success) {
+          // Fallback: For flat spines in the XY plane, use a constant BiNormal (0,0,1) to completely prevent twist/collapse on curves.
+          if (isFlat) {
+            const dirZ = new oc.gp_Dir_4(0, 0, 1);
+            try {
+              sweepBuilder.SetMode_3(dirZ);
+              console.log("[Worker] Sweep fallback: constant BiNormal (0,0,1) successfully set.");
+              success = true;
+            } catch (e1) {
+              try {
+                const ax2 = new oc.gp_Ax2_2(new oc.gp_Pnt_3(0, 0, 0), dirZ, new oc.gp_Dir_4(1, 0, 0));
+                sweepBuilder.SetMode_2(ax2);
+                console.log("[Worker] Sweep fallback: fixed Ax2 successfully set.");
+                success = true;
+                ax2.delete();
+              } catch (e2) {
+                console.warn("[Worker] Custom fallback SetMode failed.", e1, e2);
+              }
+            }
+            dirZ.delete();
+            if (!success) {
+              sweepBuilder.SetMode_1(false);
+            }
+          } else {
+            sweepBuilder.SetMode_1(false);
+          }
+        }
 
         if (cornerMode === 'MITER') {
           sweepBuilder.SetTransitionMode(oc.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner);
@@ -2270,10 +2955,25 @@ self.onmessage = async (e) => {
           const endIdx = (j === count - 1) ? transformedProfilePts.length : (j + 1) * ptsPerProfile;
           const currentProfilePts = transformedProfilePts.slice(startIdx, endIdx);
 
+          let cleanProfilePts = currentProfilePts;
+          let shouldCloseProfile = isSolid;
+          if (currentProfilePts.length >= 3) {
+            const pFirst = currentProfilePts[0];
+            const pLast = currentProfilePts[currentProfilePts.length - 1];
+            const dx = pLast.x - pFirst.x;
+            const dy = pLast.y - pFirst.y;
+            const dz = pLast.z - pFirst.z;
+            const dSq = dx*dx + dy*dy + dz*dz;
+            if (dSq < 1e-8) {
+              cleanProfilePts = currentProfilePts.slice(0, -1);
+              shouldCloseProfile = true;
+            }
+          }
+
           const profileWireMaker = new oc.BRepBuilderAPI_MakeWire_1();
-          for (let i = 0; i < currentProfilePts.length - 1; i++) {
-            const p1 = new oc.gp_Pnt_3(currentProfilePts[i].x, currentProfilePts[i].y, currentProfilePts[i].z);
-            const p2 = new oc.gp_Pnt_3(currentProfilePts[i + 1].x, currentProfilePts[i + 1].y, currentProfilePts[i + 1].z);
+          for (let i = 0; i < cleanProfilePts.length - 1; i++) {
+            const p1 = new oc.gp_Pnt_3(cleanProfilePts[i].x, cleanProfilePts[i].y, cleanProfilePts[i].z);
+            const p2 = new oc.gp_Pnt_3(cleanProfilePts[i + 1].x, cleanProfilePts[i + 1].y, cleanProfilePts[i + 1].z);
             const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
             if (makeEdge.IsDone()) {
               profileWireMaker.Add_1(makeEdge.Edge());
@@ -2281,6 +2981,26 @@ self.onmessage = async (e) => {
             p1.delete();
             p2.delete();
             makeEdge.delete();
+          }
+          // Close the profile wire by connecting the last point to the first point if it should be closed
+          if (shouldCloseProfile && cleanProfilePts.length >= 3) {
+            const pFirst = cleanProfilePts[0];
+            const pLast = cleanProfilePts[cleanProfilePts.length - 1];
+            const dx = pLast.x - pFirst.x;
+            const dy = pLast.y - pFirst.y;
+            const dz = pLast.z - pFirst.z;
+            const dSq = dx*dx + dy*dy + dz*dz;
+            if (dSq > 1e-6) {
+              const p1 = new oc.gp_Pnt_3(pLast.x, pLast.y, pLast.z);
+              const p2 = new oc.gp_Pnt_3(pFirst.x, pFirst.y, pFirst.z);
+              const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+              if (makeEdge.IsDone()) {
+                profileWireMaker.Add_1(makeEdge.Edge());
+              }
+              p1.delete();
+              p2.delete();
+              makeEdge.delete();
+            }
           }
           const profileWire = profileWireMaker.Wire();
 
@@ -2314,7 +3034,7 @@ self.onmessage = async (e) => {
       }
 
       const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, resultShape, entityId || "temp");
+      const brepBytes = exportShapeToNativeBRep(oc, resultShape, entityId || "temp");
 
       if (!entityId) {
         resultShape.delete();
@@ -2336,6 +3056,7 @@ self.onmessage = async (e) => {
       return;
     }
     const { profiles, isSolid, isRuled, deflection, entityId } = payload;
+    const localProfileShapes: any[] = [];
     try {
       const loftBuilder = new oc.BRepOffsetAPI_ThruSections(isSolid, isRuled, 1e-6);
 
@@ -2344,15 +3065,14 @@ self.onmessage = async (e) => {
       for (const profile of profilesArray) {
         let shape: any = null;
 
-        if (shapeCache.has(profile.id)) {
-          shape = shapeCache.get(profile.id);
-        } else if (profile.points && profile.points.length === 1) {
+        if (profile.points && profile.points.length === 1) {
           // Create vertex on the fly!
           const p = profile.points[0];
           const gpPnt = new oc.gp_Pnt_3(p.x, p.y, p.z);
           const makeVertex = new oc.BRepBuilderAPI_MakeVertex_1(gpPnt);
-          shape = makeVertex.Vertex();
-          cacheShape(profile.id, shape);
+          const tempVertex = makeVertex.Vertex();
+          shape = detachShape(oc, tempVertex);
+          tempVertex.delete();
           makeVertex.delete();
           gpPnt.delete();
         } else if (profile.points && profile.points.length > 1) {
@@ -2375,17 +3095,19 @@ self.onmessage = async (e) => {
             e.delete();
           }
 
-          shape = makeWire.Wire();
-          // Cache it so it's available next time!
-          cacheShape(profile.id, shape);
+          const tempWire = makeWire.Wire();
+          shape = detachShape(oc, tempWire);
+          tempWire.delete();
 
           makeWire.delete();
           pts.forEach((p: any) => p.delete());
         }
 
         if (!shape) {
-          throw new Error(`Shape not cached and no points provided for profile (id: ${profile.id}).`);
+          throw new Error(`No points provided for profile (id: ${profile.id}).`);
         }
+
+        localProfileShapes.push(shape);
 
         const shapeType = shape.ShapeType();
 
@@ -2417,16 +3139,9 @@ self.onmessage = async (e) => {
 
       // If user requested a solid but the result is not a solid, try to close it!
       if (isSolid && resultShape.ShapeType() !== oc.TopAbs_ShapeEnum.TopAbs_SOLID) {
-        const shapes: any[] = [];
-        for (const profile of profilesArray) {
-          if (shapeCache.has(profile.id)) {
-            shapes.push(shapeCache.get(profile.id));
-          }
-        }
-
-        if (shapes.length >= 2) {
-          const firstShape = shapes[0];
-          const lastShape = shapes[shapes.length - 1];
+        if (localProfileShapes.length >= 2) {
+          const firstShape = localProfileShapes[0];
+          const lastShape = localProfileShapes[localProfileShapes.length - 1];
 
           if (firstShape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_WIRE &&
             lastShape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_WIRE) {
@@ -2481,7 +3196,7 @@ self.onmessage = async (e) => {
       }
 
       const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, resultShape, entityId || "temp");
+      const brepBytes = exportShapeToNativeBRep(oc, resultShape, entityId || "temp");
 
       if (!entityId) {
         resultShape.delete();
@@ -2489,9 +3204,22 @@ self.onmessage = async (e) => {
 
       loftBuilder.delete();
 
+      // Clean up local profile shapes
+      for (const sh of localProfileShapes) {
+        if (sh && !sh.IsNull()) {
+          sh.delete();
+        }
+      }
+
       self.postMessage({ type: 'createLoft', success: true, payload: { ...geometryData, brepBytes }, id });
 
     } catch (error: any) {
+      // Clean up local profile shapes in case of error
+      for (const sh of localProfileShapes) {
+        if (sh && !sh.IsNull()) {
+          try { sh.delete(); } catch (_) {}
+        }
+      }
       const errorMessage = decodeOCCError('createLoft', error);
       self.postMessage({ type: 'createLoft', success: false, error: errorMessage, id });
     }
@@ -2583,7 +3311,7 @@ self.onmessage = async (e) => {
 
       // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, resultShape, entityId || "temp");
+      const brepBytes = exportShapeToNativeBRep(oc, resultShape, entityId || "temp");
 
       resultShape.delete();
       builder.delete();
@@ -2617,7 +3345,7 @@ self.onmessage = async (e) => {
       cacheShape(entityId, resultShape);
 
       const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, resultShape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, resultShape, entityId);
 
       builder.delete();
       compound.delete();
@@ -2712,12 +3440,14 @@ self.onmessage = async (e) => {
       console.log(`[Worker] Boolean ${operation} success. ${shapeInfo(oc, stableShape)}`);
 
       const geometryData = shapeToBufferGeometryData(stableShape, oc, deflection);
-      const brepBytes = exportShapeToBytes(oc, stableShape, entityId);
+      const brepBytes = exportShapeToNativeBRep(oc, stableShape, entityId);
+
+
 
       if (brepBytes) {
         self.postMessage({ type: 'log', message: `[Worker] Boolean snapshot generated: ${brepBytes.length} bytes.` });
       } else {
-        self.postMessage({ type: 'log', message: '[Worker] Boolean snapshot generation completed.' });
+        self.postMessage({ type: 'log', message: '[Worker] [ERROR] Boolean snapshot generation  NO brepBytes' });
       }
 
       if (!entityId || finalResultShape !== stableShape) {
@@ -2762,7 +3492,7 @@ self.onmessage = async (e) => {
       cacheShape(resultId, newShape);
 
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
-      const brepBytes = exportShapeToBytes(oc, newShape, resultId);
+      const brepBytes = exportShapeToNativeBRep(oc, newShape, resultId);
 
       newShape.delete();
       transform.delete();
@@ -2795,7 +3525,7 @@ self.onmessage = async (e) => {
       cacheShape(resultId, newShape);
 
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
-      const brepBytes = exportShapeToBytes(oc, newShape, resultId);
+      const brepBytes = exportShapeToNativeBRep(oc, newShape, resultId);
 
       translation.delete();
       transform.delete();
@@ -2824,7 +3554,7 @@ self.onmessage = async (e) => {
       cacheShape(resultId, newShape);
 
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
-      const brepBytes = exportShapeToBytes(oc, newShape, resultId);
+      const brepBytes = exportShapeToNativeBRep(oc, newShape, resultId);
 
       self.postMessage({ type: 'rotateShape', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
@@ -2909,7 +3639,7 @@ self.onmessage = async (e) => {
       cacheShape(resultId, newShape);
 
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
-      const brepBytes = exportShapeToBytes(oc, newShape, resultId);
+      const brepBytes = exportShapeToNativeBRep(oc, newShape, resultId);
 
       gpPnt.delete();
       gpDir.delete();
@@ -2982,7 +3712,7 @@ self.onmessage = async (e) => {
       cacheShape(resultId, newShape);
 
       const geometryData = shapeToBufferGeometryData(newShape, oc, deflection || 0.1);
-      const brepBytes = exportShapeToBytes(oc, newShape, resultId);
+      const brepBytes = exportShapeToNativeBRep(oc, newShape, resultId);
 
       self.postMessage({ type: 'scaleShape', success: true, payload: { ...geometryData, brepBytes }, id });
     } catch (error: any) {
@@ -3003,7 +3733,7 @@ self.onmessage = async (e) => {
         throw new Error(`No valid cached shape for entityId: ${entityId}`);
       }
 
-      const bytes = exportShapeToBytes(oc, shape, entityId); // STEP bytes
+      const bytes = exportShapeToNativeBRep(oc, shape, entityId); // Native BRep bytes
       if (bytes) {
         (self as any).postMessage({ type: 'exportBRepResult', success: true, id, payload: bytes }, [bytes.buffer]);
       } else {
@@ -3015,7 +3745,7 @@ self.onmessage = async (e) => {
   } else if (type === 'importBRep') {
     const { entityId, brepBytes, deflection } = payload;
     try {
-      const shape = importShapeFromBytes(oc, entityId, brepBytes); // reads STEP bytes
+      const shape = importShapeFromNativeBRep(oc, entityId, brepBytes); // reads Native BRep bytes
 
       // Re-mesh after import
       if (oc.BRepTools && oc.BRepTools.Clean) oc.BRepTools.Clean(shape);
@@ -3055,13 +3785,40 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
   if (progress) progress.delete();
   mesher.delete();
 
-  const positions: number[] = [];
-  const indices: number[] = [];
-  const faceMapping: number[] = []; // Maps triangle index to face index
+  // 1. First Pass: Count total nodes and triangles for pre-allocation
+  let totalNodes = 0;
+  let totalTriangles = 0;
+  const explorerCount = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  while (explorerCount.More()) {
+    const faceShape = explorerCount.Current();
+    if (faceShape.ShapeType() !== oc.TopAbs_ShapeEnum.TopAbs_FACE) {
+      explorerCount.Next();
+      continue;
+    }
+    const face = oc.TopoDS.Face_1(faceShape);
+    const loc = new oc.TopLoc_Location_1();
+    const tri = oc.BRep_Tool.Triangulation(face, loc);
+    if (!tri.IsNull()) {
+      totalNodes += tri.get().NbNodes();
+      totalTriangles += tri.get().NbTriangles();
+    }
+    loc.delete();
+    face.delete();
+    explorerCount.Next();
+  }
+  explorerCount.delete();
+
+  // 2. Pre-allocate Typed Arrays
+  const positions = new Float32Array(totalNodes * 3);
+  const indices = new Uint32Array(totalTriangles * 3);
+  const faceMapping = new Int32Array(totalTriangles);
+  let pIdx = 0;
+  let iIdx = 0;
+  let fmIdx = 0;
   let vertexOffset = 0;
   let faceCounter = 0;
 
-  // Explore all faces
+  // 3. Second Pass: Extract geometry data
   const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
 
   while (explorer.More()) {
@@ -3085,7 +3842,9 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
       for (let i = 1; i <= nbNodes; i++) {
         const pnt = tri.Node(i);
         pnt.Transform(trsf); // Apply face transformation
-        positions.push(pnt.X(), pnt.Y(), pnt.Z());
+        positions[pIdx++] = pnt.X();
+        positions[pIdx++] = pnt.Y();
+        positions[pIdx++] = pnt.Z();
         pnt.delete();
       }
 
@@ -3104,11 +3863,14 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
           [n2, n3] = [n3, n2];
         }
 
-        indices.push(n1 + vertexOffset - 1, n2 + vertexOffset - 1, n3 + vertexOffset - 1);
-        faceMapping.push(faceCounter); // Tag this triangle with the current face index
+        indices[iIdx++] = n1 + vertexOffset - 1;
+        indices[iIdx++] = n2 + vertexOffset - 1;
+        indices[iIdx++] = n3 + vertexOffset - 1;
+        faceMapping[fmIdx++] = faceCounter; // Tag this triangle with the current face index
       }
       vertexOffset += nbNodes;
       faceCounter++;
+      trsf.delete();
     }
     location.delete();
     face.delete();
@@ -3140,6 +3902,7 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
           pnt.delete();
         }
         edgeLines.push(edgePoints);
+        trsf.delete();
       } else {
         // Fallback to adaptor if polygon is null
         try {
@@ -3169,7 +3932,12 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
   }
   edgeExplorer.delete();
 
-  return { positions, indices, faceMapping, edgeLines };
+  return {
+    positions,
+    indices,
+    faceMapping,
+    edgeLines
+  };
 }
 
 interface Plane3D {

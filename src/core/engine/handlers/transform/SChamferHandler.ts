@@ -21,6 +21,12 @@ export class SChamferHandler implements ActionHandler {
       }
 
       try {
+        // Ensure the shape is in the OCC worker cache (may be missing for externally-loaded solids)
+        const solidEntity = entity as any;
+        if (solidEntity.brepSnapshot) {
+          try { await OpenCascadeService.getInstance().importBRep(entityId, solidEntity.brepSnapshot); } catch (_) {}
+        }
+
         let geometry;
         let msg = "";
         
@@ -45,6 +51,24 @@ export class SChamferHandler implements ActionHandler {
         newSolid.brepSnapshot = geometry.userData?.brepSnapshot;
         newSolid.layer = entity.layer;
         
+        // Propagate features and creationParams
+        newSolid.creationParams = entity.creationParams;
+        if (entity.features) {
+          newSolid.features = JSON.parse(JSON.stringify(entity.features));
+        }
+        
+        // Append Chamfer feature node
+        newSolid.features.push({
+          id: `${entityId}_feat_${Date.now()}`,
+          type: "Chamfer",
+          parameters: {
+            distance: distance,
+            edgeIndex: action.action === 'chamfer_solid' ? action.value : undefined,
+            faceIndex: action.action === 'chamfer_solid_face' ? action.faceIndex : undefined
+          },
+          isActive: true
+        });
+        
         // Update entity in document
         doc.recordTransform(entity, newSolid);
         doc.removeEntity(entityId);
@@ -60,7 +84,7 @@ export class SChamferHandler implements ActionHandler {
 
         return msg;
       } catch (err: any) {
-        return `Error applying chamfer: ${err.message || err.toString()}`;
+        return `ERROR: Failed to apply chamfer. The operation failed to produce a valid solid: ${err.message || err.toString()}`;
       }
     }
     return undefined;

@@ -12,7 +12,7 @@ export class DonutCommand implements Command {
   outerRadius = DonutCommand.lastOuterRadius
   center: {x: number, y: number} | null = null;
 
-  onInput(text: string, id: string, units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
+  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, _doc?: IDocument): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     if (val === "EXIT" || val === "") {
         this.step = 0;
@@ -40,7 +40,7 @@ export class DonutCommand implements Command {
     }
   }
 
-  onPoint(x: number, y: number, id: string, _units: UnitsConfig, doc?: IDocument): CommandResponse {
+  onPoint(x: number, y: number, id: string, _units: UnitsConfig, _doc?: IDocument): CommandResponse {
     if (this.step === 0) {
         this.center = {x, y};
         this.step = 1;

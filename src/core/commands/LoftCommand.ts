@@ -7,6 +7,9 @@ import { Point } from "../model/Point"
 import { OpenCascadeService } from "../io/OpenCascadeService"
 import { Solid3D } from "../model/Solid3D"
 import { SelectionEngine } from "../engine/SelectionEngine"
+import { GeneratorProgressModal } from "../../ui/GeneratorProgressModal.js"
+import { bulgeToArc } from "../engine/MathUtils"
+
 
 export class LoftCommand implements Command {
   step = 1
@@ -83,7 +86,47 @@ export class LoftCommand implements Command {
     const elevation = entity.elevation || 0;
     
     if (entity instanceof Polyline) {
-      return entity.vertices.map(v => ({ x: v.x, y: v.y, z: elevation }));
+      const count = entity.vertices.length;
+      const limit = entity.closed ? count : count - 1;
+      
+      for (let i = 0; i < limit; i++) {
+        const v1 = entity.vertices[i];
+        const v2 = entity.vertices[(i + 1) % count];
+        
+        if (v1.bulge && Math.abs(v1.bulge) >= 1e-6) {
+          const arcParams = bulgeToArc(v1, v2, v1.bulge);
+          if (arcParams) {
+            const startAngle = arcParams.startAngle;
+            const endAngle = arcParams.endAngle;
+            let sweep = endAngle - startAngle;
+            if (arcParams.ccw) {
+              if (sweep < 0) sweep += 2 * Math.PI;
+            } else {
+              if (sweep > 0) sweep -= 2 * Math.PI;
+            }
+            const segments = 16;
+            for (let j = 0; j < segments; j++) {
+              const angle = startAngle + (j / segments) * sweep;
+              points.push({
+                x: arcParams.cx + arcParams.r * Math.cos(angle),
+                y: arcParams.cy + arcParams.r * Math.sin(angle),
+                z: elevation
+              });
+            }
+          } else {
+            points.push({ x: v1.x, y: v1.y, z: elevation });
+          }
+        } else {
+          points.push({ x: v1.x, y: v1.y, z: elevation });
+        }
+      }
+      
+      if (!entity.closed && count > 0) {
+        const lastV = entity.vertices[count - 1];
+        points.push({ x: lastV.x, y: lastV.y, z: elevation });
+      }
+      
+      return points;
     } else if (entity instanceof Point) {
       return [{ x: entity.x, y: entity.y, z: elevation }];
     } else if (entity instanceof Circle) {
@@ -103,8 +146,11 @@ export class LoftCommand implements Command {
 
   private async executeLoft(newId: string, doc?: IDocument): Promise<CommandResponse> {
     const occService = OpenCascadeService.getInstance();
+    const progress = new GeneratorProgressModal("Loft Operation");
+    progress.show();
     
     try {
+      progress.update(15, "Analyzing loft profile geometry...");
       const facetres = doc?.facetres ?? 5.0;
       const deflection = 0.1 / facetres;
       
@@ -114,9 +160,10 @@ export class LoftCommand implements Command {
         closed: p instanceof Circle || (p instanceof Polyline && p.closed)
       }));
       
-      // We will need to implement createLoft in OpenCascadeService!
+      progress.update(45, "Running OpenCascade loft generation...");
       const geometry = await (occService as any).createLoft(profilesData, this.isSolid, this.isRuled, deflection, newId);
       
+      progress.update(80, "Constructing solid boundary representation...");
       const positions = Array.from(geometry.attributes.position.array as Float32Array);
       const indices = Array.from(geometry.index.array as Uint16Array | Uint32Array);
       
@@ -128,6 +175,9 @@ export class LoftCommand implements Command {
         solid.layer = this.profiles[0].layer;
       }
 
+      progress.update(100, "Loft successfully completed!");
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       return {
         action: "loft_result",
         result: solid,
@@ -135,7 +185,11 @@ export class LoftCommand implements Command {
       } as CommandAction;
       
     } catch (error: any) {
+      progress.update(0, `Error: ${error.message || error}`);
+      await new Promise(resolve => setTimeout(resolve, 1500));
       return `Error creating loft: ${error.message}`;
+    } finally {
+      progress.close();
     }
   }
 

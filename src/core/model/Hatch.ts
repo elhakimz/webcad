@@ -78,7 +78,7 @@ export class Hatch extends Entity {
     return { minX, minY, maxX, maxY };
   }
 
-  hitTest(px: number, py: number, tolerance: number): boolean {
+  hitTest(px: number, py: number, _tolerance: number): boolean {
     return isPointInPolygon({ x: px, y: py }, this.boundaryVertices);
   }
 

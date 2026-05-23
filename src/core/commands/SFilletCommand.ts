@@ -118,7 +118,7 @@ export class SFilletCommand implements Command {
     return "SFILLET Command";
   }
 
-  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+  getDynamicInput(_x: number, _y: number, _units: UnitsConfig): string[] | null {
     if (this.step === 1) return [`Radius: ${this.radius.toFixed(2)} (enter value)`];
     return null;
   }

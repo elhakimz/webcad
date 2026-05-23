@@ -13,11 +13,11 @@ import { Solid3DReevaluator } from "../Solid3DReevaluator";
 
 export class IOHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['save', 'load', 'listFiles', 'new', 'dbsave'].includes(action.action);
+    return ['save', 'load', 'listFiles', 'new', 'dbsave', 'dblistFiles', 'dbload'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, viewer, syncFromDocument, terminateActiveCommand, onLayersChange } = context;
+    const { doc, viewer, syncFromDocument, terminateActiveCommand, onLayersChange, onFilesChange } = context;
 
     if (action.action === 'new') {
       doc.entities.clear();
@@ -83,10 +83,75 @@ export class IOHandler implements ActionHandler {
       try {
         const id = await PersistenceService.getInstance().saveProject(doc, action.projectName);
         terminateActiveCommand();
+        if (onFilesChange) onFilesChange();
         return `Project "${action.projectName}" successfully saved to database.`;
       } catch (err) {
         console.error("Failed to save project to database:", err);
         return `ERROR: Failed to save project to database: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
+
+    if (action.action === 'dblistFiles') {
+      try {
+        const history = await PersistenceService.getInstance().getHistory();
+        if (history.length === 0) {
+          return "No database projects available.\nLoad project from database:";
+        }
+        let msg = "Available database projects:\n";
+        history.forEach((h: any, i: number) => {
+          msg += `${i+1}. ${h.name}\n`;
+        });
+        return msg + "Load project from database (name or ?):";
+      } catch (e) {
+        return `Error listing database projects: ${e}`;
+      }
+    }
+
+    if (action.action === 'dbload' && action.projectName) {
+      const progress = new GeneratorProgressModal("Loading Database Project");
+      progress.show();
+      try {
+        progress.update(10, `Searching for "${action.projectName}" in database...`);
+        const history = await PersistenceService.getInstance().getHistory();
+        const project = history.find(h => h.name.toLowerCase() === action.projectName.toLowerCase());
+        if (!project) {
+          progress.close();
+          return `ERROR: Project "${action.projectName}" not found in database.`;
+        }
+
+        progress.update(20, "Clearing current workspace...");
+        // Clear document and layers to prevent other drawing data from lingering
+        doc.clear();
+        doc.layers.layers.clear();
+        doc.layers.createLayer("0", 7, "CONTINUOUS");
+        doc.layers.currentLayerName = "0";
+
+        progress.update(40, "Clearing 3D engine cache...");
+        // Clear OpenCascade WASM worker cache to prevent solid cache infusion
+        const occService = OpenCascadeService.getInstance();
+        await occService.clearCache();
+
+        progress.update(50, "Loading project data from database...");
+        await PersistenceService.getInstance().loadProject(project.id, doc, context, (percent, status) => {
+          const mappedPercent = 50 + Math.round((percent / 100) * 45);
+          progress.update(mappedPercent, status);
+        });
+
+        // Trigger UI updates
+        syncFromDocument();
+        terminateActiveCommand();
+        onLayersChange();
+        if (onFilesChange) onFilesChange();
+
+        progress.update(100, "Load complete.");
+        await new Promise(resolve => setTimeout(resolve, 500));
+        progress.close();
+
+        return `Project "${project.name}" successfully loaded from database.`;
+      } catch (err) {
+        progress.close();
+        console.error("Failed to load project from database:", err);
+        return `ERROR: Failed to load project from database: ${err instanceof Error ? err.message : String(err)}`;
       }
     }
 
@@ -194,17 +259,16 @@ export class IOHandler implements ActionHandler {
 
       if (onProgress) {
         const percent = Math.round((i / total) * 100);
-        onProgress(percent, `Rebuilding solid ${i + 1}/${total}: ${entityName}...`);
+        onProgress(percent, `Loading solid ${i + 1}/${total}: ${entityName}...`);
       }
 
-      if (entity.features && entity.features.length > 0) {
+      if (entity.brepSnapshot) {
         try {
-          const geom = await Solid3DReevaluator.reevaluate(entity, facetres, doc);
-          this.updateEntityGeometry(entity, geom);
-          console.log(`Rebuilt features worker cache for ${entity.id}`);
+          await occService.importBRep(entity.id, entity.brepSnapshot, deflection);
+          console.log(`Rehydrated from B-Rep snapshot worker cache for ${entity.id}`);
           continue;
         } catch (err) {
-          console.error(`Failed to rebuild features cache for ${entity.id}:`, err);
+          console.error(`Failed to import B-Rep snapshot cache for ${entity.id}:`, err);
         }
       }
 

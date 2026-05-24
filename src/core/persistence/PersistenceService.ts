@@ -372,6 +372,7 @@ export class PersistenceService {
    */
   async persistBRepNow(entity: Solid3D, doc: Document): Promise<void> {
     if (!this.activeProjectId) return;
+    if (!this.db.entities || !this.db.projects) return;
     console.log("[PersistenceService] [persistBRepNow] BREP SNAPSHOT EXISTS? ", entity.brepSnapshot)
     const brepBytes = entity.brepSnapshot;
     if (!brepBytes || brepBytes.length < 50) {
@@ -444,6 +445,7 @@ export class PersistenceService {
 
   async onEntityErased(entityId: string, entity: any): Promise<void> {
     if (!this.activeProjectId) return
+    if (!this.db.entities) return;
     await this.db.deleteEntity(entityId)
     if (entity instanceof Solid3D) {
       this.cache.deleteTessellation(entityId, this.activeProjectId)

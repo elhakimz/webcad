@@ -53,6 +53,10 @@ export class PersistenceService {
   }
 
   async saveProject(doc: Document, name: string, thumbnail?: string): Promise<string> {
+    if (!this.db.projects) {
+      console.warn('[PersistenceService] Database not initialized, skipping save');
+      return '';
+    }
     const projectId = this.activeProjectId || doc.id || uuidv4()
     this.activeProjectId = projectId
     this.activeProjectName = name

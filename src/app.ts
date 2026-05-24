@@ -408,8 +408,8 @@ export class App {
         ((step === 1 || step === 2) && activeName === 'SweepCommand') ||
         ('operation' in active && (step === 0 || step === 1)) ||
         (step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
-        ((step === 0 || step === 1) && activeName === 'FilletCommand') ||
-        ((step === 0 || step === 1) && activeName === 'ChamferCommand') ||
+        ((step === 0 || step === 1 || step === 2) && activeName === 'FilletCommand') ||
+        ((step === 0 || step === 1 || step === 2) && activeName === 'ChamferCommand') ||
         (step >= 2 && (activeName === 'SFilletCommand' || activeName === 'SChamferCommand')) ||
         ((step === 0 || step === 1 || step === 2) && activeName === 'BreakCommand') ||
         (step === 2 && activeName === 'BlockCommand') ||
@@ -1081,6 +1081,14 @@ export class App {
       const hasCircle1 = ent1 instanceof Circle || ent1 instanceof Arc;
       const hasCircle2 = ent2 instanceof Circle || ent2 instanceof Arc;
 
+      const isJoinable1 = ent1 instanceof Line || ent1 instanceof Polyline || ent1 instanceof Arc;
+      const isJoinable2 = ent2 instanceof Line || ent2 instanceof Polyline || ent2 instanceof Arc;
+
+      if (isJoinable1 && isJoinable2) {
+        // TOP ORDER: JOIN
+        options.push("Join", "---");
+      }
+
       if (hasLine1 && hasLine2) {
         options.push("Coincident", "Parallel", "Perpendicular", "Angular", "Distance", "Cancel");
       } else if (hasCircle1 && hasCircle2) {
@@ -1098,6 +1106,22 @@ export class App {
       this.dynamicMenu.show(screenX, screenY, headers, options);
       this.dynamicMenu.onOptionClicked((option) => {
         if (option === "Cancel") {
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+          return;
+        }
+
+        if (option === "Join") {
+          this.execute(`JOIN`).then(result => {
+            if (typeof result === 'string') {
+              this.printToCommandLine(result);
+              const isError = result.toLowerCase().includes("cannot") || 
+                              result.toLowerCase().includes("fail") || 
+                              result.toLowerCase().includes("invalid") ||
+                              result.toLowerCase().includes("not found");
+              NotificationManager.getInstance().show(result, isError ? "error" : "success");
+            }
+          });
           this.dynamicMenu.hide();
           this.contextMenuVisible = false;
           return;
@@ -1274,6 +1298,37 @@ export class App {
             this.contextMenuVisible = false;
           });
         }
+      });
+      return;
+    }
+
+    // Case 5: More than 2 entities selected
+    if (selectedEntities.length > 2) {
+      headers.push(`Selection: ${selectedEntities.length} objects`);
+      
+      const allJoinable = selectedEntities.every(e => e instanceof Line || e instanceof Polyline || e instanceof Arc);
+      if (allJoinable) {
+        options.push("Join", "---");
+      }
+      
+      options.push("Cancel");
+
+      this.dynamicMenu.show(screenX, screenY, headers, options);
+      this.dynamicMenu.onOptionClicked((option) => {
+        if (option === "Join") {
+          this.execute(`JOIN`).then(result => {
+            if (typeof result === 'string') {
+              this.printToCommandLine(result);
+              const isError = result.toLowerCase().includes("cannot") || 
+                              result.toLowerCase().includes("fail") || 
+                              result.toLowerCase().includes("invalid") ||
+                              result.toLowerCase().includes("not found");
+              NotificationManager.getInstance().show(result, isError ? "error" : "success");
+            }
+          });
+        }
+        this.dynamicMenu.hide();
+        this.contextMenuVisible = false;
       });
       return;
     }
@@ -1756,8 +1811,8 @@ export class App {
             const active = this.cmd.active;
             const step = active ? (active.step ?? -1) : -1;
             const isImmediatePick = active && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand') && step === 1;
-            const isFilletPick = (activeName === 'FilletCommand' && active && (step === 0 || step === 1)) || (activeName === 'SFilletCommand' && active && step === 2);
-            const isChamferPick = (activeName === 'ChamferCommand' && active && (step === 0 || step === 1)) || (activeName === 'SChamferCommand' && active && step === 2);
+            const isFilletPick = (activeName === 'FilletCommand' && active && (step === 0 || step === 1 || step === 2)) || (activeName === 'SFilletCommand' && active && step === 2);
+            const isChamferPick = (activeName === 'ChamferCommand' && active && (step === 0 || step === 1 || step === 2)) || (activeName === 'SChamferCommand' && active && step === 2);
             const isBreakPick = activeName === 'BreakCommand' && active && (step === 0 || step === 1 || step === 2);
             const isLengthenPick = activeName === 'LengthenCommand' && active && step === 2;
             const isBooleanPick = active && 'operation' in active && (step === 0 || step === 1);
@@ -1920,6 +1975,15 @@ export class App {
           this.viewer.updateConstraints(this.doc);
           this.doc.history.commitTransaction(this.doc.constraints);
           this.updateDoFVisualization();
+
+          if (typeof res === 'string' && ((result as CommandAction).action === 'fillet' || (result as CommandAction).action === 'chamfer')) {
+              this.printToCommandLine(res);
+              const isError = res.toLowerCase().includes("cannot") || 
+                              res.toLowerCase().includes("fail") || 
+                              res.toLowerCase().includes("only supported");
+              NotificationManager.getInstance().show(res, isError ? "error" : "success");
+          }
+
           return res;
       })();
 

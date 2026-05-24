@@ -1,7 +1,6 @@
 export class DynamicMenu {
   private element: HTMLElement;
   private onOptionClickedCallback?: (option: string) => void;
-  private clickOutsideHandler?: (e: MouseEvent) => void;
 
   constructor() {
     this.element = document.createElement('div');
@@ -61,7 +60,38 @@ export class DynamicMenu {
     }
 
     // Render Options (Clickable vertical list items)
+    this.renderOptions(options);
+
+    // Make visible and set flex layout
+    this.element.style.display = 'flex';
+
+    // Position carefully to avoid clipping off-screen
+    const menuWidth = this.element.offsetWidth || 150;
+    const menuHeight = this.element.offsetHeight || 100;
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+
+    let finalX = x;
+    let finalY = y;
+
+    if (x + menuWidth > windowWidth) finalX = windowWidth - menuWidth - 10;
+    if (y + menuHeight > windowHeight) finalY = windowHeight - menuHeight - 10;
+
+    this.element.style.left = `${finalX}px`;
+    this.element.style.top = `${finalY}px`;
+  }
+
+  private renderOptions(options: string[]) {
     options.forEach(option => {
+      if (option.startsWith('---')) {
+        const sep = document.createElement('div');
+        sep.style.height = '1px';
+        sep.style.backgroundColor = 'var(--border-color)';
+        sep.style.margin = '4px 0';
+        this.element.appendChild(sep);
+        return;
+      }
+
       const item = document.createElement('div');
       item.textContent = option;
       item.style.padding = '6px 12px';
@@ -89,66 +119,13 @@ export class DynamicMenu {
 
       this.element.appendChild(item);
     });
-
-    // Make visible and set flex layout
-    this.element.style.display = 'flex';
-
-    // Position carefully to avoid clipping off-screen
-    const menuWidth = this.element.offsetWidth || 150;
-    const menuHeight = this.element.offsetHeight || 100;
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
-
-    let targetX = x;
-    let targetY = y;
-
-    if (x + menuWidth > windowWidth) {
-      targetX = windowWidth - menuWidth - 4;
-    }
-    if (y + menuHeight > windowHeight) {
-      targetY = windowHeight - menuHeight - 4;
-    }
-
-    this.element.style.left = `${targetX}px`;
-    this.element.style.top = `${targetY}px`;
-
-    // Remove any existing click outside listener
-    this.cleanupClickOutside();
-
-    // Register a new click outside listener to auto-hide the menu on window interaction
-    this.clickOutsideHandler = (e: MouseEvent) => {
-      if (!this.element.contains(e.target as Node)) {
-        this.hide();
-      }
-    };
-    // Use timeout to avoid handling the current trigger click
-    setTimeout(() => {
-      if (this.element.style.display === 'flex') {
-        document.addEventListener('mousedown', this.clickOutsideHandler!);
-      }
-    }, 0);
   }
 
   hide() {
     this.element.style.display = 'none';
-    this.cleanupClickOutside();
   }
 
   onOptionClicked(callback: (option: string) => void) {
     this.onOptionClickedCallback = callback;
-  }
-
-  private cleanupClickOutside() {
-    if (this.clickOutsideHandler) {
-      document.removeEventListener('mousedown', this.clickOutsideHandler);
-      this.clickOutsideHandler = undefined;
-    }
-  }
-
-  destroy() {
-    this.cleanupClickOutside();
-    if (this.element.parentNode) {
-      this.element.parentNode.removeChild(this.element);
-    }
   }
 }

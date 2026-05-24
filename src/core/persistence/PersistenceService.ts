@@ -48,7 +48,7 @@ export class PersistenceService {
   }
 
   async init(): Promise<void> {
-    await this.db.init()
+    await this.db.init() // Removed forceReset: true
     await this.cache.init()
   }
 
@@ -406,7 +406,8 @@ export class PersistenceService {
           currentLayer: doc.layers.getCurrentLayer().name,
           currentElevation: doc.currentElevation,
           currentThickness: doc.currentThickness,
-          idCounters: doc.getIdCounters()
+          idCounters: doc.getIdCounters(),
+          constraints: doc.constraints
         }
       });
 
@@ -433,7 +434,8 @@ export class PersistenceService {
             currentLayer: doc.layers.getCurrentLayer().name,
             currentElevation: doc.currentElevation,
             currentThickness: doc.currentThickness,
-            idCounters: doc.getIdCounters()
+            idCounters: doc.getIdCounters(),
+            constraints: []
           }
         })
       }

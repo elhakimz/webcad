@@ -1,14 +1,14 @@
 import { RxJsonSchema } from 'rxdb'
 
 export const PROJECT_SCHEMA: RxJsonSchema<any> = {
-  version: 0,
+  version: 1,
   primaryKey: 'id',
   type: 'object',
   properties: {
     id:        { type: 'string', maxLength: 100 },
     name:      { type: 'string' },
-    createdAt: { type: 'number' },
-    updatedAt: { type: 'number' },
+    createdAt: { type: 'number', minimum: 0, maximum: 10000000000000, multipleOf: 1 },
+    updatedAt: { type: 'number', minimum: 0, maximum: 10000000000000, multipleOf: 1 },
     settings: {
       type: 'object',
       properties: {
@@ -24,7 +24,8 @@ export const PROJECT_SCHEMA: RxJsonSchema<any> = {
       }
     }
   },
-  required: ['id', 'name', 'createdAt', 'updatedAt', 'settings']
+  required: ['id', 'name', 'createdAt', 'updatedAt', 'settings'],
+  indexes: ['updatedAt']
 }
 
 export const ENTITY_SCHEMA: RxJsonSchema<any> = {
@@ -41,7 +42,7 @@ export const ENTITY_SCHEMA: RxJsonSchema<any> = {
     data:           { type: 'string' },        // JSON — entity-specific fields
     properties:     { type: 'string' },        // JSON — Entity.properties bag
     creationParams: { type: 'string' },        // JSON — Solid3D.creationParams or ''
-    updatedAt:      { type: 'number' }
+    updatedAt:      { type: 'number', minimum: 0, maximum: 10000000000000, multipleOf: 1 }
   },
   required: ['id', 'projectId', 'type', 'data', 'updatedAt'],
   indexes: ['projectId', ['projectId', 'updatedAt']]

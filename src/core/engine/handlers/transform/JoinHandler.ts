@@ -53,6 +53,8 @@ export class JoinHandler implements ActionHandler {
         }
         
         if (joined) {
+          const before1 = p1.clone(p1.id);
+
           // Check if the merged polyline forms a closed loop
           const pStart = p1.vertices[0];
           const pEnd = p1.vertices[p1.vertices.length - 1];
@@ -62,6 +64,8 @@ export class JoinHandler implements ActionHandler {
             p1.vertices.pop(); // Remove duplicate end point
           }
 
+          doc.recordTransform(before1, p1);
+          doc.recordRemove(p2);
           doc.removeEntity(p2.id);
           viewer.removeObject(p2.id);
           this.cleanup(context);
@@ -89,50 +93,44 @@ export class JoinHandler implements ActionHandler {
         const distArcStartToPStart = MathUtils.distancePointToPoint(arcStartX, arcStartY, pStart.x, pStart.y);
         const distArcEndToPStart = MathUtils.distancePointToPoint(arcEndX, arcEndY, pStart.x, pStart.y);
 
+        let joined = false;
+        const beforePoly = poly.clone(poly.id);
+
         if (distArcStartToPEnd < tol) {
-          // Arc start connects to polyline end - traverse arc in natural direction (start → end)
           const includedAngle = arc.ccw
             ? normalizeAngle(arc.endAngle - arc.startAngle)
             : normalizeAngle(arc.startAngle - arc.endAngle);
           const bulge = (arc.ccw ? 1 : -1) * Math.tan(includedAngle / 4);
           poly.vertices[poly.vertices.length - 1].bulge = bulge;
           poly.vertices.push({ x: arcEndX, y: arcEndY, bulge: 0 });
-          doc.removeEntity(arc.id);
-          viewer.removeObject(arc.id);
-          this.cleanup(context);
-          return "Arc joined to polyline.";
+          joined = true;
         } else if (distArcEndToPEnd < tol) {
-          // Arc end connects to polyline end - traverse arc in reverse (end → start)
           const includedAngle = arc.ccw
             ? normalizeAngle(arc.endAngle - arc.startAngle)
             : normalizeAngle(arc.startAngle - arc.endAngle);
           const bulge = (arc.ccw ? -1 : 1) * Math.tan(includedAngle / 4);
           poly.vertices[poly.vertices.length - 1].bulge = bulge;
           poly.vertices.push({ x: arcStartX, y: arcStartY, bulge: 0 });
-          doc.removeEntity(arc.id);
-          viewer.removeObject(arc.id);
-          this.cleanup(context);
-          return "Arc joined to polyline.";
+          joined = true;
         } else if (distArcStartToPStart < tol) {
-          // Arc start connects to polyline start - prepend end → start (reverse)
           const includedAngle = arc.ccw
             ? normalizeAngle(arc.endAngle - arc.startAngle)
             : normalizeAngle(arc.startAngle - arc.endAngle);
           const bulge = (arc.ccw ? -1 : 1) * Math.tan(includedAngle / 4);
-          // Bulge on the prepended vertex controls the segment from there to the next (polyline start)
           poly.vertices.unshift({ x: arcEndX, y: arcEndY, bulge: bulge });
-          doc.removeEntity(arc.id);
-          viewer.removeObject(arc.id);
-          this.cleanup(context);
-          return "Arc joined to polyline.";
+          joined = true;
         } else if (distArcEndToPStart < tol) {
-          // Arc end connects to polyline start - prepend start → end (natural)
           const includedAngle = arc.ccw
             ? normalizeAngle(arc.endAngle - arc.startAngle)
             : normalizeAngle(arc.startAngle - arc.endAngle);
           const bulge = (arc.ccw ? 1 : -1) * Math.tan(includedAngle / 4);
-          // Bulge on the prepended vertex controls the segment from there to the next (polyline start)
           poly.vertices.unshift({ x: arcStartX, y: arcStartY, bulge: bulge });
+          joined = true;
+        }
+
+        if (joined) {
+          doc.recordTransform(beforePoly, poly);
+          doc.recordRemove(arc);
           doc.removeEntity(arc.id);
           viewer.removeObject(arc.id);
           this.cleanup(context);
@@ -171,10 +169,15 @@ export class JoinHandler implements ActionHandler {
           });
         }
         
-        entities.forEach(e => { doc.removeEntity(e.id); viewer.removeObject(e.id); });
+        entities.forEach(e => { 
+          doc.recordRemove(e);
+          doc.removeEntity(e.id); 
+          viewer.removeObject(e.id); 
+        });
         const polyId = doc.getNextId("PL");
         const poly = new Polyline(polyId, vertices, false);
-        addEntity(poly, true, false);
+        doc.recordAdd(poly);
+        addEntity(poly, false, false);
         
         this.cleanup(context);
         return "Entities joined.";

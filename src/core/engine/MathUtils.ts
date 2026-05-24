@@ -3,7 +3,6 @@ import { Circle as CircleEntity } from "../model/Circle";
 import { Arc as ArcEntity } from "../model/Arc";
 import { Polyline as PolylineEntity } from "../model/Polyline";
 import { Ellipse as EllipseEntity } from "../model/Ellipse";
-import { Entity } from "../model/Entity";
 import { norm2 } from "../../scad/interpreter/FastMath";
 
 export type Point = { x: number; y: number };
@@ -952,5 +951,25 @@ export function polylineLength(vertices: Point[]): number {
     total += distancePointToPoint(vertices[i].x, vertices[i].y, vertices[i+1].x, vertices[i+1].y);
   }
   return total;
+}
+
+export function getClosestPolylineSegment(poly: PolylineEntity, pickPt: Point): { p1: Point, p2: Point, index: number } | null {
+  let minDistance = Infinity;
+  let closest: { p1: Point, p2: Point, index: number } | null = null;
+
+  for (let i = 0; i < poly.vertices.length - (poly.closed ? 0 : 1); i++) {
+    const v1 = poly.vertices[i];
+    const v2 = poly.vertices[(i + 1) % poly.vertices.length];
+    
+    // For now, only support straight segments for chamfer/fillet
+    if (Math.abs(v1.bulge) > 1e-6) continue;
+
+    const dist = distancePointToLineSegment(pickPt.x, pickPt.y, v1.x, v1.y, v2.x, v2.y);
+    if (dist < minDistance) {
+      minDistance = dist;
+      closest = { p1: {x: v1.x, y: v1.y}, p2: {x: v2.x, y: v2.y}, index: i };
+    }
+  }
+  return closest;
 }
 

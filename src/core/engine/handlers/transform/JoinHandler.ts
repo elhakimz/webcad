@@ -57,11 +57,81 @@ export class JoinHandler implements ActionHandler {
             p1.closed = true;
             p1.vertices.pop(); // Remove duplicate end point
           }
-          
+
           doc.removeEntity(p2.id);
           viewer.removeObject(p2.id);
           this.cleanup(context);
           return "Polylines joined.";
+        }
+      }
+
+      // Special case: Join 1 polyline + 1 arc
+      const arcs = allEntities.filter(e => e instanceof ArcEntity) as ArcEntity[];
+      if (polylines.length === 1 && arcs.length === 1 && allEntities.length === 2) {
+        const poly = polylines[0];
+        const arc = arcs[0];
+
+        const arcStartX = arc.cx + arc.r * Math.cos(arc.startAngle);
+        const arcStartY = arc.cy + arc.r * Math.sin(arc.startAngle);
+        const arcEndX = arc.cx + arc.r * Math.cos(arc.endAngle);
+        const arcEndY = arc.cy + arc.r * Math.sin(arc.endAngle);
+
+        const pStart = poly.vertices[0];
+        const pEnd = poly.vertices[poly.vertices.length - 1];
+
+        const distArcStartToPEnd = MathUtils.distancePointToPoint(arcStartX, arcStartY, pEnd.x, pEnd.y);
+        const distArcEndToPEnd = MathUtils.distancePointToPoint(arcEndX, arcEndY, pEnd.x, pEnd.y);
+        const distArcStartToPStart = MathUtils.distancePointToPoint(arcStartX, arcStartY, pStart.x, pStart.y);
+        const distArcEndToPStart = MathUtils.distancePointToPoint(arcEndX, arcEndY, pStart.x, pStart.y);
+
+        if (distArcStartToPEnd < tol) {
+          // Arc start connects to polyline end - add arc's end point with bulge
+          const bulge = Math.tan((arc.endAngle - arc.startAngle) / 4);
+          poly.vertices.push({
+            x: arcEndX,
+            y: arcEndY,
+            bulge: arc.ccw ? bulge : -bulge
+          });
+          doc.removeEntity(arc.id);
+          viewer.removeObject(arc.id);
+          this.cleanup(context);
+          return "Arc joined to polyline.";
+        } else if (distArcEndToPEnd < tol) {
+          // Arc end connects to polyline end - add arc's start point with reversed bulge
+          const bulge = Math.tan((arc.endAngle - arc.startAngle) / 4);
+          poly.vertices.push({
+            x: arcStartX,
+            y: arcStartY,
+            bulge: arc.ccw ? -bulge : bulge
+          });
+          doc.removeEntity(arc.id);
+          viewer.removeObject(arc.id);
+          this.cleanup(context);
+          return "Arc joined to polyline.";
+        } else if (distArcStartToPStart < tol) {
+          // Arc start connects to polyline start - insert arc's end at beginning
+          const bulge = Math.tan((arc.endAngle - arc.startAngle) / 4);
+          poly.vertices.unshift({
+            x: arcEndX,
+            y: arcEndY,
+            bulge: arc.ccw ? bulge : -bulge
+          });
+          doc.removeEntity(arc.id);
+          viewer.removeObject(arc.id);
+          this.cleanup(context);
+          return "Arc joined to polyline.";
+        } else if (distArcEndToPStart < tol) {
+          // Arc end connects to polyline start - insert arc's start at beginning with reversed bulge
+          const bulge = Math.tan((arc.endAngle - arc.startAngle) / 4);
+          poly.vertices.unshift({
+            x: arcStartX,
+            y: arcStartY,
+            bulge: arc.ccw ? -bulge : bulge
+          });
+          doc.removeEntity(arc.id);
+          viewer.removeObject(arc.id);
+          this.cleanup(context);
+          return "Arc joined to polyline.";
         }
       }
 

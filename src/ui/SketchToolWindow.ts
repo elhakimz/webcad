@@ -445,6 +445,8 @@ export class SketchToolWindow {
         else if (c.type === 'parallel') txt.textContent = `Parallel: L1 // L2`;
         else if (c.type === 'concentric') txt.textContent = `Concentric: ${shortName(c.p1)} = ${shortName(c.p2)}`;
         else if (c.type === 'perpendicular') txt.textContent = `Perp: L1 ⊥ L2`;
+        else if (c.type === 'tangent') txt.textContent = `Tangent: Line ➔ Circle`;
+        else if (c.type === 'tangent_smooth') txt.textContent = `Smooth: Arc ➔ Arc`;
         else if (c.type === 'angular') txt.textContent = `Angle: L1 ∠ L2 = ${(c.value * 180 / Math.PI).toFixed(1)}°`;
         else if (c.type === 'fix') txt.textContent = `Fix: ${shortName(c.p1)}`;
 
@@ -828,6 +830,71 @@ export class SketchToolWindow {
         this.app.dynamicInput.hide();
       });
     };
+
+    // TANGENT / SMOOTH
+    const tangBtn = document.createElement('button');
+    tangBtn.className = 'sketch-btn';
+    tangBtn.textContent = '◯ Tangent';
+    
+    const selectedForTangent = Array.from(this.app.selectedEntityIds).map(id => this.app.doc.getEntity(id)).filter(e => !!e);
+    const linesCount = activeSegments.length;
+    const arcsCount = selectedForTangent.filter(e => e instanceof Circle || e instanceof Arc).length;
+
+    const isLineCircle = linesCount === 1 && arcsCount === 1;
+    
+    // Smooth join check (2 arcs or arc+line sharing a vertex)
+    let sharedPoint: DocumentPointRef | null = null;
+    let arc1Center: DocumentPointRef | null = null;
+    let arc2Center: DocumentPointRef | null = null;
+
+    if (selectedForTangent.length === 2) {
+      const e1 = selectedForTangent[0];
+      const e2 = selectedForTangent[1];
+      if ((e1 instanceof Arc || e1 instanceof Circle) && (e2 instanceof Arc || e2 instanceof Circle)) {
+        // Look for shared endpoint
+        const tol = 1e-3;
+        const pts1 = e1 instanceof Arc ? ['start', 'end'] : [];
+        const pts2 = e2 instanceof Arc ? ['start', 'end'] : [];
+        
+        for (const p1id of pts1) {
+          for (const p2id of pts2) {
+            const p1 = getPointCoords(this.app.doc, { entityId: e1.id, pointId: p1id });
+            const p2 = getPointCoords(this.app.doc, { entityId: e2.id, pointId: p2id });
+            if (p1 && p2 && Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2) < tol) {
+              sharedPoint = { entityId: e1.id, pointId: p1id };
+              arc1Center = { entityId: e1.id, pointId: 'center' };
+              arc2Center = { entityId: e2.id, pointId: 'center' };
+              break;
+            }
+          }
+          if (sharedPoint) break;
+        }
+      }
+    }
+
+    const isSmoothJoin = !!sharedPoint;
+    tangBtn.disabled = !isLineCircle && !isSmoothJoin;
+    tangBtn.title = isSmoothJoin ? 'Apply Smooth Join (Collinear Centers)' : 'Select exactly 1 Line/Segment and 1 Circle/Arc';
+    
+    tangBtn.onclick = () => {
+      if (isLineCircle) {
+        const seg = activeSegments[0];
+        const circleId = selectedForTangent.find(e => e instanceof Circle || e instanceof Arc)!.id;
+        this.applyNewConstraint({
+          type: 'tangent',
+          l1: [seg.p1, seg.p2],
+          circle: { entityId: circleId, pointId: 'center' }
+        });
+      } else if (isSmoothJoin) {
+        this.applyNewConstraint({
+          type: 'tangent_smooth',
+          p1: arc1Center!,
+          p2: sharedPoint!,
+          p3: arc2Center!
+        });
+      }
+    };
+
     const selectedCirclesOrArcs = this.app.selectedEntityIds.size === 2 &&
       Array.from(this.app.selectedEntityIds).every(id => {
         const ent = this.app.doc.getEntity(id);
@@ -865,6 +932,7 @@ export class SketchToolWindow {
     constrGrid.appendChild(paraBtn);
     constrGrid.appendChild(perpBtn);
     constrGrid.appendChild(angBtn);
+    constrGrid.appendChild(tangBtn);
     constrGrid.appendChild(concBtn);
 
     content.appendChild(constrGrid);

@@ -583,13 +583,18 @@ export class App {
                    c.l1[1].entityId === this.activeGrip!.entityId ||
                    c.l2[0].entityId === this.activeGrip!.entityId ||
                    c.l2[1].entityId === this.activeGrip!.entityId;
+          } else if (c.type === 'tangent') {
+            return c.l1[0].entityId === this.activeGrip!.entityId ||
+                   c.l1[1].entityId === this.activeGrip!.entityId ||
+                   c.circle.entityId === this.activeGrip!.entityId;
           } else {
-            return c.p1.entityId === this.activeGrip!.entityId ||
+            return (c as any).p1.entityId === this.activeGrip!.entityId ||
                    ('p2' in c && (c as any).p2.entityId === this.activeGrip!.entityId);
           }
         });
 
         if (isConstrained) {
+          this.viewer.setMainGroupVisibility(false);
           const mockDoc: any = {
             entities: new Map<string, Entity>(),
             getEntity(id: string) { return this.entities.get(id); },
@@ -622,6 +627,7 @@ export class App {
 
           this.viewer.setPreview({ type: 'entities', entities: previewEntities } as any, this.doc.units);
         } else {
+          this.viewer.setMainGroupVisibility(true);
           // Create ghost preview
           const cloned = entity.clone(entity.id + '_preview');
           if (cloned.moveGrip) {
@@ -1078,7 +1084,9 @@ export class App {
       if (hasLine1 && hasLine2) {
         options.push("Coincident", "Parallel", "Perpendicular", "Angular", "Distance", "Cancel");
       } else if (hasCircle1 && hasCircle2) {
-        options.push("Coincident", "Concentric", "Distance", "Cancel");
+        options.push("Coincident", "Concentric", "Tangent", "Distance", "Cancel");
+      } else if ((hasLine1 && hasCircle2) || (hasLine2 && hasCircle1)) {
+        options.push("Coincident", "Tangent", "Distance", "Cancel");
       } else if (hasLine1 || hasLine2) {
         options.push("Coincident", "Distance", "Cancel");
       } else if (hasCircle1 || hasCircle2) {
@@ -1134,6 +1142,44 @@ export class App {
             type: 'perpendicular',
             l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }],
             l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
+          });
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+        } else if (option === "Tangent" && (ent1 instanceof Arc || ent1 instanceof Circle) && (ent2 instanceof Arc || ent2 instanceof Circle)) {
+          const tol = 1e-3;
+          const pts1 = ent1 instanceof Arc ? ['start', 'end'] : [];
+          const pts2 = ent2 instanceof Arc ? ['start', 'end'] : [];
+          let shared: DocumentPointRef | null = null;
+          
+          for (const p1id of pts1) {
+            for (const p2id of pts2) {
+              const p1 = getPointCoords(this.doc, { entityId: ent1.id, pointId: p1id });
+              const p2 = getPointCoords(this.doc, { entityId: ent2.id, pointId: p2id });
+              if (p1 && p2 && Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2) < tol) {
+                shared = { entityId: ent1.id, pointId: p1id };
+                break;
+              }
+            }
+            if (shared) break;
+          }
+          
+          if (shared) {
+            this.applyDirectConstraint({
+              type: 'tangent_smooth',
+              p1: { entityId: ent1.id, pointId: 'center' },
+              p2: shared,
+              p3: { entityId: ent2.id, pointId: 'center' }
+            });
+          }
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+        } else if (option === "Tangent") {
+          const lineEnt = ent1 instanceof Line ? ent1 : ent2 as Line;
+          const circleEnt = (ent1 instanceof Circle || ent1 instanceof Arc) ? ent1 : ent2 as Circle | Arc;
+          this.applyDirectConstraint({
+            type: 'tangent',
+            l1: [{ entityId: lineEnt.id, pointId: 'start' }, { entityId: lineEnt.id, pointId: 'end' }],
+            circle: { entityId: circleEnt.id, pointId: 'center' }
           });
           this.dynamicMenu.hide();
           this.contextMenuVisible = false;
@@ -1417,8 +1463,12 @@ export class App {
                    c.l1[1].entityId === this.activeGrip!.entityId ||
                    c.l2[0].entityId === this.activeGrip!.entityId ||
                    c.l2[1].entityId === this.activeGrip!.entityId;
+          } else if (c.type === 'tangent') {
+            return c.l1[0].entityId === this.activeGrip!.entityId ||
+                   c.l1[1].entityId === this.activeGrip!.entityId ||
+                   c.circle.entityId === this.activeGrip!.entityId;
           } else {
-            return c.p1.entityId === this.activeGrip!.entityId ||
+            return (c as any).p1.entityId === this.activeGrip!.entityId ||
                    ('p2' in c && (c as any).p2.entityId === this.activeGrip!.entityId);
           }
         });
@@ -1467,6 +1517,7 @@ export class App {
         
         this.syncFromDocument();
         this.activeGrip = null;
+        this.viewer.setMainGroupVisibility(true);
         this.viewer.setPreview(null);
         
         // Refresh highlights and grips
@@ -1709,9 +1760,6 @@ export class App {
             const isChamferPick = (activeName === 'ChamferCommand' && active && (step === 0 || step === 1)) || (activeName === 'SChamferCommand' && active && step === 2);
             const isBreakPick = activeName === 'BreakCommand' && active && (step === 0 || step === 1 || step === 2);
             const isLengthenPick = activeName === 'LengthenCommand' && active && step === 2;
-            const isDimRadiusPick = (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand') && active && step === 0;
-            const isDimAngularPick = activeName === 'DimAngularCommand' && active && (step === 0 || step === 1);
-            const isListPick = activeName === 'ListCommand';
             const isBooleanPick = active && 'operation' in active && (step === 0 || step === 1);
             const hasSetEntity = active && 'setEntity' in active;
 

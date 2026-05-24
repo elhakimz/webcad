@@ -91,6 +91,11 @@ export function analyzeDocumentDoF(
     } else if (c.type === 'parallel' || c.type === 'perpendicular' || c.type === 'angular') {
       addRef(c.l1[0]); addRef(c.l1[1]);
       addRef(c.l2[0]); addRef(c.l2[1]);
+    } else if (c.type === 'tangent') {
+      addRef(c.l1[0]); addRef(c.l1[1]);
+      addRef(c.circle);
+    } else if (c.type === 'tangent_smooth') {
+      addRef(c.p1); addRef(c.p2); addRef(c.p3);
     }
   }
 
@@ -211,6 +216,26 @@ export function analyzeDocumentDoF(
       const p4 = refToIndex.get(refKey(c.l2[1]));
       if (p1 !== undefined && p2 !== undefined && p3 !== undefined && p4 !== undefined) {
         sketchConstraints.push({ type: 'angular', l1: [p1, p2], l2: [p3, p4], value: c.value });
+        constraintOwner.push(ci);
+      }
+    } else if (c.type === 'tangent') {
+      const p1 = refToIndex.get(refKey(c.l1[0]));
+      const p2 = refToIndex.get(refKey(c.l1[1]));
+      const pc = refToIndex.get(refKey(c.circle));
+
+      const ent = doc.getEntity(c.circle.entityId);
+      const r = (ent as any)?.r ?? 0;
+
+      if (p1 !== undefined && p2 !== undefined && pc !== undefined && r > 0) {
+        sketchConstraints.push({ type: 'tangent', l1: [p1, p2], circle: pc, radius: r });
+        constraintOwner.push(ci);
+      }
+    } else if (c.type === 'tangent_smooth') {
+      const p1 = refToIndex.get(refKey(c.p1));
+      const p2 = refToIndex.get(refKey(c.p2));
+      const p3 = refToIndex.get(refKey(c.p3));
+      if (p1 !== undefined && p2 !== undefined && p3 !== undefined) {
+        sketchConstraints.push({ type: 'tangent_smooth', p1, p2, p3 });
         constraintOwner.push(ci);
       }
     }

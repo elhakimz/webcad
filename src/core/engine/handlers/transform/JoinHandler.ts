@@ -5,6 +5,10 @@ import { Arc as ArcEntity } from "../../../model/Arc";
 import { Polyline, PolylineVertex } from "../../../model/Polyline";
 import * as MathUtils from "../../MathUtils";
 
+function normalizeAngle(a: number): number {
+  return ((a % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+}
+
 export class JoinHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
     return action.action === 'join';
@@ -70,6 +74,7 @@ export class JoinHandler implements ActionHandler {
       if (polylines.length === 1 && arcs.length === 1 && allEntities.length === 2) {
         const poly = polylines[0];
         const arc = arcs[0];
+        const tol = 1e-3;
 
         const arcStartX = arc.cx + arc.r * Math.cos(arc.startAngle);
         const arcStartY = arc.cy + arc.r * Math.sin(arc.startAngle);
@@ -85,49 +90,49 @@ export class JoinHandler implements ActionHandler {
         const distArcEndToPStart = MathUtils.distancePointToPoint(arcEndX, arcEndY, pStart.x, pStart.y);
 
         if (distArcStartToPEnd < tol) {
-          // Arc start connects to polyline end - add arc's end point with bulge
-          const bulge = Math.tan((arc.endAngle - arc.startAngle) / 4);
-          poly.vertices.push({
-            x: arcEndX,
-            y: arcEndY,
-            bulge: arc.ccw ? bulge : -bulge
-          });
+          // Arc start connects to polyline end - traverse arc in natural direction (start → end)
+          const includedAngle = arc.ccw
+            ? normalizeAngle(arc.endAngle - arc.startAngle)
+            : normalizeAngle(arc.startAngle - arc.endAngle);
+          const bulge = (arc.ccw ? 1 : -1) * Math.tan(includedAngle / 4);
+          poly.vertices[poly.vertices.length - 1].bulge = bulge;
+          poly.vertices.push({ x: arcEndX, y: arcEndY, bulge: 0 });
           doc.removeEntity(arc.id);
           viewer.removeObject(arc.id);
           this.cleanup(context);
           return "Arc joined to polyline.";
         } else if (distArcEndToPEnd < tol) {
-          // Arc end connects to polyline end - add arc's start point with reversed bulge
-          const bulge = Math.tan((arc.endAngle - arc.startAngle) / 4);
-          poly.vertices.push({
-            x: arcStartX,
-            y: arcStartY,
-            bulge: arc.ccw ? -bulge : bulge
-          });
+          // Arc end connects to polyline end - traverse arc in reverse (end → start)
+          const includedAngle = arc.ccw
+            ? normalizeAngle(arc.endAngle - arc.startAngle)
+            : normalizeAngle(arc.startAngle - arc.endAngle);
+          const bulge = (arc.ccw ? -1 : 1) * Math.tan(includedAngle / 4);
+          poly.vertices[poly.vertices.length - 1].bulge = bulge;
+          poly.vertices.push({ x: arcStartX, y: arcStartY, bulge: 0 });
           doc.removeEntity(arc.id);
           viewer.removeObject(arc.id);
           this.cleanup(context);
           return "Arc joined to polyline.";
         } else if (distArcStartToPStart < tol) {
-          // Arc start connects to polyline start - insert arc's end at beginning
-          const bulge = Math.tan((arc.endAngle - arc.startAngle) / 4);
-          poly.vertices.unshift({
-            x: arcEndX,
-            y: arcEndY,
-            bulge: arc.ccw ? bulge : -bulge
-          });
+          // Arc start connects to polyline start - prepend end → start (reverse)
+          const includedAngle = arc.ccw
+            ? normalizeAngle(arc.endAngle - arc.startAngle)
+            : normalizeAngle(arc.startAngle - arc.endAngle);
+          const bulge = (arc.ccw ? -1 : 1) * Math.tan(includedAngle / 4);
+          // Bulge on the prepended vertex controls the segment from there to the next (polyline start)
+          poly.vertices.unshift({ x: arcEndX, y: arcEndY, bulge: bulge });
           doc.removeEntity(arc.id);
           viewer.removeObject(arc.id);
           this.cleanup(context);
           return "Arc joined to polyline.";
         } else if (distArcEndToPStart < tol) {
-          // Arc end connects to polyline start - insert arc's start at beginning with reversed bulge
-          const bulge = Math.tan((arc.endAngle - arc.startAngle) / 4);
-          poly.vertices.unshift({
-            x: arcStartX,
-            y: arcStartY,
-            bulge: arc.ccw ? -bulge : bulge
-          });
+          // Arc end connects to polyline start - prepend start → end (natural)
+          const includedAngle = arc.ccw
+            ? normalizeAngle(arc.endAngle - arc.startAngle)
+            : normalizeAngle(arc.startAngle - arc.endAngle);
+          const bulge = (arc.ccw ? 1 : -1) * Math.tan(includedAngle / 4);
+          // Bulge on the prepended vertex controls the segment from there to the next (polyline start)
+          poly.vertices.unshift({ x: arcStartX, y: arcStartY, bulge: bulge });
           doc.removeEntity(arc.id);
           viewer.removeObject(arc.id);
           this.cleanup(context);
@@ -143,14 +148,28 @@ export class JoinHandler implements ActionHandler {
         for (const e of sorted) {
           if (e instanceof Line) {
             vertices.push({ x: e.x1, y: e.y1, bulge: 0 });
-          } else {
-             const bulge = Math.tan((e.endAngle - e.startAngle) / 4);
-             vertices.push({ x: e.cx + e.r * Math.cos(e.startAngle), y: e.cy + e.r * Math.sin(e.startAngle), bulge: e.ccw ? -bulge : bulge });
+          } else if (e instanceof ArcEntity) {
+            const includedAngle = e.ccw
+              ? normalizeAngle(e.endAngle - e.startAngle)
+              : normalizeAngle(e.startAngle - e.endAngle);
+            const bulge = (e.ccw ? 1 : -1) * Math.tan(includedAngle / 4);
+            vertices.push({ 
+              x: e.cx + e.r * Math.cos(e.startAngle), 
+              y: e.cy + e.r * Math.sin(e.startAngle), 
+              bulge: bulge 
+            });
           }
         }
         const last = sorted[sorted.length - 1];
-        if (last instanceof Line) vertices.push({ x: last.x2, y: last.y2, bulge: 0 });
-        else vertices.push({ x: last.cx + last.r * Math.cos(last.endAngle), y: last.cy + last.r * Math.sin(last.endAngle), bulge: 0 });
+        if (last instanceof Line) {
+          vertices.push({ x: last.x2, y: last.y2, bulge: 0 });
+        } else if (last instanceof ArcEntity) {
+          vertices.push({ 
+            x: last.cx + last.r * Math.cos(last.endAngle), 
+            y: last.cy + last.r * Math.sin(last.endAngle), 
+            bulge: 0 
+          });
+        }
         
         entities.forEach(e => { doc.removeEntity(e.id); viewer.removeObject(e.id); });
         const polyId = doc.getNextId("PL");

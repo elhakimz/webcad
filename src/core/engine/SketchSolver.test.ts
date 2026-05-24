@@ -156,3 +156,73 @@ describe("solveDocumentConstraints integration with Text, MText, and Point", () 
   });
 });
 
+describe("Tangent Constraint", () => {
+  it("should successfully solve tangent constraints between line and circle", () => {
+    const points: SketchPoint[] = [
+      { x: 0, y: 0, isFixed: true }, // Circle center fixed
+      { x: 20, y: -20 },             // Line start
+      { x: 20, y: 20 }               // Line end
+    ];
+    const constraints: SketchConstraint[] = [
+      { type: "tangent", l1: [1, 2], circle: 0, radius: 10 }
+    ];
+
+    solveConstraints(points, constraints, undefined, 100);
+
+    const x1 = points[1].x, y1 = points[1].y;
+    const x2 = points[2].x, y2 = points[2].y;
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const dist = Math.abs(dy * 0 - dx * 0 + x2 * y1 - y2 * x1) / len;
+
+    expect(dist).toBeCloseTo(10, 5);
+  });
+
+  it("should move line when dragging circle center", () => {
+    const points: SketchPoint[] = [
+      { x: 0, y: 0 },   // Circle center (being "dragged")
+      { x: 10, y: -20 }, // Line start
+      { x: 10, y: 20 }   // Line end
+    ];
+    const constraints: SketchConstraint[] = [
+      { type: "tangent", l1: [1, 2], circle: 0, radius: 10 }
+    ];
+
+    // Initial state: already tangent.
+    // Now "drag" center to (5, 0).
+    points[0].x = 5;
+    points[0].y = 0;
+
+    // Solve with center locked at (5, 0)
+    solveConstraints(points, constraints, 0, 100);
+
+    const x1 = points[1].x, y1 = points[1].y;
+    const x2 = points[2].x, y2 = points[2].y;
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const dist = Math.abs(dy * 5 - dx * 0 + x2 * y1 - y2 * x1) / len;
+
+    // Line should have moved to x=15 (or x=-5)
+    expect(dist).toBeCloseTo(10, 5);
+    // Check if it moved roughly to 15
+    expect(points[1].x).toBeGreaterThan(14.9);
+  });
+
+  it("should solve tangent_smooth (3-point collinearity) for Arc-Arc", () => {
+    const points: SketchPoint[] = [
+      { x: 0, y: 0, isFixed: true }, // Arc 1 center
+      { x: 10, y: 5 },               // Shared contact point (initially off-center)
+      { x: 20, y: 0, isFixed: true } // Arc 2 center (now fixed)
+    ];
+    const constraints: SketchConstraint[] = [
+      { type: "tangent_smooth", p1: 0, p2: 1, p3: 2 }
+    ];
+
+    // Solving should move p2 to (10, 0) since p1 and p3 are fixed on x-axis
+    solveConstraints(points, constraints, undefined, 100);
+
+    expect(points[1].x).toBeCloseTo(10, 5);
+    expect(points[1].y).toBeCloseTo(0, 5);
+  });
+});
+

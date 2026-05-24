@@ -17,6 +17,8 @@ export type SketchConstraint =
   | { type: 'concentric'; p1: number; p2: number }
   | { type: 'parallel'; l1: [number, number]; l2: [number, number] }
   | { type: 'perpendicular'; l1: [number, number]; l2: [number, number] }
+  | { type: 'tangent'; l1: [number, number]; circle: number; radius: number }
+  | { type: 'tangent_smooth'; p1: number; p2: number; p3: number }
   | { type: 'fix'; p1: number; x?: number; y?: number };
 
 /**
@@ -292,6 +294,116 @@ export function solveConstraints(
             }
           }
         }
+      } else if (c.type === 'tangent') {
+        const { l1, circle, radius } = c;
+        const [p1, p2] = l1;
+        const pc = circle;
+        if (p1 >= points.length || p2 >= points.length || pc >= points.length) continue;
+
+        const w1 = w[p1];
+        const w2 = w[p2];
+        const wc = w[pc];
+        const sumW = w1 + w2 + wc;
+        if (sumW > 0) {
+          const x1 = points[p1].x, y1 = points[p1].y;
+          const x2 = points[p2].x, y2 = points[p2].y;
+          const xc = points[pc].x, yc = points[pc].y;
+
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const len = Math.sqrt(dx * dx + dy * dy);
+
+          if (len > 1e-6) {
+            const nx = -dy / len;
+            const ny = dx / len;
+            const tx = dx / len;
+            const ty = dy / len;
+
+            const signedDist = (xc - x1) * nx + (yc - y1) * ny;
+            const s = signedDist >= 0 ? 1 : -1;
+            const err = Math.abs(signedDist) - radius;
+
+            const alpha = ((xc - x1) * tx + (yc - y1) * ty) / len;
+            const beta = signedDist;
+
+            const gradPcX = s * nx;
+            const gradPcY = s * ny;
+
+            const gradP1X = -s * ((1 - alpha) * nx + (beta / len) * tx);
+            const gradP1Y = -s * ((1 - alpha) * ny + (beta / len) * ty);
+
+            const gradP2X = -s * (alpha * nx - (beta / len) * tx);
+            const gradP2Y = -s * (alpha * ny - (beta / len) * ty);
+
+            const sumGrad2 = wc * (gradPcX * gradPcX + gradPcY * gradPcY) +
+              w1 * (gradP1X * gradP1X + gradP1Y * gradP1Y) +
+              w2 * (gradP2X * gradP2X + gradP2Y * gradP2Y);
+
+            if (sumGrad2 > 1e-6) {
+              const lambda = -err / sumGrad2;
+
+              if (wc > 0) {
+                points[pc].x += lambda * wc * gradPcX;
+                points[pc].y += lambda * wc * gradPcY;
+              }
+              if (w1 > 0) {
+                points[p1].x += lambda * w1 * gradP1X;
+                points[p1].y += lambda * w1 * gradP1Y;
+              }
+              if (w2 > 0) {
+                points[p2].x += lambda * w2 * gradP2X;
+                points[p2].y += lambda * w2 * gradP2Y;
+              }
+            }
+          }
+        }
+      } else if (c.type === 'tangent_smooth') {
+        const { p1, p2, p3 } = c;
+        if (p1 >= points.length || p2 >= points.length || p3 >= points.length) continue;
+
+        const w1 = w[p1], w2 = w[p2], w3 = w[p3];
+        const sumW = w1 + w2 + w3;
+        if (sumW > 0) {
+          const x1 = points[p1].x, y1 = points[p1].y;
+          const x2 = points[p2].x, y2 = points[p2].y;
+          const x3 = points[p3].x, y3 = points[p3].y;
+
+          const dx31 = x3 - x1;
+          const dy31 = y3 - y1;
+          const L2 = dx31 * dx31 + dy31 * dy31;
+          if (L2 > 1e-9) {
+            const L = Math.sqrt(L2);
+            // C = ((x2 - x1)(y3 - y1) - (y2 - y1)(x3 - x1)) / L
+            const C = ((x2 - x1) * dy31 - (y2 - y1) * dx31) / L;
+            
+            // Gradients of C = (x2*dy31 - x1*dy31 - y2*dx31 + y1*dx31) / L
+            // grad2 = [dy31/L, -dx31/L]
+            const grad2x = dy31 / L;
+            const grad2y = -dx31 / L;
+            
+            // grad1 = [(-dy31 - (y2-y1)*0)/L, (dx31 + (x2-x1)*0)/L] -- simplified
+            // More accurately, p1 and p3 also rotate the line.
+            // For simplicity in PBD, we can treat p2 as moving to the line, 
+            // and p1, p3 moving to align with p2.
+            const t = ((x2 - x1) * dx31 + (y2 - y1) * dy31) / L2; // projection parameter
+            
+            const grad1x = -(1 - t) * grad2x;
+            const grad1y = -(1 - t) * grad2y;
+            const grad3x = -t * grad2x;
+            const grad3y = -t * grad2y;
+
+            const sumGrad2 = w1 * (grad1x * grad1x + grad1y * grad1y) +
+                             w2 * (grad2x * grad2x + grad2y * grad2y) +
+                             w3 * (grad3x * grad3x + grad3y * grad3y);
+
+            if (sumGrad2 > 1e-9) {
+              const lambda = -C / sumGrad2;
+              if (w1 > 0) { points[p1].x += lambda * w1 * grad1x; points[p1].y += lambda * w1 * grad1y; }
+              if (w2 > 0) { points[p2].x += lambda * w2 * grad2x; points[p2].y += lambda * w2 * grad2y; }
+              if (w3 > 0) { points[p3].x += lambda * w3 * grad3x; points[p3].y += lambda * w3 * grad3y; }
+            }
+          }
+        }
       } else if (c.type === 'fix') {
         const { p1, x, y } = c;
         if (p1 < points.length) {
@@ -319,6 +431,8 @@ export type DocumentConstraint =
   | { type: 'concentric'; p1: DocumentPointRef; p2: DocumentPointRef }
   | { type: 'parallel'; l1: [DocumentPointRef, DocumentPointRef]; l2: [DocumentPointRef, DocumentPointRef] }
   | { type: 'perpendicular'; l1: [DocumentPointRef, DocumentPointRef]; l2: [DocumentPointRef, DocumentPointRef] }
+  | { type: 'tangent'; l1: [DocumentPointRef, DocumentPointRef]; circle: DocumentPointRef }
+  | { type: 'tangent_smooth'; p1: DocumentPointRef; p2: DocumentPointRef; p3: DocumentPointRef }
   | { type: 'fix'; p1: DocumentPointRef; x?: number; y?: number };
 
 import { IDocument } from "../model/Document";
@@ -471,8 +585,22 @@ export function solveDocumentConstraints(
       referencedEntityIds.add(c.l1[1].entityId);
       referencedEntityIds.add(c.l2[0].entityId);
       referencedEntityIds.add(c.l2[1].entityId);
-    }
-  }
+    } else if (c.type === 'tangent') {
+      addRef(c.l1[0]);
+      addRef(c.l1[1]);
+      addRef(c.circle);
+      referencedEntityIds.add(c.l1[0].entityId);
+      referencedEntityIds.add(c.l1[1].entityId);
+      referencedEntityIds.add(c.circle.entityId);
+      } else if (c.type === 'tangent_smooth') {
+      addRef(c.p1);
+      addRef(c.p2);
+      addRef(c.p3);
+      referencedEntityIds.add(c.p1.entityId);
+      referencedEntityIds.add(c.p2.entityId);
+      referencedEntityIds.add(c.p3.entityId);
+      }
+      }
 
   // Include other points of referenced entities to ensure complete coordinate preservation/updates
   for (const entId of referencedEntityIds) {
@@ -557,14 +685,6 @@ export function solveDocumentConstraints(
       if (p1 !== undefined && p2 !== undefined && p3 !== undefined && p4 !== undefined) {
         solverConstraints.push({ type: 'angular', l1: [p1, p2], l2: [p3, p4], value: c.value });
       }
-    } else if (c.type === 'parallel') {
-      const p1 = refToIndex.get(refKey(c.l1[0]));
-      const p2 = refToIndex.get(refKey(c.l1[1]));
-      const p3 = refToIndex.get(refKey(c.l2[0]));
-      const p4 = refToIndex.get(refKey(c.l2[1]));
-      if (p1 !== undefined && p2 !== undefined && p3 !== undefined && p4 !== undefined) {
-        solverConstraints.push({ type: 'parallel', l1: [p1, p2], l2: [p3, p4] });
-      }
     } else if (c.type === 'perpendicular') {
       const p1 = refToIndex.get(refKey(c.l1[0]));
       const p2 = refToIndex.get(refKey(c.l1[1]));
@@ -572,6 +692,34 @@ export function solveDocumentConstraints(
       const p4 = refToIndex.get(refKey(c.l2[1]));
       if (p1 !== undefined && p2 !== undefined && p3 !== undefined && p4 !== undefined) {
         solverConstraints.push({ type: 'perpendicular', l1: [p1, p2], l2: [p3, p4] });
+      }
+    } else if (c.type === 'tangent') {
+      const p1 = refToIndex.get(refKey(c.l1[0]));
+      const p2 = refToIndex.get(refKey(c.l1[1]));
+      const pc = refToIndex.get(refKey(c.circle));
+
+      const ent = doc.getEntity(c.circle.entityId);
+      let r = 0;
+      if (ent instanceof Circle) r = ent.r;
+      else if (ent instanceof Arc) r = ent.r;
+
+      if (p1 !== undefined && p2 !== undefined && pc !== undefined && r > 0) {
+        solverConstraints.push({ type: 'tangent', l1: [p1, p2], circle: pc, radius: r });
+      }
+    } else if (c.type === 'tangent_smooth') {
+      const p1 = refToIndex.get(refKey(c.p1));
+      const p2 = refToIndex.get(refKey(c.p2));
+      const p3 = refToIndex.get(refKey(c.p3));
+      if (p1 !== undefined && p2 !== undefined && p3 !== undefined) {
+        solverConstraints.push({ type: 'tangent_smooth', p1, p2, p3 });
+      }
+    } else if (c.type === 'parallel') {
+      const p1 = refToIndex.get(refKey(c.l1[0]));
+      const p2 = refToIndex.get(refKey(c.l1[1]));
+      const p3 = refToIndex.get(refKey(c.l2[0]));
+      const p4 = refToIndex.get(refKey(c.l2[1]));
+      if (p1 !== undefined && p2 !== undefined && p3 !== undefined && p4 !== undefined) {
+        solverConstraints.push({ type: 'parallel', l1: [p1, p2], l2: [p3, p4] });
       }
     }
   }

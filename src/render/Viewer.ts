@@ -2,10 +2,6 @@ import * as THREE from "three"
 import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js'
 import { Font } from 'three/examples/jsm/loaders/FontLoader.js'
 import { TTFLoader } from 'three/examples/jsm/loaders/TTFLoader.js'
-import { Line2 } from 'three/examples/jsm/lines/Line2.js'
-import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
-import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
-import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { Entity } from "../core/model/Entity"
 import { UnitsConfig } from "../core/model/Document"
 import { FormatUtils } from "../core/engine/FormatUtils"
@@ -3275,6 +3271,11 @@ export class Viewer {
         obj.visible = visible;
       }
     });
+    this.render();
+  }
+
+  setMainGroupVisibility(visible: boolean) {
+    this.mainGroup.visible = visible;
     this.render();
   }
 

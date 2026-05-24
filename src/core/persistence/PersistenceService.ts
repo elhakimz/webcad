@@ -72,7 +72,8 @@ export class PersistenceService {
         currentLayer: doc.layers.getCurrentLayer().name,
         currentElevation: doc.currentElevation,
         currentThickness: doc.currentThickness,
-        idCounters: doc.getIdCounters() // Bug 4 fix
+        idCounters: doc.getIdCounters(),
+        constraints: doc.constraints
       }
     })
 
@@ -192,6 +193,7 @@ export class PersistenceService {
     if (proj.settings.idCounters) {
       doc.restoreIdCounters(proj.settings.idCounters) // Bug 4 fix
     }
+    doc.constraints = proj.settings.constraints || []
 
     // Load layers
     if (onProgress) {

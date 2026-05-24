@@ -19,7 +19,8 @@ export const PROJECT_SCHEMA: RxJsonSchema<any> = {
         currentLayer:     { type: 'string' },
         currentElevation: { type: 'number' },
         currentThickness: { type: 'number' },
-        idCounters:       { type: 'object' }    // Record<string,number> — Bug 4 fix
+        idCounters:       { type: 'object' },
+        constraints:      { type: 'array' }
       }
     }
   },

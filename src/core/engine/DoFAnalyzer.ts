@@ -212,6 +212,54 @@ export function analyzeDoF(
       row[colY(p4)] =  dy1;
       continue;
     }
+
+    if (c.type === 'symmetric') {
+      // p3 is the midpoint of p1 and p2
+      // f1 = x3 - 0.5*x1 - 0.5*x2 = 0  => ∂/∂x3=1, ∂/∂x1=-0.5, ∂/∂x2=-0.5
+      // f2 = y3 - 0.5*y1 - 0.5*y2 = 0  => ∂/∂y3=1, ∂/∂y1=-0.5, ∂/∂y2=-0.5
+      if (!validIdx(points, c.p1, c.p2, c.p3)) continue;
+      const r1 = mkRow(ci);
+      r1[colX(c.p3)] = 1.0; r1[colX(c.p1)] = -0.5; r1[colX(c.p2)] = -0.5;
+      const r2 = mkRow(ci);
+      r2[colY(c.p3)] = 1.0; r2[colY(c.p1)] = -0.5; r2[colY(c.p2)] = -0.5;
+      continue;
+    }
+
+    if (c.type === 'midpoint') {
+      // pm is midpoint of ps and pe
+      if (!validIdx(points, c.pm, c.ps, c.pe)) continue;
+      const r1 = mkRow(ci);
+      r1[colX(c.pm)] = 1.0; r1[colX(c.ps)] = -0.5; r1[colX(c.pe)] = -0.5;
+      const r2 = mkRow(ci);
+      r2[colY(c.pm)] = 1.0; r2[colY(c.ps)] = -0.5; r2[colY(c.pe)] = -0.5;
+      continue;
+    }
+
+    if (c.type === 'equal_length') {
+      const p1 = c.l1[0], p2 = c.l1[1], p3 = c.l2[0], p4 = c.l2[1];
+      if (!validIdx(points, p1, p2, p3, p4)) continue;
+
+      const dx1 = points[p2].x - points[p1].x;
+      const dy1 = points[p2].y - points[p1].y;
+      const l1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+
+      const dx2 = points[p4].x - points[p3].x;
+      const dy2 = points[p4].y - points[p3].y;
+      const l2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+
+      if (l1 > 1e-6 && l2 > 1e-6) {
+        const row = mkRow(ci);
+        row[colX(p1)] = -dx1 / l1;
+        row[colY(p1)] = -dy1 / l1;
+        row[colX(p2)] =  dx1 / l1;
+        row[colY(p2)] =  dy1 / l1;
+        row[colX(p3)] =  dx2 / l2;
+        row[colY(p3)] =  dy2 / l2;
+        row[colX(p4)] = -dx2 / l2;
+        row[colY(p4)] = -dy2 / l2;
+      }
+      continue;
+    }
   }
 
   // ── Step 3: Gram-Schmidt orthogonalisation (from SolveSpace calculateRank) ─

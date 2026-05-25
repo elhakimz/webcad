@@ -96,6 +96,13 @@ export function analyzeDocumentDoF(
       addRef(c.circle);
     } else if (c.type === 'tangent_smooth') {
       addRef(c.p1); addRef(c.p2); addRef(c.p3);
+    } else if (c.type === 'symmetric') {
+      addRef(c.p1); addRef(c.p2); addRef(c.p3);
+    } else if (c.type === 'midpoint') {
+      addRef(c.pm); addRef(c.ps); addRef(c.pe);
+    } else if (c.type === 'equal_length') {
+      addRef(c.l1[0]); addRef(c.l1[1]);
+      addRef(c.l2[0]); addRef(c.l2[1]);
     }
   }
 
@@ -238,6 +245,31 @@ export function analyzeDocumentDoF(
         sketchConstraints.push({ type: 'tangent_smooth', p1, p2, p3 });
         constraintOwner.push(ci);
       }
+    } else if (c.type === 'symmetric') {
+      const p1 = refToIndex.get(refKey(c.p1));
+      const p2 = refToIndex.get(refKey(c.p2));
+      const p3 = refToIndex.get(refKey(c.p3));
+      if (p1 !== undefined && p2 !== undefined && p3 !== undefined) {
+        sketchConstraints.push({ type: 'symmetric', p1, p2, p3 });
+        constraintOwner.push(ci);
+      }
+    } else if (c.type === 'midpoint') {
+      const pm = refToIndex.get(refKey(c.pm));
+      const ps = refToIndex.get(refKey(c.ps));
+      const pe = refToIndex.get(refKey(c.pe));
+      if (pm !== undefined && ps !== undefined && pe !== undefined) {
+        sketchConstraints.push({ type: 'midpoint', pm, ps, pe });
+        constraintOwner.push(ci);
+      }
+    } else if (c.type === 'equal_length') {
+      const p1 = refToIndex.get(refKey(c.l1[0]));
+      const p2 = refToIndex.get(refKey(c.l1[1]));
+      const p3 = refToIndex.get(refKey(c.l2[0]));
+      const p4 = refToIndex.get(refKey(c.l2[1]));
+      if (p1 !== undefined && p2 !== undefined && p3 !== undefined && p4 !== undefined) {
+        sketchConstraints.push({ type: 'equal_length', l1: [p1, p2], l2: [p3, p4] });
+        constraintOwner.push(ci);
+      }
     }
   }
 
@@ -270,6 +302,10 @@ export function analyzeDocumentDoF(
     if (!c) return;
     if ('p1' in c) overEntityIds.add((c as any).p1.entityId);
     if ('p2' in c) overEntityIds.add((c as any).p2.entityId);
+    if ('p3' in c) overEntityIds.add((c as any).p3.entityId);
+    if ('pm' in c) overEntityIds.add((c as any).pm.entityId);
+    if ('ps' in c) overEntityIds.add((c as any).ps.entityId);
+    if ('pe' in c) overEntityIds.add((c as any).pe.entityId);
     if ('l1' in c) {
       overEntityIds.add((c as any).l1[0].entityId);
       overEntityIds.add((c as any).l1[1].entityId);

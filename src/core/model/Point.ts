@@ -37,11 +37,12 @@ export class Point extends Entity {
   }
 
   getBoundingBox(): BoundingBox {
+    const size = 0.1; // Small size for selection tolerance
     return {
-      minX: this.x,
-      minY: this.y,
-      maxX: this.x,
-      maxY: this.y
+      minX: this.x - size,
+      minY: this.y - size,
+      maxX: this.x + size,
+      maxY: this.y + size
     };
   }
 

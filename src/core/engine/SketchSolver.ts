@@ -19,6 +19,9 @@ export type SketchConstraint =
   | { type: 'perpendicular'; l1: [number, number]; l2: [number, number] }
   | { type: 'tangent'; l1: [number, number]; circle: number; radius: number }
   | { type: 'tangent_smooth'; p1: number; p2: number; p3: number }
+  | { type: 'symmetric'; p1: number; p2: number; p3: number }
+  | { type: 'midpoint'; pm: number; ps: number; pe: number }
+  | { type: 'equal_length'; l1: [number, number]; l2: [number, number] }
   | { type: 'fix'; p1: number; x?: number; y?: number };
 
 /**
@@ -404,6 +407,97 @@ export function solveConstraints(
             }
           }
         }
+      } else if (c.type === 'symmetric') {
+        const { p1, p2, p3 } = c; // p3 is the midpoint of p1 and p2
+        if (p1 >= points.length || p2 >= points.length || p3 >= points.length) continue;
+
+        const w1 = w[p1], w2 = w[p2], w3 = w[p3];
+        const sumW = w1 + w2 + w3;
+        if (sumW > 0) {
+          const x1 = points[p1].x, y1 = points[p1].y;
+          const x2 = points[p2].x, y2 = points[p2].y;
+          const x3 = points[p3].x, y3 = points[p3].y;
+
+          // C_x = x3 - (x1 + x2) / 2 = 0
+          const Cx = x3 - 0.5 * (x1 + x2);
+          const sumGrad2x = w3 * (1.0 * 1.0) + w1 * (-0.5 * -0.5) + w2 * (-0.5 * -0.5);
+          if (sumGrad2x > 1e-9) {
+            const lambdaX = -Cx / sumGrad2x;
+            if (w1 > 0) points[p1].x += lambdaX * w1 * -0.5;
+            if (w2 > 0) points[p2].x += lambdaX * w2 * -0.5;
+            if (w3 > 0) points[p3].x += lambdaX * w3 * 1.0;
+          }
+
+          // C_y = y3 - (y1 + y2) / 2 = 0
+          const Cy = y3 - 0.5 * (y1 + y2);
+          const sumGrad2y = w3 * (1.0 * 1.0) + w1 * (-0.5 * -0.5) + w2 * (-0.5 * -0.5);
+          if (sumGrad2y > 1e-9) {
+            const lambdaY = -Cy / sumGrad2y;
+            if (w1 > 0) points[p1].y += lambdaY * w1 * -0.5;
+            if (w2 > 0) points[p2].y += lambdaY * w2 * -0.5;
+            if (w3 > 0) points[p3].y += lambdaY * w3 * 1.0;
+          }
+        }
+      } else if (c.type === 'midpoint') {
+        const ps = c.ps, pe = c.pe, pm = c.pm;
+        if (ps >= points.length || pe >= points.length || pm >= points.length) continue;
+
+        const w1 = w[ps], w2 = w[pe], wm = w[pm];
+        const sumW = w1 + w2 + wm;
+        if (sumW > 0) {
+          const x1 = points[ps].x, y1 = points[ps].y;
+          const x2 = points[pe].x, y2 = points[pe].y;
+          const xm = points[pm].x, ym = points[pm].y;
+
+          // C_x = xm - 0.5 * (x1 + x2) = 0
+          const Cx = xm - 0.5 * (x1 + x2);
+          const sumGrad2x = wm * 1.0 + w1 * 0.25 + w2 * 0.25;
+          if (sumGrad2x > 1e-9) {
+            const lambdaX = -Cx / sumGrad2x;
+            if (w1 > 0) points[ps].x += lambdaX * w1 * -0.5;
+            if (w2 > 0) points[pe].x += lambdaX * w2 * -0.5;
+            if (wm > 0) points[pm].x += lambdaX * wm * 1.0;
+          }
+
+          // C_y = ym - 0.5 * (y1 + y2) = 0
+          const Cy = ym - 0.5 * (y1 + y2);
+          const sumGrad2y = wm * 1.0 + w1 * 0.25 + w2 * 0.25;
+          if (sumGrad2y > 1e-9) {
+            const lambdaY = -Cy / sumGrad2y;
+            if (w1 > 0) points[ps].y += lambdaY * w1 * -0.5;
+            if (w2 > 0) points[pe].y += lambdaY * w2 * -0.5;
+            if (wm > 0) points[pm].y += lambdaY * wm * 1.0;
+          }
+        }
+      } else if (c.type === 'equal_length') {
+        const p1 = c.l1[0], p2 = c.l1[1];
+        const p3 = c.l2[0], p4 = c.l2[1];
+        if (p1 >= points.length || p2 >= points.length || p3 >= points.length || p4 >= points.length) continue;
+
+        const w1 = w[p1], w2 = w[p2], w3 = w[p3], w4 = w[p4];
+        const sumW = w1 + w2 + w3 + w4;
+        if (sumW > 0) {
+          const dx1 = points[p2].x - points[p1].x;
+          const dy1 = points[p2].y - points[p1].y;
+          const l1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+
+          const dx2 = points[p4].x - points[p3].x;
+          const dy2 = points[p4].y - points[p3].y;
+          const l2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+
+          if (l1 > 1e-6 && l2 > 1e-6) {
+            const C = l1 - l2;
+            const g1x = dx1 / l1, g1y = dy1 / l1;
+            const g2x = dx2 / l2, g2y = dy2 / l2;
+            
+            const lambda = -C / sumW;
+
+            if (w1 > 0) { points[p1].x += lambda * w1 * -g1x; points[p1].y += lambda * w1 * -g1y; }
+            if (w2 > 0) { points[p2].x += lambda * w2 *  g1x; points[p2].y += lambda * w2 *  g1y; }
+            if (w3 > 0) { points[p3].x += lambda * w3 *  g2x; points[p3].y += lambda * w3 *  g2y; }
+            if (w4 > 0) { points[p4].x += lambda * w4 * -g2x; points[p4].y += lambda * w4 * -g2y; }
+          }
+        }
       } else if (c.type === 'fix') {
         const { p1, x, y } = c;
         if (p1 < points.length) {
@@ -433,6 +527,9 @@ export type DocumentConstraint =
   | { type: 'perpendicular'; l1: [DocumentPointRef, DocumentPointRef]; l2: [DocumentPointRef, DocumentPointRef] }
   | { type: 'tangent'; l1: [DocumentPointRef, DocumentPointRef]; circle: DocumentPointRef }
   | { type: 'tangent_smooth'; p1: DocumentPointRef; p2: DocumentPointRef; p3: DocumentPointRef }
+  | { type: 'symmetric'; p1: DocumentPointRef; p2: DocumentPointRef; p3: DocumentPointRef }
+  | { type: 'midpoint'; pm: DocumentPointRef; ps: DocumentPointRef; pe: DocumentPointRef }
+  | { type: 'equal_length'; l1: [DocumentPointRef, DocumentPointRef]; l2: [DocumentPointRef, DocumentPointRef] }
   | { type: 'fix'; p1: DocumentPointRef; x?: number; y?: number };
 
 import { IDocument } from "../model/Document";
@@ -599,6 +696,29 @@ export function solveDocumentConstraints(
       referencedEntityIds.add(c.p1.entityId);
       referencedEntityIds.add(c.p2.entityId);
       referencedEntityIds.add(c.p3.entityId);
+      } else if (c.type === 'symmetric') {
+      addRef(c.p1);
+      addRef(c.p2);
+      addRef(c.p3);
+      referencedEntityIds.add(c.p1.entityId);
+      referencedEntityIds.add(c.p2.entityId);
+      referencedEntityIds.add(c.p3.entityId);
+      } else if (c.type === 'midpoint') {
+      addRef(c.pm);
+      addRef(c.ps);
+      addRef(c.pe);
+      referencedEntityIds.add(c.pm.entityId);
+      referencedEntityIds.add(c.ps.entityId);
+      referencedEntityIds.add(c.pe.entityId);
+      } else if (c.type === 'equal_length') {
+      addRef(c.l1[0]);
+      addRef(c.l1[1]);
+      addRef(c.l2[0]);
+      addRef(c.l2[1]);
+      referencedEntityIds.add(c.l1[0].entityId);
+      referencedEntityIds.add(c.l1[1].entityId);
+      referencedEntityIds.add(c.l2[0].entityId);
+      referencedEntityIds.add(c.l2[1].entityId);
       }
       }
 
@@ -713,6 +833,28 @@ export function solveDocumentConstraints(
       if (p1 !== undefined && p2 !== undefined && p3 !== undefined) {
         solverConstraints.push({ type: 'tangent_smooth', p1, p2, p3 });
       }
+    } else if (c.type === 'symmetric') {
+      const p1 = refToIndex.get(refKey(c.p1));
+      const p2 = refToIndex.get(refKey(c.p2));
+      const p3 = refToIndex.get(refKey(c.p3));
+      if (p1 !== undefined && p2 !== undefined && p3 !== undefined) {
+        solverConstraints.push({ type: 'symmetric', p1, p2, p3 });
+      }
+    } else if (c.type === 'midpoint') {
+      const pm = refToIndex.get(refKey(c.pm));
+      const ps = refToIndex.get(refKey(c.ps));
+      const pe = refToIndex.get(refKey(c.pe));
+      if (pm !== undefined && ps !== undefined && pe !== undefined) {
+        solverConstraints.push({ type: 'midpoint', pm, ps, pe });
+      }
+    } else if (c.type === 'equal_length') {
+      const p1 = refToIndex.get(refKey(c.l1[0]));
+      const p2 = refToIndex.get(refKey(c.l1[1]));
+      const p3 = refToIndex.get(refKey(c.l2[0]));
+      const p4 = refToIndex.get(refKey(c.l2[1]));
+      if (p1 !== undefined && p2 !== undefined && p3 !== undefined && p4 !== undefined) {
+        solverConstraints.push({ type: 'equal_length', l1: [p1, p2], l2: [p3, p4] });
+      }
     } else if (c.type === 'parallel') {
       const p1 = refToIndex.get(refKey(c.l1[0]));
       const p2 = refToIndex.get(refKey(c.l1[1]));
@@ -724,10 +866,27 @@ export function solveDocumentConstraints(
     }
   }
 
-  // Find locked point index
+  // Find locked point index and apply fixed weights for dragging
   let lockedIndex: number | undefined;
   if (lockedPoint) {
-    lockedIndex = refToIndex.get(refKey(lockedPoint));
+    if (lockedPoint.pointId === 'mid') {
+      // Dragging the midpoint of a line means the whole line translates rigidly. Pin both endpoints.
+      const idx1 = refToIndex.get(`${lockedPoint.entityId}::start`);
+      const idx2 = refToIndex.get(`${lockedPoint.entityId}::end`);
+      if (idx1 !== undefined) points[idx1].isFixed = true;
+      if (idx2 !== undefined) points[idx2].isFixed = true;
+    } else if (lockedPoint.pointId.startsWith('midpoint_')) {
+      // Dragging the midpoint of a polyline segment
+      const segIdx = parseInt(lockedPoint.pointId.split('_')[1]);
+      const idx1 = refToIndex.get(`${lockedPoint.entityId}::vertex_${segIdx}`);
+      const idx2 = refToIndex.get(`${lockedPoint.entityId}::vertex_${segIdx + 1}`);
+      const idx0 = refToIndex.get(`${lockedPoint.entityId}::vertex_0`); // fallback for closed polylines
+      if (idx1 !== undefined) points[idx1].isFixed = true;
+      if (idx2 !== undefined) points[idx2].isFixed = true;
+      else if (idx0 !== undefined) points[idx0].isFixed = true;
+    } else {
+      lockedIndex = refToIndex.get(refKey(lockedPoint));
+    }
   }
 
   // 4. Run solver

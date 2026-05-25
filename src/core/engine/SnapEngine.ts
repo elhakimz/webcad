@@ -5,6 +5,7 @@ import { Arc } from "../model/Arc";
 import { Polyline } from "../model/Polyline";
 import { Spline } from "../model/Spline";
 import { Donut } from "../model/Donut";
+import { Point } from "../model/Point";
 import { Document } from "../model/Document";
 import { distancePointToPoint, bulgeToArc } from "./MathUtils";
 
@@ -156,6 +157,8 @@ export class SnapEngine {
       }
     } else if (entity instanceof Donut) {
       snaps.push({ x: entity.cx, y: entity.cy, z: zVal, type: SnapType.CENTER });
+    } else if (entity instanceof Point) {
+      snaps.push({ x: entity.x, y: entity.y, z: zVal, type: SnapType.ENDPOINT });
     }
     
     return snaps;

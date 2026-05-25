@@ -578,18 +578,21 @@ export class App {
         const { x, y } = snapped;
         
         const isConstrained = this.doc.constraints && this.doc.constraints.some(c => {
-          if (c.type === 'parallel' || c.type === 'perpendicular' || c.type === 'angular') {
-            return c.l1[0].entityId === this.activeGrip!.entityId ||
-                   c.l1[1].entityId === this.activeGrip!.entityId ||
-                   c.l2[0].entityId === this.activeGrip!.entityId ||
-                   c.l2[1].entityId === this.activeGrip!.entityId;
+          const checkRef = (ref: any) => !!(ref && ref.entityId && ref.entityId === this.activeGrip?.entityId);
+          const checkList = (list: any[]) => !!(list && Array.isArray(list) && list.some(ref => checkRef(ref)));
+
+          if (!c) return false;
+
+          if (c.type === 'parallel' || c.type === 'perpendicular' || c.type === 'angular' || c.type === 'equal_length') {
+            return checkList((c as any).l1) || checkList((c as any).l2);
           } else if (c.type === 'tangent') {
-            return c.l1[0].entityId === this.activeGrip!.entityId ||
-                   c.l1[1].entityId === this.activeGrip!.entityId ||
-                   c.circle.entityId === this.activeGrip!.entityId;
+            return checkList((c as any).l1) || checkRef((c as any).circle);
+          } else if (c.type === 'symmetric' || c.type === 'tangent_smooth') {
+            return checkRef((c as any).p1) || checkRef((c as any).p2) || checkRef((c as any).p3);
+          } else if (c.type === 'midpoint') {
+            return checkRef((c as any).pm) || checkRef((c as any).ps) || checkRef((c as any).pe);
           } else {
-            return (c as any).p1.entityId === this.activeGrip!.entityId ||
-                   ('p2' in c && (c as any).p2.entityId === this.activeGrip!.entityId);
+            return checkRef((c as any).p1) || checkRef((c as any).p2);
           }
         });
 
@@ -889,6 +892,8 @@ export class App {
       entity.vertices.forEach((v, idx) => {
         checkPoint(`vertex_${idx}`, v.x, v.y);
       });
+    } else if (entity instanceof Point) {
+      checkPoint('position', entity.x, entity.y);
     }
 
     if (closestPointId) {
@@ -906,39 +911,70 @@ export class App {
     const isDuplicate = this.doc.constraints.some(existing => {
       if (existing.type !== c.type) return false;
       
-      const arePointRefsEqual = (r1: DocumentPointRef, r2: DocumentPointRef) => 
-        r1.entityId === r2.entityId && r1.pointId === r2.pointId;
+      const arePointRefsEqual = (r1: any, r2: any) => 
+        !!(r1 && r2 && r1.entityId === r2.entityId && r1.pointId === r2.pointId);
 
-      if (existing.type === 'fix' && c.type === 'fix') {
-        return arePointRefsEqual(existing.p1, c.p1);
+      const arePointListsEqual = (l1: any[], l2: any[]) => {
+        if (!l1 || !l2 || l1.length !== l2.length) return false;
+        // Check exact order or swapped order for 2-point segments
+        if (l1.length === 2) {
+          return (arePointRefsEqual(l1[0], l2[0]) && arePointRefsEqual(l1[1], l2[1])) ||
+                 (arePointRefsEqual(l1[0], l2[1]) && arePointRefsEqual(l1[1], l2[0]));
+        }
+        return l1.every((ref, idx) => arePointRefsEqual(ref, l2[idx]));
+      };
+
+      if (c.type === 'fix') {
+        return arePointRefsEqual((existing as any).p1, (c as any).p1);
       }
       
-      if (('p1' in existing && 'p2' in existing) && ('p1' in c && 'p2' in c)) {
-        return (arePointRefsEqual(existing.p1, c.p1) && arePointRefsEqual(existing.p2, c.p2)) ||
-               (arePointRefsEqual(existing.p1, c.p2) && arePointRefsEqual(existing.p2, c.p1));
+      if (c.type === 'parallel' || c.type === 'perpendicular' || c.type === 'angular' || c.type === 'equal_length') {
+        const e = existing as any, cn = c as any;
+        return (arePointListsEqual(e.l1, cn.l1) && arePointListsEqual(e.l2, cn.l2)) ||
+               (arePointListsEqual(e.l1, cn.l2) && arePointListsEqual(e.l2, cn.l1));
+      }
+
+      if (c.type === 'tangent') {
+        const e = existing as any, cn = c as any;
+        return arePointListsEqual(e.l1, cn.l1) && arePointRefsEqual(e.circle, cn.circle);
+      }
+
+      if (c.type === 'tangent_smooth' || c.type === 'symmetric') {
+        const e = existing as any, cn = c as any;
+        // Check p1, p2 (outer) and p3 (center)
+        const outerMatch = (arePointRefsEqual(e.p1, cn.p1) && arePointRefsEqual(e.p2, cn.p2)) ||
+                           (arePointRefsEqual(e.p1, cn.p2) && arePointRefsEqual(e.p2, cn.p1));
+        return outerMatch && arePointRefsEqual(e.p3, cn.p3);
+      }
+
+      if (c.type === 'midpoint') {
+        const e = existing as any, cn = c as any;
+        // pm is midpoint, ps/pe are endpoints
+        const endpointsMatch = (arePointRefsEqual(e.ps, cn.ps) && arePointRefsEqual(e.pe, cn.pe)) ||
+                               (arePointRefsEqual(e.ps, cn.pe) && arePointRefsEqual(e.pe, cn.ps));
+        return arePointRefsEqual(e.pm, cn.pm) && endpointsMatch;
+      }
+
+      // Default fallback for simple p1/p2 constraints (coincident, distance, concentric)
+      if ('p1' in c && 'p2' in c) {
+        const e = existing as any, cn = c as any;
+        return (arePointRefsEqual(e.p1, cn.p1) && arePointRefsEqual(e.p2, cn.p2)) ||
+               (arePointRefsEqual(e.p1, cn.p2) && arePointRefsEqual(e.p2, cn.p1));
       }
       
-      if (('l1' in existing && 'l2' in existing) && ('l1' in c && 'l2' in c)) {
-        const matchDirect = (
-          (arePointRefsEqual(existing.l1[0], c.l1[0]) && arePointRefsEqual(existing.l1[1], c.l1[1]) ||
-           arePointRefsEqual(existing.l1[0], c.l1[1]) && arePointRefsEqual(existing.l1[1], c.l1[0])) &&
-          (arePointRefsEqual(existing.l2[0], c.l2[0]) && arePointRefsEqual(existing.l2[1], c.l2[1]) ||
-           arePointRefsEqual(existing.l2[0], c.l2[1]) && arePointRefsEqual(existing.l2[1], c.l2[0]))
-        );
-        const matchSwapped = (
-          (arePointRefsEqual(existing.l1[0], c.l2[0]) && arePointRefsEqual(existing.l1[1], c.l2[1]) ||
-           arePointRefsEqual(existing.l1[0], c.l2[1]) && arePointRefsEqual(existing.l1[1], c.l2[0])) &&
-          (arePointRefsEqual(existing.l2[0], c.l1[0]) && arePointRefsEqual(existing.l2[1], c.l1[1]) ||
-           arePointRefsEqual(existing.l2[0], c.l1[1]) && arePointRefsEqual(existing.l2[1], c.l1[0]))
-        );
-        return matchDirect || matchSwapped;
-      }
       return false;
     });
 
     if (isDuplicate) {
       this.printToCommandLine("Constraint is already applied.");
       return;
+    }
+
+    // Ensure constraints array is extensible (it might be frozen if assigned from a DB document)
+    if (!this.doc.constraints) {
+      this.doc.constraints = [];
+    } else if (Object.isFrozen(this.doc.constraints) || !Array.isArray(this.doc.constraints)) {
+      this.doc.constraints = Array.from(this.doc.constraints);
     }
 
     this.doc.history.startTransaction(this.doc.constraints);
@@ -974,6 +1010,7 @@ export class App {
   }
 
   showDraftingContextMenu(screenX: number, screenY: number) {
+    console.log("1. ContextMenu, 2. showDraftingContextMenu");
     if (this.cmd.active) {
       return;
     }
@@ -996,6 +1033,7 @@ export class App {
       this.dynamicMenu.show(screenX, screenY, headers, options);
       this.dynamicMenu.onOptionClicked((option) => {
         if (option === "Fix Coordinate" && this.activeGrip) {
+          console.log("1. ContextMenu, Fix, applyDirectConstraint");
           const coords = getPointCoords(this.doc, { entityId: this.activeGrip.entityId, pointId: this.activeGrip.gripId });
           if (coords) {
             this.applyDirectConstraint({
@@ -1038,12 +1076,14 @@ export class App {
       this.dynamicMenu.show(screenX, screenY, headers, options);
       this.dynamicMenu.onOptionClicked((option) => {
         if (option === "Horizontal" && ent instanceof Line) {
+          console.log("1. ContextMenu, Horizontal, applyDirectConstraint");
           this.applyDirectConstraint({
             type: 'horizontal',
             p1: { entityId: ent.id, pointId: 'start' },
             p2: { entityId: ent.id, pointId: 'end' }
           });
         } else if (option === "Vertical" && ent instanceof Line) {
+          console.log("1. ContextMenu, Vertical, applyDirectConstraint");
           this.applyDirectConstraint({
             type: 'vertical',
             p1: { entityId: ent.id, pointId: 'start' },
@@ -1052,6 +1092,7 @@ export class App {
         } else if (option === "Fix") {
           const closestRef = this.getClosestPointRef(worldPt.x, worldPt.y, ent.id);
           if (closestRef) {
+            console.log("1. ContextMenu, Fix, applyDirectConstraint");
             const coords = getPointCoords(this.doc, closestRef);
             if (coords) {
               this.applyDirectConstraint({ type: 'fix', p1: closestRef, x: coords.x, y: coords.y });
@@ -1059,6 +1100,7 @@ export class App {
           }
         } else if (option === "Fix Center" && (ent instanceof Circle || ent instanceof Arc)) {
           const ref = { entityId: ent.id, pointId: 'center' };
+          console.log("1. ContextMenu, Fix, applyDirectConstraint");
           const coords = getPointCoords(this.doc, ref);
           if (coords) {
             this.applyDirectConstraint({ type: 'fix', p1: ref, x: coords.x, y: coords.y });
@@ -1081,16 +1123,26 @@ export class App {
       const hasCircle1 = ent1 instanceof Circle || ent1 instanceof Arc;
       const hasCircle2 = ent2 instanceof Circle || ent2 instanceof Arc;
 
+      const hasSegment1 = ent1 instanceof Line || ent1 instanceof Polyline;
+      const hasSegment2 = ent2 instanceof Line || ent2 instanceof Polyline;
+
       const isJoinable1 = ent1 instanceof Line || ent1 instanceof Polyline || ent1 instanceof Arc;
       const isJoinable2 = ent2 instanceof Line || ent2 instanceof Polyline || ent2 instanceof Arc;
+
+      const hasPointLike1 = ent1 instanceof Point || ent1 instanceof Circle || ent1 instanceof Arc;
+      const hasPointLike2 = ent2 instanceof Point || ent2 instanceof Circle || ent2 instanceof Arc;
 
       if (isJoinable1 && isJoinable2) {
         // TOP ORDER: JOIN
         options.push("Join", "---");
       }
 
+      if ((hasSegment1 && hasPointLike2) || (hasSegment2 && hasPointLike1)) {
+        options.push("Midpoint", "---");
+      }
+
       if (hasLine1 && hasLine2) {
-        options.push("Coincident", "Parallel", "Perpendicular", "Angular", "Distance", "Cancel");
+        options.push("Coincident", "Parallel", "Perpendicular", "Equal Length", "Angular", "Distance", "Cancel");
       } else if (hasCircle1 && hasCircle2) {
         options.push("Coincident", "Concentric", "Tangent", "Distance", "Cancel");
       } else if ((hasLine1 && hasCircle2) || (hasLine2 && hasCircle1)) {
@@ -1127,7 +1179,145 @@ export class App {
           return;
         }
 
-        // Auto-resolve points based on mouse proximity
+        // Midpoint Relation (Line/Polyline + Point/Center)
+        if (option === "Midpoint") {
+          const segmentEnt = selectedEntities.find(e => e instanceof Line || e instanceof Polyline);
+          const pointEnt = selectedEntities.find(e => e instanceof Point || e instanceof Circle || e instanceof Arc);
+
+          if (segmentEnt && pointEnt) {
+            console.log("1. ContextMenu, Midpoint, applyDirectConstraint");
+            const getPointRef = (e: any): DocumentPointRef => {
+              if (e instanceof Point) return { entityId: e.id, pointId: 'position' };
+              return { entityId: e.id, pointId: 'center' };
+            };
+
+            const pm = getPointRef(pointEnt);
+            let ps: DocumentPointRef | null = null;
+            let pe: DocumentPointRef | null = null;
+
+            if (segmentEnt instanceof Line) {
+              ps = { entityId: segmentEnt.id, pointId: 'start' };
+              pe = { entityId: segmentEnt.id, pointId: 'end' };
+            } else if (segmentEnt instanceof Polyline) {
+              let minIdx = 0;
+              let minDist = Infinity;
+              const numVerts = segmentEnt.vertices.length;
+              const numSegs = segmentEnt.closed ? numVerts : numVerts - 1;
+
+              for (let i = 0; i < numSegs; i++) {
+                const v1 = segmentEnt.vertices[i];
+                const v2 = segmentEnt.vertices[(i + 1) % numVerts];
+                const mx = (v1.x + v2.x) / 2;
+                const my = (v1.y + v2.y) / 2;
+                const dist = Math.sqrt((worldPt.x - mx) ** 2 + (worldPt.y - my) ** 2);
+                if (dist < minDist) { minDist = dist; minIdx = i; }
+              }
+              ps = { entityId: segmentEnt.id, pointId: `vertex_${minIdx}` };
+              pe = { entityId: segmentEnt.id, pointId: `vertex_${(minIdx + 1) % numVerts}` };
+            }
+
+            if (ps && pe) {
+              this.applyDirectConstraint({ type: 'midpoint', pm, ps, pe });
+            }
+          }
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+          return;
+        }
+
+        // Geometric Constraints (Line + Line)
+        if (option === "Parallel" && ent1 instanceof Line && ent2 instanceof Line) {
+          console.log("1. ContextMenu, Parallel, applyDirectConstraint");
+          this.applyDirectConstraint({
+            type: 'parallel',
+            l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }],
+            l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
+          });
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+          return;
+        }
+
+        if (option === "Perpendicular" && ent1 instanceof Line && ent2 instanceof Line) {
+          console.log("1. ContextMenu, Perpendicular, applyDirectConstraint");
+          this.applyDirectConstraint({
+            type: 'perpendicular',
+            l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }],
+            l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
+          });
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+          return;
+        }
+
+        if (option === "Equal Length" && ent1 instanceof Line && ent2 instanceof Line) {
+          console.log("1. ContextMenu, Equal Length, applyDirectConstraint");
+          this.applyDirectConstraint({
+            type: 'equal_length',
+            l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }],
+            l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
+          });
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+          return;
+        }
+
+        if (option === "Angular" && ent1 instanceof Line && ent2 instanceof Line) {
+          console.log("1. ContextMenu, Angular, applyDirectConstraint");
+          this.dynamicMenu.hide();
+          const p1 = { x: ent1.x1, y: ent1.y1 }, p2 = { x: ent1.x2, y: ent1.y2 };
+          const p3 = { x: ent2.x1, y: ent2.y1 }, p4 = { x: ent2.x2, y: ent2.y2 };
+          const vx1 = p2.x - p1.x, vy1 = p2.y - p1.y;
+          const vx2 = p4.x - p3.x, vy2 = p4.y - p3.y;
+          if (Math.sqrt(vx1**2+vy1**2) < 1e-6 || Math.sqrt(vx2**2+vy2**2) < 1e-6) return;
+          const diff = Math.atan2(vy2, vx2) - Math.atan2(vy1, vx1);
+          let d = diff; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+          const currentDeg = (Math.abs(d) * 180 / Math.PI).toFixed(1);
+          const rect = this.viewer.canvas.getBoundingClientRect();
+          this.dynamicInput.show(rect.left + rect.width / 2 - 80, rect.top + rect.height / 2 - 40, ["SET TARGET ANGLE", `Current: ${currentDeg}°`], [], true, [], "Type angle in degrees and press Enter", currentDeg);
+          this.dynamicInput.onInputSubmitted((text) => {
+            const val = parseFloat(text);
+            if (!isNaN(val) && val > 0 && val < 180) {
+              this.applyDirectConstraint({ type: 'angular', l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }], l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }], value: val * Math.PI / 180 });
+            }
+            this.dynamicInput.hide();
+          });
+          this.contextMenuVisible = false;
+          return;
+        }
+
+        // Tangent Relations
+        if (option === "Tangent" && (ent1 instanceof Arc || ent1 instanceof Circle) && (ent2 instanceof Arc || ent2 instanceof Circle)) {
+          console.log("1. ContextMenu, Tangent, applyDirectConstraint");
+          const tol = 1e-3;
+          const pts1 = ent1 instanceof Arc ? ['start', 'end'] : [], pts2 = ent2 instanceof Arc ? ['start', 'end'] : [];
+          let shared: DocumentPointRef | null = null;
+          for (const p1id of pts1) { for (const p2id of pts2) {
+              const p1 = getPointCoords(this.doc, { entityId: ent1.id, pointId: p1id }), p2 = getPointCoords(this.doc, { entityId: ent2.id, pointId: p2id });
+              if (p1 && p2 && Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2) < tol) { shared = { entityId: ent1.id, pointId: p1id }; break; }
+          } if (shared) break; }
+          if (shared) { this.applyDirectConstraint({ type: 'tangent_smooth', p1: { entityId: ent1.id, pointId: 'center' }, p2: shared, p3: { entityId: ent2.id, pointId: 'center' } }); }
+          this.dynamicMenu.hide(); this.contextMenuVisible = false;
+          return;
+        }
+
+        if (option === "Tangent") {
+          const lineEnt = ent1 instanceof Line ? ent1 : ent2 as Line;
+          const circleEnt = (ent1 instanceof Circle || ent1 instanceof Arc) ? ent1 : ent2 as Circle | Arc;
+          console.log("1. ContextMenu, Tangent, applyDirectConstraint");
+          this.applyDirectConstraint({ type: 'tangent', l1: [{ entityId: lineEnt.id, pointId: 'start' }, { entityId: lineEnt.id, pointId: 'end' }], circle: { entityId: circleEnt.id, pointId: 'center' } });
+          this.dynamicMenu.hide(); this.contextMenuVisible = false;
+          return;
+        }
+
+        if (option === "Concentric" && (ent1 instanceof Circle || ent1 instanceof Arc) && (ent2 instanceof Circle || ent2 instanceof Arc)) {
+          console.log("1. ContextMenu, Concentric, applyDirectConstraint");
+          this.applyDirectConstraint({ type: 'concentric', p1: { entityId: ent1.id, pointId: 'center' }, p2: { entityId: ent2.id, pointId: 'center' } });
+          this.dynamicMenu.hide(); this.contextMenuVisible = false;
+          return;
+        }
+
+        // Point-to-Point Constraints (Need proximity resolution)
         const ref1 = this.getClosestPointRef(worldPt.x, worldPt.y, ent1.id);
         const ref2 = this.getClosestPointRef(worldPt.x, worldPt.y, ent2.id);
 
@@ -1138,172 +1328,107 @@ export class App {
         }
 
         if (option === "Coincident") {
-          this.applyDirectConstraint({
-            type: 'coincident',
-            p1: ref1,
-            p2: ref2
-          });
-          this.dynamicMenu.hide();
-          this.contextMenuVisible = false;
-        } else if (option === "Concentric" && (ent1 instanceof Circle || ent1 instanceof Arc) && (ent2 instanceof Circle || ent2 instanceof Arc)) {
-          this.applyDirectConstraint({
-            type: 'concentric',
-            p1: { entityId: ent1.id, pointId: 'center' },
-            p2: { entityId: ent2.id, pointId: 'center' }
-          });
-          this.dynamicMenu.hide();
-          this.contextMenuVisible = false;
-        } else if (option === "Parallel" && ent1 instanceof Line && ent2 instanceof Line) {
-          this.applyDirectConstraint({
-            type: 'parallel',
-            l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }],
-            l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
-          });
-          this.dynamicMenu.hide();
-          this.contextMenuVisible = false;
-        } else if (option === "Perpendicular" && ent1 instanceof Line && ent2 instanceof Line) {
-          this.applyDirectConstraint({
-            type: 'perpendicular',
-            l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }],
-            l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
-          });
-          this.dynamicMenu.hide();
-          this.contextMenuVisible = false;
-        } else if (option === "Tangent" && (ent1 instanceof Arc || ent1 instanceof Circle) && (ent2 instanceof Arc || ent2 instanceof Circle)) {
-          const tol = 1e-3;
-          const pts1 = ent1 instanceof Arc ? ['start', 'end'] : [];
-          const pts2 = ent2 instanceof Arc ? ['start', 'end'] : [];
-          let shared: DocumentPointRef | null = null;
-          
-          for (const p1id of pts1) {
-            for (const p2id of pts2) {
-              const p1 = getPointCoords(this.doc, { entityId: ent1.id, pointId: p1id });
-              const p2 = getPointCoords(this.doc, { entityId: ent2.id, pointId: p2id });
-              if (p1 && p2 && Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2) < tol) {
-                shared = { entityId: ent1.id, pointId: p1id };
-                break;
-              }
-            }
-            if (shared) break;
-          }
-          
-          if (shared) {
-            this.applyDirectConstraint({
-              type: 'tangent_smooth',
-              p1: { entityId: ent1.id, pointId: 'center' },
-              p2: shared,
-              p3: { entityId: ent2.id, pointId: 'center' }
-            });
-          }
-          this.dynamicMenu.hide();
-          this.contextMenuVisible = false;
-        } else if (option === "Tangent") {
-          const lineEnt = ent1 instanceof Line ? ent1 : ent2 as Line;
-          const circleEnt = (ent1 instanceof Circle || ent1 instanceof Arc) ? ent1 : ent2 as Circle | Arc;
-          this.applyDirectConstraint({
-            type: 'tangent',
-            l1: [{ entityId: lineEnt.id, pointId: 'start' }, { entityId: lineEnt.id, pointId: 'end' }],
-            circle: { entityId: circleEnt.id, pointId: 'center' }
-          });
-          this.dynamicMenu.hide();
-          this.contextMenuVisible = false;
-        } else if (option === "Angular" && ent1 instanceof Line && ent2 instanceof Line) {
-          this.dynamicMenu.hide();
-
-          const p1 = { x: ent1.x1, y: ent1.y1 };
-          const p2 = { x: ent1.x2, y: ent1.y2 };
-          const p3 = { x: ent2.x1, y: ent2.y1 };
-          const p4 = { x: ent2.x2, y: ent2.y2 };
-
-          const vx1 = p2.x - p1.x, vy1 = p2.y - p1.y;
-          const vx2 = p4.x - p3.x, vy2 = p4.y - p3.y;
-          const len1 = Math.sqrt(vx1 * vx1 + vy1 * vy1);
-          const len2 = Math.sqrt(vx2 * vx2 + vy2 * vy2);
-          if (len1 < 1e-6 || len2 < 1e-6) return;
-
-          const a1 = Math.atan2(vy1, vx1);
-          const a2 = Math.atan2(vy2, vx2);
-          let diff = a2 - a1;
-          while (diff > Math.PI) diff -= 2 * Math.PI;
-          while (diff < -Math.PI) diff += 2 * Math.PI;
-          const currentDeg = (Math.abs(diff) * 180 / Math.PI).toFixed(1);
-
-          const canvasRect = this.viewer.canvas.getBoundingClientRect();
-          const vx = canvasRect.left + canvasRect.width / 2 - 80;
-          const vy = canvasRect.top + canvasRect.height / 2 - 40;
-
-          this.dynamicInput.show(
-            vx, vy,
-            ["SET TARGET ANGLE", `Current: ${currentDeg}°`],
-            [],
-            true, [],
-            "Type angle in degrees and press Enter",
-            currentDeg
-          );
-
-          this.dynamicInput.onInputSubmitted((text) => {
-            const val = parseFloat(text);
-            if (!isNaN(val) && val > 0 && val < 180) {
-              this.applyDirectConstraint({
-                type: 'angular',
-                l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }],
-                l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }],
-                value: val * Math.PI / 180
-              });
-            } else {
-              NotificationManager.getInstance().show("Invalid angle (0-180°)", "error");
-            }
-            this.dynamicInput.hide();
-          });
-
-          this.contextMenuVisible = false;
+          console.log("1. ContextMenu, Coincident, applyDirectConstraint");
+          this.applyDirectConstraint({ type: 'coincident', p1: ref1, p2: ref2 });
+          this.dynamicMenu.hide(); this.contextMenuVisible = false;
         } else if (option === "Distance") {
+          console.log("1. ContextMenu, Distance, applyDirectConstraint");
           this.dynamicMenu.hide();
-          
-          const coords1 = getPointCoords(this.doc, ref1);
-          const coords2 = getPointCoords(this.doc, ref2);
+          const coords1 = getPointCoords(this.doc, ref1), coords2 = getPointCoords(this.doc, ref2);
           if (!coords1 || !coords2) return;
-
           const currentLen = Math.sqrt((coords2.x - coords1.x) ** 2 + (coords2.y - coords1.y) ** 2);
-
-          // Prompt for distance input
-          const canvasRect = this.viewer.canvas.getBoundingClientRect();
-          const vx = canvasRect.left + canvasRect.width / 2 - 80;
-          const vy = canvasRect.top + canvasRect.height / 2 - 40;
-
-          this.dynamicInput.show(
-            vx,
-            vy,
-            ["SET TARGET DISTANCE", `Current: ${currentLen.toFixed(3)}`],
-            [],
-            true,
-            [],
-            "Type exact distance and press Enter",
-            currentLen.toFixed(3)
-          );
-
+          const rect = this.viewer.canvas.getBoundingClientRect();
+          this.dynamicInput.show(rect.left + rect.width / 2 - 80, rect.top + rect.height / 2 - 40, ["SET TARGET DISTANCE", `Current: ${currentLen.toFixed(3)}`], [], true, [], "Type distance and press Enter", currentLen.toFixed(3));
           this.dynamicInput.onInputSubmitted((text) => {
             const val = parseFloat(text);
-            if (!isNaN(val) && val > 0) {
-              this.applyDirectConstraint({
-                type: 'distance',
-                p1: ref1,
-                p2: ref2,
-                value: val
-              });
-            } else {
-              this.printToCommandLine("Invalid distance value.");
-            }
-            this.dynamicInput.hide();
-            this.contextMenuVisible = false;
+            if (!isNaN(val) && val > 0) { this.applyDirectConstraint({ type: 'distance', p1: ref1, p2: ref2, value: val }); }
+            this.dynamicInput.hide(); this.contextMenuVisible = false;
           });
         }
       });
       return;
+      }
+    // Case 5: Exactly 3 entities selected
+    if (selectedEntities.length === 3) {
+      headers.push(`Selection: 3 objects`);
+      
+      const allPoints = selectedEntities.every(e => e instanceof Point || e instanceof Circle || e instanceof Arc);
+      if (allPoints) {
+        options.push("Symmetric", "Midpoint", "---");
+      }
+
+      const allJoinable = selectedEntities.every(e => e instanceof Line || e instanceof Polyline || e instanceof Arc);
+      if (allJoinable) {
+        options.push("Join", "---");
+      }
+      
+      options.push("Cancel");
+
+      this.dynamicMenu.show(screenX, screenY, headers, options);
+      this.dynamicMenu.onOptionClicked((option) => {
+        if (option === "Symmetric") {
+          console.log("1. ContextMenu, Symmetric, applyDirectConstraint");
+          // Map entities to point refs. For Point, it's 'position'. For Circle/Arc, it's 'center'.
+          const getRef = (e: Entity): DocumentPointRef => {
+            if (e instanceof Point) return { entityId: e.id, pointId: 'position' };
+            return { entityId: e.id, pointId: 'center' };
+          };
+
+          this.applyDirectConstraint({
+            type: 'symmetric',
+            p1: getRef(selectedEntities[0]),
+            p2: getRef(selectedEntities[1]),
+            p3: getRef(selectedEntities[2]) // Assuming 3rd is midpoint
+          });
+        } else if (option === "Midpoint") {
+          // Case 5: 3 objects selected. 
+          // If all are points, 3rd is midpoint. 
+          // If it's a mix (1 line + 1 point), we handle it.
+          const lineEnt = selectedEntities.find(e => e instanceof Line) as Line;
+          const pointEnts = selectedEntities.filter(e => e instanceof Point || e instanceof Circle || e instanceof Arc);
+          
+          const getPointRef = (e: any): DocumentPointRef => {
+            if (e instanceof Point) return { entityId: e.id, pointId: 'position' };
+            return { entityId: e.id, pointId: 'center' };
+          };
+
+          if (lineEnt && pointEnts.length === 1) {
+            console.log("1. ContextMenu, Midpoint, applyDirectConstraint");
+            this.applyDirectConstraint({
+              type: 'midpoint',
+              pm: getPointRef(pointEnts[0]),
+              ps: { entityId: lineEnt.id, pointId: 'start' },
+              pe: { entityId: lineEnt.id, pointId: 'end' }
+            });
+          } else if (pointEnts.length === 3) {
+            console.log("1. ContextMenu, Midpoint, applyDirectConstraint");
+            this.applyDirectConstraint({
+              type: 'midpoint',
+              pm: getPointRef(pointEnts[2]),
+              ps: getPointRef(pointEnts[0]),
+              pe: getPointRef(pointEnts[1])
+            });
+          }
+        } else if (option === "Join") {
+          this.execute(`JOIN`).then(result => {
+            if (typeof result === 'string') {
+              this.printToCommandLine(result);
+              const isError = result.toLowerCase().includes("cannot") || 
+                              result.toLowerCase().includes("fail") || 
+                              result.toLowerCase().includes("invalid") ||
+                              result.toLowerCase().includes("not found");
+              NotificationManager.getInstance().show(result, isError ? "error" : "success");
+            }
+          });
+        }
+        this.dynamicMenu.hide();
+        this.contextMenuVisible = false;
+      });
+      return;
     }
 
-    // Case 5: More than 2 entities selected
-    if (selectedEntities.length > 2) {
+    // Case 6: More than 3 entities selected
+    if (selectedEntities.length > 3) {
       headers.push(`Selection: ${selectedEntities.length} objects`);
       
       const allJoinable = selectedEntities.every(e => e instanceof Line || e instanceof Polyline || e instanceof Arc);
@@ -1389,29 +1514,22 @@ export class App {
                   if (grip.id.startsWith('midpoint_') || grip.id.startsWith('center_')) {
                     const idxStr = grip.id.split('_')[1];
                     const segKey = `${entity.id}::segment_${idxStr}`;
-                    this.sketchToolWindow.selectedElementIds.clear();
                     this.sketchToolWindow.selectedElementIds.add(segKey);
-                    this.sketchToolWindow.refresh();
                   } else if (grip.id.startsWith('vertex_')) {
                     const idxStr = grip.id.split('_')[1];
                     const refKey = `${entity.id}::vertex_${idxStr}`;
-                    this.sketchToolWindow.selectedPointRefs.clear();
                     this.sketchToolWindow.selectedPointRefs.add(refKey);
-                    this.sketchToolWindow.refresh();
                   }
                 } else {
                   if (grip.id === 'start' || grip.id === 'end') {
                     const refKey = `${entity.id}::${grip.id}`;
-                    this.sketchToolWindow.selectedPointRefs.clear();
                     this.sketchToolWindow.selectedPointRefs.add(refKey);
-                    this.sketchToolWindow.refresh();
                   } else if (grip.id === 'center') {
                     const refKey = `${entity.id}::center`;
-                    this.sketchToolWindow.selectedPointRefs.clear();
                     this.sketchToolWindow.selectedPointRefs.add(refKey);
-                    this.sketchToolWindow.refresh();
                   }
                 }
+                this.sketchToolWindow.syncWithAppSelection();
               }
 
               return; // Stop processing, start dragging
@@ -1513,18 +1631,21 @@ export class App {
         const { x, y } = snapped;
         
         const isConstrained = this.doc.constraints && this.doc.constraints.some(c => {
-          if (c.type === 'parallel' || c.type === 'perpendicular' || c.type === 'angular') {
-            return c.l1[0].entityId === this.activeGrip!.entityId ||
-                   c.l1[1].entityId === this.activeGrip!.entityId ||
-                   c.l2[0].entityId === this.activeGrip!.entityId ||
-                   c.l2[1].entityId === this.activeGrip!.entityId;
+          const checkRef = (ref: any) => !!(ref && ref.entityId && ref.entityId === this.activeGrip?.entityId);
+          const checkList = (list: any[]) => !!(list && Array.isArray(list) && list.some(ref => checkRef(ref)));
+
+          if (!c) return false;
+
+          if (c.type === 'parallel' || c.type === 'perpendicular' || c.type === 'angular' || c.type === 'equal_length') {
+            return checkList((c as any).l1) || checkList((c as any).l2);
           } else if (c.type === 'tangent') {
-            return c.l1[0].entityId === this.activeGrip!.entityId ||
-                   c.l1[1].entityId === this.activeGrip!.entityId ||
-                   c.circle.entityId === this.activeGrip!.entityId;
+            return checkList((c as any).l1) || checkRef((c as any).circle);
+          } else if (c.type === 'symmetric' || c.type === 'tangent_smooth') {
+            return checkRef((c as any).p1) || checkRef((c as any).p2) || checkRef((c as any).p3);
+          } else if (c.type === 'midpoint') {
+            return checkRef((c as any).pm) || checkRef((c as any).ps) || checkRef((c as any).pe);
           } else {
-            return (c as any).p1.entityId === this.activeGrip!.entityId ||
-                   ('p2' in c && (c as any).p2.entityId === this.activeGrip!.entityId);
+            return checkRef((c as any).p1) || checkRef((c as any).p2);
           }
         });
 
@@ -1979,8 +2100,8 @@ export class App {
           if (typeof res === 'string' && ((result as CommandAction).action === 'fillet' || (result as CommandAction).action === 'chamfer')) {
               this.printToCommandLine(res);
               const isError = res.toLowerCase().includes("cannot") || 
-                              res.toLowerCase().includes("fail") || 
-                              res.toLowerCase().includes("only supported");
+                              result.toLowerCase().includes("fail") || 
+                              result.toLowerCase().includes("only supported");
               NotificationManager.getInstance().show(res, isError ? "error" : "success");
           }
 

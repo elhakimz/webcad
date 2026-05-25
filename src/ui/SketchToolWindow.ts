@@ -78,53 +78,63 @@ export class SketchToolWindow {
     };
   }
 
-  private pruneAndRefresh() {
-    // 1. Gather all active entity IDs and valid points in current selection
+  public syncWithAppSelection() {
     const activeSelectedIds = this.app.selectedEntityIds;
-    const validPointRefs = new Set<string>();
+    
+    // 1. Ensure all viewport-selected entities are in our element list
+    activeSelectedIds.forEach(id => {
+      if (!this.selectedElementIds.has(id)) {
+        // Only add if no sub-element of this entity is already selected
+        let hasSubSelected = false;
+        this.selectedElementIds.forEach(selId => {
+          if (selId.startsWith(id + '::')) hasSubSelected = true;
+        });
+        if (!hasSubSelected) {
+          this.selectedElementIds.add(id);
+        }
+      }
+      
+      // Auto-populate points for single-point entities
+      const ent = this.app.doc.getEntity(id);
+      if (ent instanceof Point) {
+        this.selectedPointRefs.add(`${id}::position`);
+      }
+    });
 
+    // 2. Prune elements and points that are no longer in viewport selection
+    // (Note: we keep sub-elements like segments if the parent is selected)
+    const validPointRefs = new Set<string>();
     activeSelectedIds.forEach(id => {
       const ent = this.app.doc.getEntity(id);
       if (ent) {
         if (ent instanceof Line) {
-          validPointRefs.add(`${id}::start`);
-          validPointRefs.add(`${id}::end`);
+          validPointRefs.add(`${id}::start`); validPointRefs.add(`${id}::end`);
         } else if (ent instanceof Circle) {
           validPointRefs.add(`${id}::center`);
         } else if (ent instanceof Arc) {
-          validPointRefs.add(`${id}::center`);
-          validPointRefs.add(`${id}::start`);
-          validPointRefs.add(`${id}::end`);
+          validPointRefs.add(`${id}::center`); validPointRefs.add(`${id}::start`); validPointRefs.add(`${id}::end`);
         } else if (ent instanceof Polyline) {
-          ent.vertices.forEach((_, idx) => {
-            validPointRefs.add(`${id}::vertex_${idx}`);
-          });
-        } else if (ent instanceof Text) {
-          validPointRefs.add(`${id}::position`);
-        } else if (ent instanceof MText) {
-          validPointRefs.add(`${id}::position`);
-        } else if (ent instanceof Point) {
+          ent.vertices.forEach((_, idx) => validPointRefs.add(`${id}::vertex_${idx}`));
+        } else if (ent instanceof Point || ent instanceof Text || ent instanceof MText) {
           validPointRefs.add(`${id}::position`);
         }
       }
     });
 
-    // 2. Prune selected points that are no longer valid or selected
     this.selectedPointRefs.forEach(refKey => {
-      if (!validPointRefs.has(refKey)) {
-        this.selectedPointRefs.delete(refKey);
-      }
+      if (!validPointRefs.has(refKey)) this.selectedPointRefs.delete(refKey);
     });
 
-    // 3. Prune selected elements that are no longer in selection
     this.selectedElementIds.forEach(id => {
       const baseId = id.includes('::') ? id.split('::')[0] : id;
-      if (!activeSelectedIds.has(baseId)) {
-        this.selectedElementIds.delete(id);
-      }
+      if (!activeSelectedIds.has(baseId)) this.selectedElementIds.delete(id);
     });
 
     this.refresh();
+  }
+
+  private pruneAndRefresh() {
+    this.syncWithAppSelection();
   }
 
   private createUI() {
@@ -339,12 +349,13 @@ export class SketchToolWindow {
           const numSegments = ent.closed ? ent.vertices.length : ent.vertices.length - 1;
           for (let i = 0; i < numSegments; i++) {
             const segKey = `${ent.id}::segment_${i}`;
+            const isChecked = this.selectedElementIds.has(segKey) || this.selectedElementIds.has(ent.id);
             const item = document.createElement('div');
-            item.className = `sketch-item ${this.selectedElementIds.has(segKey) ? 'selected' : ''}`;
+            item.className = `sketch-item ${isChecked ? 'selected' : ''}`;
 
             const chk = document.createElement('input');
             chk.type = 'checkbox';
-            chk.checked = this.selectedElementIds.has(segKey);
+            chk.checked = isChecked;
             chk.style.cursor = 'pointer';
 
             const txt = document.createElement('span');
@@ -354,10 +365,18 @@ export class SketchToolWindow {
             item.appendChild(txt);
 
             const toggleSelect = () => {
-              if (this.selectedElementIds.has(segKey)) {
-                this.selectedElementIds.delete(segKey);
+              if (this.selectedElementIds.has(ent.id)) {
+                // Transition from whole-object selection to individual segment selection
+                this.selectedElementIds.delete(ent.id);
+                for (let j = 0; j < numSegments; j++) {
+                  if (i !== j) this.selectedElementIds.add(`${ent.id}::segment_${j}`);
+                }
               } else {
-                this.selectedElementIds.add(segKey);
+                if (this.selectedElementIds.has(segKey)) {
+                  this.selectedElementIds.delete(segKey);
+                } else {
+                  this.selectedElementIds.add(segKey);
+                }
               }
               this.refresh();
             };
@@ -447,6 +466,9 @@ export class SketchToolWindow {
         else if (c.type === 'perpendicular') txt.textContent = `Perp: L1 ⊥ L2`;
         else if (c.type === 'tangent') txt.textContent = `Tangent: Line ➔ Circle`;
         else if (c.type === 'tangent_smooth') txt.textContent = `Smooth: Arc ➔ Arc`;
+        else if (c.type === 'symmetric') txt.textContent = `Symmetric: ${shortName(c.p1)}, ${shortName(c.p2)} (Mid: ${shortName(c.p3)})`;
+        else if (c.type === 'midpoint') txt.textContent = `Midpoint: ${shortName(c.pm)} on L(${shortName(c.ps)}-${shortName(c.pe)})`;
+        else if (c.type === 'equal_length') txt.textContent = `Equal: ${shortName(c.l1[0])}-${shortName(c.l1[1])} = ${shortName(c.l2[0])}-${shortName(c.l2[1])}`;
         else if (c.type === 'angular') txt.textContent = `Angle: L1 ∠ L2 = ${(c.value * 180 / Math.PI).toFixed(1)}°`;
         else if (c.type === 'fix') txt.textContent = `Fix: ${shortName(c.p1)}`;
 
@@ -457,6 +479,14 @@ export class SketchToolWindow {
         delBtn.style.fontWeight = 'bold';
         delBtn.onclick = (e) => {
           e.stopPropagation();
+          
+          // Ensure constraints array is extensible
+          if (!this.app.doc.constraints) {
+            this.app.doc.constraints = [];
+          } else if (Object.isFrozen(this.app.doc.constraints) || !Array.isArray(this.app.doc.constraints)) {
+            this.app.doc.constraints = Array.from(this.app.doc.constraints);
+          }
+
           this.app.doc.history.startTransaction(this.app.doc.constraints);
           this.app.doc.constraints.splice(idx, 1);
 
@@ -935,6 +965,69 @@ export class SketchToolWindow {
     constrGrid.appendChild(tangBtn);
     constrGrid.appendChild(concBtn);
 
+    const selectedPoints = getSelectedPoints();
+    const selectedSegments = getSelectedLineSegments();
+
+    // MIDPOINT
+    const midBtn = document.createElement('button');
+    midBtn.className = 'sketch-btn';
+    midBtn.textContent = '△ Midpoint';
+    midBtn.disabled = !(selectedPoints.length === 1 && selectedSegments.length === 1);
+    midBtn.title = 'Select 1 point and 1 segment to constrain point to the middle';
+    midBtn.onclick = () => {
+      const pm = selectedPoints[0];
+      const seg = selectedSegments[0];
+      this.applyNewConstraint({
+        type: 'midpoint',
+        pm: pm,
+        ps: seg.p1,
+        pe: seg.p2
+      });
+    };
+    constrGrid.appendChild(midBtn);
+
+    // SYMMETRIC
+    const symmBtn = document.createElement('button');
+    symmBtn.className = 'sketch-btn';
+    symmBtn.textContent = '⚖ Symmetric';
+    symmBtn.disabled = this.selectedPointRefs.size !== 3;
+    symmBtn.title = 'Select exactly 3 vertices (P1, P2, and Midpoint)';
+    symmBtn.onclick = () => {
+      const pts = getSelectedPoints();
+      // We assume the order of selection for now, or just pick the 3rd as midpoint if possible.
+      // Better: use the one closest to the average of others? 
+      // For now, just take them in order: p1, p2, p3 (mid)
+      this.applyNewConstraint({
+        type: 'symmetric',
+        p1: pts[0],
+        p2: pts[1],
+        p3: pts[2]
+      });
+    };
+    constrGrid.appendChild(symmBtn);
+
+    // EQUAL LENGTH
+    const eqBtn = document.createElement('button');
+    eqBtn.className = 'sketch-btn';
+    eqBtn.textContent = '=" Equal Length';
+    eqBtn.disabled = this.selectedElementIds.size !== 2;
+    eqBtn.title = 'Select exactly 2 lines to make their lengths equal';
+    eqBtn.onclick = () => {
+      const ids = Array.from(this.selectedElementIds);
+      const ent1 = this.app.doc.getEntity(ids[0]);
+      const ent2 = this.app.doc.getEntity(ids[1]);
+      if (ent1 instanceof Line && ent2 instanceof Line) {
+        this.applyNewConstraint({
+          type: 'equal_length',
+          l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }],
+          l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
+        });
+      } else {
+        NotificationManager.getInstance().show("Please select exactly 2 line segments.", "error");
+      }
+    };
+    constrGrid.appendChild(eqBtn);
+
     content.appendChild(constrGrid);
 
     this.container.appendChild(content);
@@ -948,43 +1041,69 @@ export class SketchToolWindow {
     // Check for duplicate constraint
     const isDuplicate = this.app.doc.constraints.some(existing => {
       if (existing.type !== c.type) return false;
-      
-      const arePointRefsEqual = (r1: DocumentPointRef, r2: DocumentPointRef) => 
-        r1.entityId === r2.entityId && r1.pointId === r2.pointId;
 
-      if (existing.type === 'fix' && c.type === 'fix') {
-        return arePointRefsEqual(existing.p1, c.p1);
+      const arePointRefsEqual = (r1: any, r2: any) => 
+        !!(r1 && r2 && r1.entityId === r2.entityId && r1.pointId === r2.pointId);
+
+      const arePointListsEqual = (l1: DocumentPointRef[], l2: DocumentPointRef[]) => {
+        if (!l1 || !l2 || l1.length !== l2.length) return false;
+        if (l1.length === 2) {
+          return (arePointRefsEqual(l1[0], l2[0]) && arePointRefsEqual(l1[1], l2[1])) ||
+                 (arePointRefsEqual(l1[0], l2[1]) && arePointRefsEqual(l1[1], l2[0]));
+        }
+        return l1.every((ref, idx) => arePointRefsEqual(ref, l2[idx]));
+      };
+
+      if (c.type === 'fix') {
+        return arePointRefsEqual((existing as any).p1, (c as any).p1);
       }
-      
-      if (('p1' in existing && 'p2' in existing) && ('p1' in c && 'p2' in c)) {
-        return (arePointRefsEqual(existing.p1, c.p1) && arePointRefsEqual(existing.p2, c.p2)) ||
-               (arePointRefsEqual(existing.p1, c.p2) && arePointRefsEqual(existing.p2, c.p1));
+
+      if (c.type === 'parallel' || c.type === 'perpendicular' || c.type === 'angular' || c.type === 'equal_length') {
+        const e = existing as any, cn = c as any;
+        return (arePointListsEqual(e.l1, cn.l1) && arePointListsEqual(e.l2, cn.l2)) ||
+               (arePointListsEqual(e.l1, cn.l2) && arePointListsEqual(e.l2, cn.l1));
       }
-      
-      if (('l1' in existing && 'l2' in existing) && ('l1' in c && 'l2' in c)) {
-        const matchDirect = (
-          (arePointRefsEqual(existing.l1[0], c.l1[0]) && arePointRefsEqual(existing.l1[1], c.l1[1]) ||
-           arePointRefsEqual(existing.l1[0], c.l1[1]) && arePointRefsEqual(existing.l1[1], c.l1[0])) &&
-          (arePointRefsEqual(existing.l2[0], c.l2[0]) && arePointRefsEqual(existing.l2[1], c.l2[1]) ||
-           arePointRefsEqual(existing.l2[0], c.l2[1]) && arePointRefsEqual(existing.l2[1], c.l2[0]))
-        );
-        const matchSwapped = (
-          (arePointRefsEqual(existing.l1[0], c.l2[0]) && arePointRefsEqual(existing.l1[1], c.l2[1]) ||
-           arePointRefsEqual(existing.l1[0], c.l2[1]) && arePointRefsEqual(existing.l1[1], c.l2[0])) &&
-          (arePointRefsEqual(existing.l2[0], c.l1[0]) && arePointRefsEqual(existing.l2[1], c.l1[1]) ||
-           arePointRefsEqual(existing.l2[0], c.l1[1]) && arePointRefsEqual(existing.l2[1], c.l1[0]))
-        );
-        return matchDirect || matchSwapped;
+
+      if (c.type === 'tangent') {
+        const e = existing as any, cn = c as any;
+        return arePointListsEqual(e.l1, cn.l1) && arePointRefsEqual(e.circle, cn.circle);
       }
+
+      if (c.type === 'tangent_smooth' || c.type === 'symmetric') {
+        const e = existing as any, cn = c as any;
+        const outerMatch = (arePointRefsEqual(e.p1, cn.p1) && arePointRefsEqual(e.p2, cn.p2)) ||
+                           (arePointRefsEqual(e.p1, cn.p2) && arePointRefsEqual(e.p2, cn.p1));
+        return outerMatch && arePointRefsEqual(e.p3, cn.p3);
+      }
+
+      if (c.type === 'midpoint') {
+        const e = existing as any, cn = c as any;
+        const endpointsMatch = (arePointRefsEqual(e.ps, cn.ps) && arePointRefsEqual(e.pe, cn.pe)) ||
+                               (arePointRefsEqual(e.ps, cn.pe) && arePointRefsEqual(e.pe, cn.ps));
+        return arePointRefsEqual(e.pm, cn.pm) && endpointsMatch;
+      }
+
+      if ('p1' in c && 'p2' in c) {
+        const e = existing as any, cn = c as any;
+        return (arePointRefsEqual(e.p1, cn.p1) && arePointRefsEqual(e.p2, cn.p2)) ||
+               (arePointRefsEqual(e.p1, cn.p2) && arePointRefsEqual(e.p2, cn.p1));
+      }
+
       return false;
     });
-
     if (isDuplicate) {
       NotificationManager.getInstance().show("This constraint is already applied", "warning");
       this.selectedPointRefs.clear();
       this.selectedElementIds.clear();
       this.refresh();
       return;
+    }
+
+    // Ensure constraints array is extensible (it might be frozen if assigned from a DB document)
+    if (!this.app.doc.constraints) {
+      this.app.doc.constraints = [];
+    } else if (Object.isFrozen(this.app.doc.constraints) || !Array.isArray(this.app.doc.constraints)) {
+      this.app.doc.constraints = Array.from(this.app.doc.constraints);
     }
 
     this.app.doc.history.startTransaction(this.app.doc.constraints);

@@ -92,6 +92,30 @@ export class Viewer {
   private temporaryMeshGroup: THREE.Group = new THREE.Group();
   private modellingBg: THREE.Texture;
   private scriptingBg: THREE.Texture;
+  private pointTexture: THREE.Texture | null = null;
+  private pointMaterial: THREE.PointsMaterial | null = null;
+
+  private getPointTexture(): THREE.Texture {
+    if (this.pointTexture) return this.pointTexture;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(16, 16);
+      ctx.lineTo(48, 48);
+      ctx.moveTo(48, 16);
+      ctx.lineTo(16, 48);
+      ctx.stroke();
+    }
+    this.pointTexture = new THREE.CanvasTexture(canvas);
+    return this.pointTexture;
+  }
 
   constructor(canvas:HTMLCanvasElement){
     this.canvas = canvas
@@ -738,10 +762,17 @@ export class Viewer {
       obj = new THREE.Line(geo, mat);
     } else if (entity instanceof Point) {
       const geo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(entity.x, entity.y, 0)
+        new THREE.Vector3(entity.x, entity.y, entity.elevation || 0)
       ]);
-      const color = this.resolveColor(entity.properties?.color, previewColor);
-      const mat = new THREE.PointsMaterial({ color, size: 5, sizeAttenuation: false });
+      const color = 0x00ffff; // Cyan as requested
+      const mat = new THREE.PointsMaterial({ 
+        color, 
+        size: 12, 
+        sizeAttenuation: false,
+        map: this.getPointTexture(),
+        transparent: true,
+        alphaTest: 0.5
+      });
       obj = new THREE.Points(geo, mat);
     } else if (entity instanceof Dimension) {
       const color = this.resolveColor(entity.properties?.color, previewColor);
@@ -1596,33 +1627,39 @@ export class Viewer {
   }
 
   addPoint(x: number, y: number, id?: string, layer?: string, color?: number, isVisible = true, elevation = 0, thickness = 0) {
-    const size = 2;
-    const pts = [
-      x - size, y - size, elevation,
-      x + size, y + size, elevation,
-      x + size, y - size, elevation,
-      x - size, y + size, elevation
-    ];
+    const group = new THREE.Group();
     
+    // 1. The X mark (Cyan, fixed screen size)
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([x, y, elevation + thickness]), 3));
+    
+    const mat = new THREE.PointsMaterial({
+      color: 0x00ffff, // Cyan as requested
+      size: 12,
+      sizeAttenuation: false,
+      map: this.getPointTexture(),
+      transparent: true,
+      alphaTest: 0.5
+    });
+    
+    const pointMark = new THREE.Points(geo, mat);
+    group.add(pointMark);
+    
+    // 2. The stem (if thickness)
     if (thickness !== 0) {
-      pts.push(
-        x, y, elevation,
-        x, y, elevation + thickness
-      );
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(x, y, elevation),
+        new THREE.Vector3(x, y, elevation + thickness)
+      ]);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffff, opacity: 0.5, transparent: true });
+      const stem = new THREE.LineSegments(lineGeo, lineMat);
+      group.add(stem);
     }
 
-    const positions = new Float32Array(pts);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.LineBasicMaterial({ color: this.resolveColor(color || 7) });
-    const lines = new THREE.LineSegments(geo, mat);
-    if (id) {
-      lines.name = id;
-    }
-    if (layer) {
-      lines.userData = { layer };
-    }
-    lines.visible = isVisible;
+    if (id) group.name = id;
+    if (layer) group.userData = { layer, originalColor: 0x00ffff };
+    group.visible = isVisible;
+    this.mainGroup.add(group);
   }
 
   updateConstraints(doc: any) {
@@ -1794,6 +1831,30 @@ export class Viewer {
             }
             this.constraintGroup.add(textMesh);
           }
+        }
+        continue;
+      } else if (c.type === 'symmetric') {
+        const pt = getPointCoords(doc, c.p3); // P3 is the constrained midpoint
+        if (!pt) continue;
+        text = '⚖';
+        x = pt.x;
+        y = pt.y;
+      } else if (c.type === 'midpoint') {
+        const pt = getPointCoords(doc, c.pm);
+        if (!pt) continue;
+        text = '△';
+        x = pt.x;
+        y = pt.y;
+      } else if (c.type === 'equal_length') {
+        const p1 = getPointCoords(doc, c.l1[0]);
+        const p2 = getPointCoords(doc, c.l1[1]);
+        const p3 = getPointCoords(doc, c.l2[0]);
+        const p4 = getPointCoords(doc, c.l2[1]);
+        if (p1 && p2 && p3 && p4) {
+          const m1x = (p1.x + p2.x) / 2, m1y = (p1.y + p2.y) / 2;
+          const m2x = (p3.x + p4.x) / 2, m2y = (p3.y + p4.y) / 2;
+          this.createConstraintSprite('="', m1x, m1y, '#38bdf8');
+          this.createConstraintSprite('="', m2x, m2y, '#38bdf8');
         }
         continue;
       }

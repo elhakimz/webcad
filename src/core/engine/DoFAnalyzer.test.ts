@@ -198,4 +198,40 @@ describe('analyzeDoF', () => {
     expect(result.freePointSet.size).toBe(0);
     expect(result.status).toBe('solved');
   });
+
+  // ── Symmetric constraint ───────────────────────────────────────────────
+  it('symmetric constraint removes 2 dof', () => {
+    const points = pts(3);
+    const result = analyzeDoF(points, [{ type: 'symmetric', p1: 0, p2: 1, p3: 2 }]);
+    expect(result.dof).toBe(4);   // 6 - 2
+    expect(result.status).toBe('under');
+  });
+
+  it('fully constrained point via symmetric + 2 fixed points', () => {
+    const points: SketchPoint[] = [
+      { x: 0, y: 0, isFixed: true },
+      { x: 10, y: 10, isFixed: false },
+      { x: 5, y: 5, isFixed: true },
+    ];
+    // p3 is midpoint of p1 and p2. p1 and p3 are fixed. p2 should be fixed.
+    const result = analyzeDoF(points, [{ type: 'symmetric', p1: 0, p2: 1, p3: 2 }]);
+    expect(result.dof).toBe(0);
+    expect(result.status).toBe('solved');
+  });
+
+  // ── Equal Length constraint ───────────────────────────────────────────────
+  it('equal_length constraint removes 1 dof', () => {
+    const points = pts(4); // 8 dof
+    // Two lines: (0,1) and (2,3)
+    const result = analyzeDoF(points, [{ type: 'equal_length', l1: [0, 1], l2: [2, 3] }]);
+    expect(result.dof).toBe(7); // 8 - 1
+    expect(result.status).toBe('under');
+  });
+
+  it('midpoint constraint removes 2 dof', () => {
+    const points = pts(3); // 6 dof
+    const result = analyzeDoF(points, [{ type: 'midpoint', pm: 0, ps: 1, pe: 2 }]);
+    expect(result.dof).toBe(4); // 6 - 2
+    expect(result.status).toBe('under');
+  });
 });

@@ -180,7 +180,7 @@ export class JoinHandler implements ActionHandler {
         addEntity(poly, false, false);
         
         this.cleanup(context);
-        return "Entities joined.";
+        return "Arc | Line joined.";
       }
       this.cleanup(context);
       return "Entities cannot be joined.";

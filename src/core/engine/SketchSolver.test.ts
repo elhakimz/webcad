@@ -224,5 +224,62 @@ describe("Tangent Constraint", () => {
     expect(points[1].x).toBeCloseTo(10, 5);
     expect(points[1].y).toBeCloseTo(0, 5);
   });
+
+  it("should solve symmetric (Point Symmetry) constraint", () => {
+    const points: SketchPoint[] = [
+      { x: 0, y: 0, isFixed: true }, // p1 (Fixed at origin)
+      { x: 10, y: 10 },              // p2 (Initially far)
+      { x: 2, y: 2 }                 // p3 (Midpoint, initially off-center)
+    ];
+    const constraints: SketchConstraint[] = [
+      { type: "symmetric", p1: 0, p2: 1, p3: 2 }
+    ];
+
+    // p1 fixed at (0,0). p3 fixed at (2,2)? No, p3 is not fixed.
+    // If we only constrain midpoint, all 3 points can move.
+    // Let's fix p1 and p3.
+    points[2].isFixed = true; // Fix p3 at (2,2)
+
+    solveConstraints(points, constraints, undefined, 100);
+
+    // p1 = (0,0), p3 = (2,2) -> p2 must move to (4,4)
+    expect(points[1].x).toBeCloseTo(4, 5);
+    expect(points[1].y).toBeCloseTo(4, 5);
+  });
+
+  it("should solve equal_length constraint", () => {
+    const points: SketchPoint[] = [
+      { x: 0, y: 0, isFixed: true },   // p1
+      { x: 10, y: 0, isFixed: true },  // p2 (length 10)
+      { x: 20, y: 0, isFixed: true },  // p3
+      { x: 25, y: 0 }                  // p4 (initial length 5)
+    ];
+    const constraints: SketchConstraint[] = [
+      { type: "equal_length", l1: [0, 1], l2: [2, 3] }
+    ];
+
+    // p1, p2, p3 fixed. p4 must move to 30,0 to make l2=10
+    solveConstraints(points, constraints, undefined, 100);
+
+    expect(points[3].x).toBeCloseTo(30, 5);
+    expect(points[3].y).toBeCloseTo(0, 5);
+  });
+
+  it("should solve midpoint constraint", () => {
+    const points: SketchPoint[] = [
+      { x: 0, y: 0, isFixed: true },   // p1 (start)
+      { x: 10, y: 0, isFixed: true },  // p2 (end)
+      { x: 2, y: 5 }                   // pm (midpoint, initially off)
+    ];
+    const constraints: SketchConstraint[] = [
+      { type: "midpoint", pm: 2, ps: 0, pe: 1 }
+    ];
+
+    // pm must move to (5, 0)
+    solveConstraints(points, constraints, undefined, 100);
+
+    expect(points[2].x).toBeCloseTo(5, 5);
+    expect(points[2].y).toBeCloseTo(0, 5);
+  });
 });
 

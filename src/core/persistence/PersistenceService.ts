@@ -197,7 +197,7 @@ export class PersistenceService {
     if (proj.settings.idCounters) {
       doc.restoreIdCounters(proj.settings.idCounters) // Bug 4 fix
     }
-    doc.constraints = proj.settings.constraints || []
+    doc.constraints = proj.settings.constraints ? JSON.parse(JSON.stringify(proj.settings.constraints)) : []
 
     // Load layers
     if (onProgress) {
@@ -488,6 +488,8 @@ export class PersistenceService {
   }
 
   async getHistory(): Promise<any[]> {
-    return await this.db.listProjects()
+    const projects = await this.db.listProjects();
+    // Deep clone everything from the DB to avoid frozen/proxy issues in the UI
+    return JSON.parse(JSON.stringify(projects));
   }
 }

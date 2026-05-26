@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { ConeCommand } from './ConeCommand'
 import { Circle } from '../model/Circle'
 import { Line } from '../model/Line'
+import { EntitiesPreview } from './types'
 
 describe('ConeCommand', () => {
   it('should transition through state steps correctly', () => {
@@ -61,7 +62,7 @@ describe('ConeCommand', () => {
     cmd.onPoint(5, 0, 'entity_1', units)
 
     // Step 2 Preview: Bottom circle + 4 lines to apex
-    const prev2 = cmd.getPreview(5, 12, units) as any
+    const prev2 = cmd.getPreview(5, 12, units) as EntitiesPreview
     expect(prev2.type).toBe('entities')
     expect(prev2.entities.length).toBe(5) // 1 circle + 4 lines
     expect(prev2.entities[0]).toBeInstanceOf(Circle)
@@ -74,7 +75,7 @@ describe('ConeCommand', () => {
     cmd.onPoint(5, 12, 'entity_1', units)
 
     // Step 3 Preview: Bottom circle + Top circle + 4 slanted lines
-    const prev3 = cmd.getPreview(3, 0, units) as any
+    const prev3 = cmd.getPreview(3, 0, units) as EntitiesPreview
     expect(prev3.type).toBe('entities')
     expect(prev3.entities.length).toBe(6) // 2 circles + 4 lines
     expect(prev3.entities[0]).toBeInstanceOf(Circle) // bottom circle (R = 5)

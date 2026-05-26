@@ -27,6 +27,8 @@ import { ConeCommand } from "../commands/ConeCommand"
 import { PolyhedronCommand } from "../commands/PolyhedronCommand"
 import { HullCommand } from "../commands/HullCommand"
 import { TorusCommand } from "../commands/TorusCommand"
+import { WedgeCommand } from "../commands/WedgeCommand"
+import { PyramidCommand } from "../commands/PyramidCommand"
 import { TextCommand } from "../commands/TextCommand"
 import { MTextCommand } from "../commands/MTextCommand"
 import { TraceCommand } from "../commands/TraceCommand"
@@ -37,7 +39,7 @@ import { SketchCommand } from "../commands/SketchCommand"
 import { ShapeCommand } from "../commands/ShapeCommand"
 import { LayerCommand } from "../commands/LayerCommand"
 import { LinetypeCommand } from "../commands/LinetypeCommand"
-import { SaveCommand, LoadCommand, NewCommand, DBSaveCommand, DBLoadCommand } from "../commands/IOCommands"
+import { SaveCommand, LoadCommand, DBSaveCommand, DBLoadCommand } from "../commands/IOCommands"
 import { UnitsCommand } from "../commands/UnitsCommand"
 import { FilletCommand } from "../commands/FilletCommand"
 import { SFilletCommand } from "../commands/SFilletCommand"
@@ -74,12 +76,12 @@ import { PlotCommand } from "../commands/PlotCommand"
 import { CoordinateParser } from "./CoordinateParser"
 import { CommandResponse, Command } from "../commands/types"
 import { UnitsConfig, Document } from "../model/Document"
-import { ExtrudeCommand } from "../commands/ExtrudeCommand.js"
-import { SweepCommand } from "../commands/SweepCommand.js"
-import { RevolveCommand } from "../commands/RevolveCommand.js"
-import { BooleanCommand } from "../commands/BooleanCommand.js"
-import { LoftCommand } from "../commands/LoftCommand.js"
-import { Entity } from "../model/Entity.js"
+import { ExtrudeCommand } from "../commands/ExtrudeCommand"
+import { SweepCommand } from "../commands/SweepCommand"
+import { RevolveCommand } from "../commands/RevolveCommand"
+import { BooleanCommand } from "../commands/BooleanCommand"
+import { LoftCommand } from "../commands/LoftCommand"
+import { Entity } from "../model/Entity"
 import { RebuildCommand } from "../commands/RebuildCommand"
 
 
@@ -101,6 +103,8 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["POLYHEDRON", () => new PolyhedronCommand()],
   ["HULL", () => new HullCommand()],
   ["TORUS", () => new TorusCommand()],
+  ["WEDGE", () => new WedgeCommand()],
+  ["PYRAMID", () => new PyramidCommand()],
   ["FACETRES", () => new FacetresCommand()],
   ["REGEN", () => new RegenCommand()],
   ["EXTRUDE", () => new ExtrudeCommand()],
@@ -297,6 +301,9 @@ export class CommandManager {
       'PolyhedronCommand': 'S3D',
       'HullCommand': 'S3D',
       'CylinderCommand': 'S3D',
+      'TorusCommand': 'S3D',
+      'WedgeCommand': 'S3D',
+      'PyramidCommand': 'S3D',
       'ExtrudeCommand': 'S3D'
     };
     return prefixMap[name] || 'E';

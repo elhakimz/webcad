@@ -66,7 +66,24 @@ export class Menu {
         { label: 'SCRIPT' },
         { label: 'MENU' }
       ]},
-      { label: '3D', command: 'TEST3D' },
+      { label: '3D', submenu: [
+        { label: 'BOX', command: 'BOX' },
+        { label: 'CYLINDER', command: 'CYLINDER' },
+        { label: 'SPHERE', command: 'SPHERE' },
+        { label: 'CONE', command: 'CONE' },
+        { label: 'TORUS', command: 'TORUS' },
+        { label: 'WEDGE', command: 'WEDGE' },
+        { label: 'PYRAMID', command: 'PYRAMID' },
+        { label: '---' },
+        { label: 'UNION', command: 'UNION' },
+        { label: 'SUBTRACT', command: 'SUBTRACT' },
+        { label: 'INTERSECT', command: 'INTERSECT' },
+        { label: '---' },
+        { label: 'EXTRUDE', command: 'EXTRUDE' },
+        { label: 'REVOLVE', command: 'REVOLVE' },
+        { label: 'SWEEP', command: 'SWEEP' },
+        { label: 'LOFT', command: 'LOFT' }
+      ]},
       { label: 'NEW:', command: 'NEW' },
       { label: 'LOAD:', command: 'LOAD' },
       { label: 'SAVE:', command: 'SAVE' }

@@ -5,7 +5,7 @@ import { Polyline as PolylineEntity } from "../model/Polyline";
 import { Ellipse as EllipseEntity } from "../model/Ellipse";
 import { norm2 } from "../../scad/interpreter/FastMath";
 
-export type Point = { x: number; y: number };
+export type Point = { x: number; y: number; z?: number };
 
 const TWO_PI = Math.PI * 2;
 

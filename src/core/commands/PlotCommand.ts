@@ -1,6 +1,6 @@
 import { Command, CommandResponse, CommandAction,
          PlotSettings, DEFAULT_PLOT_SETTINGS, SelectionBoxPreview } from './types';
-import { UnitsConfig, IDocument } from '../model/Document';
+import { UnitsConfig } from '../model/Document';
 
 export class PlotCommand implements Command {
   step = 0;

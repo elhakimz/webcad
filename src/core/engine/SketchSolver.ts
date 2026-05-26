@@ -261,9 +261,6 @@ export function solveConstraints(
           while (diff > Math.PI) diff -= 2 * Math.PI;
           while (diff < -Math.PI) diff += 2 * Math.PI;
 
-          if (diff > Math.PI / 2) diff -= Math.PI;
-          else if (diff < -Math.PI / 2) diff += Math.PI;
-
           const W1 = w[p1] + w[p2];
           const W2 = w[p3] + w[p4];
           const sumW = W1 + W2;
@@ -420,22 +417,22 @@ export function solveConstraints(
 
           // C_x = x3 - (x1 + x2) / 2 = 0
           const Cx = x3 - 0.5 * (x1 + x2);
-          const sumGrad2x = w3 * (1.0 * 1.0) + w1 * (-0.5 * -0.5) + w2 * (-0.5 * -0.5);
+          const sumGrad2x = w3 * (1.0) + w1 * (-0.5 * -0.5) + w2 * (-0.5 * -0.5);
           if (sumGrad2x > 1e-9) {
             const lambdaX = -Cx / sumGrad2x;
             if (w1 > 0) points[p1].x += lambdaX * w1 * -0.5;
             if (w2 > 0) points[p2].x += lambdaX * w2 * -0.5;
-            if (w3 > 0) points[p3].x += lambdaX * w3 * 1.0;
+            if (w3 > 0) points[p3].x += lambdaX * w3;
           }
 
           // C_y = y3 - (y1 + y2) / 2 = 0
           const Cy = y3 - 0.5 * (y1 + y2);
-          const sumGrad2y = w3 * (1.0 * 1.0) + w1 * (-0.5 * -0.5) + w2 * (-0.5 * -0.5);
+          const sumGrad2y = w3 * (1.0) + w1 * (-0.5 * -0.5) + w2 * (-0.5 * -0.5);
           if (sumGrad2y > 1e-9) {
             const lambdaY = -Cy / sumGrad2y;
             if (w1 > 0) points[p1].y += lambdaY * w1 * -0.5;
             if (w2 > 0) points[p2].y += lambdaY * w2 * -0.5;
-            if (w3 > 0) points[p3].y += lambdaY * w3 * 1.0;
+            if (w3 > 0) points[p3].y += lambdaY * w3;
           }
         }
       } else if (c.type === 'midpoint') {
@@ -456,7 +453,7 @@ export function solveConstraints(
             const lambdaX = -Cx / sumGrad2x;
             if (w1 > 0) points[ps].x += lambdaX * w1 * -0.5;
             if (w2 > 0) points[pe].x += lambdaX * w2 * -0.5;
-            if (wm > 0) points[pm].x += lambdaX * wm * 1.0;
+            if (wm > 0) points[pm].x += lambdaX * wm;
           }
 
           // C_y = ym - 0.5 * (y1 + y2) = 0
@@ -466,7 +463,7 @@ export function solveConstraints(
             const lambdaY = -Cy / sumGrad2y;
             if (w1 > 0) points[ps].y += lambdaY * w1 * -0.5;
             if (w2 > 0) points[pe].y += lambdaY * w2 * -0.5;
-            if (wm > 0) points[pm].y += lambdaY * wm * 1.0;
+            if (wm > 0) points[pm].y += lambdaY * wm;
           }
         }
       } else if (c.type === 'equal_length') {

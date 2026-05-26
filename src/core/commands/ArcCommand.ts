@@ -1,7 +1,7 @@
-import { Arc } from "../model/Arc"
-import { Command, CommandResponse } from "./types"
-import { UnitsConfig, IDocument } from "../model/Document"
-import { FormatUtils } from "../engine/FormatUtils"
+import {Arc} from "../model/Arc"
+import {Command, CommandResponse} from "./types"
+import {IDocument, UnitsConfig} from "../model/Document"
+import {FormatUtils} from "../engine/FormatUtils"
 
 export class ArcCommand implements Command {
   step = 0
@@ -58,8 +58,7 @@ export class ArcCommand implements Command {
 
   getPreview(x: number, y: number, units: UnitsConfig) {
     if (this.step === 2) {
-      const arc = this.calculateArc(this.p1, this.p2, { x, y }, "PREVIEW", units)
-      return arc
+      return this.calculateArc(this.p1, this.p2, {x, y}, "PREVIEW", units)
     }
     return null
   }

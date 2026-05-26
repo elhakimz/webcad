@@ -3,7 +3,6 @@ import { Solid3D } from '../model/Solid3D';
 import { Insert } from '../model/Insert';
 import { Entity } from '../model/Entity';
 import { IDocument } from '../model/Document';
-import * as MathUtils from './MathUtils';
 
 export class Selection3DEngine {
   private static raycaster = new THREE.Raycaster();

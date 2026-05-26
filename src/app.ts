@@ -28,7 +28,8 @@ import { FormatUtils } from "./core/engine/FormatUtils"
 import { Note } from "./core/model/Note"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
 import { Selection3DEngine } from "./core/engine/Selection3DEngine"
-import { SnapEngine, SnapPoint, SnapType } from "./core/engine/SnapEngine"
+import {SnapEngine, SnapPoint, SnapType} from "./core/engine/SnapEngine"
+import {getLineLineIntersectionInfinite} from "./core/engine/MathUtils"
 import * as THREE from "three"
 
 import { Layer } from "./core/model/Layer"
@@ -519,6 +520,49 @@ export class App {
     return await callHandleResult(result)
   }
 
+  private getConstrainedPreview(originalEntities: Entity[], dx: number, dy: number, mode: 'move'|'rotate'|'scale', cx: number, cy: number, screenY: number): PreviewObject {
+    const mockDoc: any = {
+      entities: new Map<string, Entity>(),
+      getEntity(id: string) { return (this as any).entities.get(id); },
+      updateSpatialIndex() {}
+    };
+    this.doc.entities.forEach((ent, id) => {
+      mockDoc.entities.set(id, ent.clone(id));
+    });
+
+    originalEntities.forEach(orig => {
+      const cl = mockDoc.getEntity(orig.id);
+      if (cl) {
+        if (mode === 'move') {
+          if (cl.move) cl.move(dx, dy);
+        } else if (mode === 'scale') {
+          const dyScreen = this.lastScreenY - screenY;
+          const scaleFactor = Math.max(0.01, 1 + dyScreen * 0.01);
+          if (cl.scale) cl.scale(cx, cy, scaleFactor);
+        } else if (mode === 'rotate') {
+          const startPt = this.activeCenterGrip ? this.activeCenterGrip.startMouse : { x: cx + 1, y: cy }; // Fallback
+          const mousePt = this.viewer.screenToWorld(this.lastScreenX, screenY);
+          const origAngle = Math.atan2(startPt.y - cy, startPt.x - cx);
+          const newAngle = Math.atan2(mousePt.y - cy, mousePt.x - cx);
+          if (cl.rotate) cl.rotate(cx, cy, newAngle - origAngle);
+        }
+      }
+    });
+
+    try {
+      solveDocumentConstraints(mockDoc, this.doc.constraints || []);
+    } catch (err) {
+      // Ignore solver errors in preview
+    }
+
+    const previewEntities: Entity[] = [];
+    mockDoc.entities.forEach((ent: Entity) => {
+      previewEntities.push(ent);
+    });
+
+    return { type: 'entities', entities: previewEntities };
+  }
+
   move(screenX: number, screenY: number, ctrlKey = false, shiftKey = false) {
     if (this.viewer.isPanningActive()) {
       if (this.selectionStartPoint) {
@@ -542,31 +586,74 @@ export class App {
       const dx = x - this.activeCenterGrip.startMouse.x;
       const dy = y - this.activeCenterGrip.startMouse.y;
       
-      const clonedEntities: import('./core/model/Entity').Entity[] = [];
+      const hasConstraints = this.doc.constraints && this.doc.constraints.length > 0;
 
-      this.activeCenterGrip.originalEntities.forEach(orig => {
-        const cloned = orig.clone(orig.id + '_preview');
-        
-        if (this.activeCenterGrip!.mode === 'move') {
-          if (cloned.move) cloned.move(dx, dy);
-        } else if (this.activeCenterGrip!.mode === 'scale') {
-          const dyScreen = this.activeCenterGrip!.startScreenMouse.y - screenY;
-          const scaleFactor = Math.max(0.01, 1 + dyScreen * 0.01);
-          if (cloned.scale) {
-            cloned.scale(cx, cy, scaleFactor);
+      if (hasConstraints) {
+        const mockDoc: any = {
+          entities: new Map<string, Entity>(),
+          getEntity(id: string) { return this.entities.get(id); },
+          updateSpatialIndex() {}
+        };
+        this.doc.entities.forEach((ent, id) => {
+          mockDoc.entities.set(id, ent.clone(id));
+        });
+
+        this.activeCenterGrip.originalEntities.forEach(orig => {
+          const cl = mockDoc.getEntity(orig.id);
+          if (cl) {
+            if (this.activeCenterGrip!.mode === 'move') {
+              if (cl.move) cl.move(dx, dy);
+            } else if (this.activeCenterGrip!.mode === 'scale') {
+              const dyScreen = this.activeCenterGrip!.startScreenMouse.y - screenY;
+              const scaleFactor = Math.max(0.01, 1 + dyScreen * 0.01);
+              if (cl.scale) cl.scale(cx, cy, scaleFactor);
+            } else if (this.activeCenterGrip!.mode === 'rotate') {
+              const origAngle = Math.atan2(this.activeCenterGrip!.startMouse.y - cy, this.activeCenterGrip!.startMouse.x - cx);
+              const newAngle = Math.atan2(y - cy, x - cx);
+              if (cl.rotate) cl.rotate(cx, cy, newAngle - origAngle);
+            }
           }
-        } else if (this.activeCenterGrip!.mode === 'rotate') {
-          const origAngle = Math.atan2(this.activeCenterGrip!.startMouse.y - cy, this.activeCenterGrip!.startMouse.x - cx);
-          const newAngle = Math.atan2(y - cy, x - cx);
-          if (cloned.rotate) {
-            cloned.rotate(cx, cy, newAngle - origAngle);
-          }
+        });
+
+        try {
+          solveDocumentConstraints(mockDoc, this.doc.constraints);
+        } catch (err) {
+          console.error("Constraint solver error during center grip preview:", err);
         }
-        
-        clonedEntities.push(cloned);
-      });
 
-      this.viewer.setPreview({ type: 'entities', entities: clonedEntities } as any, this.doc.units);
+        const previewEntities: Entity[] = [];
+        mockDoc.entities.forEach((ent: Entity) => {
+          previewEntities.push(ent);
+        });
+
+        this.viewer.setPreview({ type: 'entities', entities: previewEntities } as any, this.doc.units);
+      } else {
+        const clonedEntities: import('./core/model/Entity').Entity[] = [];
+
+        this.activeCenterGrip.originalEntities.forEach(orig => {
+          const cloned = orig.clone(orig.id + '_preview');
+          
+          if (this.activeCenterGrip!.mode === 'move') {
+            if (cloned.move) cloned.move(dx, dy);
+          } else if (this.activeCenterGrip!.mode === 'scale') {
+            const dyScreen = this.activeCenterGrip!.startScreenMouse.y - screenY;
+            const scaleFactor = Math.max(0.01, 1 + dyScreen * 0.01);
+            if (cloned.scale) {
+              cloned.scale(cx, cy, scaleFactor);
+            }
+          } else if (this.activeCenterGrip!.mode === 'rotate') {
+            const origAngle = Math.atan2(this.activeCenterGrip!.startMouse.y - cy, this.activeCenterGrip!.startMouse.x - cx);
+            const newAngle = Math.atan2(y - cy, x - cx);
+            if (cloned.rotate) {
+              cloned.rotate(cx, cy, newAngle - origAngle);
+            }
+          }
+          
+          clonedEntities.push(cloned);
+        });
+
+        this.viewer.setPreview({ type: 'entities', entities: clonedEntities } as any, this.doc.units);
+      }
       this.updateDynamicInput(x, y, screenX, screenY, true);
       return;
     }
@@ -786,7 +873,19 @@ export class App {
     }
 
     if (this.cmd.active && this.cmd.active.getPreview) {
-      const preview = this.cmd.active.getPreview(worldPt.x, worldPt.y, this.doc.units, this.doc);
+      let preview = this.cmd.active.getPreview(worldPt.x, worldPt.y, this.doc.units, this.doc);
+      
+      const activeName = this.cmd.active.constructor.name;
+      const hasConstraints = this.doc.constraints && this.doc.constraints.length > 0;
+
+      if (hasConstraints && (activeName === 'MoveCommand' || activeName === 'CopyCommand') && this.cmd.active.step === 2) {
+          const moveCmd = this.cmd.active as any;
+          const dx = x - moveCmd.basePoint.x;
+          const dy = y - moveCmd.basePoint.y;
+          const targets = moveCmd.targetIds.map((id: string) => this.doc.getEntity(id)).filter((e: any) => e !== undefined);
+          preview = this.getConstrainedPreview(targets, dx, dy, 'move', moveCmd.basePoint.x, moveCmd.basePoint.y, screenY);
+      }
+
       this.viewer.setPreview(preview, this.doc.units);
     } else {
       this.viewer.setPreview(null);
@@ -1265,20 +1364,56 @@ export class App {
         if (option === "Angular" && ent1 instanceof Line && ent2 instanceof Line) {
           console.log("1. ContextMenu, Angular, applyDirectConstraint");
           this.dynamicMenu.hide();
-          const p1 = { x: ent1.x1, y: ent1.y1 }, p2 = { x: ent1.x2, y: ent1.y2 };
-          const p3 = { x: ent2.x1, y: ent2.y1 }, p4 = { x: ent2.x2, y: ent2.y2 };
-          const vx1 = p2.x - p1.x, vy1 = p2.y - p1.y;
-          const vx2 = p4.x - p3.x, vy2 = p4.y - p3.y;
-          if (Math.sqrt(vx1**2+vy1**2) < 1e-6 || Math.sqrt(vx2**2+vy2**2) < 1e-6) return;
+          
+          const intersect = getLineLineIntersectionInfinite(
+            { x: ent1.x1, y: ent1.y1 }, { x: ent1.x2, y: ent1.y2 },
+            { x: ent2.x1, y: ent2.y1 }, { x: ent2.x2, y: ent2.y2 }
+          );
+
+          if (!intersect) return;
+
+          // Determine which endpoint of each line is closer to the intersection
+          const d1a = Math.sqrt((ent1.x1 - intersect.x)**2 + (ent1.y1 - intersect.y)**2);
+          const d1b = Math.sqrt((ent1.x2 - intersect.x)**2 + (ent1.y2 - intersect.y)**2);
+          const l1Refs: [DocumentPointRef, DocumentPointRef] = d1a < d1b 
+            ? [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }]
+            : [{ entityId: ent1.id, pointId: 'end' }, { entityId: ent1.id, pointId: 'start' }];
+
+          const d2a = Math.sqrt((ent2.x1 - intersect.x)**2 + (ent2.y1 - intersect.y)**2);
+          const d2b = Math.sqrt((ent2.x2 - intersect.x)**2 + (ent2.y2 - intersect.y)**2);
+          const l2Refs: [DocumentPointRef, DocumentPointRef] = d2a < d2b
+            ? [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
+            : [{ entityId: ent2.id, pointId: 'end' }, { entityId: ent2.id, pointId: 'start' }];
+
+          const pStart1 = getPointCoords(this.doc, l1Refs[0]);
+          const pEnd1 = getPointCoords(this.doc, l1Refs[1]);
+          const pStart2 = getPointCoords(this.doc, l2Refs[0]);
+          const pEnd2 = getPointCoords(this.doc, l2Refs[1]);
+
+          if (!pStart1 || !pEnd1 || !pStart2 || !pEnd2) return;
+
+          const vx1 = pEnd1.x - pStart1.x, vy1 = pEnd1.y - pStart1.y;
+          const vx2 = pEnd2.x - pStart2.x, vy2 = pEnd2.y - pStart2.y;
+          
           const diff = Math.atan2(vy2, vx2) - Math.atan2(vy1, vx1);
           let d = diff; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+          
           const currentDeg = (Math.abs(d) * 180 / Math.PI).toFixed(1);
           const rect = this.viewer.canvas.getBoundingClientRect();
+          
           this.dynamicInput.show(rect.left + rect.width / 2 - 80, rect.top + rect.height / 2 - 40, ["SET TARGET ANGLE", `Current: ${currentDeg}°`], [], true, [], "Type angle in degrees and press Enter", currentDeg);
           this.dynamicInput.onInputSubmitted((text) => {
             const val = parseFloat(text);
             if (!isNaN(val) && val > 0 && val < 180) {
-              this.applyDirectConstraint({ type: 'angular', l1: [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }], l2: [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }], value: val * Math.PI / 180 });
+              let targetDiff = val * Math.PI / 180;
+              if (d < 0) targetDiff = -targetDiff;
+              
+              this.applyDirectConstraint({ 
+                type: 'angular', 
+                l1: l1Refs, 
+                l2: l2Refs, 
+                value: targetDiff 
+              });
             }
             this.dynamicInput.hide();
           });
@@ -1578,13 +1713,16 @@ export class App {
       const dx = x - this.activeCenterGrip.startMouse.x;
       const dy = y - this.activeCenterGrip.startMouse.y;
       
-      this.doc.history.startTransaction();
+      this.doc.history.startTransaction(this.doc.constraints);
       
+      const beforeStates = new Map<string, Entity>();
+      this.doc.entities.forEach((ent, id) => {
+          beforeStates.set(id, ent.clone(id));
+      });
+
       this.activeCenterGrip.originalEntities.forEach(orig => {
         const entity = this.doc.getEntity(orig.id);
         if (entity) {
-          const beforeState = entity.clone(entity.id);
-          
           if (this.activeCenterGrip!.mode === 'move') {
             if (entity.move) entity.move(dx, dy);
           } else if (this.activeCenterGrip!.mode === 'scale') {
@@ -1600,13 +1738,29 @@ export class App {
               entity.rotate(cx, cy, newAngle - origAngle);
             }
           }
-          
-          this.doc.recordTransform(beforeState, entity);
-          this.addEntity(entity, true, false);
+        }
+      });
+
+      // Solve constraints after the manual transformation
+      try {
+        solveDocumentConstraints(this.doc, this.doc.constraints);
+      } catch (err) {
+        console.error("Constraint solver error during center grip commit:", err);
+      }
+
+      // Record transforms for entities that actually changed and update viewer
+      this.doc.entities.forEach((ent, id) => {
+        const before = beforeStates.get(id);
+        if (before) {
+            const changed = JSON.stringify(before) !== JSON.stringify(ent);
+            if (changed) {
+                this.doc.recordTransform(before, ent);
+                this.addEntity(ent, false, false);
+            }
         }
       });
       
-      this.doc.history.commitTransaction();
+      this.doc.history.commitTransaction(this.doc.constraints);
 
       this.activeCenterGrip = null;
       this.viewer.setPreview(null);
@@ -1759,7 +1913,10 @@ export class App {
                     (this.cmd.active as unknown as HasSetEntity).setEntity(e);
                 }
                 const res = await this.cmd.inputString(e.id, this.doc.units);
-                if (res) result = res;
+                if (res) {
+                    const loopRes = await this.handleResult(res, true);
+                    if (loopRes) result = loopRes;
+                }
             }
         }
         this.reportSelectionDimensions();
@@ -1984,9 +2141,20 @@ export class App {
     return await this.handleResult(result)
   }
 
-  private async handleResult(result: CommandResponse | Promise<CommandResponse> | undefined): Promise<CommandResponse | undefined> {
-    result = await result;
-    if (result && typeof result === 'object') {
+  private isContinuousCommand(activeName: string): boolean {
+    return [
+      'LineCommand', 'PolylineCommand', 'TraceCommand', 'HatchCommand', 
+      'OffsetCommand', 'TrimCommand', 'ExtendCommand', 
+      'SFilletCommand', 'SChamferCommand'
+    ].includes(activeName);
+  }
+  private async handleResult(cmdResponse: CommandResponse | Promise<CommandResponse> | undefined, isSelectionLoop: boolean = false): Promise<CommandResponse | undefined> {
+    const awaited = await cmdResponse;
+    if (!awaited) return undefined;
+
+    let result: CommandResponse = awaited;
+
+    if (typeof result === 'object') {
       // Handle tagged responses
       if ('type' in result) {
         const tagged = result as any;
@@ -2035,10 +2203,12 @@ export class App {
             this.doc.history.commitTransaction();
         }
 
-        const isContinuous = activeName === 'LineCommand' || activeName === 'PolylineCommand' || activeName === 'SolidCommand' || activeName === 'TraceCommand' || activeName === 'HatchCommand' || activeName === 'LayerCommand' || activeName === 'OffsetCommand' || activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'SFilletCommand' || activeName === 'SChamferCommand';
+        const isContinuous = this.isContinuousCommand(activeName || "");
 
         if (!isContinuous || isCloseAction) {
-          this.terminateActiveCommand();
+          if (!isSelectionLoop) {
+            this.terminateActiveCommand();
+          }
         }
 
         if (isCloseAction) {
@@ -2110,11 +2280,12 @@ export class App {
 
       if (actionResult !== undefined) {
         // If the action resulted in clearing the active command, ensure markers are cleared too
-        const activeName = this.cmd.active?.constructor.name;
-        const isContinuous = activeName === 'LayerCommand' || activeName === 'OffsetCommand' || activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'LengthenCommand' || activeName === 'SFilletCommand' || activeName === 'SChamferCommand'; // Actions that keep command active
+        const activeName = this.cmd.active?.constructor.name || "";
 
-        if (!this.cmd.active || (this.cmd.active && !isContinuous)) {
-            this.terminateActiveCommand();
+        if (!this.cmd.active || (this.cmd.active && !this.isContinuousCommand(activeName))) {
+            if (!isSelectionLoop) {
+                this.terminateActiveCommand();
+            }
         }
         return actionResult;
       }

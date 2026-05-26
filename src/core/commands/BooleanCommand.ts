@@ -1,9 +1,9 @@
 import { Command, CommandResponse } from "./types"
 import { UnitsConfig, IDocument } from "../model/Document"
 import { Solid3D } from "../model/Solid3D"
-import { OpenCascadeService } from "../io/OpenCascadeService.js"
-import * as THREE from 'three';
-import { GeneratorProgressModal } from "../../ui/GeneratorProgressModal.js"
+import { OpenCascadeService } from "../io/OpenCascadeService"
+import { GeneratorProgressModal } from "../../ui/GeneratorProgressModal"
+import * as THREE from "three"
 
 
 export class BooleanCommand implements Command {
@@ -69,11 +69,11 @@ export class BooleanCommand implements Command {
 
   private async ensureShapeCached(entityId: string, doc?: IDocument): Promise<void> {
     // Try to prime the worker cache by importing the solid's brepSnapshot
-    const entity = doc?.getEntity(entityId) as any;
-    if (entity?.brepSnapshot) {
+    const entity = doc?.getEntity(entityId);
+    if (entity instanceof Solid3D && entity.brepSnapshot) {
       try {
         await this.occService.importBRep(entityId, entity.brepSnapshot);
-      } catch (e) {
+      } catch {
         // Ignore — if it was already cached the worker will still have it
       }
     }
@@ -89,14 +89,6 @@ export class BooleanCommand implements Command {
     const facetres = doc ? doc.facetres : 5.0
     const deflection = 0.1 / facetres
 
-    const entityA = doc?.getEntity(this.idA!) as any;
-    const entityB = doc?.getEntity(this.idB!) as any;
-    const rotA = entityA?.rotation || { x: 0, y: 0, z: 0 };
-    const rotB = entityB?.rotation || { x: 0, y: 0, z: 0 };
-
-    const centerA = entityA?.position || { x: 0, y: 0, z: 0 };
-    const centerB = entityB?.position || { x: 0, y: 0, z: 0 };
-
     // Ensure both shapes are in the OCC worker cache before attempting the boolean
     progress.update(25, "Preparing operands in kernel cache...");
     return Promise.all([
@@ -104,9 +96,9 @@ export class BooleanCommand implements Command {
       this.ensureShapeCached(this.idB!, doc),
     ]).then(() => {
       progress.update(50, `Executing OpenCascade B-Rep ${this.operation.toUpperCase()}...`);
-      return (this.occService as any).createBoolean(this.operation, this.idA, this.idB, id, deflection);
+      return this.occService.createBoolean(this.operation, this.idA!, this.idB!, id, deflection);
     })
-      .then(async (geometry: any) => {
+      .then(async (geometry: THREE.BufferGeometry) => {
         progress.update(85, "Rebuilding 3D boundary representation...");
         const positions = Array.from(geometry.getAttribute('position').array) as number[];
         const indices = Array.from(geometry.getIndex()?.array || []) as number[];
@@ -134,12 +126,13 @@ export class BooleanCommand implements Command {
           deleteIds: [this.idA!, this.idB!]
         } as unknown as CommandResponse;
       })
-      .catch(async (err: any) => {
+      .catch(async (err: unknown) => {
         this.step = 0;
-        progress.update(0, `Error: ${err.message || err.toString()}`);
+        const msg = err instanceof Error ? err.message : String(err);
+        progress.update(0, `Error: ${msg}`);
         await new Promise(resolve => setTimeout(resolve, 1500));
         progress.close();
-        return `Error performing boolean: ${err.message || err.toString()}`;
+        return `Error performing boolean: ${msg}`;
       });
   }
 

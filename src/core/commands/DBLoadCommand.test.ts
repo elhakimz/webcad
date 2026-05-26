@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { DBLoadCommand } from './IOCommands'
+import { CommandAction } from './types'
 
 describe('DBLoadCommand', () => {
   it('should return correct initial prompt', () => {
@@ -9,13 +10,13 @@ describe('DBLoadCommand', () => {
 
   it('should return listFiles action when ? is provided', () => {
     const cmd = new DBLoadCommand()
-    const res = cmd.onInput('?', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as any
+    const res = cmd.onInput('?', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as CommandAction
     expect(res).toEqual({ action: 'dblistFiles' })
   })
 
   it('should return error/warning text when empty name is provided', () => {
     const cmd = new DBLoadCommand()
-    const res = cmd.onInput('', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as any
+    const res = cmd.onInput('', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as string
     expect(res).toBe('Project name required. Load project from database:')
   })
 

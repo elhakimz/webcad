@@ -1,4 +1,4 @@
-import { Command, PreviewObject } from "./types"
+import { Command, CommandResponse, PreviewObject } from "./types"
 import { UnitsConfig } from "../model/Document"
 import { Dimension } from "../model/Dimension"
 

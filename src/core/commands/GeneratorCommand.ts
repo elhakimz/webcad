@@ -9,11 +9,11 @@ import { Arc } from "../model/Arc"
 export class GeneratorCommand implements Command {
   step = 0
   generatorName = ""
-  params: Record<string, any> = {}
+  params: Record<string, unknown> = {}
   insertPoint: Point | null = null
   selectedEntity: Entity | null = null
 
-  constructor(generatorName = "", params: Record<string, any> = {}) {
+  constructor(generatorName = "", params: Record<string, unknown> = {}) {
     this.generatorName = generatorName;
     this.params = params;
   }
@@ -22,7 +22,7 @@ export class GeneratorCommand implements Command {
     this.selectedEntity = entity;
   }
 
-  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: any): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
     const val = text.trim();
 
     if (this.step === 0) {
@@ -33,9 +33,9 @@ export class GeneratorCommand implements Command {
           const parts = decoded.split(";");
           this.generatorName = parts[0];
           if (parts[1]) {
-            this.params = JSON.parse(parts[1]);
+            this.params = JSON.parse(parts[1]) as Record<string, unknown>;
           }
-        } catch (e) {
+        } catch {
           this.generatorName = val;
         }
       }
@@ -139,12 +139,12 @@ export class GeneratorCommand implements Command {
   }
 
   private finish(): CommandResponse {
-    const res: CommandResponse = {
+    const res: CommandAction = {
       action: "generator_placed",
       generator: this.generatorName,
       point: this.insertPoint!,
       params: this.params
-    } as any;
+    };
     this.step = 0;
     this.selectedEntity = null;
     return res;

@@ -1,6 +1,7 @@
 import { ActionHandler, AppContext } from "../types";
 import { CommandAction, CommandResponse } from "../../../commands/types";
 import { OpenCascadeService } from "../../../io/OpenCascadeService";
+import { solveDocumentConstraints } from "../../SketchSolver";
 
 export class RotateHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -8,14 +9,19 @@ export class RotateHandler implements ActionHandler {
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, addEntity } = context;
+    const { doc, viewer, addEntity } = context;
 
     if (action.action === 'rotate' && (action.id || action.ids) && action.angle !== undefined) {
       const ids = action.ids || (action.id ? [action.id] : []);
+      
+      const beforeStates = new Map<string, any>();
+      doc.entities.forEach((ent, id) => {
+          beforeStates.set(id, ent.clone(id));
+      });
+
       for (const id of ids) {
         const entity = doc.getEntity(id);
         if (entity) {
-          const before = entity.clone(entity.id);
           const isSolid3D = (entity as any).type === "Solid3D" || entity.constructor.name === "Solid3D";
           
           if (isSolid3D) {
@@ -41,13 +47,32 @@ export class RotateHandler implements ActionHandler {
             }
           } else {
             entity.rotate(action.baseX!, action.baseY!, action.angle!);
-            addEntity(entity, false, false); 
+            // Wait for solver to update viewer
           }
-          doc.recordTransform(before, entity);
         }
       }
+
+      // After applying raw rotation, solve constraints to honor 'Fix' etc.
+      try {
+        solveDocumentConstraints(doc, doc.constraints);
+      } catch (err) {
+        console.warn("Solver failed after rotate:", err);
+      }
+
+      // Record transforms for entities that actually changed and sync viewer
+      doc.entities.forEach((ent, id) => {
+        const before = beforeStates.get(id);
+        if (before) {
+            const changed = JSON.stringify(before) !== JSON.stringify(ent);
+            if (changed) {
+                doc.recordTransform(before, ent);
+                addEntity(ent, false, false);
+            }
+        }
+      });
+
       this.cleanup(context);
-      return `Entities [${ids.join(', ')}] rotated.`;
+      return `Entities rotated.`;
     }
     return undefined;
   }

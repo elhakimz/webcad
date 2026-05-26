@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { RebuildCommand } from './RebuildCommand'
+import { CommandAction } from './types'
 
 describe('RebuildCommand', () => {
   it('should construct with selected entity id', () => {
@@ -19,14 +20,14 @@ describe('RebuildCommand', () => {
     expect(cmd.targetId).toBe('')
     
     // First, enter name
-    const res = cmd.onInput('S3D2', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as any
+    const res = cmd.onInput('S3D2', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as CommandAction
     expect(cmd.targetId).toBe('S3D2')
     expect(res).toEqual({ action: 'rebuild', id: 'S3D2' })
   })
 
   it('should return rebuild action immediately on onPoint if target exists', () => {
     const cmd = new RebuildCommand(['S3D3'])
-    const res = cmd.onPoint(0, 0, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as any
+    const res = cmd.onPoint(0, 0, 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as CommandAction
     expect(res).toEqual({ action: 'rebuild', id: 'S3D3' })
   })
 })

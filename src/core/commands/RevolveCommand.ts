@@ -5,8 +5,9 @@ import { Polyline } from "../model/Polyline"
 import { Circle } from "../model/Circle"
 import { Spline } from "../model/Spline"
 import { Solid3D } from "../model/Solid3D"
-import { OpenCascadeService } from "../io/OpenCascadeService.js";
+import { OpenCascadeService } from "../io/OpenCascadeService";
 import { bulgeToArc } from "../engine/MathUtils";
+import * as THREE from "three"
 
 export class RevolveCommand implements Command {
   step = 0
@@ -181,7 +182,7 @@ export class RevolveCommand implements Command {
     const facetres = doc ? doc.facetres : 5.0;
     const deflection = 0.1 / facetres;
     
-    return this.occService.createRevolve(points, this.axisPt1, axisDir, this.angle, this.thickness, deflection, isClosed, id).then((geometry: any) => {
+    return this.occService.createRevolve(points, this.axisPt1, axisDir, this.angle, this.thickness, deflection, isClosed, id).then((geometry: THREE.BufferGeometry) => {
       const positions = Array.from(geometry.getAttribute('position').array) as number[];
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
       
@@ -197,10 +198,10 @@ export class RevolveCommand implements Command {
       }
       this.step = 0; // Reset
       return solid as CommandResponse;
-    }).catch((err: any) => {
-
+    }).catch((err: unknown) => {
       this.step = 0;
-      return `Error creating revolve: ${err.message || err.toString()}`;
+      const msg = err instanceof Error ? err.message : String(err);
+      return `Error creating revolve: ${msg}`;
     });
   }
 

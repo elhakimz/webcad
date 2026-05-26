@@ -1527,7 +1527,6 @@ self.onmessage = async (e) => {
     }
     const { x, y, z, r1, r2, deflection, entityId } = payload;
     try {
-      // Use constructor with radii and translate (most reliable overload)
       const torus = new oc.BRepPrimAPI_MakeTorus_1(r1, r2);
       let shape = torus.Shape();
 
@@ -1544,20 +1543,11 @@ self.onmessage = async (e) => {
       }
 
       shape = detachShape(oc, shape);
+      if (entityId) cacheShape(entityId, shape);
 
-      if (entityId) {
-        cacheShape(entityId, shape);
-      }
-
-      // Tessellate and get geometry data
       const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
       const brepBytes = exportShapeToNativeBRep(oc, shape, entityId);
 
-      if (geometryData.positions.length === 0) {
-        throw new Error("No geometry generated from shape. Positions array is empty.");
-      }
-
-      // Cleanup at the very end
       if (translation) translation.delete();
       if (transform) transform.delete();
       if (brepTransform) brepTransform.delete();
@@ -1567,6 +1557,195 @@ self.onmessage = async (e) => {
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'createTorus', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'createWedge') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { x1, y1, z1 = 0, x2, y2, height, ltx, deflection, entityId } = payload;
+    try {
+      // 1. Derive absolute dimensions and corners
+      const dx = Math.abs(x2 - x1);
+      const dy = Math.abs(y2 - y1);
+      const dz = Math.abs(height);
+      const ox = Math.min(x1, x2);
+      const oy = Math.min(y1, y2);
+      const oz = height >= 0 ? z1 : z1 - dz;
+
+      if (dx < 1e-10 || dy < 1e-10 || dz < 1e-10) {
+        throw new Error('Wedge dimensions must be non-zero');
+      }
+
+      // 2. Implementation via manual polyhedron (SCAD prismoid logic)
+      const altx = Math.max(0, Math.min(dx, ltx));
+      
+      const points: {x: number, y: number, z: number}[] = [
+        { x: 0,  y: 0,  z: 0  }, // 0: Bottom-Front-Left
+        { x: dx, y: 0,  z: 0  }, // 1: Bottom-Front-Right
+        { x: dx, y: dy, z: 0  }, // 2: Bottom-Back-Right
+        { x: 0,  y: dy, z: 0  }, // 3: Bottom-Back-Left
+        { x: 0,    y: 0,  z: dz }, // 4: Top-Front-Left
+        { x: altx, y: 0,  z: dz }, // 5: Top-Front-Right
+        { x: altx, y: dy, z: dz }, // 6: Top-Back-Right
+        { x: 0,    y: dy, z: dz }  // 7: Top-Back-Left
+      ];
+
+      const faces = [
+        [3, 2, 1, 0], // Bottom
+        [4, 5, 6, 7], // Top
+        [0, 1, 5, 4], // Front
+        [1, 2, 6, 5], // Right
+        [2, 3, 7, 6], // Back
+        [3, 0, 4, 7]  // Left
+      ];
+
+      const gpPoints: any[] = [];
+      for (const pt of points) {
+        gpPoints.push(new oc.gp_Pnt_3(pt.x + ox, pt.y + oy, pt.z + oz));
+      }
+
+      const faceShapes: any[] = [];
+      for (let i = 0; i < faces.length; i++) {
+        const fIdxs = faces[i];
+        const makeWire = new oc.BRepBuilderAPI_MakeWire_1();
+        let addedEdges = 0;
+
+        for (let j = 0; j < fIdxs.length; j++) {
+          const p1 = gpPoints[fIdxs[j]];
+          const p2 = gpPoints[fIdxs[(j + 1) % fIdxs.length]];
+          
+          const dSq = Math.pow(p2.X()-p1.X(), 2) + Math.pow(p2.Y()-p1.Y(), 2) + Math.pow(p2.Z()-p1.Z(), 2);
+          if (dSq > 1e-8) {
+            const me = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+            if (me.IsDone()) {
+              makeWire.Add_1(me.Edge());
+              addedEdges++;
+            }
+            me.delete();
+          }
+        }
+
+        if (addedEdges >= 3 && makeWire.IsDone()) {
+          const makeFace = new oc.BRepBuilderAPI_MakeFace_15(makeWire.Wire(), false);
+          if (makeFace.IsDone()) {
+            faceShapes.push(detachShape(oc, makeFace.Face()));
+          }
+          makeFace.delete();
+        }
+        makeWire.delete();
+      }
+
+      let sewing = createSewing(oc, 1e-4);
+      for (const face of faceShapes) {
+        sewing.Add(face);
+      }
+      
+      if (oc.Handle_Message_ProgressIndicator_1) {
+        const range = new oc.Handle_Message_ProgressIndicator_1();
+        sewing.Perform(range);
+        range.delete();
+      } else {
+        sewing.Perform();
+      }
+      
+      let sewedShape = sewing.SewedShape();
+      let finalResultShape = sewedShape;
+      
+      const makeSolid = new oc.BRepBuilderAPI_MakeSolid_1();
+      const exp = new oc.TopExp_Explorer_2(sewedShape, oc.TopAbs_ShapeEnum.TopAbs_SHELL, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      while (exp.More()) {
+        makeSolid.Add(oc.TopoDS.Shell_1(exp.Current()));
+        exp.Next();
+      }
+      exp.delete();
+      if (makeSolid.IsDone()) finalResultShape = makeSolid.Solid();
+      makeSolid.delete();
+
+      const resultShape = detachShape(oc, finalResultShape);
+      if (entityId) {
+        cacheShape(entityId, resultShape);
+      }
+
+      const geometryData = shapeToBufferGeometryData(resultShape, oc, deflection);
+      const brepBytes = exportShapeToNativeBRep(oc, resultShape, entityId);
+
+      gpPoints.forEach(p => p.delete());
+      faceShapes.forEach(f => f.delete());
+      sewing.delete();
+
+      self.postMessage({ type: 'createWedge', success: true, payload: { ...geometryData, brepBytes }, id });
+    } catch (error: any) {
+      const errorMessage = decodeOCCError('createWedge', error);
+      self.postMessage({ type: 'createWedge', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'createPyramid') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { x, y, z, sides, radius, h, deflection, entityId } = payload;
+    try {
+      // 1. Create base polygon wire
+      const pts: any[] = [];
+      for (let i = 0; i < sides; i++) {
+        const ang = (i / sides) * 2 * Math.PI;
+        pts.push(new oc.gp_Pnt_3(radius * Math.cos(ang), radius * Math.sin(ang), 0));
+      }
+
+      const makeWire = new oc.BRepBuilderAPI_MakeWire_1();
+      for (let i = 0; i < sides; i++) {
+        const e = new oc.BRepBuilderAPI_MakeEdge_3(pts[i], pts[(i + 1) % sides]);
+        makeWire.Add_1(e.Edge());
+        e.delete();
+      }
+      const baseWire = makeWire.Wire();
+
+      // 2. Create apex vertex
+      const apexPnt = new oc.gp_Pnt_3(0, 0, h);
+      const makeVertex = new oc.BRepBuilderAPI_MakeVertex(apexPnt);
+      const apexVertex = makeVertex.Vertex();
+
+      // 3. Loft between wire and vertex
+      const loft = new oc.BRepOffsetAPI_ThruSections(true, true, 1e-6);
+      loft.AddWire(baseWire);
+      loft.AddVertex(apexVertex);
+      loft.Build();
+
+      let shape = loft.Shape();
+
+      let translation: any = null;
+      let transform: any = null;
+      let brepTransform: any = null;
+
+      if (x !== 0 || y !== 0 || z !== 0) {
+        translation = new oc.gp_Vec_4(x, y, z);
+        transform = new oc.gp_Trsf_1();
+        transform.SetTranslation_1(translation);
+        brepTransform = new oc.BRepBuilderAPI_Transform_2(shape, transform, true);
+        shape = brepTransform.Shape();
+      }
+
+      shape = detachShape(oc, shape);
+      if (entityId) cacheShape(entityId, shape);
+
+      const geometryData = shapeToBufferGeometryData(shape, oc, deflection);
+      const brepBytes = exportShapeToNativeBRep(oc, shape, entityId);
+
+      // Cleanup
+      pts.forEach(p => p.delete());
+      apexPnt.delete();
+      makeVertex.delete();
+      makeWire.delete();
+      loft.delete();
+      if (translation) translation.delete();
+      if (transform) transform.delete();
+      if (brepTransform) brepTransform.delete();
+
+      self.postMessage({ type: 'createPyramid', success: true, payload: { ...geometryData, brepBytes }, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'createPyramid', success: false, error: errorMessage, id });
     }
   } else if (type === 'createPolyhedron') {
     if (!oc) {
@@ -3051,12 +3230,14 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'createSweep', success: false, error: errorMessage, id });
     }
   } else if (type === 'createLoft') {
+    console.log("createLoft");
     if (!oc) {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
     const { profiles, isSolid, isRuled, deflection, entityId } = payload;
-    const localProfileShapes: any[] = [];
+    const allLoftProfiles: any[] = [];
+    const tempLoftProfiles: any[] = [];
     try {
       const loftBuilder = new oc.BRepOffsetAPI_ThruSections(isSolid, isRuled, 1e-6);
 
@@ -3064,8 +3245,12 @@ self.onmessage = async (e) => {
 
       for (const profile of profilesArray) {
         let shape: any = null;
+        let isFromCache = false;
 
-        if (profile.points && profile.points.length === 1) {
+        if (shapeCache.has(profile.id)) {
+          shape = shapeCache.get(profile.id);
+          isFromCache = true;
+        } else if (profile.points && profile.points.length === 1) {
           // Create vertex on the fly!
           const p = profile.points[0];
           const gpPnt = new oc.gp_Pnt_3(p.x, p.y, p.z);
@@ -3095,6 +3280,12 @@ self.onmessage = async (e) => {
             e.delete();
           }
 
+          if (!makeWire.IsDone()) {
+            makeWire.delete();
+            pts.forEach((p: any) => p.delete());
+            throw new Error(`Failed to create wire for profile (id: ${profile.id}).`);
+          }
+
           const tempWire = makeWire.Wire();
           shape = detachShape(oc, tempWire);
           tempWire.delete();
@@ -3104,15 +3295,18 @@ self.onmessage = async (e) => {
         }
 
         if (!shape) {
-          throw new Error(`No points provided for profile (id: ${profile.id}).`);
+          throw new Error(`No points provided and no cached shape found for profile (id: ${profile.id}).`);
         }
 
-        localProfileShapes.push(shape);
-
+        allLoftProfiles.push(shape);
+        if (!isFromCache) {
+          tempLoftProfiles.push(shape);
+        }
         const shapeType = shape.ShapeType();
-
         if (shapeType === oc.TopAbs_ShapeEnum.TopAbs_WIRE) {
-          loftBuilder.AddWire(shape);
+          const wire = oc.TopoDS.Wire_1(shape);
+          loftBuilder.AddWire(wire);
+          wire.delete();
         } else if (shapeType === oc.TopAbs_ShapeEnum.TopAbs_FACE) {
           const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_WIRE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
           if (explorer.More()) {
@@ -3122,7 +3316,9 @@ self.onmessage = async (e) => {
           }
           explorer.delete();
         } else if (shapeType === oc.TopAbs_ShapeEnum.TopAbs_VERTEX) {
-          loftBuilder.AddVertex(shape);
+          const vertex = oc.TopoDS.Vertex_1(shape);
+          loftBuilder.AddVertex(vertex);
+          vertex.delete();
         } else {
           throw new Error(`Unsupported shape type for loft: ${shapeType}`);
         }
@@ -3139,9 +3335,9 @@ self.onmessage = async (e) => {
 
       // If user requested a solid but the result is not a solid, try to close it!
       if (isSolid && resultShape.ShapeType() !== oc.TopAbs_ShapeEnum.TopAbs_SOLID) {
-        if (localProfileShapes.length >= 2) {
-          const firstShape = localProfileShapes[0];
-          const lastShape = localProfileShapes[localProfileShapes.length - 1];
+        if (allLoftProfiles.length >= 2) {
+          const firstShape = allLoftProfiles[0];
+          const lastShape = allLoftProfiles[allLoftProfiles.length - 1];
 
           if (firstShape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_WIRE &&
             lastShape.ShapeType() === oc.TopAbs_ShapeEnum.TopAbs_WIRE) {
@@ -3175,7 +3371,6 @@ self.onmessage = async (e) => {
 
               if (makeSolid.IsDone()) {
                 resultShape = makeSolid.Solid();
-                console.log("[Worker] Successfully closed loft end caps to create a solid.");
               } else {
                 console.warn("[Worker] Failed to make solid from closed shell.");
               }
@@ -3204,8 +3399,8 @@ self.onmessage = async (e) => {
 
       loftBuilder.delete();
 
-      // Clean up local profile shapes
-      for (const sh of localProfileShapes) {
+      // Clean up temporary profile shapes
+      for (const sh of tempLoftProfiles) {
         if (sh && !sh.IsNull()) {
           sh.delete();
         }
@@ -3214,8 +3409,8 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'createLoft', success: true, payload: { ...geometryData, brepBytes }, id });
 
     } catch (error: any) {
-      // Clean up local profile shapes in case of error
-      for (const sh of localProfileShapes) {
+      // Clean up temporary profile shapes in case of error
+      for (const sh of tempLoftProfiles) {
         if (sh && !sh.IsNull()) {
           try { sh.delete(); } catch (_) {}
         }

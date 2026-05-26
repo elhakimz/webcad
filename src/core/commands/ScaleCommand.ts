@@ -1,41 +1,49 @@
 import { Command, CommandResponse } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { Point } from "../engine/MathUtils"
 import { FormatUtils } from "../engine/FormatUtils"
+import { Entity } from "../model/Entity"
 
-function getCreationCoordinate(entity: any): { x: number, y: number, z?: number } {
-  if (entity.creationParams && entity.creationParams.params) {
-    const p = entity.creationParams.params;
-    if (p.x !== undefined && p.y !== undefined) {
-      return { x: p.x, y: p.y, z: p.z || 0 };
+function getCreationCoordinate(entity: Entity): { x: number, y: number, z?: number } {
+  const ent = entity as unknown as Record<string, unknown>;
+  if (ent.creationParams && typeof ent.creationParams === 'object') {
+    const cp = ent.creationParams as Record<string, unknown>;
+    if (cp.params && typeof cp.params === 'object') {
+      const p = cp.params as Record<string, unknown>;
+      if (typeof p.x === 'number' && typeof p.y === 'number') {
+        return { x: p.x, y: p.y, z: (p.z as number) || 0 };
+      }
     }
   }
-  if (entity.x1 !== undefined && entity.y1 !== undefined) {
-    return { x: entity.x1, y: entity.y1, z: entity.elevation || 0 };
+  if (typeof ent.x1 === 'number' && typeof ent.y1 === 'number') {
+    return { x: ent.x1, y: ent.y1, z: (ent.elevation as number) || 0 };
   }
-  if (entity.cx !== undefined && entity.cy !== undefined) {
-    return { x: entity.cx, y: entity.cy, z: entity.elevation || 0 };
+  if (typeof ent.cx === 'number' && typeof ent.cy === 'number') {
+    return { x: ent.cx, y: ent.cy, z: (ent.elevation as number) || 0 };
   }
-  if (entity.position !== undefined) {
-    return { x: entity.position.x, y: entity.position.y, z: entity.position.z || 0 };
+  if (ent.position && typeof ent.position === 'object') {
+    const pos = ent.position as { x: number, y: number, z?: number };
+    return { x: pos.x, y: pos.y, z: pos.z || 0 };
   }
   return { x: 0, y: 0, z: 0 };
 }
 
-function getObjectCenter(entity: any): { x: number, y: number, z?: number } {
-  const isSolid = entity.type === "Solid3D" || entity.constructor.name === "Solid3D";
-  if (isSolid && entity.position) {
-    return { x: entity.position.x, y: entity.position.y, z: entity.position.z || 0 };
+function getObjectCenter(entity: Entity): { x: number, y: number, z?: number } {
+  const ent = entity as unknown as Record<string, unknown>;
+  const isSolid = ent.type === "Solid3D" || entity.constructor.name === "Solid3D";
+  if (isSolid && ent.position && typeof ent.position === 'object') {
+    const pos = ent.position as { x: number, y: number, z?: number };
+    return { x: pos.x, y: pos.y, z: pos.z || 0 };
   }
-  if (entity.cx !== undefined && entity.cy !== undefined) {
-    return { x: entity.cx, y: entity.cy, z: entity.elevation || 0 };
+  if (typeof ent.cx === 'number' && typeof ent.cy === 'number') {
+    return { x: ent.cx, y: ent.cy, z: (ent.elevation as number) || 0 };
   }
-  if (typeof entity.getBoundingBox === 'function') {
-    const bbox = entity.getBoundingBox();
+  if (typeof ent.getBoundingBox === 'function') {
+    const bbox = (ent.getBoundingBox as () => { minX: number, maxX: number, minY: number, maxY: number })();
     return {
       x: (bbox.minX + bbox.maxX) / 2,
       y: (bbox.minY + bbox.maxY) / 2,
-      z: entity.elevation || 0
+      z: (ent.elevation as number) || 0
     };
   }
   return { x: 0, y: 0, z: 0 };
@@ -60,7 +68,7 @@ export class ScaleCommand implements Command {
     return Math.max(0.01, factor);
   }
 
-  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: any): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
     if (this.step === 0 && val !== "") {
       this.targetIds = [val];
@@ -149,11 +157,11 @@ export class ScaleCommand implements Command {
     return this.getPrompt();
   }
 
-  getPreview(x: number, y: number, _units: UnitsConfig, doc?: any): import('./types').PreviewObject | null {
+  getPreview(x: number, y: number, _units: UnitsConfig, doc?: IDocument): import('./types').PreviewObject | null {
     if (this.step === 2) {
       const factor = this.calculateFactor(y);
       if (doc && this.targetIds.length > 0) {
-        const previewEntities: any[] = [];
+        const previewEntities: Entity[] = [];
         for (const id of this.targetIds) {
           const entity = doc.getEntity(id);
           if (entity) {

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { PolyhedronCommand } from './PolyhedronCommand'
 import { Point } from '../model/Point'
 import { Line } from '../model/Line'
+import { Entity } from '../model/Entity'
+import { EntitiesPreview } from './types'
 
 describe('PolyhedronCommand', () => {
   const units = { type: 'decimal' as const, precision: 2, scale: 1.0 }
@@ -93,30 +95,30 @@ describe('PolyhedronCommand', () => {
     // Face 2 has edges: (1-3), (3-2), (2-1) i.e. (1-2)
     // Edge (1-2) is shared by Face 1 and Face 2, count is 2 (manifold)
     // Other edges: (0-1), (2-0), (1-3), (3-2) have count 1 (naked)
-    const preview = cmd.getPreview(15, 15, units) as any
+    const preview = cmd.getPreview(15, 15, units) as EntitiesPreview
     expect(preview.type).toBe('entities')
 
-    const points = preview.entities.filter((e: any) => e instanceof Point)
-    const lines = preview.entities.filter((e: any) => e instanceof Line)
+    const points = preview.entities.filter((e: Entity) => e instanceof Point)
+    const lines = preview.entities.filter((e: Entity) => e instanceof Line) as Line[]
 
     // Should render vertices as Points and edges as Lines
     expect(points.length).toBe(4) // 4 unique vertices
     expect(lines.length).toBe(5)  // 5 unique edges
 
     // Verify naked edges are colored in RED (0xFF0000) and shared is grey (0x888888)
-    const sharedLine = lines.find((l: any) => 
+    const sharedLine = lines.find((l: Line) => 
       (l.x1 === 10 && l.y1 === 0 && l.x2 === 10 && l.y2 === 10) ||
       (l.x1 === 10 && l.y1 === 10 && l.x2 === 10 && l.y2 === 0)
     )
     expect(sharedLine).toBeDefined()
-    expect(sharedLine.properties.color).toBe(0x888888)
+    expect(sharedLine!.properties.color).toBe(0x888888)
 
-    const nakedLine = lines.find((l: any) => 
+    const nakedLine = lines.find((l: Line) => 
       (l.x1 === 0 && l.y1 === 0 && l.x2 === 10 && l.y2 === 0) ||
       (l.x1 === 10 && l.y1 === 0 && l.x2 === 0 && l.y2 === 0)
     )
     expect(nakedLine).toBeDefined()
-    expect(nakedLine.properties.color).toBe(0xFF0000)
+    expect(nakedLine!.properties.color).toBe(0xFF0000)
   })
 
   it('should provide dynamic input coordinates and snapping guide', () => {

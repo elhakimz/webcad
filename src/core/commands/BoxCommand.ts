@@ -5,6 +5,7 @@ import { Solid3D } from "../model/Solid3D";
 import { OpenCascadeService } from "../io/OpenCascadeService";
 import { Polyline } from "../model/Polyline";
 import { Line } from "../model/Line";
+import * as THREE from "three";
 
 export class BoxCommand implements Command {
   step = 0;
@@ -16,7 +17,7 @@ export class BoxCommand implements Command {
     this.occService = OpenCascadeService.getInstance();
   }
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: any, z?: number): CommandResponse | Promise<CommandResponse> {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument, z?: number): CommandResponse | Promise<CommandResponse> {
     const currentZ = z !== undefined ? z : 0;
     
     if (this.step === 0) {
@@ -35,7 +36,7 @@ export class BoxCommand implements Command {
     return "Specify height:";
   }
 
-  onInput(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: any): CommandResponse | Promise<CommandResponse> | undefined {
+  onInput(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | Promise<CommandResponse> | undefined {
     const val = text.trim().toUpperCase();
 
     if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
@@ -51,7 +52,7 @@ export class BoxCommand implements Command {
     }
   }
 
-  private finishWithHeight(height: number, id: string, doc: any) {
+  private finishWithHeight(height: number, id: string, doc?: IDocument) {
     if (!this.p1 || !this.p2) {
         this.step = 0;
         return "Error: Points not set.";
@@ -63,13 +64,13 @@ export class BoxCommand implements Command {
     
     const minX = Math.min(this.p1.x, this.p2.x);
     const minY = Math.min(this.p1.y, this.p2.y);
-    const minZ = this.p1.z;
+    const minZ = this.p1.z!;
 
     const actualMinZ = height < 0 ? minZ + height : minZ;
     const facetres = doc ? doc.facetres : 5.0;
     const deflection = 0.1 / facetres;
 
-    return this.occService.createBox(minX, minY, actualMinZ, dx, dy, dz, deflection, id).then((geometry: any) => {
+    return this.occService.createBox(minX, minY, actualMinZ, dx, dy, dz, deflection, id).then((geometry: THREE.BufferGeometry) => {
       const positions = Array.from(geometry.getAttribute('position').array) as number[];
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
       
@@ -81,9 +82,10 @@ export class BoxCommand implements Command {
       };
       this.step = 0; // Reset
       return solid;
-    }).catch((err: any) => {
+    }).catch((err: unknown) => {
       this.step = 0;
-      return `Error creating box: ${err.message || err.toString()}`;
+      const msg = err instanceof Error ? err.message : String(err);
+      return `Error creating box: ${msg}`;
     });
   }
 

@@ -1,4 +1,4 @@
-import { Command, CommandResponse } from "./types"
+import { Command, CommandAction, CommandResponse } from "./types"
 import { UnitsConfig } from "../model/Document"
 
 export class FilletCommand implements Command {

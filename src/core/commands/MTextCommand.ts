@@ -1,8 +1,8 @@
-import { MText } from "../model/MText";
-import { Line } from "../model/Line";
-import { Command, CommandResponse, PreviewObject, XMarkerPreview } from "./types";
-import { UnitsConfig, IDocument } from "../model/Document";
-import { FormatUtils } from "../engine/FormatUtils";
+import {MText} from "../model/MText";
+import {Line} from "../model/Line";
+import {Command, CommandResponse, PreviewObject} from "./types";
+import {IDocument, UnitsConfig} from "../model/Document";
+import {FormatUtils} from "../engine/FormatUtils";
 
 export class MTextCommand implements Command {
   step = 0;
@@ -67,9 +67,8 @@ export class MTextCommand implements Command {
       entity.textAlign = "LEFT";
       
       entity.layoutMText(); // Compute layout lines and bounds
-      
-      const echo = `MText created. ${FormatUtils.formatPoint(this.firstCorner.x, this.firstCorner.y, units, "P", doc?.currentElevation || 0)}`;
-      (entity as unknown as { _echo: string })._echo = echo;
+
+      (entity as unknown as { _echo: string })._echo = `MText created. ${FormatUtils.formatPoint(this.firstCorner.x, this.firstCorner.y, units, "P", doc?.currentElevation || 0)}`;
       
       this.step = 0;
       return entity;

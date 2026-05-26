@@ -67,7 +67,16 @@ export class LineCommand implements Command {
       if (angle < 0) angle += 360;
 
       const distStr = `D:${FormatUtils.formatValue(dist, units)}`;
-      const angleStr = `A:${angle.toFixed(1)}`;
+      
+      let angleStr = `A:${angle.toFixed(1)}`;
+      if (this.points.length >= 2) {
+          const prev = this.points[this.points.length - 2];
+          const a1 = Math.atan2(prev.y - last.y, prev.x - last.x) * 180 / Math.PI;
+          const a2 = Math.atan2(y - last.y, x - last.x) * 180 / Math.PI;
+          let diff = Math.abs(a2 - a1);
+          if (diff > 180) diff = 360 - diff;
+          angleStr = `A:${diff.toFixed(1)} (rel)`;
+      }
 
       return [distStr, angleStr];
     }

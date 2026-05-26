@@ -1,11 +1,7 @@
 import { Command, CommandResponse, CommandAction } from "./types"
 import { UnitsConfig, IDocument } from "../model/Document"
 import { Entity } from "../model/Entity"
-import { Polyline } from "../model/Polyline"
-import { Circle } from "../model/Circle"
 import { Spline } from "../model/Spline"
-import { Line } from "../model/Line"
-import { Arc } from "../model/Arc"
 import { Ellipse } from "../model/Ellipse"
 
 export class SweepCommand implements Command {
@@ -68,9 +64,10 @@ export class SweepCommand implements Command {
 
       // If we are in SOLID mode, check if profile is closed!
       if (this.mode === 'SOLID' && this.profileEntity) {
-        const isClosed = ('closed' in this.profileEntity && (this.profileEntity as any).closed) || 
-                         ('isClosed' in this.profileEntity && (this.profileEntity as any).isClosed) || 
-                         'r' in this.profileEntity ||
+        const ent = this.profileEntity as unknown as Record<string, unknown>;
+        const isClosed = ('closed' in ent && ent.closed === true) || 
+                         ('isClosed' in ent && ent.isClosed === true) || 
+                         'r' in ent ||
                          (this.profileEntity instanceof Ellipse && Math.abs(this.profileEntity.endAngle - this.profileEntity.startAngle) >= 2 * Math.PI - 0.01);
         if (!isClosed) {
           this.step = 3; // Stay in step 3

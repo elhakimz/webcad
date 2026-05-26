@@ -4,6 +4,7 @@ import { NotificationManager } from "./NotificationManager"
 import { DocumentConstraint, DocumentPointRef, solveDocumentConstraints, getPointCoords } from "../core/engine/SketchSolver"
 import { analyzeDocumentDoF, DocumentDoFResult } from "../core/engine/DocumentDoFAnalyzer"
 import { Entity } from "../core/model/Entity"
+import { getLineLineIntersectionInfinite } from "../core/engine/MathUtils"
 import { Line } from "../core/model/Line"
 import { Circle } from "../core/model/Circle"
 import { Arc } from "../core/model/Arc"
@@ -819,11 +820,26 @@ export class SketchToolWindow {
       const p4 = getPointCoords(this.app.doc, seg2.p2);
       if (!p1 || !p2 || !p3 || !p4) return;
 
-      const vx1 = p2.x - p1.x, vy1 = p2.y - p1.y;
-      const vx2 = p4.x - p3.x, vy2 = p4.y - p3.y;
-      const len1 = Math.sqrt(vx1 * vx1 + vy1 * vy1);
-      const len2 = Math.sqrt(vx2 * vx2 + vy2 * vy2);
-      if (len1 < 1e-6 || len2 < 1e-6) return;
+      const intersect = getLineLineIntersectionInfinite(p1, p2, p3, p4);
+      if (!intersect) return;
+
+      // Determine alignment: which endpoint of each segment is closer to intersection
+      const d1a = Math.sqrt((p1.x - intersect.x)**2 + (p1.y - intersect.y)**2);
+      const d1b = Math.sqrt((p2.x - intersect.x)**2 + (p2.y - intersect.y)**2);
+      const l1Refs: [DocumentPointRef, DocumentPointRef] = d1a < d1b ? [seg1.p1, seg1.p2] : [seg1.p2, seg1.p1];
+
+      const d2a = Math.sqrt((p3.x - intersect.x)**2 + (p3.y - intersect.y)**2);
+      const d2b = Math.sqrt((p4.x - intersect.x)**2 + (p4.y - intersect.y)**2);
+      const l2Refs: [DocumentPointRef, DocumentPointRef] = d2a < d2b ? [seg2.p1, seg2.p2] : [seg2.p2, seg2.p1];
+
+      // Re-calculate coordinates for display based on aligned refs
+      const ap1 = getPointCoords(this.app.doc, l1Refs[0])!;
+      const ap2 = getPointCoords(this.app.doc, l1Refs[1])!;
+      const ap3 = getPointCoords(this.app.doc, l2Refs[0])!;
+      const ap4 = getPointCoords(this.app.doc, l2Refs[1])!;
+
+      const vx1 = ap2.x - ap1.x, vy1 = ap2.y - ap1.y;
+      const vx2 = ap4.x - ap3.x, vy2 = ap4.y - ap3.y;
 
       const a1 = Math.atan2(vy1, vx1);
       const a2 = Math.atan2(vy2, vx2);
@@ -848,11 +864,14 @@ export class SketchToolWindow {
       this.app.dynamicInput.onInputSubmitted((text) => {
         const val = parseFloat(text);
         if (!isNaN(val) && val > 0 && val < 180) {
+          let targetDiff = val * Math.PI / 180;
+          if (diff < 0) targetDiff = -targetDiff;
+
           this.applyNewConstraint({
             type: 'angular',
-            l1: [ seg1.p1, seg1.p2 ],
-            l2: [ seg2.p1, seg2.p2 ],
-            value: val * Math.PI / 180
+            l1: l1Refs,
+            l2: l2Refs,
+            value: targetDiff
           });
         } else {
           NotificationManager.getInstance().show("Invalid angle (0-180°)", "error");

@@ -2,7 +2,7 @@ import { Command, CommandResponse } from "./types";
 import { UnitsConfig } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 import { Solid3D } from "../model/Solid3D";
-import { OpenCascadeService } from "../io/OpenCascadeService.js";
+import { OpenCascadeService } from "../io/OpenCascadeService";
 import { Circle } from "../model/Circle";
 import * as THREE from "three";
 
@@ -22,7 +22,7 @@ export class Sphere2Command implements Command {
     this.occService = OpenCascadeService.getInstance();
   }
 
-  onPoint(x: number, y: number, id: string, _units: UnitsConfig, doc?: any, z?: number): CommandResponse | Promise<CommandResponse> {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument, z?: number): CommandResponse | Promise<CommandResponse> {
     const currentZ = z !== undefined ? z : 0;
     
     if (this.step === 0) {
@@ -53,7 +53,7 @@ export class Sphere2Command implements Command {
     return "Specify radius:";
   }
 
-  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: any): CommandResponse | Promise<CommandResponse> | undefined {
+  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | Promise<CommandResponse> | undefined {
     const val = text.trim().toUpperCase();
 
     if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
@@ -91,9 +91,10 @@ export class Sphere2Command implements Command {
       };
       this.step = 0; // Reset
       return solid;
-    }).catch((err: any) => {
+    }).catch((err: unknown) => {
       this.step = 0;
-      return `Error creating sphere: ${err.message || err.toString()}`;
+      const msg = err instanceof Error ? err.message : String(err);
+      return `Error creating sphere: ${msg}`;
     }).finally(() => {
       this.isExecuting = false;
     });

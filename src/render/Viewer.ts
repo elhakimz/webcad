@@ -1791,8 +1791,10 @@ export class Viewer {
               vertex = { x: cx, y: cy };
             }
 
-            const ang1 = Math.atan2(p1.y - vertex.y, p1.x - vertex.x);
-            const ang2 = Math.atan2(p3.y - vertex.y, p3.x - vertex.x);
+            const m1x = (p1.x + p2.x) / 2, m1y = (p1.y + p2.y) / 2;
+            const m2x = (p3.x + p4.x) / 2, m2y = (p3.y + p4.y) / 2;
+            const ang1 = Math.atan2(m1y - vertex.y, m1x - vertex.x);
+            const ang2 = Math.atan2(m2y - vertex.y, m2x - vertex.x);
             let diff = ang2 - ang1;
             while (diff > Math.PI) diff -= 2 * Math.PI;
             while (diff < -Math.PI) diff += 2 * Math.PI;

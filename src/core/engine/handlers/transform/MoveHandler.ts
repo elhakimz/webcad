@@ -1,6 +1,7 @@
 import { ActionHandler, AppContext } from "../types";
 import { CommandAction, CommandResponse } from "../../../commands/types";
 import { OpenCascadeService } from "../../../io/OpenCascadeService";
+import { solveDocumentConstraints } from "../../SketchSolver";
 
 export class MoveHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -12,10 +13,15 @@ export class MoveHandler implements ActionHandler {
 
     if (action.action === 'move' && (action.id || action.ids) && action.dx !== undefined) {
       const ids = action.ids || (action.id ? [action.id] : []);
+      
+      const beforeStates = new Map<string, any>();
+      doc.entities.forEach((ent, id) => {
+          beforeStates.set(id, ent.clone(id));
+      });
+
       for (const id of ids) {
         const entity = doc.getEntity(id);
         if (entity) {
-          const before = entity.clone(entity.id);
           const isSolid3D = (entity as any).type === "Solid3D" || entity.constructor.name === "Solid3D";
           
           if (isSolid3D) {
@@ -45,13 +51,32 @@ export class MoveHandler implements ActionHandler {
             } else {
               entity.move(action.dx!, action.dy!);
             }
-            viewer.moveObject(id, action.dx!, action.dy!, action.dz);
+            // Do NOT add to entity/viewer here yet, wait for solver
           }
-          doc.recordTransform(before, entity);
         }
       }
+
+      // After applying raw movement, solve constraints to honor 'Fix' etc.
+      try {
+        solveDocumentConstraints(doc, doc.constraints);
+      } catch (err) {
+        console.warn("Solver failed after move:", err);
+      }
+
+      // Record transforms for entities that actually changed and sync viewer
+      doc.entities.forEach((ent, id) => {
+        const before = beforeStates.get(id);
+        if (before) {
+            const changed = JSON.stringify(before) !== JSON.stringify(ent);
+            if (changed) {
+                doc.recordTransform(before, ent);
+                context.addEntity(ent, false, false);
+            }
+        }
+      });
+
       this.cleanup(context);
-      return `Entities [${ids.join(', ')}] moved.`;
+      return `Entities moved.`;
     }
     return undefined;
   }

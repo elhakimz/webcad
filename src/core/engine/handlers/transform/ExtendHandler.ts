@@ -14,7 +14,7 @@ export class ExtendHandler implements ActionHandler {
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, viewer, addEntity } = context;
+    const { doc, addEntity } = context;
 
     if (action.action === 'extend' && action.id && action.boundaryIds && action.pickPt) {
         const target = doc.getEntity(action.id);

@@ -4,6 +4,7 @@ import { SelectionEngine } from '../engine/SelectionEngine'
 import { Polyline } from '../model/Polyline'
 import { Circle } from '../model/Circle'
 import { CommandAction } from './types'
+import { IDocument } from '../model/Document'
 
 // Mock OpenCascadeService
 vi.mock('../io/OpenCascadeService', () => {
@@ -51,24 +52,24 @@ describe('LoftCommand', () => {
     };
     
     // Step 1: Select profiles
-    const res1 = cmd.onInput('P1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    const res1 = cmd.onInput('P1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     expect(res1).toContain('(Selected: 1)')
     
-    const res2 = cmd.onInput('P2', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    const res2 = cmd.onInput('P2', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     expect(res2).toContain('(Selected: 2)')
     
     expect(cmd.profiles).toHaveLength(2)
     
     // Press Enter to finish profile selection
-    cmd.onInput('', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    cmd.onInput('', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     expect(cmd.step).toBe(2)
     
     // Step 2: Mode (Solid)
-    cmd.onInput('Solid', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    cmd.onInput('Solid', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     expect(cmd.step).toBe(3)
     
     // Step 3: Transition (Smooth)
-    const res = await cmd.onInput('Smooth', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any) as CommandAction
+    const res = await cmd.onInput('Smooth', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument) as CommandAction
     
     expect(res.action).toBe('loft_result')
     expect(res.result).toBeDefined()
@@ -83,7 +84,7 @@ describe('LoftCommand', () => {
       facetres: 5.0
     };
     
-    const res = cmd.onInput('InvalidID', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    const res = cmd.onInput('InvalidID', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     expect(res).toContain('Select profiles in order')
     expect(cmd.profiles).toHaveLength(0)
   })
@@ -97,8 +98,8 @@ describe('LoftCommand', () => {
       facetres: 5.0
     };
     
-    cmd.onInput('P1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
-    const res = cmd.onInput('', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    cmd.onInput('P1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
+    const res = cmd.onInput('', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     
     expect(res).toContain('Select at least 2 profiles')
     expect(cmd.step).toBe(1)
@@ -115,7 +116,7 @@ describe('LoftCommand', () => {
     const getEntityAtSpatialMock = vi.mocked(SelectionEngine.getEntityAtSpatial);
     getEntityAtSpatialMock.mockReturnValue(p1);
     
-    const res = cmd.onPoint(0, 0, 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, mockDoc as any)
+    const res = cmd.onPoint(0, 0, 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, mockDoc as unknown as IDocument)
     
     expect(res).toContain('(Selected: 1)')
     expect(cmd.profiles).toHaveLength(1)
@@ -143,24 +144,24 @@ describe('LoftCommand', () => {
     };
     
     // Step 1: Select profiles
-    const res1 = cmd.onInput('P1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    const res1 = cmd.onInput('P1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     expect(res1).toContain('(Selected: 1)')
     
-    const res2 = cmd.onInput('C1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    const res2 = cmd.onInput('C1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     expect(res2).toContain('(Selected: 2)')
     
     expect(cmd.profiles).toHaveLength(2)
     
     // Press Enter to finish profile selection
-    cmd.onInput('', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    cmd.onInput('', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     expect(cmd.step).toBe(2)
     
     // Step 2: Mode (Solid)
-    cmd.onInput('Solid', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    cmd.onInput('Solid', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     expect(cmd.step).toBe(3)
     
     // Step 3: Transition (Smooth)
-    const res = await cmd.onInput('Smooth', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any) as CommandAction
+    const res = await cmd.onInput('Smooth', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument) as CommandAction
     
     expect(res.action).toBe('loft_result')
     expect(res.result).toBeDefined()
@@ -190,19 +191,19 @@ describe('LoftCommand', () => {
     };
     
     // Select profiles
-    cmd.onInput('P1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
-    cmd.onInput('C1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    cmd.onInput('P1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
+    cmd.onInput('C1', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     
     expect(cmd.profiles).toHaveLength(2)
     
     // Press Enter to finish selection
-    cmd.onInput('', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    cmd.onInput('', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     
     // Mode Solid
-    cmd.onInput('Solid', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
+    cmd.onInput('Solid', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument)
     
     // Smooth Transition
-    const res = await cmd.onInput('Smooth', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any) as CommandAction
+    const res = await cmd.onInput('Smooth', 'L1', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as unknown as IDocument) as CommandAction
     
     expect(res.action).toBe('loft_result')
     expect(res.result).toBeDefined()

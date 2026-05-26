@@ -2,6 +2,7 @@ import { ActionHandler, AppContext } from "../types";
 import { CommandAction, CommandResponse } from "../../../commands/types";
 import { OpenCascadeService } from "../../../io/OpenCascadeService";
 import { Solid3D } from "../../../model/Solid3D";
+import { solveDocumentConstraints } from "../../SketchSolver";
 
 export class ScaleHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -9,15 +10,19 @@ export class ScaleHandler implements ActionHandler {
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, addEntity } = context;
+    const { doc, viewer, addEntity } = context;
 
     if (action.action === 'scale' && (action.id || action.ids) && action.factor !== undefined) {
       const ids = action.ids || (action.id ? [action.id] : []);
+
+      const beforeStates = new Map<string, any>();
+      doc.entities.forEach((ent, id) => {
+          beforeStates.set(id, ent.clone(id));
+      });
+
       for (const id of ids) {
         const entity = doc.getEntity(id);
         if (entity) {
-          const before = entity.clone(entity.id);
-          
           if (entity instanceof Solid3D) {
             try {
               const cx = action.baseX!;
@@ -54,13 +59,31 @@ export class ScaleHandler implements ActionHandler {
             }
           } else {
             entity.scale(action.baseX!, action.baseY!, action.factor!);
-            addEntity(entity, false, false); 
           }
-          doc.recordTransform(before, entity);
         }
       }
+
+      // After applying raw scale, solve constraints to honor 'Fix' etc.
+      try {
+        solveDocumentConstraints(doc, doc.constraints);
+      } catch (err) {
+        console.warn("Solver failed after scale:", err);
+      }
+
+      // Record transforms for entities that actually changed and sync viewer
+      doc.entities.forEach((ent, id) => {
+        const before = beforeStates.get(id);
+        if (before) {
+            const changed = JSON.stringify(before) !== JSON.stringify(ent);
+            if (changed) {
+                doc.recordTransform(before, ent);
+                addEntity(ent, false, false);
+            }
+        }
+      });
+
       this.cleanup(context);
-      return `Entities [${ids.join(', ')}] scaled.`;
+      return `Entities scaled.`;
     }
     return undefined;
   }

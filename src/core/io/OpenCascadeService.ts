@@ -163,12 +163,18 @@ export class OpenCascadeService {
     return geom;
   }
 
-  /**
-   * Creates a basic 3D torus shape.
-   * Returns a Promise that resolves to THREE.BufferGeometry.
-   */
   async createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
     const data = await this.client.createTorus(x, y, z, r1, r2, deflection, entityId);
+    return this.buildGeometry(data);
+  }
+
+  async createWedge(x1: number, y1: number, z1: number, x2: number, y2: number, height: number, ltx: number, deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createWedge(x1, y1, z1, x2, y2, height, ltx, deflection, entityId);
+    return this.buildGeometry(data);
+  }
+
+  async createPyramid(x: number, y: number, z: number, sides: number, radius: number, h: number, deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createPyramid(x, y, z, sides, radius, h, deflection, entityId);
     return this.buildGeometry(data);
   }
 
@@ -187,6 +193,7 @@ export class OpenCascadeService {
   }
 
   async createLoft(profiles: {id: string, points: {x: number, y: number, z: number}[], closed: boolean}[], isSolid: boolean, isRuled: boolean, deflection?: number, entityId?: string): Promise<THREE.BufferGeometry> {
+    console.log("OpenCascadeService.createLoft", profiles);
     const data = await (this.client as any).createLoft(profiles, isSolid, isRuled, deflection, entityId);
     return this.buildGeometry(data);
   }

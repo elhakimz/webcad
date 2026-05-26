@@ -1,4 +1,4 @@
-import { Command, CommandResponse, CommandAction } from "./types";
+import { Command, CommandResponse } from "./types";
 import { UnitsConfig } from "../model/Document";
 import { Entity } from "../model/Entity";
 

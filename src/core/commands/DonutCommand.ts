@@ -1,8 +1,8 @@
-import { Donut } from "../model/Donut"
-import { Circle } from "../model/Circle"
-import { Command, CommandResponse } from "./types"
-import { UnitsConfig, IDocument } from "../model/Document"
-import { FormatUtils } from "../engine/FormatUtils"
+import {Donut} from "../model/Donut"
+import {Circle} from "../model/Circle"
+import {Command, CommandResponse} from "./types"
+import {IDocument, UnitsConfig} from "../model/Document"
+import {FormatUtils} from "../engine/FormatUtils"
 
 export class DonutCommand implements Command {
   step = 0
@@ -47,15 +47,13 @@ export class DonutCommand implements Command {
         return this.getPrompt();
     }
     if (this.step === 1) {
-        const dist = Math.hypot(x - this.center!.x, y - this.center!.y);
-        this.innerRadius = dist;
+      this.innerRadius = Math.hypot(x - this.center!.x, y - this.center!.y);
         DonutCommand.lastInnerRadius = this.innerRadius;
         this.step = 2;
         return this.getPrompt();
     }
     if (this.step === 2) {
-        const dist = Math.hypot(x - this.center!.x, y - this.center!.y);
-        this.outerRadius = dist;
+      this.outerRadius = Math.hypot(x - this.center!.x, y - this.center!.y);
         DonutCommand.lastOuterRadius = this.outerRadius;
         return this.finish(id);
     }

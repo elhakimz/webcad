@@ -2,7 +2,7 @@ import { ActionHandler, AppContext } from "../types";
 import { CommandAction, CommandResponse } from "../../../commands/types";
 import { Solid3D } from "../../../model/Solid3D";
 import { rebuildSweepGeometry } from "./SweepGeometryUtil";
-import { GeneratorProgressModal } from "../../../../ui/GeneratorProgressModal.js";
+import { GeneratorProgressModal } from "../../../../ui/GeneratorProgressModal";
 
 export class SweepHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {

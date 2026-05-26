@@ -1,8 +1,8 @@
-import { Circle } from "../model/Circle"
-import { Entity } from "../model/Entity"
-import { Command, CommandResponse } from "./types"
-import { UnitsConfig, IDocument } from "../model/Document"
-import { FormatUtils } from "../engine/FormatUtils"
+import {Circle} from "../model/Circle"
+import {Entity} from "../model/Entity"
+import {Command, CommandResponse} from "./types"
+import {IDocument, UnitsConfig} from "../model/Document"
+import {FormatUtils} from "../engine/FormatUtils"
 
 export class CircleCommand implements Command {
   step = 0
@@ -16,8 +16,7 @@ export class CircleCommand implements Command {
       this.cy = y;
       this.step = 1;
       this.isDiameterMode = false;
-      const echo = FormatUtils.formatPoint(x, y, units, "Center", doc?.currentElevation || 0);
-      return echo;
+      return FormatUtils.formatPoint(x, y, units, "Center", doc?.currentElevation || 0);
     } else {
       const dist = Math.sqrt(Math.pow(x - this.cx, 2) + Math.pow(y - this.cy, 2));
       const r = this.isDiameterMode ? dist / 2 : dist;

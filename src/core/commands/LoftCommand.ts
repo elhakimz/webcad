@@ -7,7 +7,7 @@ import { Point } from "../model/Point"
 import { OpenCascadeService } from "../io/OpenCascadeService"
 import { Solid3D } from "../model/Solid3D"
 import { SelectionEngine } from "../engine/SelectionEngine"
-import { GeneratorProgressModal } from "../../ui/GeneratorProgressModal.js"
+import { GeneratorProgressModal } from "../../ui/GeneratorProgressModal"
 import { bulgeToArc } from "../engine/MathUtils"
 
 
@@ -150,6 +150,7 @@ export class LoftCommand implements Command {
     progress.show();
     
     try {
+      console.log("executeLoft",newId)
       progress.update(15, "Analyzing loft profile geometry...");
       const facetres = doc?.facetres ?? 5.0;
       const deflection = 0.1 / facetres;
@@ -159,14 +160,22 @@ export class LoftCommand implements Command {
         points: this.getPointsFromEntity(p),
         closed: p instanceof Circle || (p instanceof Polyline && p.closed)
       }));
-      
+
+      console.log("executeLoft",profilesData)
+
       progress.update(45, "Running OpenCascade loft generation...");
-      const geometry = await (occService as any).createLoft(profilesData, this.isSolid, this.isRuled, deflection, newId);
+      const geometry = await occService.createLoft(profilesData, this.isSolid, this.isRuled, deflection, newId);
+      console.log("executeLoft",geometry)
+
+      if (!geometry) {
+        throw new Error('Loft geometry generation returned null or undefined');
+      }
       
       progress.update(80, "Constructing solid boundary representation...");
       const positions = Array.from(geometry.attributes.position.array as Float32Array);
       const indices = Array.from(geometry.index.array as Uint16Array | Uint32Array);
-      
+
+
       const solid = new Solid3D(newId, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
       solid.brepSnapshot = geometry.userData?.brepSnapshot;
       
@@ -174,6 +183,8 @@ export class LoftCommand implements Command {
       if (this.profiles.length > 0) {
         solid.layer = this.profiles[0].layer;
       }
+
+      console.log("executeLoft",solid)
 
       progress.update(100, "Loft successfully completed!");
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -184,10 +195,11 @@ export class LoftCommand implements Command {
         deleteIds: [] // Do not delete profiles by default
       } as CommandAction;
       
-    } catch (error: any) {
-      progress.update(0, `Error: ${error.message || error}`);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      progress.update(0, `Error: ${msg}`);
       await new Promise(resolve => setTimeout(resolve, 1500));
-      return `Error creating loft: ${error.message}`;
+      return `ERROR creating loft: ${msg}`;
     } finally {
       progress.close();
     }

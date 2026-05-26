@@ -28,7 +28,8 @@ export interface ConeCreationParams {
   x: number;
   y: number;
   z: number;
-  r: number;
+  r1: number;
+  r2: number;
   h: number;
 }
 
@@ -38,6 +39,25 @@ export interface TorusCreationParams {
   z: number;
   r1: number;
   r2: number;
+}
+
+export interface WedgeCreationParams {
+  x: number;
+  y: number;
+  z: number;
+  dx: number;
+  dy: number;
+  dz: number;
+  ltx: number;
+}
+
+export interface PyramidCreationParams {
+  x: number;
+  y: number;
+  z: number;
+  sides: number;
+  radius: number;
+  height: number;
 }
 
 export interface PolyhedronCreationParams {
@@ -79,6 +99,8 @@ export type Solid3DCreationParams =
   | { type: "sphere"; params: SphereCreationParams }
   | { type: "cone"; params: ConeCreationParams }
   | { type: "torus"; params: TorusCreationParams }
+  | { type: "wedge"; params: WedgeCreationParams }
+  | { type: "pyramid"; params: PyramidCreationParams }
   | { type: "polyhedron"; params: PolyhedronCreationParams }
   | { type: "hull"; params: HullCreationParams }
   | { type: "extrude"; params: ExtrudeCreationParams }

@@ -110,7 +110,15 @@ export class PolylineCommand implements Command {
 
       const modeStr = this.isArcMode ? "A" : "L";
       const distStr = `D:${FormatUtils.formatValue(dist, units)}`;
-      const angleStr = `A:${angle.toFixed(1)}`;
+      
+      let angleStr = `A:${angle.toFixed(1)}`;
+      if (this.currentDirection) {
+          const a1 = Math.atan2(-this.currentDirection.y, -this.currentDirection.x) * 180 / Math.PI;
+          const a2 = Math.atan2(dy, dx) * 180 / Math.PI;
+          let diff = Math.abs(a2 - a1);
+          if (diff > 180) diff = 360 - diff;
+          angleStr = `A:${diff.toFixed(1)} (rel)`;
+      }
 
       return [modeStr, distStr, angleStr];
     }

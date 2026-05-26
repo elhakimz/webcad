@@ -16,6 +16,9 @@ export class DimAngularCommand implements Command {
   
   selectedEntity1: Entity | null = null
   selectedEntity2: Entity | null = null
+  
+  pickPt1: { x: number, y: number } | null = null
+  pickPt2: { x: number, y: number } | null = null
 
   setEntity(entity: Entity) {
     if (this.step === 0) {
@@ -56,6 +59,7 @@ export class DimAngularCommand implements Command {
         this.step = 1;
         return "Specify second point on circle:";
       } else if (this.selectedEntity1 instanceof Line) {
+        this.pickPt1 = { x, y }; // Store the click point for side detection
         this.step = 1;
         return "Select second line:";
       } else {
@@ -68,6 +72,7 @@ export class DimAngularCommand implements Command {
 
     if (this.step === 1) {
       if (this.selectedEntity1 instanceof Line && this.selectedEntity2 instanceof Line) {
+        this.pickPt2 = { x, y }; // Store the second click point for side detection
         const l1 = this.selectedEntity1 as Line;
         const l2 = this.selectedEntity2 as Line;
         const intersect = getLineLineIntersectionInfinite(
@@ -76,14 +81,20 @@ export class DimAngularCommand implements Command {
         );
         if (intersect) {
           this.vertex = intersect;
-          // Use endpoints furthest from intersection for stable angle calc
-          const d1a = Math.hypot(l1.x1 - intersect.x, l1.y1 - intersect.y);
-          const d1b = Math.hypot(l1.x2 - intersect.x, l1.y2 - intersect.y);
-          this.p1 = d1a > d1b ? { x: l1.x1, y: l1.y1 } : { x: l1.x2, y: l1.y2 };
+          // Use click points to determine which side of each line to measure
+          const toPick1 = this.pickPt1 ? { x: this.pickPt1.x - intersect.x, y: this.pickPt1.y - intersect.y } : null;
+          const toEnd1a = { x: l1.x1 - intersect.x, y: l1.y1 - intersect.y };
+          const toEnd1b = { x: l1.x2 - intersect.x, y: l1.y2 - intersect.y };
+          const dot1A = toPick1 ? toEnd1a.x * toPick1.x + toEnd1a.y * toPick1.y : 0;
+          const dot1B = toPick1 ? toEnd1b.x * toPick1.x + toEnd1b.y * toPick1.y : 0;
+          this.p1 = dot1A > dot1B ? { x: l1.x1, y: l1.y1 } : { x: l1.x2, y: l1.y2 };
 
-          const d2a = Math.hypot(l2.x1 - intersect.x, l2.y1 - intersect.y);
-          const d2b = Math.hypot(l2.x2 - intersect.x, l2.y2 - intersect.y);
-          this.p2 = d2a > d2b ? { x: l2.x1, y: l2.y1 } : { x: l2.x2, y: l2.y2 };
+          const toPick2 = this.pickPt2 ? { x: this.pickPt2.x - intersect.x, y: this.pickPt2.y - intersect.y } : null;
+          const toEnd2a = { x: l2.x1 - intersect.x, y: l2.y1 - intersect.y };
+          const toEnd2b = { x: l2.x2 - intersect.x, y: l2.y2 - intersect.y };
+          const dot2A = toPick2 ? toEnd2a.x * toPick2.x + toEnd2a.y * toPick2.y : 0;
+          const dot2B = toPick2 ? toEnd2b.x * toPick2.x + toEnd2b.y * toPick2.y : 0;
+          this.p2 = dot2A > dot2B ? { x: l2.x1, y: l2.y1 } : { x: l2.x2, y: l2.y2 };
 
           this.step = 3;
           return "Specify dimension arc line location:";

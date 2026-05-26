@@ -258,7 +258,7 @@ export function analyzeDoF(
         row[colX(p4)] = -dx2 / l2;
         row[colY(p4)] = -dy2 / l2;
       }
-      continue;
+
     }
   }
 

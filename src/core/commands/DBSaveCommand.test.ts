@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { DBSaveCommand } from './IOCommands'
+import { CommandAction } from './types'
 
 describe('DBSaveCommand', () => {
   it('should return correct prompt containing active project name or timestamp', () => {
@@ -9,7 +10,7 @@ describe('DBSaveCommand', () => {
 
   it('should return default timestamped project name when no text is provided', () => {
     const cmd = new DBSaveCommand()
-    const res = cmd.onInput('', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as any
+    const res = cmd.onInput('', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }) as CommandAction
     expect(res.action).toBe('dbsave')
     expect(res.projectName).toMatch(/^DWG-\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
   })

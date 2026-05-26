@@ -99,6 +99,14 @@ export class OCCWorkerClient {
     return this.send('createTorus', { x, y, z, r1, r2, deflection, entityId });
   }
 
+  createWedge(x1: number, y1: number, z1: number, x2: number, y2: number, height: number, ltx: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('createWedge', { x1, y1, z1, x2, y2, height, ltx, deflection, entityId });
+  }
+
+  createPyramid(x: number, y: number, z: number, sides: number, radius: number, h: number, deflection?: number, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('createPyramid', { x, y, z, sides, radius, h, deflection, entityId });
+  }
+
   createExtrude(points: {x: number, y: number, z: number}[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createExtrude', { points, height, thickness, deflection, isClosed, entityId });
   }

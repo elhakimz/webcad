@@ -5,6 +5,8 @@ import { Line } from '../model/Line'
 import { Solid3D } from '../model/Solid3D'
 import { Document } from '../model/Document'
 import { SelectionEngine } from '../engine/SelectionEngine'
+import { EntitiesPreview } from './types'
+import { Entity } from '../model/Entity'
 
 // Mock SelectionEngine
 vi.mock('../engine/SelectionEngine', () => {
@@ -65,11 +67,11 @@ describe('HullCommand', () => {
     cmd.onPoint(0, 10, 'entity_1', units, undefined, 0)
 
     // Dynamic preview with current cursor point forms 4 points, enabling full 3D hull computation
-    const preview = cmd.getPreview(10, 10, units) as any
+    const preview = cmd.getPreview(10, 10, units) as EntitiesPreview
     expect(preview.type).toBe('entities')
 
-    const points = preview.entities.filter((e: any) => e instanceof Point)
-    const lines = preview.entities.filter((e: any) => e instanceof Line)
+    const points = preview.entities.filter((e: Entity) => e instanceof Point)
+    const lines = preview.entities.filter((e: Entity) => e instanceof Line)
 
     // We should see 3 points drawn as Point objects (representing clicked points)
     expect(points.length).toBe(3)
@@ -83,16 +85,16 @@ describe('HullCommand', () => {
     cmd1.onPoint(0, 0, 'entity_1', units, undefined, 0)
     cmd1.onPoint(10, 0, 'entity_1', units, undefined, 0)
     cmd1.onPoint(0, 10, 'entity_1', units, undefined, 0)
-    const preview1 = cmd1.getPreview(10, 10, units) as any
+    const preview1 = cmd1.getPreview(10, 10, units) as EntitiesPreview
 
     const cmd2 = new HullCommand()
     cmd2.onPoint(0, 0, 'entity_1', units, undefined, 0)
     cmd2.onPoint(10, 0, 'entity_1', units, undefined, 0)
     cmd2.onPoint(0, 10, 'entity_1', units, undefined, 0)
-    const preview2 = cmd2.getPreview(10, 10, units) as any
+    const preview2 = cmd2.getPreview(10, 10, units) as EntitiesPreview
 
-    const lines1 = preview1.entities.filter((e: any) => e instanceof Line) as Line[]
-    const lines2 = preview2.entities.filter((e: any) => e instanceof Line) as Line[]
+    const lines1 = preview1.entities.filter((e: Entity) => e instanceof Line) as Line[]
+    const lines2 = preview2.entities.filter((e: Entity) => e instanceof Line) as Line[]
 
     expect(lines1.length).toBe(lines2.length)
     for (let i = 0; i < lines1.length; i++) {

@@ -3,7 +3,7 @@ import { UnitsConfig, IDocument } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 import { Solid3D } from "../model/Solid3D";
 import * as THREE from "three";
-import { OpenCascadeService } from "../io/OpenCascadeService.js";
+import { OpenCascadeService } from "../io/OpenCascadeService";
 import { Line } from "../model/Line";
 import { Point } from "../model/Point";
 import { SelectionEngine } from "../engine/SelectionEngine";
@@ -291,13 +291,14 @@ export class HullCommand implements Command {
 
         return solid;
       })
-      .catch((err: any) => {
-        return `Error creating convex hull: ${err.message || err.toString()}`;
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        return `Error creating convex hull: ${msg}`;
       });
   }
 
   getPreview(x: number, y: number, units: UnitsConfig, doc?: IDocument): PreviewObject | null {
-    const entities: any[] = [];
+    const entities: Entity[] = [];
     const allPts: Point3D[] = [...this.clickedPoints];
 
     if (doc) {

@@ -62,6 +62,20 @@ export class RotateCommand implements Command {
     return null
   }
 
+  getDynamicInput(x: number, y: number, units: UnitsConfig): string[] | null {
+    if (this.step === 2) {
+      const angleRad = Math.atan2(y - this.basePoint.y, x - this.basePoint.x);
+      let angleDeg = angleRad * 180 / Math.PI;
+      if (angleDeg < 0) angleDeg += 360;
+      
+      return [
+        `Rotation angle: ${angleDeg.toFixed(1)}°`,
+        `Base: ${this.basePoint.x.toFixed(2)}, ${this.basePoint.y.toFixed(2)}`
+      ];
+    }
+    return null;
+  }
+
   getReferencePoints() {
     if (this.step === 2) return [this.basePoint]
     return []

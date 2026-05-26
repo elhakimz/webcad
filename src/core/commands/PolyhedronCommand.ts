@@ -2,7 +2,7 @@ import { Command, CommandResponse, PreviewObject } from "./types";
 import { UnitsConfig, IDocument } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 import { Solid3D } from "../model/Solid3D";
-import { OpenCascadeService } from "../io/OpenCascadeService.js";
+import { OpenCascadeService } from "../io/OpenCascadeService";
 import { Line } from "../model/Line";
 import { Point } from "../model/Point";
 import * as THREE from "three";
@@ -162,13 +162,14 @@ export class PolyhedronCommand implements Command {
 
         return solid;
       })
-      .catch((err: any) => {
-        return `Error creating polyhedron: ${err.message || err.toString()}`;
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        return `Error creating polyhedron: ${msg}`;
       });
   }
 
   getPreview(x: number, y: number, _units: UnitsConfig, _doc?: IDocument): PreviewObject | null {
-    const entities: any[] = [];
+    const entities: Entity[] = [];
 
     // 1. Draw existing vertices as points
     for (let i = 0; i < this.vertices.length; i++) {

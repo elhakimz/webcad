@@ -4,7 +4,6 @@ import { Circle } from "../model/Circle";
 import { Arc } from "../model/Arc";
 import { Point } from "../model/Point";
 import { Polyline } from "../model/Polyline";
-import { Text } from "../model/Text";
 import { Solid } from "../model/Solid";
 import { Ellipse } from "../model/Ellipse";
 import { Dimension } from "../model/Dimension";

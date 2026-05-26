@@ -18,7 +18,7 @@ export class ConeCommand implements Command {
     this.occService = OpenCascadeService.getInstance();
   }
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: any, z?: number): CommandResponse | Promise<CommandResponse> {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument, z?: number): CommandResponse | Promise<CommandResponse> {
     const currentZ = z !== undefined ? z : 0;
     
     if (this.step === 0) {
@@ -56,7 +56,7 @@ export class ConeCommand implements Command {
     return "Specify base radius:";
   }
 
-  onInput(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: any): CommandResponse | Promise<CommandResponse> | undefined {
+  onInput(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | Promise<CommandResponse> | undefined {
     const val = text.trim().toUpperCase();
 
     if (val === "" && this.step !== 3) {
@@ -98,7 +98,7 @@ export class ConeCommand implements Command {
     }
   }
 
-  private finishWithParams(height: number, r2: number, id: string, doc: any) {
+  private finishWithParams(height: number, r2: number, id: string, doc?: IDocument) {
     if (!this.center || this.radius === null) {
       this.step = 0;
       return "Error: Center or radius not set.";
@@ -114,14 +114,15 @@ export class ConeCommand implements Command {
       const solid = new Solid3D(id, positions, indices, geometry.userData?.faceMapping, geometry.userData?.edgeLines);
       solid.brepSnapshot = geometry.userData?.brepSnapshot;
       solid.creationParams = {
-        type: 'frustum',
+        type: 'cone',
         params: { x: this.center!.x, y: this.center!.y, z: this.center!.z, r1: this.radius!, r2: r2, h: height }
       };
       this.step = 0; // Reset
       return solid;
-    }).catch((err: any) => {
+    }).catch((err: unknown) => {
       this.step = 0;
-      return `Error creating cone/frustum: ${err.message || err.toString()}`;
+      const msg = err instanceof Error ? err.message : String(err);
+      return `Error creating cone/frustum: ${msg}`;
     });
   }
 

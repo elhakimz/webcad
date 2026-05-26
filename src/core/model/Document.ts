@@ -1,5 +1,5 @@
 import { Entity, BoundingBox } from "./Entity"
-import { OpenCascadeService } from "../io/OpenCascadeService.js"
+import { OpenCascadeService } from "../io/OpenCascadeService"
 import { HistoryManager } from "./HistoryManager"
 import { LayerManager } from "./Layer"
 import { BlockManager } from "./Block"

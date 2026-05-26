@@ -115,7 +115,9 @@ export class DynamicInput {
   show(x: number, y: number, lines: string[], options: string[] = [], showInput: boolean = true, controls?: { type: 'select' | 'number', label: string, value: string | number, options?: string[] }[], footer?: string, placeholder?: string, force: boolean = false) {
     if (this.isMouseOver && !force) return;
     if (this.inputElement.placeholder !== (placeholder || '')) {
-      this.inputElement.value = '';
+      if (document.activeElement !== this.inputElement) {
+        this.inputElement.value = '';
+      }
       this.inputElement.placeholder = placeholder || '';
     }
     const textContainer = this.element.querySelector('#dynamic-input-text') as HTMLElement;

@@ -1,6 +1,5 @@
 import { Command, CommandResponse } from "./types"
 import { UnitsConfig } from "../model/Document";
-import { PersistenceService } from "../persistence/PersistenceService";
 
 export class SaveCommand implements Command {
   onPoint(_x: number, _y: number, _id: string, _units: UnitsConfig): CommandResponse { return "Enter filename to save:"; }

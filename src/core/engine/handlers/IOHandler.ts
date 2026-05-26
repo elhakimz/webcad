@@ -81,7 +81,7 @@ export class IOHandler implements ActionHandler {
 
     if (action.action === 'dbsave' && action.projectName) {
       try {
-        const id = await PersistenceService.getInstance().saveProject(doc, action.projectName);
+        await PersistenceService.getInstance().saveProject(doc, action.projectName);
         terminateActiveCommand();
         if (onFilesChange) onFilesChange();
         return `Project "${action.projectName}" successfully saved to database.`;

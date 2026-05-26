@@ -2,7 +2,6 @@ import { ActionHandler, AppContext } from "../types";
 import { CommandAction, CommandResponse } from "../../../commands/types";
 import { Line } from "../../../model/Line";
 import { Arc as ArcEntity } from "../../../model/Arc";
-import * as MathUtils from "../../MathUtils";
 
 export class LengthenHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -10,7 +9,7 @@ export class LengthenHandler implements ActionHandler {
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, viewer, addEntity } = context;
+    const { doc, addEntity } = context;
 
     if (action.action === 'lengthen' && action.id && action.mode && action.value !== undefined && action.pickPt) {
       const entity = doc.getEntity(action.id);

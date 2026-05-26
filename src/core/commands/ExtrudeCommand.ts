@@ -1,14 +1,15 @@
-import { Command, CommandResponse, PreviewObject } from "./types"
-import { UnitsConfig, IDocument } from "../model/Document"
-import { Entity } from "../model/Entity"
-import { Polyline } from "../model/Polyline"
-import { Circle } from "../model/Circle"
-import { Spline } from "../model/Spline"
-import { Solid3D } from "../model/Solid3D"
-import { Line } from "../model/Line"
-import { OpenCascadeService } from "../io/OpenCascadeService.js";
-import { bulgeToArc } from "../engine/MathUtils";
-import { FormatUtils } from "../engine/FormatUtils";
+import {Command, CommandResponse, PreviewObject} from "./types"
+import {IDocument, UnitsConfig} from "../model/Document"
+import {Entity} from "../model/Entity"
+import {Polyline} from "../model/Polyline"
+import {Circle} from "../model/Circle"
+import {Spline} from "../model/Spline"
+import {Solid3D} from "../model/Solid3D"
+import {Line} from "../model/Line"
+import {OpenCascadeService} from "../io/OpenCascadeService";
+import {bulgeToArc} from "../engine/MathUtils";
+import {FormatUtils} from "../engine/FormatUtils";
+import * as THREE from "three";
 
 export class ExtrudeCommand implements Command {
   step = 0
@@ -67,8 +68,7 @@ export class ExtrudeCommand implements Command {
     
     if (this.step === 1) {
       if (!this.basePt) return "Error: Profile not selected.";
-      const height = y - this.basePt.y;
-      this.height = height;
+      this.height = y - this.basePt.y;
       if (this.isOpenProfile()) {
         this.step = 2;
         return this.getPrompt();
@@ -208,7 +208,7 @@ export class ExtrudeCommand implements Command {
     const facetres = doc ? doc.facetres : 5.0;
     const deflection = 0.1 / facetres;
     
-    return this.occService.createExtrude(points, this.height, this.thickness, deflection, isClosed, id).then((geometry: any) => {
+    return this.occService.createExtrude(points, this.height, this.thickness, deflection, isClosed, id).then((geometry: THREE.BufferGeometry) => {
       const positions = Array.from(geometry.getAttribute('position').array) as number[];
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
       
@@ -223,9 +223,10 @@ export class ExtrudeCommand implements Command {
       }
       this.step = 0; // Reset
       return solid as CommandResponse;
-    }).catch((err: any) => {
+    }).catch((err: unknown) => {
       this.step = 0;
-      return `Error creating extrude: ${err.message || err.toString()}`;
+      const msg = err instanceof Error ? err.message : String(err);
+      return `Error creating extrude: ${msg}`;
     });
   }
 

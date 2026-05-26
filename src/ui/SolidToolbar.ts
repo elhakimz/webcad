@@ -79,6 +79,8 @@ export class SolidToolbar {
       { cmd: 'CONE', icon: 'cone.svg' },
       { cmd: 'SPHERE', icon: 'sphere.svg' },
       { cmd: 'TORUS', icon: 'torus.svg' },
+      { cmd: 'WEDGE', icon: 'wedge.svg' },
+      { cmd: 'PYRAMID', icon: 'pyramid.svg' },
       { cmd: 'EXTRUDE', icon: 'extrude.svg' },
       { cmd: 'REVOLVE', icon: 'revolve.svg' },
       { cmd: 'SWEEP', icon: 'sweep.svg' },

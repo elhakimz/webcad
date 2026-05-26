@@ -17,7 +17,7 @@ export class CylinderCommand implements Command {
     this.occService = OpenCascadeService.getInstance();
   }
 
-  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: any, z?: number): CommandResponse | Promise<CommandResponse> {
+  onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument, z?: number): CommandResponse | Promise<CommandResponse> {
     const currentZ = z !== undefined ? z : 0;
     
     if (this.step === 0) {
@@ -44,7 +44,7 @@ export class CylinderCommand implements Command {
     return "Specify height:";
   }
 
-  onInput(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: any): CommandResponse | Promise<CommandResponse> | undefined {
+  onInput(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | Promise<CommandResponse> | undefined {
     const val = text.trim().toUpperCase();
 
     if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
@@ -70,7 +70,7 @@ export class CylinderCommand implements Command {
     }
   }
 
-  private finishWithHeight(height: number, id: string, doc: any) {
+  private finishWithHeight(height: number, id: string, doc?: IDocument) {
     if (!this.center || this.radius === null) {
       this.step = 0;
       return "Error: Center or radius not set.";
@@ -90,9 +90,10 @@ export class CylinderCommand implements Command {
       };
       this.step = 0; // Reset
       return solid;
-    }).catch((err: any) => {
+    }).catch((err: unknown) => {
       this.step = 0;
-      return `Error creating cylinder: ${err.message || err.toString()}`;
+      const msg = err instanceof Error ? err.message : String(err);
+      return `Error creating cylinder: ${msg}`;
     });
   }
 

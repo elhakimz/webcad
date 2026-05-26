@@ -37,9 +37,17 @@ export class CopyCommand implements Command {
     return this.getPrompt();
   }
 
-  getPreview(x: number, y: number, _units: UnitsConfig): import('./types').PreviewObject | null {
-    if (this.step === 2) {
-      return { type: 'copy_preview', dx: x - this.basePoint.x, dy: y - this.basePoint.y };
+  getPreview(x: number, y: number, _units: UnitsConfig, doc?: IDocument): import('./types').PreviewObject | null {
+    if (this.step === 2 && doc) {
+      const dx = x - this.basePoint.x;
+      const dy = y - this.basePoint.y;
+      const entities = this.targetIds.map(id => doc.getEntity(id)).filter((e): e is import('../model/Entity').Entity => e !== undefined);
+      const ghosts = entities.map(e => {
+          const g = e.clone(e.id + "_ghost");
+          if (g.move) g.move(dx, dy);
+          return g;
+      });
+      return { type: 'entities', entities: ghosts };
     }
     return null
   }

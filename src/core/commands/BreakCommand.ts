@@ -1,4 +1,4 @@
-import { Command, CommandAction, XMarkerPreview } from "./types"
+import { Command, CommandAction, CommandResponse, XMarkerPreview } from "./types"
 import { UnitsConfig } from "../model/Document"
 
 export class BreakCommand implements Command {

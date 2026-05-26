@@ -1,9 +1,9 @@
-import { Command, PreviewObject, CommandResponse } from "./types"
-import { UnitsConfig, IDocument } from "../model/Document"
-import { Dimension } from "../model/Dimension"
-import { Entity } from "../model/Entity"
-import { Circle } from "../model/Circle"
-import { Arc } from "../model/Arc"
+import {Command, CommandResponse, PreviewObject} from "./types"
+import {IDocument, UnitsConfig} from "../model/Document"
+import {Dimension} from "../model/Dimension"
+import {Entity} from "../model/Entity"
+import {Circle} from "../model/Circle"
+import {Arc} from "../model/Arc"
 
 export class DimDiameterCommand implements Command {
   step = 0
@@ -105,8 +105,7 @@ export class DimDiameterCommand implements Command {
   getPreview(x: number, y: number, _units: UnitsConfig): PreviewObject | null {
     if (this.step === 1) {
       const id = "PREVIEW";
-      const dim = this.finishCommand(x, y, id) as Dimension;
-      return dim;
+      return this.finishCommand(x, y, id) as Dimension;
     }
     return null;
   }

@@ -52,6 +52,7 @@ export class Viewer {
   private helperGroup: THREE.Group = new THREE.Group()
   private boundaryGroup: THREE.Group = new THREE.Group()
   private baseLineGroup: THREE.Group = new THREE.Group()
+  private trackingLineGroup: THREE.Group = new THREE.Group()
   private gridRenderer: GridRenderer;
   private cursorRenderer: CursorRenderer;
   private textQueue: Text[] = []
@@ -148,6 +149,7 @@ export class Viewer {
     this.scene.add(this.helperGroup);
     this.scene.add(this.boundaryGroup);
     this.scene.add(this.baseLineGroup);
+    this.scene.add(this.trackingLineGroup);
     this.scene.add(this.mainGroup);
     this.scene.add(this.constraintGroup);
     this.scene.add(this.doFColorGroup);
@@ -714,9 +716,10 @@ export class Viewer {
     if (allSegments.length === 0) return null;
 
     const positions: number[] = [];
+    const elevation = entity.elevation || 0;
     for (const seg of allSegments) {
-      positions.push(seg.x1, seg.y1, 0);
-      positions.push(seg.x2, seg.y2, 0);
+      positions.push(seg.x1, seg.y1, elevation);
+      positions.push(seg.x2, seg.y2, elevation);
     }
 
     const geometry = new THREE.BufferGeometry();
@@ -727,7 +730,7 @@ export class Viewer {
     });
 
     const mesh = new THREE.LineSegments(geometry, material);
-    mesh.position.z = 0.1;
+    mesh.position.z = 0.01; // Tiny lift above the boundary lines
     mesh.renderOrder = 500;
     return mesh;
   }
@@ -906,12 +909,13 @@ export class Viewer {
     } else if (entity instanceof Solid) {
       const color = this.resolveColor(entity.properties?.color, previewColor);
       obj = this.createSolidObject(entity, color);
+      obj.position.z = entity.elevation || 0;
     } else if (entity instanceof Donut) {
       const color = this.resolveColor(entity.properties?.color, previewColor);
-      obj = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, color);
+      obj = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, color, entity.elevation || 0);
     } else if (entity instanceof Ellipse) {
       const color = this.resolveColor(entity.properties?.color, previewColor);
-      obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle || 0, entity.endAngle || Math.PI * 2, entity.ccw !== false, color);
+      obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle || 0, entity.endAngle || Math.PI * 2, entity.ccw !== false, color, entity.elevation || 0, entity.thickness || 0);
     } else if (entity instanceof MText) {
       const color = this.resolveColor(entity.properties?.color, previewColor);
       obj = this.createMTextObject(entity, color);
@@ -1124,7 +1128,7 @@ export class Viewer {
 
     mesh.position.x = entity.bounds.x + entity.width / 2;
     mesh.position.y = entity.bounds.y + entity.height / 2;
-    mesh.position.z = (entity as any).elevation || 0;
+    mesh.position.z = 0.2; // Tiny lift relative to group
 
     if ((entity as any).thickness && (entity as any).thickness !== 0) {
       const lineGeo = new THREE.BufferGeometry().setFromPoints([
@@ -1140,7 +1144,7 @@ export class Viewer {
       const lineChild = topMesh.children.find(c => c instanceof THREE.Line);
       if (lineChild) topMesh.remove(lineChild);
       
-      topMesh.position.z = ((entity as any).elevation || 0) + (entity as any).thickness;
+      topMesh.position.z = (entity as any).thickness + 0.2;
       
       mesh.userData = { type: 'Text' };
       topMesh.userData = { type: 'Text' };
@@ -1210,6 +1214,15 @@ export class Viewer {
           const mesh = new THREE.Mesh(geo, meshMat);
           mesh.userData = { type: 'Solid3D' };
           group.add(mesh);
+
+          // Wireframe for X/Y visibility
+          const linePts1 = [new THREE.Vector3(v1.x, v1.y, z1), new THREE.Vector3(v2.x, v2.y, z2)];
+          const linePts2 = [new THREE.Vector3(v1.x, v1.y, z1 + thickness), new THREE.Vector3(v2.x, v2.y, z2 + thickness)];
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePts1), material));
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePts2), material));
+          
+          // Vertical connectors
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(v1.x, v1.y, z1), new THREE.Vector3(v1.x, v1.y, z1 + thickness)]), material));
         } else if (pattern) {
             const dashed = this.generateDashedPath([{ x: v1.x, y: v1.y }, { x: v2.x, y: v2.y }], pattern);
             dashed.forEach(seg => {
@@ -1412,6 +1425,40 @@ export class Viewer {
       const material = new THREE.LineBasicMaterial({ color: 0x00ffff });
       const line = new THREE.Line(geometry, material);
       this.baseLineGroup.add(line);
+    }
+
+    this.scheduleRender();
+  }
+
+  setTrackingLines(lines: { p1: { x: number, y: number }, p2: { x: number, y: number } }[] | null) {
+    while (this.trackingLineGroup.children.length > 0) {
+      const obj = this.trackingLineGroup.children[0];
+      this.trackingLineGroup.remove(obj);
+      if (obj instanceof THREE.Line) {
+        obj.geometry.dispose();
+        (obj.material as THREE.Material).dispose();
+      }
+    }
+
+    if (lines && lines.length > 0) {
+      const trackingColor = 0x00ffff;
+      const mat = new THREE.LineDashedMaterial({
+        color: trackingColor,
+        dashSize: 5 / this.camera.zoom,
+        gapSize: 5 / this.camera.zoom,
+        transparent: true,
+        opacity: 0.5
+      });
+
+      lines.forEach(l => {
+        const geo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(l.p1.x, l.p1.y, 0),
+          new THREE.Vector3(l.p2.x, l.p2.y, 0)
+        ]);
+        const line = new THREE.Line(geo, mat);
+        line.computeLineDistances();
+        this.trackingLineGroup.add(line);
+      });
     }
 
     this.scheduleRender();
@@ -2176,25 +2223,6 @@ export class Viewer {
     obj.position.z = entity.elevation || 0;
     obj.rotation.z = entity.rotation * (Math.PI / 180);
 
-    if (entity.thickness && entity.thickness !== 0) {
-      const lineGeo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(0, 0, entity.thickness)
-      ]);
-      const lineMat = new THREE.LineBasicMaterial({ color: aciToRgb(color || 7) });
-      const line = new THREE.Line(lineGeo, lineMat);
-      obj.add(line);
-
-      // Create duplicate at top
-      const topObj = obj.clone();
-      // Remove the line from the top object so we don't have duplicates
-      const lineChild = topObj.children.find(c => c instanceof THREE.Line);
-      if (lineChild) topObj.remove(lineChild);
-      
-      topObj.position.z = (entity.elevation || 0) + entity.thickness;
-    this.mainGroup.add(topObj);
-    }
-
     obj.name = entity.id;
     obj.userData = { layer, type: 'Text' };
     obj.visible = isVisible;
@@ -2222,7 +2250,7 @@ export class Viewer {
   }
 
   addDonut(entity: Donut, layer?: string, color?: number, isVisible = true) {
-    const obj = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, color || 7);
+    const obj = this.createDonutObject(entity.cx, entity.cy, entity.innerRadius, entity.outerRadius, color || 7, entity.elevation || 0);
     obj.name = entity.id;
     if (layer) {
       obj.userData = { layer };
@@ -2242,9 +2270,8 @@ export class Viewer {
   }
 
   addEllipse(entity: Ellipse, layer?: string, color?: number, isVisible = true) {
-    const obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle, entity.endAngle, entity.ccw, color || 7);
+    const obj = this.createEllipseObject(entity.cx, entity.cy, entity.majorX, entity.majorY, entity.ratio, entity.startAngle, entity.endAngle, entity.ccw, color || 7, entity.elevation || 0, entity.thickness || 0);
     obj.name = entity.id;
-    obj.position.z = entity.elevation || 0;
     if (layer) {
       obj.userData = { layer };
     }
@@ -2275,12 +2302,13 @@ export class Viewer {
     const halfW = entity.width / 2;
     const px = -uy * halfW;
     const py = ux * halfW;
+    const elevation = entity.elevation || 0;
 
     const vertices = new Float32Array([
-      entity.x1 + px, entity.y1 + py, 0,
-      entity.x2 + px, entity.y2 + py, 0,
-      entity.x2 - px, entity.y2 - py, 0,
-      entity.x1 - px, entity.y1 - py, 0
+      entity.x1 + px, entity.y1 + py, elevation,
+      entity.x2 + px, entity.y2 + py, elevation,
+      entity.x2 - px, entity.y2 - py, elevation,
+      entity.x1 - px, entity.y1 - py, elevation
     ]);
 
     const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
@@ -2449,25 +2477,44 @@ export class Viewer {
   }
 
   private createLineObject(x1: number, y1: number, x2: number, y2: number, color: number, linetype?: string, elevation = 0, thickness = 0): THREE.Object3D {
-    const resolvedColor = this.resolveColor(color);
-    if (thickness !== 0) {
-      const vertices = new Float32Array([
-        x1, y1, elevation,
-        x2, y2, elevation,
-        x2, y2, elevation + thickness,
-        x1, y1, elevation + thickness
-      ]);
-      const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
-      const geometry = new THREE.BufferGeometry();
-      const material = this.getMeshMaterial(resolvedColor);
-        
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.userData = { type: 'Solid3D' };
-      return mesh;
-    }
+   const resolvedColor = this.resolveColor(color);
+   const pattern = linetype ? getLinetypeSettings(linetype) : null;
+   const material = new THREE.LineBasicMaterial({ color: resolvedColor });
 
-    const pattern = linetype ? getLinetypeSettings(linetype) : null;
-    const material = new THREE.LineBasicMaterial({ color: resolvedColor });
+   if (thickness !== 0) {
+     const group = new THREE.Group();
+     const vertices = new Float32Array([
+       x1, y1, elevation,
+       x2, y2, elevation,
+       x2, y2, elevation + thickness,
+       x1, y1, elevation + thickness
+     ]);
+     const indices = new Uint16Array([0, 1, 2, 0, 2, 3]);
+     const geometry = new THREE.BufferGeometry();
+     geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+     geometry.computeVertexNormals();
+
+     const meshMat = this.getMeshMaterial(resolvedColor);
+     const mesh = new THREE.Mesh(geometry, meshMat);
+     mesh.userData = { type: 'Solid3D' };
+     group.add(mesh);
+
+     // Add wireframe lines for visibility in X/Y view
+     const linePts1 = [new THREE.Vector3(x1, y1, elevation), new THREE.Vector3(x2, y2, elevation)];
+     const linePts2 = [new THREE.Vector3(x1, y1, elevation + thickness), new THREE.Vector3(x2, y2, elevation + thickness)];
+     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePts1), material));
+     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePts2), material));
+
+     // Vertical "connectors" for wireframe
+     const linePts3 = [new THREE.Vector3(x1, y1, elevation), new THREE.Vector3(x1, y1, elevation + thickness)];
+     const linePts4 = [new THREE.Vector3(x2, y2, elevation), new THREE.Vector3(x2, y2, elevation + thickness)];
+     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePts3), material));
+     group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePts4), material));
+
+     return group;
+   }
+
     if (pattern) {
         const group = new THREE.Group();
         const dashed = this.generateDashedPath([{ x: x1, y: y1 }, { x: x2, y: y2 }], pattern);
@@ -2488,6 +2535,43 @@ export class Viewer {
     const curve = new THREE.EllipseCurve(cx, cy, r, r, 0, 2 * Math.PI, false, 0);
     const points = curve.getPoints(100);
     const pts3d = points.map(p => new THREE.Vector3(p.x, p.y, elevation));
+
+    if (thickness !== 0) {
+      const group = new THREE.Group();
+      const vertices: number[] = [];
+      const indices: number[] = [];
+      const meshMat = this.getMeshMaterial(this.resolveColor(color));
+
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const baseIdx = vertices.length / 3;
+
+        vertices.push(p1.x, p1.y, elevation); // 0
+        vertices.push(p2.x, p2.y, elevation); // 1
+        vertices.push(p2.x, p2.y, elevation + thickness); // 2
+        vertices.push(p1.x, p1.y, elevation + thickness); // 3
+
+        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+        indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+
+      const mesh = new THREE.Mesh(geometry, meshMat);
+      mesh.userData = { type: 'Solid3D' };
+      group.add(mesh);
+
+      // Add wireframe caps
+      const topPts = points.map(p => new THREE.Vector3(p.x, p.y, elevation + thickness));
+      group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, elevation))), material));
+      group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(topPts), material));
+
+      return group;
+    }
     
     if (pattern) {
         const group = new THREE.Group();
@@ -2505,8 +2589,10 @@ export class Viewer {
   private createArcObject(cx: number, cy: number, r: number, s: number, e: number, ccw: boolean, color: number, linetype?: string, elevation = 0, thickness = 0): THREE.Object3D {
     const curve = new THREE.EllipseCurve(cx, cy, r, r, s, e, !ccw, 0);
     const points = curve.getPoints(50);
+    const material = new THREE.LineBasicMaterial({ color: this.resolveColor(color) });
 
     if (thickness !== 0) {
+      const group = new THREE.Group();
       const vertices: number[] = [];
       const indices: number[] = [];
       
@@ -2532,15 +2618,27 @@ export class Viewer {
       geometry.setIndex(indices);
       geometry.computeVertexNormals();
 
-      const material = this.getMeshMaterial(this.resolveColor(color));
-        
-      const mesh = new THREE.Mesh(geometry, material);
+      const meshMat = this.getMeshMaterial(this.resolveColor(color));
+      const mesh = new THREE.Mesh(geometry, meshMat);
       mesh.userData = { type: 'Solid3D' };
-      return mesh;
+      group.add(mesh);
+
+      // Add wireframe caps
+      const bottomPts = points.map(p => new THREE.Vector3(p.x, p.y, elevation));
+      const topPts = points.map(p => new THREE.Vector3(p.x, p.y, elevation + thickness));
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(bottomPts), material));
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(topPts), material));
+      
+      // Vertical connectors at start/end
+      const vLine1 = [new THREE.Vector3(points[0].x, points[0].y, elevation), new THREE.Vector3(points[0].x, points[0].y, elevation + thickness)];
+      const vLine2 = [new THREE.Vector3(points[points.length-1].x, points[points.length-1].y, elevation), new THREE.Vector3(points[points.length-1].x, points[points.length-1].y, elevation + thickness)];
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(vLine1), material));
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(vLine2), material));
+
+      return group;
     }
 
     const pattern = linetype ? getLinetypeSettings(linetype) : null;
-    const material = new THREE.LineBasicMaterial({ color: this.resolveColor(color) });
     const pts3d = points.map(p => new THREE.Vector3(p.x, p.y, elevation));
 
     if (pattern) {
@@ -2556,13 +2654,13 @@ export class Viewer {
     }
   }
 
-  private createDonutObject(cx: number, cy: number, innerR: number, outerR: number, color: number): THREE.Object3D {
+  private createDonutObject(cx: number, cy: number, innerR: number, outerR: number, color: number, elevation = 0): THREE.Object3D {
     const geometry = innerR > 0 
         ? new THREE.RingGeometry(innerR, outerR, 32)
         : new THREE.CircleGeometry(outerR, 32);
     const material = new THREE.MeshBasicMaterial({ color: this.resolveColor(color), side: THREE.DoubleSide });
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(cx, cy, 0);
+    mesh.position.set(cx, cy, elevation);
     return mesh;
   }
 
@@ -2572,17 +2670,61 @@ export class Viewer {
 
     const pattern = linetype ? getLinetypeSettings(linetype) : null;
     const material = new THREE.LineBasicMaterial({ color: this.resolveColor(color) });
+    const thickness = entity.thickness || 0;
+    const elevation = entity.elevation || 0;
     
+    if (thickness !== 0) {
+      const group = new THREE.Group();
+      const vertices: number[] = [];
+      const indices: number[] = [];
+      const meshMat = this.getMeshMaterial(this.resolveColor(color));
+
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const baseIdx = vertices.length / 3;
+
+        vertices.push(p1.x, p1.y, elevation); // 0
+        vertices.push(p2.x, p2.y, elevation); // 1
+        vertices.push(p2.x, p2.y, elevation + thickness); // 2
+        vertices.push(p1.x, p1.y, elevation + thickness); // 3
+
+        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+        indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+
+      const mesh = new THREE.Mesh(geometry, meshMat);
+      mesh.userData = { type: 'Solid3D' };
+      group.add(mesh);
+
+      // Add wireframe caps
+      const bottomPts = pts.map(p => new THREE.Vector3(p.x, p.y, elevation));
+      const topPts = pts.map(p => new THREE.Vector3(p.x, p.y, elevation + thickness));
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(bottomPts), material));
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(topPts), material));
+      
+      // Vertical connectors at start/end
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(pts[0].x, pts[0].y, elevation), new THREE.Vector3(pts[0].x, pts[0].y, elevation + thickness)]), material));
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(pts[pts.length-1].x, pts[pts.length-1].y, elevation), new THREE.Vector3(pts[pts.length-1].x, pts[pts.length-1].y, elevation + thickness)]), material));
+
+      return group;
+    }
+
     if (pattern) {
       const group = new THREE.Group();
       const dashed = this.generateDashedPath(pts, pattern);
       dashed.forEach(seg => {
-        const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(seg.x1, seg.y1, 0), new THREE.Vector3(seg.x2, seg.y2, 0)]);
+        const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(seg.x1, seg.y1, elevation), new THREE.Vector3(seg.x2, seg.y2, elevation)]);
         group.add(new THREE.Line(geo, material));
       });
       return group;
     } else {
-      const geometry = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, 0)));
+      const geometry = new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, elevation)));
       const line = new THREE.Line(geometry, material);
       
       const group = new THREE.Group();
@@ -2593,7 +2735,7 @@ export class Viewer {
       markersGroup.visible = false; // Hide by default!
       
       // Draw control hull (dashed lines)
-      const hullGeom = new THREE.BufferGeometry().setFromPoints(entity.controlPoints.map(p => new THREE.Vector3(p.x, p.y, 0)));
+      const hullGeom = new THREE.BufferGeometry().setFromPoints(entity.controlPoints.map(p => new THREE.Vector3(p.x, p.y, elevation)));
       const hullMat = new THREE.LineDashedMaterial({ color: 0x888888, dashSize: 5, gapSize: 5 });
       const hull = new THREE.Line(hullGeom, hullMat);
       hull.computeLineDistances();
@@ -2603,10 +2745,10 @@ export class Viewer {
       const markerSize = 5 / this.camera.zoom;
       entity.controlPoints.forEach(p => {
         const markerGeom = new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(p.x - markerSize, p.y - markerSize, 0),
-          new THREE.Vector3(p.x + markerSize, p.y + markerSize, 0),
-          new THREE.Vector3(p.x - markerSize, p.y + markerSize, 0),
-          new THREE.Vector3(p.x + markerSize, p.y - markerSize, 0)
+          new THREE.Vector3(p.x - markerSize, p.y - markerSize, elevation),
+          new THREE.Vector3(p.x + markerSize, p.y + markerSize, elevation),
+          new THREE.Vector3(p.x - markerSize, p.y + markerSize, elevation),
+          new THREE.Vector3(p.x + markerSize, p.y - markerSize, elevation)
         ]);
         const markerMat = new THREE.LineBasicMaterial({ color: 0x00ffff });
         const marker = new THREE.LineSegments(markerGeom, markerMat);
@@ -2618,7 +2760,7 @@ export class Viewer {
     }
   }
 
-  private createEllipseObject(cx: number, cy: number, majorX: number, majorY: number, ratio: number, startAngle: number, endAngle: number, ccw: boolean, color: number): THREE.Object3D {
+  private createEllipseObject(cx: number, cy: number, majorX: number, majorY: number, ratio: number, startAngle: number, endAngle: number, ccw: boolean, color: number, elevation = 0, thickness = 0): THREE.Object3D {
     const majorR = Math.sqrt(majorX**2 + majorY**2);
     const minorR = majorR * ratio;
     const rotation = Math.atan2(majorY, majorX);
@@ -2629,9 +2771,55 @@ export class Viewer {
     
     const curve = new THREE.EllipseCurve(cx, cy, majorR, minorR, s, e, !ccw, rotation);
     const points = curve.getPoints(100);
-    const geo = new THREE.BufferGeometry().setFromPoints(points);
     const mat = new THREE.LineBasicMaterial({ color: this.resolveColor(color) });
+
+    if (thickness !== 0) {
+      const group = new THREE.Group();
+      const vertices: number[] = [];
+      const indices: number[] = [];
+      const meshMat = this.getMeshMaterial(this.resolveColor(color));
+
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i + 1];
+        const baseIdx = vertices.length / 3;
+
+        vertices.push(p1.x, p1.y, elevation); // 0
+        vertices.push(p2.x, p2.y, elevation); // 1
+        vertices.push(p2.x, p2.y, elevation + thickness); // 2
+        vertices.push(p1.x, p1.y, elevation + thickness); // 3
+
+        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+        indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+
+      const mesh = new THREE.Mesh(geometry, meshMat);
+      mesh.userData = { type: 'Solid3D' };
+      group.add(mesh);
+
+      // Add wireframe caps for X/Y visibility
+      const bottomPts = points.map(p => new THREE.Vector3(p.x, p.y, elevation));
+      const topPts = points.map(p => new THREE.Vector3(p.x, p.y, elevation + thickness));
+      
+      if (isFullEllipse) {
+        group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(bottomPts), mat));
+        group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(topPts), mat));
+      } else {
+        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(bottomPts), mat));
+        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(topPts), mat));
+        // Vertical connectors
+        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(points[0].x, points[0].y, elevation), new THREE.Vector3(points[0].x, points[0].y, elevation + thickness)]), mat));
+        group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(points[points.length-1].x, points[points.length-1].y, elevation), new THREE.Vector3(points[points.length-1].x, points[points.length-1].y, elevation + thickness)]), mat));
+      }
+      return group;
+    }
     
+    const geo = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, elevation)));
     if (isFullEllipse) {
       return new THREE.LineLoop(geo, mat);
     }

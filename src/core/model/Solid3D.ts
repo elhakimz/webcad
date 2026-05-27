@@ -343,6 +343,54 @@ export class Solid3D extends Entity {
     return { minX, minY, minZ, maxX, maxY, maxZ };
   }
 
+  getSnapPoints(): any[] {
+    const snaps: any[] = [];
+    
+    // Use dynamic strings for snap types to avoid direct circular dependency on SnapEngine enum
+    const ENDPOINT = 'Endpoint';
+    const MIDPOINT = 'Midpoint';
+    
+    // 1. Endpoints from vertices
+    const vertexMap = new Set<string>();
+    for (let i = 0; i < this.positions.length; i += 3) {
+      const x = this.positions[i];
+      const y = this.positions[i + 1];
+      const z = this.positions[i + 2];
+      const key = `${x.toFixed(4)},${y.toFixed(4)},${z.toFixed(4)}`;
+      if (!vertexMap.has(key)) {
+        snaps.push({ x, y, z, type: ENDPOINT });
+        vertexMap.add(key);
+      }
+    }
+
+    // 2. Midpoints from edges
+    if (this.edgeLines) {
+      for (const edgeIndices of this.edgeLines) {
+        for (let i = 0; i < edgeIndices.length - 1; i++) {
+          const idx1 = edgeIndices[i];
+          const idx2 = edgeIndices[i + 1];
+          
+          const x1 = this.positions[idx1 * 3];
+          const y1 = this.positions[idx1 * 3 + 1];
+          const z1 = this.positions[idx1 * 3 + 2];
+          
+          const x2 = this.positions[idx2 * 3];
+          const y2 = this.positions[idx2 * 3 + 1];
+          const z2 = this.positions[idx2 * 3 + 2];
+
+          snaps.push({
+            x: (x1 + x2) / 2,
+            y: (y1 + y2) / 2,
+            z: (z1 + z2) / 2,
+            type: MIDPOINT
+          });
+        }
+      }
+    }
+
+    return snaps;
+  }
+
   clone(newId: string): Solid3D {
     const copy = new Solid3D(
       newId, 

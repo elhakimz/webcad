@@ -117,6 +117,10 @@ export class App {
   private lastScreenX: number = 0;
   private lastScreenY: number = 0;
   public contextMenuVisible: boolean = false;
+  
+  private acquiredSnaps: SnapPoint[] = [];
+  private dwellSnap: SnapPoint | null = null;
+  private dwellStart: number = 0;
 
   setLayersWindowUpdate(updateFn: () => void) {
     this.layersWindowUpdate = updateFn;
@@ -285,13 +289,79 @@ export class App {
 
   private getSnappedPoint(worldX: number, worldY: number): { x: number, y: number, snap: SnapPoint | null } {
     const tolerance = 10 / this.viewer.camera.zoom;
-    
+
     // Get base point from active command if available for PERPENDICULAR snap
-    const basePointCmd = this.cmd.active as unknown as HasBasePoint;
-    const base = (typeof basePointCmd?.getBasePoint === 'function') ? basePointCmd.getBasePoint() : null;
+    const basePointCmd = this.cmd.active as any;
+    let base = (typeof basePointCmd?.getBasePoint === 'function') ? basePointCmd.getBasePoint() : null;
+    if (!base && this.cmd.lastPoint) {
+      base = this.cmd.lastPoint;
+    }
+
+    let snap = SnapEngine.getSnapPointSpatial(worldX, worldY, this.doc, tolerance, base);    
     
-    let snap = SnapEngine.getSnapPointSpatial(worldX, worldY, this.doc, tolerance);
-    
+    // Otrack Logic: Dwelling
+    if (snap) {
+      const isSameAsDwell = this.dwellSnap && 
+                            Math.abs(snap.x - this.dwellSnap.x) < 1e-6 && 
+                            Math.abs(snap.y - this.dwellSnap.y) < 1e-6;
+      
+      if (isSameAsDwell) {
+        if (Date.now() - this.dwellStart > 500) {
+          // Acquire or toggle
+          const existingIdx = this.acquiredSnaps.findIndex(s => 
+            Math.abs(s.x - snap!.x) < 1e-6 && Math.abs(s.y - snap!.y) < 1e-6
+          );
+          if (existingIdx >= 0) {
+            this.acquiredSnaps.splice(existingIdx, 1);
+            this.dwellSnap = null; // Reset to avoid rapid toggle
+          } else {
+            this.acquiredSnaps.push(snap);
+            this.dwellSnap = null;
+          }
+          this.printToCommandLine(existingIdx >= 0 ? "Otrack point removed." : "Otrack point acquired.");
+        }
+      } else {
+        this.dwellSnap = snap;
+        this.dwellStart = Date.now();
+      }
+    } else {
+      this.dwellSnap = null;
+    }
+
+    // Otrack Logic: Tracking
+    const trackingLines: {p1: {x:number, y:number}, p2: {x:number, y:number}}[] = [];
+    if (!snap && this.acquiredSnaps.length > 0) {
+      let trackedX: number | null = null;
+      let trackedY: number | null = null;
+      let hitSnapsX: SnapPoint[] = [];
+      let hitSnapsY: SnapPoint[] = [];
+
+      for (const acquired of this.acquiredSnaps) {
+        if (Math.abs(worldX - acquired.x) < tolerance) {
+          trackedX = acquired.x;
+          hitSnapsX.push(acquired);
+        }
+        if (Math.abs(worldY - acquired.y) < tolerance) {
+          trackedY = acquired.y;
+          hitSnapsY.push(acquired);
+        }
+      }
+
+      if (trackedX !== null) {
+        worldX = trackedX;
+        hitSnapsX.forEach(s => trackingLines.push({ p1: { x: s.x, y: s.y }, p2: { x: worldX, y: worldY } }));
+      }
+      if (trackedY !== null) {
+        worldY = trackedY;
+        hitSnapsY.forEach(s => trackingLines.push({ p1: { x: s.x, y: s.y }, p2: { x: worldX, y: worldY } }));
+      }
+      
+      if (trackedX !== null || trackedY !== null) {
+        snap = { x: worldX, y: worldY, type: SnapType.INTERSECTION }; // Use INTERSECTION glyph for tracking hits
+      }
+    }
+    this.viewer.setTrackingLines(trackingLines);
+
     if (!snap && this.selectedEntityIds.size > 0 && !this.cmd.active) {
       const center = this.viewer.getCenterOfObjects(Array.from(this.selectedEntityIds));
       if (center) {
@@ -1974,10 +2044,39 @@ export class App {
 
     if (subEntity && wantsSubEntity) {
       if (subEntity.edgeIndex !== undefined) {
+        let p1Str = "?";
+        let p2Str = "?";
+        let visualP1: {x:number, y:number, z:number} | null = null;
+        let visualP2: {x:number, y:number, z:number} | null = null;
+        let foundLine: THREE.Line | null = null;
+        this.viewer.scene.traverse((obj) => {
+          if (obj.userData.entityId === subEntity.entity.id && obj.userData.edgeIndex === subEntity.edgeIndex && obj.type === 'Line') {
+            foundLine = obj as THREE.Line;
+          }
+        });
+        
+        if (foundLine && foundLine.geometry) {
+           const pos = foundLine.geometry.getAttribute('position');
+           if (pos && pos.count >= 2) {
+             const worldMatrix = foundLine.matrixWorld;
+             const p1 = new THREE.Vector3(pos.getX(0), pos.getY(0), pos.getZ(0)).applyMatrix4(worldMatrix);
+             const last = pos.count - 1;
+             const p2 = new THREE.Vector3(pos.getX(last), pos.getY(last), pos.getZ(last)).applyMatrix4(worldMatrix);
+             visualP1 = { x: p1.x, y: p1.y, z: p1.z };
+             visualP2 = { x: p2.x, y: p2.y, z: p2.z };
+             p1Str = `[${p1.x.toFixed(2)}, ${p1.y.toFixed(2)}, ${p1.z.toFixed(2)}]`;
+             p2Str = `[${p2.x.toFixed(2)}, ${p2.y.toFixed(2)}, ${p2.z.toFixed(2)}]`;
+           }
+        }
+        console.log(`[app.ts] Edge highlighted. Entity: ${subEntity.entity.id}, EdgeIndex: ${subEntity.edgeIndex} VISUAL COORDS: ${p1Str} to ${p2Str}`);
+        
         this.selectedEdge = { entityId: subEntity.entity.id, edgeIndex: subEntity.edgeIndex };
         this.viewer.highlightEdge(subEntity.entity.id, subEntity.edgeIndex);
         
-        const text = `EDGE:${subEntity.entity.id}:${subEntity.edgeIndex}`;
+        let text = `EDGE:${subEntity.entity.id}:${subEntity.edgeIndex}`;
+        if (visualP1 && visualP2) {
+           text += `:${visualP1.x},${visualP1.y},${visualP1.z}:${visualP2.x},${visualP2.y},${visualP2.z}`;
+        }
         const res = await this.cmd.inputString(text, this.doc.units, (p) => this.doc.getNextId(p), { x: worldPt.x, y: worldPt.y }, this.doc);
         const resResult = await this.handleResult(res);
         return resResult; // Return early to prevent full object selection & gizmo attachment
@@ -2257,7 +2356,8 @@ export class App {
         onStatusBarUpdate: (l) => { if (this.statusBarUpdate) this.statusBarUpdate(l); },
         onLayersChange: () => { if (this.layersWindowUpdate) this.layersWindowUpdate(); },
         onEntitiesChange: () => { if (this.objectsWindowUpdate) this.objectsWindowUpdate(); },
-        onFilesChange: () => { if (this.filesWindowUpdate) this.filesWindowUpdate(); }
+        onFilesChange: () => { if (this.filesWindowUpdate) this.filesWindowUpdate(); },
+        onElevationChange: (val) => { this.currentZ = val; }
       };
 
       const actionResult = await (async () => {
@@ -2467,6 +2567,9 @@ export class App {
 
   public terminateActiveCommand() {
     this.cmd.clearActive();
+    this.acquiredSnaps = [];
+    this.dwellSnap = null;
+    this.viewer.setTrackingLines(null);
     this.viewer.setControlPointsVisibility(false);
     this.doc.history.commitTransaction(); // Commit any dangling transaction (e.g. from PLINE)
     this.viewer.setHelpers(null);

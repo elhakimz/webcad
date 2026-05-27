@@ -22,7 +22,7 @@ export class LineCommand implements Command {
     }
   }
 
-  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
+  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (val === "" || val === "E" || val === "EXIT" || val === "QUIT") {
@@ -33,7 +33,7 @@ export class LineCommand implements Command {
       if (this.points.length >= 3) {
         const first = this.points[0];
         const last = this.points[this.points.length - 1];
-        const line = new Line(id, last.x, last.y, first.x, first.y);
+        const line = new Line(id, last.x, last.y, first.x, first.y, doc?.currentElevation || 0, doc?.currentThickness || 0);
         return { action: "close", entity: line };
       }
       return "Requires at least 3 points to close. To point:";

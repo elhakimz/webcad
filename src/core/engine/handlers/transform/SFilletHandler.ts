@@ -29,10 +29,12 @@ export class SFilletHandler implements ActionHandler {
 
         let geometry;
         let msg = "";
+        const vP1 = (action as any).visualP1;
+        const vP2 = (action as any).visualP2;
         
         if (action.action === 'fillet_solid' && action.value !== undefined) {
           const edgeIndex = action.value as number;
-          geometry = await OpenCascadeService.getInstance().filletSolid(entityId, edgeIndex, radius);
+          geometry = await OpenCascadeService.getInstance().filletSolid(entityId, edgeIndex, radius, undefined, vP1, vP2);
           msg = `Fillet applied to edge ${edgeIndex}.`;
         } else if (action.action === 'fillet_solid_face' && action.faceIndex !== undefined) {
           const faceIndex = action.faceIndex;
@@ -64,7 +66,9 @@ export class SFilletHandler implements ActionHandler {
           parameters: {
             radius: radius,
             edgeIndex: action.action === 'fillet_solid' ? action.value : undefined,
-            faceIndex: action.action === 'fillet_solid_face' ? action.faceIndex : undefined
+            faceIndex: action.action === 'fillet_solid_face' ? action.faceIndex : undefined,
+            visualP1: vP1,
+            visualP2: vP2
           },
           isActive: true
         });

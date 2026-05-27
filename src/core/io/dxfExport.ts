@@ -85,17 +85,17 @@ export class DXFExporter {
       s += "  0\nLINE\n  8\n" + layer + "\n";
       s += " 10\n" + e.x1 + "\n 20\n" + e.y1 + "\n 30\n" + e.elevation + "\n";
       s += " 11\n" + e.x2 + "\n 21\n" + e.y2 + "\n 31\n" + e.elevation + "\n";
-      if (e.thickness > 0) s += " 39\n" + e.thickness + "\n";
+      if (e.thickness !== 0) s += " 39\n" + e.thickness + "\n";
     } else if (e instanceof Circle) {
       s += "  0\nCIRCLE\n  8\n" + layer + "\n";
       s += " 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n" + e.elevation + "\n";
       s += " 40\n" + e.r + "\n";
-      if (e.thickness > 0) s += " 39\n" + e.thickness + "\n";
+      if (e.thickness !== 0) s += " 39\n" + e.thickness + "\n";
     } else if (e instanceof Arc) {
       s += "  0\nARC\n  8\n" + layer + "\n";
       s += " 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n" + e.elevation + "\n";
       s += " 40\n" + e.r + "\n";
-      if (e.thickness > 0) s += " 39\n" + e.thickness + "\n";
+      if (e.thickness !== 0) s += " 39\n" + e.thickness + "\n";
       
       let start = e.startAngle * 180 / Math.PI;
       let end = e.endAngle * 180 / Math.PI;
@@ -120,9 +120,10 @@ export class DXFExporter {
       s += " 40\n" + e.innerRadius + "\n 41\n" + e.outerRadius + "\n";
     } else if (e instanceof Ellipse) {
       s += "  0\nELLIPSE\n  8\n" + layer + "\n";
-      s += " 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n0.0\n";
+      s += " 10\n" + e.cx + "\n 20\n" + e.cy + "\n 30\n" + e.elevation + "\n";
       s += " 11\n" + e.majorX + "\n 21\n" + e.majorY + "\n 31\n0.0\n";
       s += " 40\n" + e.ratio + "\n";
+      if (e.thickness !== 0) s += " 39\n" + e.thickness + "\n";
       s += " 41\n" + e.startAngle + "\n 42\n" + e.endAngle + "\n";
     } else if (e instanceof Spline) {
       s += "  0\nSPLINE\n  8\n" + layer + "\n";
@@ -137,15 +138,17 @@ export class DXFExporter {
       }
     } else if (e instanceof Point) {
       s += "  0\nPOINT\n  8\n" + layer + "\n";
-      s += " 10\n" + e.x + "\n 20\n" + e.y + "\n 30\n0.0\n";
+      s += " 10\n" + e.x + "\n 20\n" + e.y + "\n 30\n" + e.elevation + "\n";
     } else if (e instanceof Polyline) {
       s += "  0\nPOLYLINE\n  8\n" + layer + "\n 66\n1\n 70\n" + (e.closed ? 1 : 0) + "\n";
+      s += " 30\n" + e.elevation + "\n";
+      if (e.thickness !== 0) s += " 39\n" + e.thickness + "\n";
       if (e.id.startsWith('PG')) {
         s += "1001\nWEBCAD\n1000\nPG\n";
       }
       for (const v of e.vertices) {
         s += "  0\nVERTEX\n  8\n" + layer + "\n";
-        s += " 10\n" + v.x + "\n 20\n" + v.y + "\n 30\n0.0\n";
+        s += " 10\n" + v.x + "\n 20\n" + v.y + "\n 30\n" + e.elevation + "\n";
         if (v.bulge !== 0) s += " 42\n" + v.bulge + "\n";
       }
       s += "  0\nSEQEND\n";

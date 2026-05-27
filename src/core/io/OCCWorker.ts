@@ -527,74 +527,96 @@ function exportShapeToNativeBRep(oc: any, shape: any, entityId: string): Uint8Ar
     return undefined;
   }
   
-  const path = `/cache_${entityId}.data`; // Absolute path starting with /
+  const brepFilename = `/cache_${entityId}.brep`;
+  try { oc.FS.unlink(brepFilename); } catch (_) { }
+
+  let success = false;
+  
+  let progress: any = null;
+  let prHandle: any = null;
   try {
-    try { oc.FS.unlink(path); } catch (_) { }
-    let success = false;
-
-    // 1. Attempt to create a safe dummy progress object
-    let progress: any = null;
-    let prHandle: any = null;
-    try {
-      if (oc.Message_ProgressRange) {
-        progress = new oc.Message_ProgressRange();
-      } else if (oc.Handle_Message_ProgressIndicator_1) {
-        prHandle = new oc.Handle_Message_ProgressIndicator_1();
-        const indObj = prHandle.get();
-        if (indObj) {
-          if (indObj.NewScope_1) progress = indObj.NewScope_1();
-          else if (indObj.NewScope) progress = indObj.NewScope();
-        }
+    if (oc.Message_ProgressRange) {
+      progress = new oc.Message_ProgressRange();
+    } else if (oc.Handle_Message_ProgressIndicator_1) {
+      prHandle = new oc.Handle_Message_ProgressIndicator_1();
+      const indObj = prHandle.get();
+      if (indObj) {
+        if (indObj.NewScope_1) progress = indObj.NewScope_1();
+        else if (indObj.NewScope) progress = indObj.NewScope();
       }
-    } catch (e) { /* ignore */ }
+    }
+  } catch (e) { }
 
-    // 2. Try all known B-Rep bindings
-    const writeFns = ['Write', 'Write_1', 'Write_2', 'Write_3'];
-    for (const fnName of writeFns) {
-      if (oc.BRepTools && oc.BRepTools[fnName]) {
-        // Build list of functions we want to call (with & without progress)
+  // Try BinTools first (binary BRep - compact and fast)
+  if (oc.BinTools) {
+    const methods = ['Write_2', 'Write_1', 'Write'];
+    for (const m of methods) {
+      if (typeof oc.BinTools[m] === 'function') {
         const attempts = [
-          () => oc.BRepTools[fnName](shape, path, progress),
-          () => oc.BRepTools[fnName](shape, path, undefined),
-          () => oc.BRepTools[fnName](shape, path, null),
-          () => oc.BRepTools[fnName](shape, path)
+          () => oc.BinTools[m](shape, brepFilename, progress),
+          () => oc.BinTools[m](shape, brepFilename, undefined),
+          () => oc.BinTools[m](shape, brepFilename, null),
+          () => oc.BinTools[m](shape, brepFilename)
         ];
-
         for (const attempt of attempts) {
           try {
             attempt();
             let fileExists = false;
-            try {
-              oc.FS.stat(path);
-              fileExists = true;
-            } catch (_) {}
+            try { oc.FS.stat(brepFilename); fileExists = true; } catch (_) {}
             if (fileExists) {
-              const bytes = oc.FS.readFile(path) as Uint8Array;
+              const bytes = oc.FS.readFile(brepFilename) as Uint8Array;
               if (bytes && bytes.length > 0) {
                 success = true;
                 break;
               }
             }
-          } catch (e) { } // Ignore unbound/type errors
+          } catch(e) { }
         }
       }
       if (success) break;
     }
+  }
 
-    if (progress && progress.delete) { try { progress.delete(); } catch (_) {} }
-    if (prHandle && prHandle.delete) { try { prHandle.delete(); } catch (_) {} }
-
-    // 3. Verify it actually wrote data
-    if (success) {
-      const bytes = oc.FS.readFile(path) as Uint8Array;
-      try { oc.FS.unlink(path); } catch (_) { }
-      if (bytes && bytes.length > 0) {
-        return bytes; // Native B-Rep Success!
+  // Fallback to text BRep
+  if (!success && oc.BRepTools) {
+    const methods = ['Write_3', 'Write_2', 'Write_1', 'Write'];
+    for (const m of methods) {
+      if (typeof oc.BRepTools[m] === 'function') {
+        const attempts = [
+          () => oc.BRepTools[m](shape, brepFilename, progress),
+          () => oc.BRepTools[m](shape, brepFilename, undefined),
+          () => oc.BRepTools[m](shape, brepFilename, null),
+          () => oc.BRepTools[m](shape, brepFilename)
+        ];
+        for (const attempt of attempts) {
+          try {
+            attempt();
+            let fileExists = false;
+            try { oc.FS.stat(brepFilename); fileExists = true; } catch (_) {}
+            if (fileExists) {
+              const bytes = oc.FS.readFile(brepFilename) as Uint8Array;
+              if (bytes && bytes.length > 0) {
+                success = true;
+                break;
+              }
+            }
+          } catch(e) { }
+        }
       }
+      if (success) break;
     }
-  } catch (e) { }
+  }
 
-  // 4. FATAL FALLBACK: If BRepTools is broken in this WASM build, use STEP
+  if (progress && progress.delete) { try { progress.delete(); } catch (_) {} }
+  if (prHandle && prHandle.delete) { try { prHandle.delete(); } catch (_) {} }
+
+  if (success) {
+    const brepBytes = oc.FS.readFile(brepFilename) as Uint8Array;
+    oc.FS.unlink(brepFilename);
+    return brepBytes;
+  }
+
+  // FATAL FALLBACK: If BRepTools is broken in this WASM build, use STEP
   self.postMessage({ type: 'log', message: `[Worker] Native BREP failed for ${entityId}. Transparently falling back to STEP cache.` });
   try {
     const bytes = exportShapeToBytes(oc, shape, entityId);
@@ -632,27 +654,53 @@ function importShapeFromNativeBRep(oc: any, entityId: string, bytes: Uint8Array)
   } catch (e) { }
 
   let success = false;
-  const readFns = ['Read', 'Read_1', 'Read_2', 'Read_3'];
-  for (const fnName of readFns) {
-    if (oc.BRepTools && oc.BRepTools[fnName]) {
-      const attempts = [
-        () => oc.BRepTools[fnName](shape, path, builder, progress),
-        () => oc.BRepTools[fnName](shape, path, builder, undefined),
-        () => oc.BRepTools[fnName](shape, path, builder, null),
-        () => oc.BRepTools[fnName](shape, path, builder)
-      ];
-
-      for (const attempt of attempts) {
-        try {
-          attempt();
-          if (shape && !shape.IsNull()) {
-            success = true;
-            break;
-          }
-        } catch (e) { }
+  
+  if (oc.BinTools) {
+    const methods = ['Read_2', 'Read_1', 'Read'];
+    for (const m of methods) {
+      if (typeof oc.BinTools[m] === 'function') {
+        const attempts = [
+          () => oc.BinTools[m](shape, path, progress),
+          () => oc.BinTools[m](shape, path, undefined),
+          () => oc.BinTools[m](shape, path, null),
+          () => oc.BinTools[m](shape, path)
+        ];
+        for (const attempt of attempts) {
+          try {
+            attempt();
+            if (shape && !shape.IsNull()) {
+              success = true;
+              break;
+            }
+          } catch(e) { }
+        }
       }
+      if (success) break;
     }
-    if (success) break;
+  }
+
+  if (!success && oc.BRepTools) {
+    const methods = ['Read_3', 'Read_2', 'Read_1', 'Read'];
+    for (const m of methods) {
+      if (typeof oc.BRepTools[m] === 'function') {
+        const attempts = [
+          () => oc.BRepTools[m](shape, path, builder, progress),
+          () => oc.BRepTools[m](shape, path, builder, undefined),
+          () => oc.BRepTools[m](shape, path, builder, null),
+          () => oc.BRepTools[m](shape, path, builder)
+        ];
+        for (const attempt of attempts) {
+          try {
+            attempt();
+            if (shape && !shape.IsNull()) {
+              success = true;
+              break;
+            }
+          } catch (e) { }
+        }
+      }
+      if (success) break;
+    }
   }
 
   if (progress && progress.delete) { try { progress.delete(); } catch (_) {} }
@@ -805,26 +853,72 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { entityId, edgeIndex, radius, deflection } = payload;
+    const { entityId, edgeIndex, radius, deflection, visualP1, visualP2 } = payload;
     try {
       if (!shapeCache.has(entityId)) {
         throw new Error(`Shape not found for entity: ${entityId}`);
       }
       const shape = shapeCache.get(entityId);
 
-      // Find the edge by index
       let foundEdge: any = null;
-      let currentIndex = 0;
-      const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
-      while (explorer.More()) {
-        if (currentIndex === edgeIndex) {
-          foundEdge = oc.TopoDS.Edge_1(explorer.Current());
-          break;
+
+      // GEOMETRIC MATCHING: Use visual coordinates to find the exact topological edge
+      if (visualP1 && visualP2) {
+        const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        while (explorer.More()) {
+          const currentEdge = oc.TopoDS.Edge_1(explorer.Current());
+          let validEdge = false;
+          let p1 = { x: 0, y: 0, z: 0 };
+          let p2 = { x: 0, y: 0, z: 0 };
+          
+          try {
+            const firstVertex = oc.TopExp.FirstVertex(currentEdge, false);
+            const lastVertex = oc.TopExp.LastVertex(currentEdge, false);
+            if (!firstVertex.IsNull() && !lastVertex.IsNull()) {
+              const pt1 = oc.BRep_Tool.Pnt(firstVertex);
+              const pt2 = oc.BRep_Tool.Pnt(lastVertex);
+              p1 = { x: pt1.X(), y: pt1.Y(), z: pt1.Z() };
+              p2 = { x: pt2.X(), y: pt2.Y(), z: pt2.Z() };
+              pt1.delete();
+              pt2.delete();
+              validEdge = true;
+            }
+            firstVertex.delete();
+            lastVertex.delete();
+          } catch(e) {}
+          
+          if (validEdge) {
+            const d1 = Math.sqrt((p1.x - visualP1.x)**2 + (p1.y - visualP1.y)**2 + (p1.z - visualP1.z)**2);
+            const d2 = Math.sqrt((p2.x - visualP2.x)**2 + (p2.y - visualP2.y)**2 + (p2.z - visualP2.z)**2);
+            const d3 = Math.sqrt((p1.x - visualP2.x)**2 + (p1.y - visualP2.y)**2 + (p1.z - visualP2.z)**2);
+            const d4 = Math.sqrt((p2.x - visualP1.x)**2 + (p2.y - visualP1.y)**2 + (p2.z - visualP1.z)**2);
+
+            if ((d1 + d2) < 0.1 || (d3 + d4) < 0.1) {
+              foundEdge = currentEdge;
+              self.postMessage({ type: 'log', message: `[Worker] SFILLET geometric match SUCCESS.` });
+              break;
+            }
+          }
+          currentEdge.delete();
+          explorer.Next();
         }
-        currentIndex++;
-        explorer.Next();
+        explorer.delete();
       }
-      explorer.delete();
+
+      // FALLBACK: If geometric match fails, use standard explorer
+      if (!foundEdge) {
+        let currentIndex = 0;
+        const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        while (explorer.More()) {
+          if (currentIndex === edgeIndex) {
+            foundEdge = oc.TopoDS.Edge_1(explorer.Current());
+            break;
+          }
+          currentIndex++;
+          explorer.Next();
+        }
+        explorer.delete();
+      }
 
       if (!foundEdge) {
         throw new Error(`Edge index ${edgeIndex} not found in shape.`);
@@ -862,30 +956,99 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { entityId, edgeIndex, radius: distance, deflection } = payload;
+    const { entityId, edgeIndex, radius: distance, deflection, visualP1, visualP2 } = payload;
     try {
       if (!shapeCache.has(entityId)) {
         throw new Error(`Shape not found for entity: ${entityId}`);
       }
       const shape = shapeCache.get(entityId);
 
-      // Find the edge by index
       let foundEdge: any = null;
-      let currentIndex = 0;
-      const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
-      while (explorer.More()) {
-        if (currentIndex === edgeIndex) {
-          foundEdge = oc.TopoDS.Edge_1(explorer.Current());
-          break;
+      let targetP1 = { x: 0, y: 0, z: 0 };
+      let targetP2 = { x: 0, y: 0, z: 0 };
+
+      // GEOMETRIC MATCHING: Use visual coordinates to find the exact topological edge
+      if (visualP1 && visualP2) {
+        const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        while (explorer.More()) {
+          const currentEdge = oc.TopoDS.Edge_1(explorer.Current());
+          let validEdge = false;
+          let p1 = { x: 0, y: 0, z: 0 };
+          let p2 = { x: 0, y: 0, z: 0 };
+          
+          try {
+            const firstVertex = oc.TopExp.FirstVertex(currentEdge, false);
+            const lastVertex = oc.TopExp.LastVertex(currentEdge, false);
+            if (!firstVertex.IsNull() && !lastVertex.IsNull()) {
+              const pt1 = oc.BRep_Tool.Pnt(firstVertex);
+              const pt2 = oc.BRep_Tool.Pnt(lastVertex);
+              p1 = { x: pt1.X(), y: pt1.Y(), z: pt1.Z() };
+              p2 = { x: pt2.X(), y: pt2.Y(), z: pt2.Z() };
+              pt1.delete();
+              pt2.delete();
+              validEdge = true;
+            }
+            firstVertex.delete();
+            lastVertex.delete();
+          } catch(e) {}
+          
+          if (validEdge) {
+            const d1 = Math.sqrt((p1.x - visualP1.x)**2 + (p1.y - visualP1.y)**2 + (p1.z - visualP1.z)**2);
+            const d2 = Math.sqrt((p2.x - visualP2.x)**2 + (p2.y - visualP2.y)**2 + (p2.z - visualP2.z)**2);
+            const d3 = Math.sqrt((p1.x - visualP2.x)**2 + (p1.y - visualP2.y)**2 + (p1.z - visualP2.z)**2);
+            const d4 = Math.sqrt((p2.x - visualP1.x)**2 + (p2.y - visualP1.y)**2 + (p2.z - visualP1.z)**2);
+
+            if ((d1 + d2) < 0.1 || (d3 + d4) < 0.1) {
+              foundEdge = currentEdge;
+              targetP1 = p1;
+              targetP2 = p2;
+              self.postMessage({ type: 'log', message: `[Worker] SCHAMFER geometric match SUCCESS. Target Edge [${p1.x.toFixed(2)}, ${p1.y.toFixed(2)}, ${p1.z.toFixed(2)}] to [${p2.x.toFixed(2)}, ${p2.y.toFixed(2)}, ${p2.z.toFixed(2)}]` });
+              break;
+            }
+          }
+          currentEdge.delete();
+          explorer.Next();
         }
-        currentIndex++;
-        explorer.Next();
+        explorer.delete();
       }
-      explorer.delete();
+
+      // FALLBACK: If geometric match fails, use standard explorer
+      if (!foundEdge) {
+        self.postMessage({ type: 'log', message: `[Worker] SCHAMFER geometric match failed. Falling back to explorer index ${edgeIndex}.` });
+        let currentIndex = 0;
+        const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        while (explorer.More()) {
+          if (currentIndex === edgeIndex) {
+            foundEdge = oc.TopoDS.Edge_1(explorer.Current());
+            // Extract coordinates for logging even in fallback
+            try {
+              const firstVertex = oc.TopExp.FirstVertex(foundEdge, false);
+              const lastVertex = oc.TopExp.LastVertex(foundEdge, false);
+              if (!firstVertex.IsNull() && !lastVertex.IsNull()) {
+                const pt1 = oc.BRep_Tool.Pnt(firstVertex);
+                const pt2 = oc.BRep_Tool.Pnt(lastVertex);
+                targetP1 = { x: pt1.X(), y: pt1.Y(), z: pt1.Z() };
+                targetP2 = { x: pt2.X(), y: pt2.Y(), z: pt2.Z() };
+                pt1.delete();
+                pt2.delete();
+              }
+              firstVertex.delete();
+              lastVertex.delete();
+            } catch(e) {}
+            break;
+          }
+          currentIndex++;
+          explorer.Next();
+        }
+        explorer.delete();
+      }
 
       if (!foundEdge) {
-        throw new Error(`Edge index ${edgeIndex} not found in shape.`);
+        throw new Error(`Edge index ${edgeIndex} not found in shape and visual coordinate match failed.`);
       }
+
+      // Final logging check
+      self.postMessage({ type: 'log', message: `[Worker] SCHAMFER targeting topological Edge ${edgeIndex} from [${targetP1.x.toFixed(2)}, ${targetP1.y.toFixed(2)}, ${targetP1.z.toFixed(2)}] to [${targetP2.x.toFixed(2)}, ${targetP2.y.toFixed(2)}, ${targetP2.z.toFixed(2)}]` });
 
       // Perform chamfer
       const chamfer = new oc.BRepFilletAPI_MakeChamfer(shape);
@@ -931,7 +1094,7 @@ self.onmessage = async (e) => {
       }
       const shape = shapeCache.get(entityId);
 
-      // Find the face by index
+      // Find the face by index using standard explorer
       let foundFace: any = null;
       let currentIndex = 0;
       const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
@@ -1251,7 +1414,7 @@ self.onmessage = async (e) => {
       }
       const shape = shapeCache.get(entityId);
 
-      // Find the face by index
+      // Find the face by index using standard explorer
       let foundFace: any = null;
       let currentIndex = 0;
       const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
@@ -1313,6 +1476,134 @@ self.onmessage = async (e) => {
     } catch (error: any) {
       const errorMessage = error.message || error.toString() || 'Unknown error';
       self.postMessage({ type: 'chamferSolidFace', success: false, error: errorMessage, id });
+    }
+  } else if (type === 'draftSolidFaces') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, faceIndices, neutralFaceIndex, angleRad, deflection } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not found for entity: ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+
+      // 1. Identify neutral plane and pull direction from the neutral face
+      let neutralFace: any = null;
+      let currentIndex = 0;
+      const fExp = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      while (fExp.More()) {
+        if (currentIndex === neutralFaceIndex) {
+          neutralFace = oc.TopoDS.Face_1(fExp.Current());
+          break;
+        }
+        currentIndex++;
+        fExp.Next();
+      }
+      fExp.delete();
+
+      if (!neutralFace) {
+        throw new Error(`Neutral face index ${neutralFaceIndex} not found.`);
+      }
+
+      // Compute plane and normal (pull direction) of neutral face
+      const adaptor = new oc.BRepAdaptor_Surface_2(neutralFace, true);
+      if (adaptor.GetType() !== oc.GeomAbs_SurfaceType.GeomAbs_Plane) {
+        adaptor.delete();
+        throw new Error("Neutral face must be a flat plane.");
+      }
+      const pln = adaptor.Plane();
+      
+      const faceOrientation = neutralFace.Orientation_1();
+      const gpDir = pln.Axis().Direction();
+      let nx = gpDir.X();
+      let ny = gpDir.Y();
+      let nz = gpDir.Z();
+      if (faceOrientation === oc.TopAbs_Orientation.TopAbs_REVERSED) {
+        nx = -nx; ny = -ny; nz = -nz;
+      }
+      
+      const faceIndicesSet = new Set(faceIndices);
+
+      const attemptDraft = (dirX: number, dirY: number, dirZ: number): any => {
+        const pDir = new oc.gp_Dir_4(dirX, dirY, dirZ);
+        const draftBuilder = new oc.BRepOffsetAPI_DraftAngle_2(shape);
+        
+        let facesAdded = 0;
+        let cIdx = 0;
+        const targetExp = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        
+        while (targetExp.More()) {
+          if (faceIndicesSet.has(cIdx)) {
+            const face = oc.TopoDS.Face_1(targetExp.Current());
+            draftBuilder.Add(face, pDir, angleRad, pln, true);
+            face.delete();
+            facesAdded++;
+          }
+          cIdx++;
+          targetExp.Next();
+        }
+        targetExp.delete();
+        pDir.delete();
+
+        if (facesAdded === 0) {
+          draftBuilder.delete();
+          throw new Error("No target faces were identified for drafting.");
+        }
+
+        draftBuilder.Build();
+        return draftBuilder;
+      };
+
+      let draftBuilder: any = null;
+      let isSuccess = false;
+      
+      try {
+        draftBuilder = attemptDraft(nx, ny, nz);
+        if (typeof draftBuilder.IsDone === 'function' && draftBuilder.IsDone()) {
+          isSuccess = true;
+        } else {
+          draftBuilder.delete();
+        }
+      } catch (e) {
+        if (draftBuilder && typeof draftBuilder.delete === 'function') draftBuilder.delete();
+      }
+
+      if (!isSuccess) {
+        // Try the flipped direction. Curved surfaces (Cylinders) often require 
+        // the opposite orientation parameter than flat analytical faces.
+        try {
+          draftBuilder = attemptDraft(-nx, -ny, -nz);
+          if (typeof draftBuilder.IsDone === 'function' && draftBuilder.IsDone()) {
+            isSuccess = true;
+          }
+        } catch (e2) {}
+      }
+
+      if (!isSuccess) {
+         if (draftBuilder && typeof draftBuilder.delete === 'function') draftBuilder.delete();
+         pln.delete();
+         adaptor.delete();
+         throw new Error("Draft operation failed IsDone() check. The angle may cause self-intersection or the surface is invalid.");
+      }
+
+      const newShape = detachShape(oc, draftBuilder.Shape());
+      cacheShape(entityId, newShape);
+
+      const geometryData = shapeToBufferGeometryData(newShape, oc, deflection);
+      const brepBytes = exportShapeToNativeBRep(oc, newShape, entityId);
+
+      draftBuilder.delete();
+      neutralFace.delete();
+      gpDir.delete();
+      pln.delete();
+      adaptor.delete();
+
+      self.postMessage({ type: 'draftSolidFaces', success: true, payload: { ...geometryData, brepBytes }, id });
+    } catch (error: any) {
+      const errorMessage = error.message || error.toString() || 'Unknown error';
+      self.postMessage({ type: 'draftSolidFaces', success: false, error: errorMessage, id });
     }
   } else if (type === 'createCylinder') {
     if (!oc) {
@@ -1636,7 +1927,7 @@ self.onmessage = async (e) => {
         makeWire.delete();
       }
 
-      let sewing = createSewing(oc, 1e-4);
+      const sewing = createSewing(oc, 1e-4);
       for (const face of faceShapes) {
         sewing.Add(face);
       }
@@ -1649,7 +1940,7 @@ self.onmessage = async (e) => {
         sewing.Perform();
       }
       
-      let sewedShape = sewing.SewedShape();
+      const sewedShape = sewing.SewedShape();
       let finalResultShape = sewedShape;
       
       const makeSolid = new oc.BRepBuilderAPI_MakeSolid_1();
@@ -4012,7 +4303,7 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
   let fmIdx = 0;
   let vertexOffset = 0;
   let faceCounter = 0;
-
+  
   // 3. Second Pass: Extract geometry data
   const explorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
 
@@ -4073,7 +4364,6 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
   }
   explorer.delete();
 
-  // Extract edges
   // Extract edges using pre-existing mesh (BRep_Tool.Polygon3D)
   const edgeLines: number[][] = [];
   const edgeExplorer = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
@@ -4090,8 +4380,8 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
         const edgePoints: number[] = [];
         const trsf = loc.Transformation();
 
-        for (let i = nodes.Lower(); i <= nodes.Upper(); i++) {
-          const pnt = nodes.Value(i);
+        for (let j = nodes.Lower(); j <= nodes.Upper(); j++) {
+          const pnt = nodes.Value(j);
           pnt.Transform(trsf); // Apply transformation
           edgePoints.push(pnt.X(), pnt.Y(), pnt.Z());
           pnt.delete();
@@ -4108,8 +4398,8 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
           const edgePoints: number[] = [];
 
           const pnt = new oc.gp_Pnt_1();
-          for (let i = 0; i <= numSamples; i++) {
-            const u = first + (last - first) * (i / numSamples);
+          for (let j = 0; j <= numSamples; j++) {
+            const u = first + (last - first) * (j / numSamples);
             adaptor.D0(u, pnt);
             edgePoints.push(pnt.X(), pnt.Y(), pnt.Z());
           }
@@ -4119,9 +4409,11 @@ function shapeToBufferGeometryData(shape: any, oc: any, linearDeflection: number
           edgeLines.push(edgePoints);
         } catch (e) {
           console.warn("Failed to extract curve points for edge.", e);
+          edgeLines.push([]); // Push empty to preserve deterministic index mapping!
         }
       }
       loc.delete();
+      edge.delete();
     }
     edgeExplorer.Next();
   }

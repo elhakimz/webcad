@@ -58,7 +58,41 @@ export class Viewer {
   private textQueue: Text[] = []
   private noteQueue: Note[] = []
   private selectionBox: THREE.Line | null = null
-  private shadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' = 'SHADED';
+  private shadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' | 'ZEBRA' = 'SHADED';
+
+  private zebraMaterial: THREE.ShaderMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      frequency: { value: 30.0 }
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vViewPosition = -mvPosition.xyz;
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      uniform float frequency;
+      void main() {
+        vec3 normal = normalize(vNormal);
+        vec3 viewDir = normalize(vViewPosition);
+        vec3 reflectDir = reflect(-viewDir, normal);
+        
+        // Compute procedural stripes based on reflection vector
+        // Using both x and y for more natural diagnostic flow over curved surfaces
+        float val = sin((reflectDir.y + reflectDir.x * 0.3) * frequency);
+        float stripe = step(0.0, val);
+        
+        gl_FragColor = vec4(vec3(stripe), 1.0);
+      }
+    `,
+    side: THREE.DoubleSide
+  });
   public target: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   /** True when camera is locked to a flat orthographic view (TOP/FRONT/LEFT/RIGHT/BOTTOM/BACK). */
   public isPlainView = true;
@@ -469,24 +503,31 @@ export class Viewer {
     this.scheduleRender();
   }
 
-  setShadingMode(mode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN') {
+  setShadingMode(mode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' | 'ZEBRA') {
     this.shadingMode = mode;
     this.scene.traverse((obj) => {
-      if (obj instanceof THREE.Mesh && obj.userData.type !== 'Text' && obj.userData.type !== 'Edge' && obj.userData.type !== 'Silhouette') {
+      if (obj instanceof THREE.Mesh && 
+          obj.userData.type !== 'Text' && 
+          obj.userData.type !== 'Edge' && 
+          obj.userData.type !== 'Silhouette' &&
+          obj.userData.handle === undefined) {
         const material = obj.material as any;
-        const color = material.color;
-        if (color) {
-          obj.material = this.getMeshMaterial(color.getHex());
+        let color = 0xebf2ff;
+        if (material.color) {
+          color = material.color.getHex();
+        } else if (obj.userData.originalColor !== undefined) {
+          color = obj.userData.originalColor;
         }
+        obj.material = this.getMeshMaterial(color);
       }
       if (obj.userData.type === 'Silhouette') {
-        obj.visible = (mode === 'SHADED');
+        obj.visible = (mode === 'SHADED' || mode === 'ZEBRA');
       }
     });
     
-    // Show edges only in SHADED mode
+    // Show edges only in SHADED/ZEBRA mode
     this.edgeLines.forEach(edge => {
-      edge.visible = (mode === 'SHADED');
+      edge.visible = (mode === 'SHADED' || mode === 'ZEBRA');
     });
     
     this.scheduleRender();
@@ -499,6 +540,8 @@ export class Viewer {
     switch (this.shadingMode) {
       case 'WIREFRAME':
         return new THREE.MeshBasicMaterial({ ...options, wireframe: true });
+      case 'ZEBRA':
+        return this.zebraMaterial;
       case 'SHADED':
         return new THREE.MeshPhongMaterial({ 
           ...offsetOptions, 
@@ -1988,7 +2031,7 @@ export class Viewer {
       line.userData.entityId = entity.id; // Ensure link for removal
       this.edgeLines.push(line);
       // Synchronize visibility with current shading mode
-      line.visible = (this.shadingMode === 'SHADED');
+      line.visible = (this.shadingMode === 'SHADED' || this.shadingMode === 'ZEBRA');
     });
   }
 
@@ -2018,7 +2061,12 @@ export class Viewer {
     
     const material = this.getMeshMaterial(color);
     const mesh = new THREE.Mesh(weldedGeo, material);
-    mesh.userData = { type: 'Solid3D', faceMapping: entity.faceMapping, entityId: entity.id };
+    mesh.userData = { 
+      type: 'Solid3D', 
+      faceMapping: entity.faceMapping, 
+      entityId: entity.id,
+      originalColor: color 
+    };
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     
@@ -4156,7 +4204,7 @@ export class Viewer {
   render(){
     this.onBeforeRender();
     this.gridRenderer.updateAxesScale(1 / this.camera.zoom);
-    if (this.shadingMode === 'SHADED') {
+    if (this.shadingMode === 'SHADED' || this.shadingMode === 'ZEBRA') {
       this.effect.render(this.scene, this.camera);
     } else {
       this.renderer.render(this.scene, this.camera);

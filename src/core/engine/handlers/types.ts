@@ -20,6 +20,7 @@ export interface AppContext {
   onLayersChange(): void;
   onEntitiesChange?(): void;
   onFilesChange?(): void;
+  onElevationChange?(val: number): void;
 }
 
 export interface ActionHandler {

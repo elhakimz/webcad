@@ -29,10 +29,12 @@ export class SChamferHandler implements ActionHandler {
 
         let geometry;
         let msg = "";
+        const vP1 = (action as any).visualP1;
+        const vP2 = (action as any).visualP2;
         
         if (action.action === 'chamfer_solid' && action.value !== undefined) {
           const edgeIndex = action.value as number;
-          geometry = await OpenCascadeService.getInstance().chamferSolid(entityId, edgeIndex, distance);
+          geometry = await OpenCascadeService.getInstance().chamferSolid(entityId, edgeIndex, distance, undefined, vP1, vP2);
           msg = `Chamfer applied to edge ${edgeIndex}.`;
         } else if (action.action === 'chamfer_solid_face' && action.faceIndex !== undefined) {
           const faceIndex = action.faceIndex;
@@ -64,7 +66,9 @@ export class SChamferHandler implements ActionHandler {
           parameters: {
             distance: distance,
             edgeIndex: action.action === 'chamfer_solid' ? action.value : undefined,
-            faceIndex: action.action === 'chamfer_solid_face' ? action.faceIndex : undefined
+            faceIndex: action.action === 'chamfer_solid_face' ? action.faceIndex : undefined,
+            visualP1: vP1,
+            visualP2: vP2
           },
           isActive: true
         });

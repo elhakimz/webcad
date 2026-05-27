@@ -89,18 +89,25 @@ export class EntitySerializer {
     let entity: Entity
 
     switch (row.type) {
-      case 'Line':      entity = new Line(row.id, d.x1, d.y1, d.x2, d.y2); break
+      case 'Line':      entity = new Line(row.id, d.x1, d.y1, d.x2, d.y2, row.elevation, row.thickness); break
       case 'Polyline':  entity = new Polyline(row.id, d.vertices, d.closed, row.elevation, row.thickness); break
-      case 'Circle':    entity = new Circle(row.id, d.cx, d.cy, d.r); break
-      case 'Arc':       entity = new Arc(row.id, d.cx, d.cy, d.r, d.startAngle, d.endAngle, d.ccw); break
-      case 'Ellipse':   entity = new Ellipse(row.id, d.cx, d.cy, d.majorX, d.majorY, d.ratio, d.startAngle, d.endAngle, d.ccw); break
-      case 'Spline': {
-        const s = new Spline(row.id, d.controlPoints, d.degree, d.isClosed)
-        s.knots = d.knots; s.sampledPoints = d.sampledPoints; entity = s; break
+      case 'Circle':    entity = new Circle(row.id, d.cx, d.cy, d.r, row.elevation, row.thickness); break
+      case 'Arc':       entity = new Arc(row.id, d.cx, d.cy, d.r, d.startAngle, d.endAngle, d.ccw, row.elevation, row.thickness); break
+      case 'Ellipse': {
+        const el = new Ellipse(row.id, d.cx, d.cy, d.majorX, d.majorY, d.ratio, d.startAngle, d.endAngle, d.ccw, row.elevation, row.thickness);
+        entity = el;
+        break;
       }
-      case 'Text':      entity = new Text(row.id, d.x, d.y, d.height, d.rotation, d.text); break
+      case 'Spline': {
+        const s = new Spline(row.id, d.controlPoints, d.degree, d.knots, d.isClosed, row.elevation, row.thickness)
+        s.sampledPoints = d.sampledPoints; entity = s; break
+      }
+      case 'Text': {
+        entity = new Text(row.id, d.x, d.y, d.height, d.rotation, d.text, row.elevation, row.thickness);
+        break;
+      }
       case 'MText': {
-        const mt = new MText(row.id, d.insertionPoint, d.width, d.height, d.contents);
+        const mt = new MText(row.id, d.insertionPoint, d.width, d.height, d.contents, row.elevation, row.thickness);
         mt.textHeight = d.textHeight;
         mt.lineSpacing = d.lineSpacing;
         mt.textAlign = d.textAlign;
@@ -116,11 +123,37 @@ export class EntitySerializer {
         entity = dim;
         break;
       }
-      case 'Hatch':     entity = new Hatch(row.id, d.boundaryVertices, d.pattern, d.patternScale, d.angle, d.color); break
-      case 'Insert':    entity = new Insert(row.id, d.blockName, d.x, d.y, d.scaleX, d.scaleY, d.rotation, d.z); break
-      case 'Donut':     entity = new Donut(row.id, d.cx, d.cy, d.innerR, d.outerR); break
-      case 'Solid':     entity = new Solid(row.id, d.vertices); break
-      case 'Trace':     entity = new Trace(row.id, d.x1, d.y1, d.x2, d.y2, d.width); break
+      case 'Hatch': {
+        entity = new Hatch(row.id, d.boundaryVertices, d.pattern, d.patternScale, d.angle, d.color);
+        entity.elevation = row.elevation;
+        entity.thickness = row.thickness;
+        break;
+      }
+      case 'Insert': {
+        const ins = new Insert(row.id, d.blockName, d.x, d.y, d.scaleX, d.scaleY, d.rotation, d.z);
+        ins.elevation = row.elevation;
+        ins.thickness = row.thickness;
+        entity = ins;
+        break;
+      }
+      case 'Donut': {
+        entity = new Donut(row.id, d.cx, d.cy, d.innerR, d.outerR);
+        entity.elevation = row.elevation;
+        entity.thickness = row.thickness;
+        break;
+      }
+      case 'Solid': {
+        entity = new Solid(row.id, d.vertices);
+        entity.elevation = row.elevation;
+        entity.thickness = row.thickness;
+        break;
+      }
+      case 'Trace': {
+        entity = new Trace(row.id, d.x1, d.y1, d.x2, d.y2, d.width);
+        entity.elevation = row.elevation;
+        entity.thickness = row.thickness;
+        break;
+      }
       case 'Note':      entity = new Note(row.id, d.targetEntityId, d.anchorPoint, d.bendPoint, d.text, d.height); break
       case 'Point':     entity = new Point(row.id, d.x, d.y); break
       case 'Solid3D': {

@@ -8,7 +8,7 @@ export class DazViewControl {
   private cubeEl: HTMLElement | null = null;
   private currentView = 'TOP';
   private viewSelectorEl: HTMLSelectElement | null = null;
-  private currentShadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' = 'SHADED';
+  private currentShadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' | 'ZEBRA' = 'SHADED';
 
   constructor(viewer: Viewer, app: App) {
     this.viewer = viewer;
@@ -34,22 +34,27 @@ export class DazViewControl {
     const popup = document.createElement('div');
     popup.className = 'daz-shader-popup';
     
-    const options = ['Wireframe', 'Shaded', 'Phong', 'Blinn'];
+    const options = ['Wireframe', 'Shaded', 'Phong', 'Blinn', 'Zebra'];
     options.forEach(opt => {
       const item = document.createElement('div');
       item.className = 'daz-shader-item';
       item.textContent = opt;
       item.addEventListener('click', (e) => {
         e.stopPropagation();
-        const mode = opt.toUpperCase() as 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN';
+        const mode = opt.toUpperCase() as 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' | 'ZEBRA';
         this.currentShadingMode = mode;
         this.viewer.setShadingMode(mode);
         popup.style.display = 'none';
         shaderBtn.title = `Shader: ${opt}`;
         
         // Visual feedback on button
-        if (mode === 'WIREFRAME') shaderBtn.style.color = '';
-        else shaderBtn.style.color = '#00ff00';
+        if (mode === 'WIREFRAME') {
+          shaderBtn.style.color = '';
+        } else if (mode === 'ZEBRA') {
+          shaderBtn.style.color = '#ffffff'; // White for Zebra
+        } else {
+          shaderBtn.style.color = '#00ff00';
+        }
       });
       popup.appendChild(item);
     });

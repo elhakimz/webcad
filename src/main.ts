@@ -115,6 +115,8 @@ const displayRibbon = new DisplayRibbonBar(async (action) => {
   } else if (action === 'ZOOM_WINDOW') {
     await app.execute('ZOOM');
     await app.inputText('WINDOW');
+  } else if (action.startsWith('SHADING_')) {
+    await app.execute(action);
   }
 });
 

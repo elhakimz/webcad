@@ -72,7 +72,7 @@ export class Spline extends Entity {
   clone(newId: string): Spline {
     const cpCopy = this.controlPoints.map(p => ({ ...p }));
     const knotsCopy = [...this.knots];
-    const copy = new Spline(newId, cpCopy, this.degree, knotsCopy, this.isClosed);
+    const copy = new Spline(newId, cpCopy, this.degree, knotsCopy, this.isClosed, this.elevation, this.thickness);
     copy.layer = this.layer;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;

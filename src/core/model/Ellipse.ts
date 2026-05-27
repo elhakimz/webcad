@@ -11,7 +11,7 @@ export class Ellipse extends Entity {
   endAngle: number;
   ccw: boolean;
 
-  constructor(id: string, cx: number, cy: number, majorX: number, majorY: number, ratio: number, startAngle: number = 0, endAngle: number = 2 * Math.PI, ccw: boolean = true) {
+  constructor(id: string, cx: number, cy: number, majorX: number, majorY: number, ratio: number, startAngle: number = 0, endAngle: number = 2 * Math.PI, ccw: boolean = true, elevation = 0, thickness = 0) {
     super(id);
     this.cx = cx;
     this.cy = cy;
@@ -21,6 +21,8 @@ export class Ellipse extends Entity {
     this.startAngle = startAngle;
     this.endAngle = endAngle;
     this.ccw = ccw;
+    this.elevation = elevation;
+    this.thickness = thickness;
   }
 
   move(dx: number, dy: number) {
@@ -75,7 +77,7 @@ export class Ellipse extends Entity {
   }
 
   clone(newId: string): Ellipse {
-    const copy = new Ellipse(newId, this.cx, this.cy, this.majorX, this.majorY, this.ratio, this.startAngle, this.endAngle, this.ccw);
+    const copy = new Ellipse(newId, this.cx, this.cy, this.majorX, this.majorY, this.ratio, this.startAngle, this.endAngle, this.ccw, this.elevation, this.thickness);
     copy.layer = this.layer;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;

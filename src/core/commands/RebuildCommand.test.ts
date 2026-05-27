@@ -12,7 +12,7 @@ describe('RebuildCommand', () => {
   it('should request object selection if constructed empty', () => {
     const cmd = new RebuildCommand()
     expect(cmd.targetId).toBe('')
-    expect(cmd.getPrompt()).toBe('Select solid object to rebuild:')
+    expect(cmd.getPrompt()).toBe('Select solid object to rebuild [ALL]:')
   })
 
   it('should transition and return rebuild action when object name is supplied', () => {

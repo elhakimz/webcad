@@ -34,6 +34,7 @@ import { MTextCommand } from "../commands/MTextCommand"
 import { TraceCommand } from "../commands/TraceCommand"
 import { SolidCommand } from "../commands/SolidCommand"
 import { ElevCommand } from "../commands/ElevCommand"
+import { ThicknessCommand } from "../commands/ThicknessCommand"
 import { HatchCommand } from "../commands/HatchCommand"
 import { SketchCommand } from "../commands/SketchCommand"
 import { ShapeCommand } from "../commands/ShapeCommand"
@@ -45,6 +46,7 @@ import { FilletCommand } from "../commands/FilletCommand"
 import { SFilletCommand } from "../commands/SFilletCommand"
 import { SChamferCommand } from "../commands/SChamferCommand"
 import { ShellCommand } from "../commands/ShellCommand"
+import { DraftCommand } from "../commands/DraftCommand"
 import { ChamferCommand } from "../commands/ChamferCommand"
 import { BreakCommand } from "../commands/BreakCommand"
 import { JoinCommand } from "../commands/JoinCommand"
@@ -163,6 +165,8 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["LINETYPE", () => new LinetypeCommand()],
   ["LTYPE", () => new LinetypeCommand()],
   ["LT", () => new LinetypeCommand()],
+  ["ELEV", () => new ElevCommand()],
+  ["THICKNESS", () => new ThicknessCommand()],
   ["SAVE", () => new SaveCommand()],
   ["LOAD", () => new LoadCommand()],
   ["NEW", () => ({ action: "new" })],
@@ -178,6 +182,7 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["FILLET", () => new FilletCommand()],
   ["SFILLET", (selection) => new SFilletCommand(selection)],
   ["SCHAMFER", (selection) => new SChamferCommand(selection)],
+  ["DRAFT", (selection) => new DraftCommand(selection)],
   ["SHELL", () => new ShellCommand()],
   ["HOLLOW", () => new ShellCommand()],
   ["CHAMFER", () => new ChamferCommand()],
@@ -211,6 +216,7 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["DBLOAD", () => new DBLoadCommand()],
   ["REBUILD", (selection) => {
     if (selection && selection.length > 0) {
+      if (selection[0].toUpperCase() === "ALL") return { action: "rebuild_all" };
       return { action: "rebuild", id: selection[0] };
     }
     return new RebuildCommand();
@@ -238,6 +244,13 @@ export class CommandManager {
     }
 
     const result = factory(selection);
+
+    // Special Case: ELEV/THICKNESS one-shot inform
+    if ((cmdName === 'ELEV' || cmdName === 'THICKNESS') && args.length === 0) {
+      const val = cmdName === 'ELEV' ? (doc?.currentElevation || 0) : (doc?.currentThickness || 0);
+      return `Current ${cmdName.toLowerCase()} is ${val}.`;
+    }
+
     if (result && typeof result === 'object' && 'onPoint' in result) {
       this.active = result as Command;
       response = cmdName;

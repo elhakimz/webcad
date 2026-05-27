@@ -38,21 +38,34 @@ export class EllipseCommand implements Command {
       
       const ratio = dist / this.majorRadius
       const entity = new Ellipse(id, this.center.x, this.center.y, this.majorX, this.majorY, Math.min(1.0, ratio), 0, Math.PI * 2, true)
-      entity.elevation = this.elevation
+      entity.elevation = doc?.currentElevation || 0
       entity.thickness = doc?.currentThickness || 0
       this.step = 0
       return entity
     }
   }
 
-  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
-    if (text.trim().toUpperCase() === "EXIT") {
+  onInput(text: string, id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: import('../model/Document').IDocument): CommandResponse | undefined {
+    const val = text.trim().toUpperCase();
+    if (val === "EXIT" || val === "QUIT") {
       this.step = 0
       return "Command canceled."
     }
+
+    if (this.step === 2 && val !== "") {
+      const dist = parseFloat(val);
+      if (!isNaN(dist)) {
+        const ratio = dist / this.majorRadius;
+        const entity = new Ellipse(id, this.center.x, this.center.y, this.majorX, this.majorY, Math.min(1.0, ratio), 0, Math.PI * 2, true);
+        entity.elevation = doc?.currentElevation || 0;
+        entity.thickness = doc?.currentThickness || 0;
+        this.step = 0;
+        return entity;
+      }
+    }
   }
 
-  getPreview(x: number, y: number, _units: UnitsConfig): import('./types').PreviewObject | null {
+  getPreview(x: number, y: number, _units: UnitsConfig, doc?: import('../model/Document').IDocument): import('./types').PreviewObject | null {
     if (this.step === 1) {
       return { type: 'xmarker', x: this.p1.x, y: this.p1.y, size: 5 };
     }
@@ -62,7 +75,8 @@ export class EllipseCommand implements Command {
       const dist = Math.sqrt(dx * dx + dy * dy)
       const ratio = dist / this.majorRadius
       const preview = new Ellipse("PREVIEW", this.center.x, this.center.y, this.majorX, this.majorY, Math.min(1.0, ratio), 0, Math.PI * 2, true);
-      preview.elevation = this.elevation;
+      preview.elevation = doc?.currentElevation || 0;
+      preview.thickness = doc?.currentThickness || 0;
       return preview;
     }
     return null

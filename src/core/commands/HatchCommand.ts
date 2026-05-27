@@ -10,7 +10,7 @@ export class HatchCommand implements Command {
   angle = 0.0
   vertices: { x: number, y: number }[] = []
 
-  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }): CommandResponse | undefined {
+  onInput(text: string, _id: string, _units: UnitsConfig, _pickPt?: { x: number, y: number }, doc?: import('../model/Document').IDocument): CommandResponse | undefined {
     const val = text.trim().toUpperCase();
 
     if (this.step === 0) {
@@ -54,7 +54,7 @@ export class HatchCommand implements Command {
     }
     
     if (this.step === 3 && val === "") {
-        return this.finish(_id);
+        return this.finish(_id, doc);
     }
   }
 
@@ -66,7 +66,7 @@ export class HatchCommand implements Command {
     return this.getPrompt();
   }
 
-  getPreview(_x: number, _y: number, _units: UnitsConfig): PreviewObject | null {
+  getPreview(_x: number, _y: number, _units: UnitsConfig, doc?: IDocument): PreviewObject | null {
     if (this.step === 3 && this.vertices.length > 0) {
       return { type: 'plinepoints', points: [...this.vertices] };
     }
@@ -80,9 +80,10 @@ export class HatchCommand implements Command {
     return [];
   }
 
-  private finish(id: string): CommandResponse {
+  private finish(id: string, doc?: IDocument): CommandResponse {
     if (this.vertices.length < 3) return "Hatch requires at least 3 points.";
     const hatch = new Hatch(id, this.vertices, this.pattern, this.scale, this.angle);
+    hatch.elevation = doc?.currentElevation || 0;
     this.step = 0;
     this.vertices = [];
     return hatch;

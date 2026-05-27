@@ -44,17 +44,31 @@ export class SChamferCommand implements Command {
 
       if (text.startsWith("EDGE:")) {
         const parts = text.split(":");
-        if (parts.length === 3) {
+        if (parts.length >= 3) {
           this.entityId = parts[1];
           this.edgeIndex = parseInt(parts[2]);
           this.face1 = null; // Clear face selection if edge clicked
+          
+          let visualP1: {x:number, y:number, z:number} | undefined = undefined;
+          let visualP2: {x:number, y:number, z:number} | undefined = undefined;
+          
+          if (parts.length >= 5) {
+             const p1Parts = parts[3].split(',');
+             const p2Parts = parts[4].split(',');
+             if (p1Parts.length === 3 && p2Parts.length === 3) {
+                visualP1 = { x: parseFloat(p1Parts[0]), y: parseFloat(p1Parts[1]), z: parseFloat(p1Parts[2]) };
+                visualP2 = { x: parseFloat(p2Parts[0]), y: parseFloat(p2Parts[1]), z: parseFloat(p2Parts[2]) };
+             }
+          }
           
           return {
             action: "chamfer_solid",
             id: this.entityId,
             value: this.edgeIndex,
-            radius: this.distance // OCC uses 'radius' internally for some chamfer calls or we map it
-          } as CommandAction;
+            radius: this.distance,
+            visualP1,
+            visualP2
+          } as any;
         }
       }
 

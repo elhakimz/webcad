@@ -75,20 +75,24 @@ export class OCCWorkerClient {
     return this.send('createConvexHull', { points, shapeIds, deflection, entityId });
   }
 
-  filletSolid(entityId: string, edgeIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
-    return this.send('filletSolid', { entityId, edgeIndex, radius });
+  filletSolid(entityId: string, edgeIndex: number, radius: number, deflection?: number, visualP1?: any, visualP2?: any): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('filletSolid', { entityId, edgeIndex, radius, deflection, visualP1, visualP2 });
   }
 
-  chamferSolid(entityId: string, edgeIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
-    return this.send('chamferSolid', { entityId, edgeIndex, radius });
+  chamferSolid(entityId: string, edgeIndex: number, radius: number, deflection?: number, visualP1?: any, visualP2?: any): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('chamferSolid', { entityId, edgeIndex, radius, deflection, visualP1, visualP2 });
+  }
+
+  chamferSolidFace(entityId: string, faceIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('chamferSolidFace', { entityId, faceIndex, radius });
   }
 
   filletSolidFace(entityId: string, faceIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('filletSolidFace', { entityId, faceIndex, radius });
   }
 
-  chamferSolidFace(entityId: string, faceIndex: number, radius: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
-    return this.send('chamferSolidFace', { entityId, faceIndex, radius });
+  draftSolidFaces(entityId: string, faceIndices: number[], neutralFaceIndex: number, angleRad: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('draftSolidFaces', { entityId, faceIndices, neutralFaceIndex, angleRad });
   }
 
   makeThickSolid(entityId: string, faceIndices: number[], thickness: number, removeFaces?: boolean): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {

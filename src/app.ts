@@ -44,6 +44,7 @@ import { FilletHandler } from "./core/engine/handlers/transform/FilletHandler"
 import { SFilletHandler } from "./core/engine/handlers/transform/SFilletHandler"
 import { SChamferHandler } from "./core/engine/handlers/transform/SChamferHandler"
 import { ShellHandler } from "./core/engine/handlers/transform/ShellHandler"
+import { DraftHandler } from "./core/engine/handlers/transform/DraftHandler"
 import { ChamferHandler } from "./core/engine/handlers/transform/ChamferHandler"
 import { BreakHandler } from "./core/engine/handlers/transform/BreakHandler"
 import { CopyHandler } from "./core/engine/handlers/transform/CopyHandler"
@@ -245,6 +246,8 @@ export class App {
     this.dispatcher.registerHandler(new ChamferHandler());
     this.dispatcher.registerHandler(new SChamferHandler());
     this.dispatcher.registerHandler(new ShellHandler());
+    this.dispatcher.registerHandler(new DraftHandler());
+    this.dispatcher.registerHandler(new DraftingHandler());
     this.dispatcher.registerHandler(new BreakHandler());
     this.dispatcher.registerHandler(new CopyHandler());
     this.dispatcher.registerHandler(new JoinHandler());
@@ -333,8 +336,8 @@ export class App {
     if (!snap && this.acquiredSnaps.length > 0) {
       let trackedX: number | null = null;
       let trackedY: number | null = null;
-      let hitSnapsX: SnapPoint[] = [];
-      let hitSnapsY: SnapPoint[] = [];
+      const hitSnapsX: SnapPoint[] = [];
+      const hitSnapsY: SnapPoint[] = [];
 
       for (const acquired of this.acquiredSnaps) {
         if (Math.abs(worldX - acquired.x) < tolerance) {
@@ -456,7 +459,7 @@ export class App {
 
   private isEditCommand(name?: string): boolean {
     if (!name) return false;
-    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand', 'ArrayCommand', 'OffsetCommand', 'BlockCommand', 'JoinCommand', 'LengthenCommand', 'SFilletCommand', 'SChamferCommand'];
+    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand', 'ArrayCommand', 'OffsetCommand', 'BlockCommand', 'JoinCommand', 'LengthenCommand', 'SFilletCommand', 'SChamferCommand', 'DraftCommand'];
     const cmdName = name.endsWith('Command') ? name : name.charAt(0).toUpperCase() + name.slice(1).toLowerCase() + 'Command';
     return editCommands.includes(cmdName);
   }
@@ -475,13 +478,15 @@ export class App {
         (step === 0 && isEditCommand) ||
         ((step === 0 || step === 1) && activeName === 'DimAngularCommand') ||
         (step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
-        (step === 0 && (activeName === 'ExtrudeCommand' || activeName === 'RevolveCommand')) ||
+        (step === 0 && (activeName === 'ExtrudeCommand' || activeName === 'RevolveCommand' || activeName === 'DraftCommand')) ||
+        (step === 1 && activeName === 'DraftCommand') ||
         ((step === 1 || step === 2) && activeName === 'SweepCommand') ||
         ('operation' in active && (step === 0 || step === 1)) ||
         (step === 1 && (activeName === 'TrimCommand' || activeName === 'ExtendCommand' || activeName === 'OffsetCommand')) ||
         ((step === 0 || step === 1 || step === 2) && activeName === 'FilletCommand') ||
         ((step === 0 || step === 1 || step === 2) && activeName === 'ChamferCommand') ||
         (step >= 2 && (activeName === 'SFilletCommand' || activeName === 'SChamferCommand')) ||
+        (activeName === 'DraftCommand' && step === 2) ||
         ((step === 0 || step === 1 || step === 2) && activeName === 'BreakCommand') ||
         (step === 2 && activeName === 'BlockCommand') ||
         (step === 2 && activeName === 'LengthenCommand');
@@ -521,6 +526,18 @@ export class App {
     }
 
     const cmdName = cmd.toUpperCase();
+    if (cmdName === 'SHADING_ZEBRA') {
+      this.viewer.setShadingMode('ZEBRA');
+      return "Shading mode: ZEBRA";
+    }
+    if (cmdName === 'SHADING_SHADED') {
+      this.viewer.setShadingMode('SHADED');
+      return "Shading mode: SHADED";
+    }
+    if (cmdName === 'SHADING_WIREFRAME') {
+      this.viewer.setShadingMode('WIREFRAME');
+      return "Shading mode: WIREFRAME";
+    }
     const isEdit = ['ERASE', 'MOVE', 'COPY', 'ROTATE', 'SCALE', 'MIRROR'].includes(cmdName);
     let selection = Array.from(this.selectedEntityIds);
 
@@ -1019,8 +1036,16 @@ export class App {
           footer = "Esc to end hatch command";
         }
         
+        let inputValue: string | undefined = undefined;
+        if (needsInput) {
+          // Extract the number immediately preceding '(enter value)', handling optional angle brackets
+          const match = lastLine.match(/([-0-9.]+)(?:>)?\s*\(enter value\)/);
+          if (match) inputValue = match[1];
+        }
+
         const prompt = this.cmd.active.getPrompt ? this.cmd.active.getPrompt() : "";
-        this.dynamicInput.show(screenX, screenY, lines, options, showInput, controls, footer, prompt, force);
+        const finalForce = force || inputValue !== undefined;
+        this.dynamicInput.show(screenX, screenY, lines, options, showInput, controls, footer, prompt, finalForce, inputValue);
       } else {
         this.dynamicInput.hide();
       }
@@ -2040,10 +2065,17 @@ export class App {
     }
 
     const activeName = this.cmd.active?.constructor.name;
-    const wantsSubEntity = (activeName === 'SFilletCommand' || activeName === 'SChamferCommand' || activeName === 'ShellCommand') || (this.cmd.active === null && this.selectionMode === 'SURFACE');
+    const activeStep = this.cmd.active?.step ?? -1;
 
-    if (subEntity && wantsSubEntity) {
-      if (subEntity.edgeIndex !== undefined) {
+    // Sub-entity selection (faces/edges) should only trigger if the command is in a state that expects them.
+    // DRAFT Step 0 wants the SOLID object. Step 1+ wants FACES.
+    const isDraftSubStep = activeName === 'DraftCommand' && activeStep >= 1;
+    // SFILLET/SCHAMFER Step 0 wants the SOLID object. Step 2+ wants FACES.
+    const isSModSubStep = (activeName === 'SFilletCommand' || activeName === 'SChamferCommand') && activeStep >= 2;
+
+    const wantsSubEntity = (activeName === 'ShellCommand' || isDraftSubStep || isSModSubStep) || (this.cmd.active === null && this.selectionMode === 'SURFACE');
+
+    if (subEntity && wantsSubEntity) {      if (subEntity.edgeIndex !== undefined) {
         let p1Str = "?";
         let p2Str = "?";
         let visualP1: {x:number, y:number, z:number} | null = null;
@@ -2135,6 +2167,10 @@ export class App {
         }
 
         let entity = SelectionEngine.getEntityAtSpatial(worldPt.x, worldPt.y, tolerance, this.doc, selectableEntities);
+        if (entity === null && subEntity && subEntity.entity) {
+            entity = subEntity.entity;
+        }
+        
         if (entity === null) {
             const ndc = this.viewer.getNormalizedDeviceCoordinates(screenX, screenY);
             const solid3D = Selection3DEngine.getSolid3DAtCycling(
@@ -2149,6 +2185,15 @@ export class App {
         }
 
         if (entity) {
+        
+        const activeName = this.cmd.active?.constructor.name;
+        
+        // Handle explicit selection steps for commands that expect SOLID:
+        if (activeName === 'DraftCommand' && this.cmd.active && this.cmd.active.step === 0) {
+           const inputRes = await this.inputText(`SOLID:${entity.id}`);
+           if (inputRes) return inputRes;
+        }
+
             if (!isCtrl) {
                 this.selectedEdge = null; // Clear edge selection on standard click
                 this.selectedFaces = [];  // Clear face selection on standard click

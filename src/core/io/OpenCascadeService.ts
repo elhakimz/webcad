@@ -99,11 +99,6 @@ export class OpenCascadeService {
     return this.buildGeometry(data);
   }
 
-  async filletSolid(entityId: string, edgeIndex: number, radius: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.filletSolid(entityId, edgeIndex, radius);
-    return this.buildGeometry(data);
-  }
-
   /**
    * Creates a basic 3D cylinder shape.
    * Returns a Promise that resolves to THREE.BufferGeometry.
@@ -254,13 +249,43 @@ export class OpenCascadeService {
     return await this.workerClient!.importBRep(entityId, brepBytes, deflection);
   }
 
-  async chamferSolid(entityId: string, edgeIndex: number, distance: number, deflection?: number): Promise<THREE.BufferGeometry> {
-    const data = await (this.client as any).chamferSolid(entityId, edgeIndex, distance, deflection);
+  async filletSolid(entityId: string, edgeIndex: number, radius: number, deflection: number = 0.1, visualP1?: any, visualP2?: any) {
+    const data = await this.client.filletSolid(entityId, edgeIndex, radius, deflection, visualP1, visualP2);
     return this.buildGeometry(data);
   }
 
-  async filletSolidFace(entityId: string, faceIndex: number, radius: number, _deflection?: number): Promise<THREE.BufferGeometry> {
-    const data = await this.client.filletSolidFace(entityId, faceIndex, radius);
+  async chamferSolid(entityId: string, edgeIndex: number, radius: number, deflection: number = 0.1, visualP1?: any, visualP2?: any) {
+    const data = await this.client.chamferSolid(entityId, edgeIndex, radius, deflection, visualP1, visualP2);
+    return this.buildGeometry(data);
+  }
+
+  async filletSolidFace(entityId: string, faceIndex: number, radius: number, deflection: number = 0.1) {
+    const data = await this.client.filletSolidFace(entityId, faceIndex, radius, deflection);
+    return this.buildGeometry(data);
+  }
+
+  async chamferSolidFace(entityId: string, faceIndex: number, radius: number, deflection: number = 0.1) {
+    const data = await this.client.chamferSolidFace(entityId, faceIndex, radius, deflection);
+    return this.buildGeometry(data);
+  }
+
+  async makeThickSolid(entityId: string, faceIndices: number[], thickness: number, deflection: number = 0.1, removeFaces: boolean = true) {
+    const data = await this.client.makeThickSolid(entityId, faceIndices, thickness, deflection, removeFaces);
+    return this.buildGeometry(data);
+  }
+
+  async draftSolidFaces(entityId: string, faceIndices: number[], neutralFaceIndex: number, angleRad: number, deflection: number = 0.1) {
+    const data = await this.client.draftSolidFaces(entityId, faceIndices, neutralFaceIndex, angleRad, deflection);
+    return this.buildGeometry(data);
+  }
+
+  async chamferSolid(entityId: string, edgeIndex: number, distance: number, deflection?: number, visualP1?: any, visualP2?: any): Promise<THREE.BufferGeometry> {
+    const data = await (this.client as any).chamferSolid(entityId, edgeIndex, distance, deflection, visualP1, visualP2);
+    return this.buildGeometry(data);
+  }
+
+  async filletSolid(entityId: string, edgeIndex: number, radius: number, deflection?: number, visualP1?: any, visualP2?: any): Promise<THREE.BufferGeometry> {
+    const data = await (this.client as any).filletSolid(entityId, edgeIndex, radius, deflection, visualP1, visualP2);
     return this.buildGeometry(data);
   }
 

@@ -112,10 +112,17 @@ export class DynamicInput {
     });
   }
 
-  show(x: number, y: number, lines: string[], options: string[] = [], showInput: boolean = true, controls?: { type: 'select' | 'number', label: string, value: string | number, options?: string[] }[], footer?: string, placeholder?: string, force: boolean = false) {
+  show(x: number, y: number, lines: string[], options: string[] = [], showInput: boolean = true, controls?: { type: 'select' | 'number', label: string, value: string | number, options?: string[] }[], footer?: string, placeholder?: string, force: boolean = false, inputValue?: string) {
     if (this.isMouseOver && !force) return;
+
+    if (inputValue !== undefined) {
+      if (document.activeElement !== this.inputElement || force) {
+        this.inputElement.value = inputValue;
+      }
+    }
+
     if (this.inputElement.placeholder !== (placeholder || '')) {
-      if (document.activeElement !== this.inputElement) {
+      if ((document.activeElement !== this.inputElement || force) && inputValue === undefined) {
         this.inputElement.value = '';
       }
       this.inputElement.placeholder = placeholder || '';

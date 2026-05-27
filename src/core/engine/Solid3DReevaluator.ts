@@ -10,17 +10,12 @@ export class Solid3DReevaluator {
     const occ = OpenCascadeService.getInstance();
     const deflection = 0.1 / (facetres || 5.0);
 
-    const activeFeatures = solid.features.filter(f => f.isActive);
-    if (activeFeatures.length === 0) {
-      throw new Error("No active features to evaluate.");
-    }
-
-    const baseFeat = activeFeatures[0];
     let geom: THREE.BufferGeometry | undefined = undefined;
 
-    if (baseFeat.type === "Sketch" || baseFeat.type === "Extrude") {
-      const primType = baseFeat.parameters.primitiveType || solid.creationParams?.type;
-      const params = baseFeat.parameters;
+    // 1. START WITH THE BASE: Always recreate the original primitive first
+    if (solid.creationParams) {
+      const primType = solid.creationParams.type;
+      const params = solid.creationParams.params as any;
 
       if (primType === "box") {
         geom = await occ.createBox(
@@ -52,6 +47,21 @@ export class Solid3DReevaluator {
           Number(params.r1 ?? 2), Number(params.r2 ?? 0.5),
           deflection, tempId
         );
+      } else if (primType === "wedge") {
+        geom = await occ.createWedge(
+          Number(params.x ?? 0), Number(params.y ?? 0), Number(params.z ?? 0),
+          Number(params.x ?? 0) + Number(params.dx ?? 1),
+          Number(params.y ?? 0) + Number(params.dy ?? 1),
+          Number(params.dz ?? 1),
+          Number(params.ltx ?? 0.5),
+          deflection, tempId
+        );
+      } else if (primType === "pyramid") {
+        geom = await occ.createPyramid(
+          Number(params.x ?? 0), Number(params.y ?? 0), Number(params.z ?? 0),
+          Number(params.sides ?? 4), Number(params.radius ?? 1), Number(params.height ?? 1),
+          deflection, tempId
+        );
       } else if (primType === "extrude") {
         const pts = params.points || [];
         geom = await occ.createExtrude(
@@ -77,41 +87,31 @@ export class Solid3DReevaluator {
             params.cornerMode
           );
           geom = (occ as any).buildGeometry(geomData);
-        } else {
-          throw new Error(`Sweep profile/spine entities not found: profileId=${params.profileId}, spineId=${params.spineId}`);
         }
       } else if (primType === "polyhedron") {
         geom = await occ.createPolyhedron(params.points, params.faces, deflection, tempId);
       } else if (primType === "hull") {
         geom = await occ.createConvexHull(params.points, params.shapeIds, deflection, tempId);
-      } else if (primType === "brep") {
-        const snapshot = solid.baseBrepSnapshot || solid.brepSnapshot;
-        if (snapshot) {
-          const data = await occ.importBRep(tempId, snapshot, deflection);
-          geom = (occ as any).buildGeometry(data);
-        } else {
-          throw new Error("No B-Rep snapshot found for B-Rep base feature.");
-        }
-      } else {
-        const snapshot = solid.baseBrepSnapshot || solid.brepSnapshot;
-        if (snapshot) {
-          const data = await occ.importBRep(tempId, snapshot, deflection);
-          geom = (occ as any).buildGeometry(data);
-        } else {
-          throw new Error("Unknown base primitive type and no B-Rep snapshot.");
-        }
       }
-    } else {
+    }
+
+    // 2. FALLBACK FOR IMPORTED BREPS: If no creation params, start with the base snapshot
+    if (!geom) {
       const snapshot = solid.baseBrepSnapshot || solid.brepSnapshot;
       if (snapshot) {
         const data = await occ.importBRep(tempId, snapshot, deflection);
         geom = (occ as any).buildGeometry(data);
-      } else {
-        throw new Error("Base feature must be Sketch, Extrude, or have a B-Rep snapshot.");
       }
     }
 
-    for (let i = 1; i < activeFeatures.length; i++) {
+    if (!geom) {
+      throw new Error("Evaluation did not generate any geometry. Base primitive missing.");
+    }
+
+    // 3. APPLY ACTIVE FEATURES: Run all active features (Scale, Fillet, Chamfer) on the clean base
+    const activeFeatures = solid.features.filter(f => f.isActive && !f.id.endsWith('_base'));
+    
+    for (let i = 0; i < activeFeatures.length; i++) {
       const feat = activeFeatures[i];
       const params = feat.parameters;
 
@@ -119,11 +119,18 @@ export class Solid3DReevaluator {
         const radius = Number(params.radius ?? 0);
         if (radius > 0) {
           if (params.edgeIndex !== undefined) {
-            geom = await occ.filletSolid(tempId, Number(params.edgeIndex), radius);
+            geom = await occ.filletSolid(tempId, Number(params.edgeIndex), radius, deflection, params.visualP1, params.visualP2);
           } else if (params.faceIndex !== undefined) {
-            geom = await occ.filletSolidFace(tempId, Number(params.faceIndex), radius);
-          } else {
-            geom = await occ.filletSolid(tempId, 0, radius);
+            geom = await occ.filletSolidFace(tempId, Number(params.faceIndex), radius, deflection);
+          }
+        }
+      } else if (feat.type === "Chamfer") {
+        const distance = Number(params.distance ?? 0);
+        if (distance > 0) {
+          if (params.edgeIndex !== undefined) {
+            geom = await occ.chamferSolid(tempId, Number(params.edgeIndex), distance, deflection, params.visualP1, params.visualP2);
+          } else if (params.faceIndex !== undefined) {
+            geom = await occ.chamferSolidFace(tempId, Number(params.faceIndex), distance, deflection);
           }
         }
       } else if (feat.type === "Scale") {

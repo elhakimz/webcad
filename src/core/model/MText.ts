@@ -294,6 +294,8 @@ export class MText extends Entity {
     copy.textAlign = this.textAlign;
     copy.attachmentPoint = this.attachmentPoint;
     copy.rotation = this.rotation;
+    copy.elevation = this.elevation;
+    copy.thickness = this.thickness;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }

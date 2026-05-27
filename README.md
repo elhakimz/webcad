@@ -92,7 +92,8 @@ npm run lint
     -   **Data Consistency:** Fixed DXF persistence for `HATCH` (repeated codes) and `DONUT` (filled state preservation).
 - [x] **Advanced Curves:** **SPLINE** command with cubic B-spline drafting, snap support, and DXF R14 persistence.
 - [x] **Modification:** **STRETCH** command with crossing-window selection and dynamic vertex displacement.
-- [ ] **Snaps:** Intersection and Perpendicular snapping modes.
+- [x] Snaps: Intersection and Perpendicular snapping modes.
+- [x] **Constraint Solver:** Real-time 2D PBD solver supporting Coincident, Parallel, Tangent, and DoF analysis.
 - [x] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT with robust STEP persistence.
 
 ## 📄 License

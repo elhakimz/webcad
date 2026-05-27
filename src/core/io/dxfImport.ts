@@ -183,26 +183,45 @@ export class DXFImporter {
           const thickness = parseFloat(props[39] || "0");
           entity = new Circle(doc.getNextId("C"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]), elevation, thickness);
         } else if (type === "DONUT") {
-          entity = new Donut(doc.getNextId("D"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]), parseFloat(props[41]));
+          const elevation = parseFloat(props[30] || "0");
+          const thickness = parseFloat(props[39] || "0");
+          entity = new Donut(doc.getNextId("D"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]), parseFloat(props[41]), elevation, thickness);
         } else if (type === "ARC") {
+          const elevation = parseFloat(props[30] || "0");
+          const thickness = parseFloat(props[39] || "0");
           entity = new Arc(doc.getNextId("A"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]), 
-            parseFloat(props[50]) * Math.PI / 180, parseFloat(props[51]) * Math.PI / 180, true);
+            parseFloat(props[50]) * Math.PI / 180, parseFloat(props[51]) * Math.PI / 180, true, elevation, thickness);
         } else if (type === "POINT") {
+          const elevation = parseFloat(props[30] || "0");
           entity = new Point(doc.getNextId("PT"), parseFloat(props[10]), parseFloat(props[20]));
+          entity.elevation = elevation;
         } else if (type === "TEXT") {
-          entity = new Text(doc.getNextId("TX"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]), parseFloat(props[50] || "0"), props[1] || "");
+          const elevation = parseFloat(props[30] || "0");
+          entity = new Text(doc.getNextId("TX"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[40]), parseFloat(props[50] || "0"), props[1] || "", elevation, 0);
         } else if (type === "MTEXT") {
           const insertionPoint = { x: parseFloat(props[10] || "0"), y: parseFloat(props[20] || "0") };
           const width = parseFloat(props[41] || "0");
           const contents = props[1] || "";
-          const mtext = new MText(doc.getNextId("MTX"), insertionPoint, width, 0, contents);
+          const elevation = parseFloat(props[30] || "0");
+          const mtext = new MText(doc.getNextId("MTX"), insertionPoint, width, 0, contents, elevation, 0);
           mtext.textHeight = parseFloat(props[40] || "2.5");
           mtext.rotation = parseFloat(props[50] || "0") * Math.PI / 180; // Convert to radians
           mtext.attachmentPoint = parseInt(props[71] || "1") as AttachmentPoint;
           mtext.layoutMText();
           entity = mtext;
         } else if (type === "ELLIPSE") {
-          entity = new Ellipse(doc.getNextId("E"), parseFloat(props[10]), parseFloat(props[20]), parseFloat(props[11]), parseFloat(props[21]), parseFloat(props[40]));
+          const elevation = parseFloat(props[30] || "0");
+          const thickness = parseFloat(props[39] || "0");
+          entity = new Ellipse(
+            doc.getNextId("E"), 
+            parseFloat(props[10]), parseFloat(props[20]), 
+            parseFloat(props[11]), parseFloat(props[21]), 
+            parseFloat(props[40]), 
+            parseFloat(props[41] || "0"), parseFloat(props[42] || "6.283185307179586"), 
+            true, 
+            elevation, 
+            thickness
+          );
         } else if (type === "SOLID" || type === "TRACE") {
           const vertices = [];
           if (props[10] !== undefined) vertices.push({ x: parseFloat(props[10]), y: parseFloat(props[20]) });
@@ -388,6 +407,8 @@ export class DXFImporter {
         } else if (type === "POLYLINE") {
           const vertices: PolylineVertex[] = [];
           const closed = (parseInt(props[70] || "0") & 1) !== 0;
+          const elevation = parseFloat(props[30] || "0");
+          const thickness = parseFloat(props[39] || "0");
           while (i < groups.length && !(groups[i].code === 0 && groups[i].value === "SEQEND")) {
             if (groups[i].code === 0 && groups[i].value === "VERTEX") {
               i++;
@@ -404,7 +425,10 @@ export class DXFImporter {
             }
           }
           const prefix = props[1000] === "PG" ? "PG" : "PL";
-          entity = new Polyline(doc.getNextId(prefix), vertices, closed);
+          const pl = new Polyline(doc.getNextId(prefix), vertices, closed);
+          pl.elevation = elevation;
+          pl.thickness = thickness;
+          entity = pl;
         } else if (type === "INSERT") {
             entity = new Insert(doc.getNextId("I"), props[2], parseFloat(props[10]), parseFloat(props[20]), 
                 parseFloat(props[41] || "1.0"), parseFloat(props[42] || "1.0"), parseFloat(props[50] || "0"));

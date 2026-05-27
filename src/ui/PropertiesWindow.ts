@@ -151,7 +151,42 @@ export class PropertiesWindow {
       this.addNumberField("R X", solid.rotation.x * 180 / Math.PI, (val) => { this.updateSolidRot(solid, 'x', val * Math.PI / 180); });
       this.addNumberField("R Y", solid.rotation.y * 180 / Math.PI, (val) => { this.updateSolidRot(solid, 'y', val * Math.PI / 180); });
       this.addNumberField("R Z", solid.rotation.z * 180 / Math.PI, (val) => { this.updateSolidRot(solid, 'z', val * Math.PI / 180); });
+
+      if (solid.creationParams) {
+          this.addSeparator();
+          const type = solid.creationParams.type;
+          const params = solid.creationParams.params as any;
+
+          if (type === "box") {
+            this.addNumberField("DX", params.dx ?? 0, (v) => { this.updateCreationParam(solid, 'dx', v); });
+            this.addNumberField("DY", params.dy ?? 0, (v) => { this.updateCreationParam(solid, 'dy', v); });
+            this.addNumberField("DZ", params.dz ?? 0, (v) => { this.updateCreationParam(solid, 'dz', v); });
+          } else if (type === "cylinder") {
+            this.addNumberField("Radius", params.radius ?? 0, (v) => { this.updateCreationParam(solid, 'radius', v); });
+            this.addNumberField("Height", params.height ?? 0, (v) => { this.updateCreationParam(solid, 'height', v); });
+          } else if (type === "sphere") {
+            this.addNumberField("Radius", params.r ?? 0, (v) => { this.updateCreationParam(solid, 'r', v); });
+          } else if (type === "cone") {
+            this.addNumberField("R1", params.r1 ?? 0, (v) => { this.updateCreationParam(solid, 'r1', v); });
+            this.addNumberField("R2", params.r2 ?? 0, (v) => { this.updateCreationParam(solid, 'r2', v); });
+            this.addNumberField("Height", params.h ?? 0, (v) => { this.updateCreationParam(solid, 'h', v); });
+          } else if (type === "torus") {
+            this.addNumberField("Major R", params.r1 ?? 0, (v) => { this.updateCreationParam(solid, 'r1', v); });
+            this.addNumberField("Minor R", params.r2 ?? 0, (v) => { this.updateCreationParam(solid, 'r2', v); });
+          } else if (type === "wedge") {
+            this.addNumberField("DX", params.dx ?? 0, (v) => { this.updateCreationParam(solid, 'dx', v); });
+            this.addNumberField("DY", params.dy ?? 0, (v) => { this.updateCreationParam(solid, 'dy', v); });
+            this.addNumberField("DZ", params.dz ?? 0, (v) => { this.updateCreationParam(solid, 'dz', v); });
+            this.addNumberField("LTX", params.ltx ?? 0, (v) => { this.updateCreationParam(solid, 'ltx', v); });
+          } else if (type === "pyramid") {
+            this.addNumberField("Sides", params.sides ?? 4, (v) => { this.updateCreationParam(solid, 'sides', v); });
+            this.addNumberField("Radius", params.radius ?? 0, (v) => { this.updateCreationParam(solid, 'radius', v); });
+            this.addNumberField("Height", params.height ?? 0, (v) => { this.updateCreationParam(solid, 'height', v); });
+          }
+      }
       
+      this.addSeparator();
+
       // Non-editable properties
       this.addPropertyField("Vertices", (solid.positions.length / 3).toString(), true);
       this.addPropertyField("Faces", (solid.indices.length / 3).toString(), true);
@@ -166,6 +201,18 @@ export class PropertiesWindow {
       this.addPropertyField("R X", "0", true);
       this.addPropertyField("R Y", "0", true);
       this.addNumberField("R Z", ins.rotation, (val) => { this.updateProperty(ins, 'rotation', val); });
+    }
+  }
+
+  private updateCreationParam(solid: Solid3D, key: string, val: any) {
+    if (solid.creationParams) {
+      (solid.creationParams.params as any)[key] = val;
+      // Also update the base feature node
+      const baseFeat = solid.features.find(f => f.id === solid.id + "_base");
+      if (baseFeat) {
+        baseFeat.parameters[key] = val;
+      }
+      this.triggerReevaluate(solid);
     }
   }
 
@@ -533,7 +580,7 @@ export class PropertiesWindow {
     this.container.appendChild(row);
   }
 
-  private addNumberField(label: string, value: number, onChange: (val: number) => void) {
+  private addNumberField(label: string, value: number | undefined | null, onChange: (val: number) => void) {
     const row = document.createElement('div');
     row.style.display = 'flex';
     row.style.justifyContent = 'space-between';
@@ -545,7 +592,7 @@ export class PropertiesWindow {
     
     const input = document.createElement('input');
     input.type = 'number';
-    input.value = value.toString();
+    input.value = value !== undefined && value !== null ? value.toString() : '0';
     input.style.width = '80px';
     input.style.backgroundColor = 'var(--bg-color)';
     input.style.border = '1px solid var(--border-color)';
@@ -561,6 +608,14 @@ export class PropertiesWindow {
     
     row.appendChild(input);
     this.container.appendChild(row);
+  }
+
+  private addSeparator() {
+    const hr = document.createElement('hr');
+    hr.style.border = 'none';
+    hr.style.borderTop = '1px solid var(--border-color)';
+    hr.style.margin = '10px 0';
+    this.container.appendChild(hr);
   }
 
   private addSelectField(label: string, value: string, options: string[], onChange: (val: string) => void) {

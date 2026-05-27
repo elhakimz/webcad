@@ -8,11 +8,28 @@ import { GeneratorProgressModal } from "../../../ui/GeneratorProgressModal";
 
 export class SystemHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['finish', 'undo', 'redo', 'regen', 'delete', 'close', 'unitsSet', 'rebuild'].includes(action.action);
+    return ['finish', 'undo', 'redo', 'regen', 'delete', 'close', 'unitsSet', 'rebuild', 'rebuild_all', 'elevationSet', 'thicknessSet'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
     const { doc, viewer, terminateActiveCommand, syncFromDocument, addEntity } = context;
+
+    if (action.action === 'thicknessSet') {
+      const val = Number(action.value ?? 0);
+      doc.currentThickness = val;
+      terminateActiveCommand();
+      return `Current thickness set to ${val}.`;
+    }
+
+    if (action.action === 'elevationSet') {
+      const val = Number(action.value ?? 0);
+      doc.currentElevation = val;
+      if (context.onElevationChange) {
+        context.onElevationChange(val);
+      }
+      terminateActiveCommand();
+      return `Current elevation set to ${val}.`;
+    }
 
     if (action.action === 'unitsSet') {
       doc.units.type = action.type as 'decimal' | 'architectural' | 'metric';
@@ -147,6 +164,70 @@ export class SystemHandler implements ActionHandler {
         syncFromDocument();
         return `ERROR: Rebuild failed - ${err.message || err.toString()}`;
       }
+    }
+
+    if (action.action === 'rebuild_all') {
+      const solids = Array.from(doc.entities.values()).filter(e => e instanceof Solid3D) as Solid3D[];
+      if (solids.length === 0) {
+        return "No Solid3D entities found to rebuild.";
+      }
+
+      const progress = new GeneratorProgressModal("Rebuilding All Solids");
+      progress.show();
+
+      let successCount = 0;
+      let failCount = 0;
+      const facetres = doc.facetres || 5.0;
+
+      for (let i = 0; i < solids.length; i++) {
+        const solid = solids[i];
+        progress.update((i / solids.length) * 100, `Rebuilding ${solid.id} (${i + 1}/${solids.length})...`);
+
+        const before = solid.clone(solid.id) as Solid3D;
+        try {
+          const geom = await Solid3DReevaluator.reevaluate(solid, facetres, doc);
+          
+          solid.positions = Array.from(geom.getAttribute('position').array) as number[];
+          solid.indices = geom.getIndex() ? Array.from(geom.getIndex()!.array) : [];
+          if (geom.userData) {
+            solid.faceMapping = geom.userData.faceMapping;
+            solid.edgeLines = geom.userData.edgeLines;
+            solid.brepSnapshot = geom.userData.brepSnapshot;
+          }
+          solid.updateAbsolutePosition();
+          
+          // Save tessellation cache
+          const deflection = 0.1 / facetres;
+          if (solid.positions.length > 0) {
+            PersistenceService.getInstance().cache.saveTessellation(solid.id, PersistenceService.getInstance().activeProjectId || "default", solid.positions, solid.indices, deflection);
+          }
+
+          // Persist BRep
+          if (solid.brepSnapshot) {
+            try {
+              await PersistenceService.getInstance().persistBRepNow(solid, doc);
+            } catch (e) {}
+          }
+          
+          doc.history.startTransaction(doc.constraints);
+          doc.recordTransform(before, solid);
+          doc.history.commitTransaction(doc.constraints);
+          
+          addEntity(solid, false, false);
+          successCount++;
+        } catch (err) {
+          console.error(`Rebuild failed for ${solid.id}:`, err);
+          failCount++;
+        }
+      }
+
+      progress.update(100, "Rebuild All complete.");
+      await new Promise(resolve => setTimeout(resolve, 500));
+      progress.close();
+      syncFromDocument();
+      terminateActiveCommand();
+
+      return `Rebuild All finished. Success: ${successCount}, Failed: ${failCount}.`;
     }
 
     return undefined;

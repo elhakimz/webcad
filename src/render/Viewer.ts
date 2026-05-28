@@ -20,6 +20,7 @@ import { Dimension } from "../core/model/Dimension"
 import { Trace } from "../core/model/Trace"
 import { Shape } from "../core/model/Shape"
 import { Hatch } from "../core/model/Hatch"
+import { ImagePlane } from "../core/model/ImagePlane"
 import { Insert } from "../core/model/Insert"
 import { BlockDefinition } from "../core/model/Block"
 import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb, getLinetypeSettings, tessellateSpline } from "../core/engine/MathUtils"
@@ -2448,6 +2449,72 @@ export class Viewer {
     this.mainGroup.add(obj);
   }
 
+  addImagePlane(entity: ImagePlane, layer?: string, isVisible = true) {
+    const obj = this.createImagePlaneObject(entity);
+    obj.name = entity.id;
+    if (layer) {
+      obj.userData = { layer };
+    }
+    obj.visible = isVisible;
+    this.mainGroup.add(obj);
+    this.scheduleRender();
+  }
+
+  private createImagePlaneObject(entity: ImagePlane): THREE.Object3D {
+    const group = new THREE.Group();
+    const geometry = new THREE.PlaneGeometry(entity.width, entity.height);
+    const material = new THREE.MeshBasicMaterial({ 
+      color: 0xffffff, 
+      side: THREE.DoubleSide, 
+      transparent: true, 
+      opacity: entity.opacity,
+      depthWrite: false
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.rotation.z = entity.rotation;
+    mesh.position.set(entity.cx, entity.cy, entity.elevation || 0);
+
+    if (entity.imageUrl) {
+      const loader = new THREE.TextureLoader();
+      loader.load(entity.imageUrl, (texture) => {
+        texture.minFilter = THREE.LinearFilter;
+        texture.wrapS = THREE.ClampToEdgeWrapping;
+        texture.wrapT = THREE.ClampToEdgeWrapping;
+
+        const img = texture.image;
+        const imgAspect = img.width / img.height;
+        const planeAspect = entity.width / entity.height;
+
+        if (entity.displayMode === 'FIT') {
+          texture.matrixAutoUpdate = false;
+          if (imgAspect > planeAspect) {
+            // Image is wider than plane
+            const s = planeAspect / imgAspect;
+            texture.matrix.setUvTransform(0, (1-s)/2, 1, s, 0, 0.5, 0.5);
+          } else {
+            // Image is taller than plane
+            const s = imgAspect / planeAspect;
+            texture.matrix.setUvTransform((1-s)/2, 0, s, 1, 0, 0.5, 0.5);
+          }
+        } else if (entity.displayMode === 'ZOOM') {
+          texture.matrixAutoUpdate = false;
+          // 1 unit = 1 pixel at 100% zoom (factor 1.0)
+          const repeatX = entity.width / (img.width * entity.zoomFactor);
+          const repeatY = entity.height / (img.height * entity.zoomFactor);
+          texture.matrix.setUvTransform((1-repeatX)/2, (1-repeatY)/2, repeatX, repeatY, 0, 0.5, 0.5);
+        }
+
+        material.map = texture;
+        material.needsUpdate = true;
+        this.scheduleRender();
+      });
+    }
+
+    group.add(mesh);
+    return group;
+  }
+
   addInsert(entity: Insert, block: BlockDefinition, layerProperties: Map<string, {color: number, linetype: string}>, insertLayer: string, isVisible = true) {
     const group = new THREE.Group();
     group.name = entity.id;
@@ -3490,11 +3557,11 @@ export class Viewer {
         }
         if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
           child.geometry.dispose();
-          if (Array.isArray(child.material)) {
-            child.material.forEach(m => (m as THREE.Material).dispose());
-          } else {
-            child.material.dispose();
-          }
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach(m => {
+            if ((m as any).map) (m as any).map.dispose();
+            m.dispose();
+          });
         }
       });
     }
@@ -3515,11 +3582,11 @@ export class Viewer {
       obj.traverse((child) => {
         if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
           child.geometry.dispose();
-          if (Array.isArray(child.material)) {
-            child.material.forEach(m => (m as THREE.Material).dispose());
-          } else {
-            child.material.dispose();
-          }
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach(m => {
+            if ((m as any).map) (m as any).map.dispose();
+            m.dispose();
+          });
         }
       });
     }

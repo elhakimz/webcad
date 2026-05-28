@@ -3,7 +3,7 @@ import { CommandAction, CommandResponse } from "../../commands/types";
 
 export class DraftingHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
-    return ['ortho', 'orthoToggle', 'grid', 'gridToggle', 'gridSet', 'snap', 'snapToggle', 'snapSet', 'dimtoh', 'dimtad', 'dimtohToggle', 'dimtadToggle'].includes(action.action);
+    return ['ortho', 'orthoToggle', 'grid', 'gridToggle', 'gridSet', 'snap', 'snapToggle', 'snapSet', 'osnap', 'osnapToggle', 'otrack', 'otrackToggle', 'dimtoh', 'dimtad', 'dimtohToggle', 'dimtadToggle'].includes(action.action);
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
@@ -16,6 +16,20 @@ export class DraftingHandler implements ActionHandler {
     if (action.action === 'orthoToggle') {
       drafting.toggleOrtho();
       return `Ortho ${drafting.orthoEnabled ? 'ON' : 'OFF'}`;
+    }
+
+    if (action.action === 'osnap') {
+      drafting.osnapEnabled = !!action.value; drafting.notify();
+      return `Osnap ${action.value ? 'ON' : 'OFF'}`;
+    }
+    if (action.action === 'osnapToggle') {
+      drafting.toggleOsnap();
+      return `Osnap ${drafting.osnapEnabled ? 'ON' : 'OFF'}`;
+    }
+
+    if (action.action === 'otrack') {
+      drafting.otrackEnabled = !!action.value; drafting.notify();
+      return `Otrack ${action.value ? 'ON' : 'OFF'}`;
     }
 
     if (action.action === 'grid') {

@@ -224,8 +224,21 @@ export class FileToolWindow {
       tbody.appendChild(tr);
     });
 
-    // Sample files (from files.json)
-    files.forEach(file => {
+    // Fetch file list dynamically from local API, fallback to files.json
+    let fetchedFiles: string[] = [];
+    try {
+      const res = await fetch('/api/files');
+      if (res.ok) {
+        fetchedFiles = await res.json();
+      } else {
+        fetchedFiles = files;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch from /api/files, using fallback', e);
+      fetchedFiles = files;
+    }
+
+    fetchedFiles.forEach(file => {
       const tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid var(--border-color)';
       

@@ -3,6 +3,7 @@ import { Entity } from "../core/model/Entity";
 import { App } from "../app";
 import { Solid3D } from "../core/model/Solid3D";
 import { Insert } from "../core/model/Insert";
+import { ImagePlane } from "../core/model/ImagePlane";
 import { OpenCascadeService } from "../core/io/OpenCascadeService";
 import * as THREE from 'three';
 import { Solid3DReevaluator } from "../core/engine/Solid3DReevaluator";
@@ -201,7 +202,47 @@ export class PropertiesWindow {
       this.addPropertyField("R X", "0", true);
       this.addPropertyField("R Y", "0", true);
       this.addNumberField("R Z", ins.rotation, (val) => { this.updateProperty(ins, 'rotation', val); });
+    } else if (entity instanceof ImagePlane) {
+      const plane = entity as ImagePlane;
+      this.addNumberField("Center X", plane.cx, (val) => { this.updateProperty(plane, 'cx', val); });
+      this.addNumberField("Center Y", plane.cy, (val) => { this.updateProperty(plane, 'cy', val); });
+      this.addNumberField("Width", plane.width, (val) => { this.updateProperty(plane, 'width', val); });
+      this.addNumberField("Height", plane.height, (val) => { this.updateProperty(plane, 'height', val); });
+      this.addNumberField("Rotation", plane.rotation * 180 / Math.PI, (val) => { this.updateProperty(plane, 'rotation', val * Math.PI / 180); });
+      this.addTextField("Image URL", plane.imageUrl, (val) => { this.updateProperty(plane, 'imageUrl', val); });
+      this.addSelectField("Display Mode", plane.displayMode, ['STRETCH', 'FIT', 'ZOOM'], (val) => { this.updateProperty(plane, 'displayMode', val); });
+      this.addNumberField("Opacity (0-100)", plane.opacity * 100, (val) => { this.updateProperty(plane, 'opacity', val / 100); });
+      if (plane.displayMode === 'ZOOM') {
+        this.addNumberField("Zoom Factor", plane.zoomFactor, (val) => { this.updateProperty(plane, 'zoomFactor', val); });
+      }
     }
+  }
+
+  private addTextField(label: string, value: string, onChange: (val: string) => void) {
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.justifyContent = 'space-between';
+    row.style.marginBottom = '5px';
+    
+    const lbl = document.createElement('span');
+    lbl.textContent = label;
+    row.appendChild(lbl);
+    
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = value;
+    input.style.width = '80px';
+    input.style.backgroundColor = 'var(--bg-color)';
+    input.style.border = '1px solid var(--border-color)';
+    input.style.color = 'var(--text-color)';
+    input.style.fontFamily = 'var(--font-mono)';
+    
+    input.addEventListener('change', () => {
+      onChange(input.value);
+    });
+    
+    row.appendChild(input);
+    this.container.appendChild(row);
   }
 
   private updateCreationParam(solid: Solid3D, key: string, val: any) {

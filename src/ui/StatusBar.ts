@@ -4,6 +4,7 @@ export interface DraftingStatus {
   snap: boolean;
   grid: boolean;
   ortho: boolean;
+  otrack: boolean;
   xyz: boolean;
   mode3d: boolean;
   axis: boolean;
@@ -15,6 +16,8 @@ export class StatusBar {
   private snapTag: HTMLElement;
   private gridTag: HTMLElement;
   private orthoTag: HTMLElement;
+  private osnapTag: HTMLElement;
+  private otrackTag: HTMLElement;
 
   constructor() {
     this.layerEl = document.getElementById('layer-info')!;
@@ -22,6 +25,8 @@ export class StatusBar {
     this.snapTag = document.getElementById('tag-snap')!;
     this.gridTag = document.getElementById('tag-grid')!;
     this.orthoTag = document.getElementById('tag-ortho')!;
+    this.osnapTag = document.getElementById('tag-osnap')!;
+    this.otrackTag = document.getElementById('tag-otrack')!;
   }
 
   updateLayer(layer: Layer) {
@@ -37,6 +42,8 @@ export class StatusBar {
     this.updateTag(this.snapTag, status.snap);
     this.updateTag(this.gridTag, status.grid);
     this.updateTag(this.orthoTag, status.ortho);
+    this.updateTag(this.osnapTag, status.osnap);
+    this.updateTag(this.otrackTag, status.otrack);
   }
 
   private updateTag(el: HTMLElement, active: boolean) {
@@ -47,8 +54,8 @@ export class StatusBar {
     }
   }
 
-  onTagClick(type: 'snap' | 'grid' | 'ortho', callback: () => void) {
-    const el = type === 'snap' ? this.snapTag : (type === 'grid' ? this.gridTag : this.orthoTag);
+  onTagClick(type: 'snap' | 'grid' | 'ortho' | 'osnap' | 'otrack', callback: () => void) {
+    const el = type === 'snap' ? this.snapTag : (type === 'grid' ? this.gridTag : (type === 'ortho' ? this.orthoTag : (type === 'osnap' ? this.osnapTag : this.otrackTag)));
     el.addEventListener('click', callback);
   }
 }

@@ -1,4 +1,3 @@
-
 import { Viewer } from "./render/Viewer"
 import { CommandManager } from "./core/engine/CommandManager"
 import { Document } from "./core/model/Document"
@@ -37,8 +36,10 @@ import { DynamicInput } from "./ui/DynamicInput"
 import { DynamicMenu } from "./ui/DynamicMenu"
 import { ResultDispatcher } from "./core/engine/handlers/ResultDispatcher"
 import { GeneratorHandler } from "./core/engine/handlers/GeneratorHandler"
-import { LayerHandler } from "./core/engine/handlers/LayerHandler"
-import { BooleanHandler } from "./core/engine/handlers/transform/BooleanHandler"
+import { LayerHandler } from "./core/engine/handlers/LayerHandler";
+import { SvgImportHandler } from "./core/engine/handlers/SvgImportHandler";
+import { BooleanHandler } from "./core/engine/handlers/transform/BooleanHandler";
+
 import { ArrayHandler } from "./core/engine/handlers/transform/ArrayHandler"
 import { FilletHandler } from "./core/engine/handlers/transform/FilletHandler"
 import { SFilletHandler } from "./core/engine/handlers/transform/SFilletHandler"
@@ -67,6 +68,8 @@ import { PlotHandler } from "./core/engine/handlers/PlotHandler"
 import { DraftingHandler } from "./core/engine/handlers/DraftingHandler"
 import { BlockHandler } from "./core/engine/handlers/BlockHandler"
 import { InquiryHandler } from "./core/engine/handlers/InquiryHandler"
+import { ImagePlaneHandler } from "./core/engine/handlers/ImagePlaneHandler"
+import { ImagePlane } from "./core/model/ImagePlane"
 import { AppContext } from "./core/engine/handlers/types"
 import { DraftingState } from "./core/engine/DraftingState"
 import { HasBasePoint, HasUpdateSketch, HasStartSketch, HasFinishSketch, HasSelectedIds } from "./core/commands/types"
@@ -238,7 +241,22 @@ export class App {
       }
     });
 
+    const canvas = this.viewer.canvas;
+    canvas.addEventListener('dragover', e => { e.preventDefault() });
+    canvas.addEventListener('drop', async e => {
+      e.preventDefault();
+      const file = e.dataTransfer?.files[0];
+      if (!file) return;
+      
+      if (file.name.toLowerCase().endsWith('.dxf')) {
+        await this.handleResult({ action: 'load', filename: file.name } as any);
+      } else if (file.name.toLowerCase().endsWith('.svg')) {
+        await this.handleResult({ action: 'svg_import_file', svgFile: file } as any);
+      }
+    });
+
     this.dispatcher.registerHandler(new LayerHandler());
+    this.dispatcher.registerHandler(new SvgImportHandler());
     this.dispatcher.registerHandler(new BooleanHandler());
     this.dispatcher.registerHandler(new ArrayHandler());
     this.dispatcher.registerHandler(new FilletHandler());
@@ -266,8 +284,8 @@ export class App {
     this.dispatcher.registerHandler(new SystemHandler());
     this.dispatcher.registerHandler(new IOHandler());
     this.dispatcher.registerHandler(new PlotHandler());
-    this.dispatcher.registerHandler(new DraftingHandler());
     this.dispatcher.registerHandler(new BlockHandler());
+    this.dispatcher.registerHandler(new ImagePlaneHandler());
     this.dispatcher.registerHandler(new GeneratorHandler());
     this.dispatcher.registerHandler(new InquiryHandler());
 
@@ -300,40 +318,48 @@ export class App {
       base = this.cmd.lastPoint;
     }
 
-    let snap = SnapEngine.getSnapPointSpatial(worldX, worldY, this.doc, tolerance, base);    
+    let snap: SnapPoint | null = null;
+    if (this.drafting.osnapEnabled) {
+      snap = SnapEngine.getSnapPointSpatial(worldX, worldY, this.doc, tolerance, base);    
+    }
     
     // Otrack Logic: Dwelling
-    if (snap) {
-      const isSameAsDwell = this.dwellSnap && 
-                            Math.abs(snap.x - this.dwellSnap.x) < 1e-6 && 
-                            Math.abs(snap.y - this.dwellSnap.y) < 1e-6;
-      
-      if (isSameAsDwell) {
-        if (Date.now() - this.dwellStart > 500) {
-          // Acquire or toggle
-          const existingIdx = this.acquiredSnaps.findIndex(s => 
-            Math.abs(s.x - snap!.x) < 1e-6 && Math.abs(s.y - snap!.y) < 1e-6
-          );
-          if (existingIdx >= 0) {
-            this.acquiredSnaps.splice(existingIdx, 1);
-            this.dwellSnap = null; // Reset to avoid rapid toggle
+    if (this.drafting.otrackEnabled) {
+        if (snap) {
+          const isSameAsDwell = this.dwellSnap && 
+                                Math.abs(snap.x - this.dwellSnap.x) < 1e-6 && 
+                                Math.abs(snap.y - this.dwellSnap.y) < 1e-6;
+          
+          if (isSameAsDwell) {
+            if (Date.now() - this.dwellStart > 500) {
+              // Acquire or toggle
+              const existingIdx = this.acquiredSnaps.findIndex(s => 
+                Math.abs(s.x - snap!.x) < 1e-6 && Math.abs(s.y - snap!.y) < 1e-6
+              );
+              if (existingIdx >= 0) {
+                this.acquiredSnaps.splice(existingIdx, 1);
+                this.dwellSnap = null; // Reset to avoid rapid toggle
+              } else {
+                this.acquiredSnaps.push(snap);
+                this.dwellSnap = null;
+              }
+              this.printToCommandLine(existingIdx >= 0 ? "Otrack point removed." : "Otrack point acquired.");
+            }
           } else {
-            this.acquiredSnaps.push(snap);
-            this.dwellSnap = null;
+            this.dwellSnap = snap;
+            this.dwellStart = Date.now();
           }
-          this.printToCommandLine(existingIdx >= 0 ? "Otrack point removed." : "Otrack point acquired.");
+        } else {
+          this.dwellSnap = null;
         }
-      } else {
-        this.dwellSnap = snap;
-        this.dwellStart = Date.now();
-      }
     } else {
-      this.dwellSnap = null;
+        this.dwellSnap = null;
+        if (this.acquiredSnaps.length > 0) this.acquiredSnaps = [];
     }
 
     // Otrack Logic: Tracking
     const trackingLines: {p1: {x:number, y:number}, p2: {x:number, y:number}}[] = [];
-    if (!snap && this.acquiredSnaps.length > 0) {
+    if (this.drafting.otrackEnabled && !snap && this.acquiredSnaps.length > 0) {
       let trackedX: number | null = null;
       let trackedY: number | null = null;
       const hitSnapsX: SnapPoint[] = [];
@@ -2412,12 +2438,17 @@ export class App {
           this.doc.history.commitTransaction(this.doc.constraints);
           this.updateDoFVisualization();
 
-          if (typeof res === 'string' && ((result as CommandAction).action === 'fillet' || (result as CommandAction).action === 'chamfer')) {
+          if (typeof res === 'string' && ((result as CommandAction).action === 'fillet' || (result as CommandAction).action === 'chamfer' || (result as CommandAction).action === 'svg_import')) {
               this.printToCommandLine(res);
               const isError = res.toLowerCase().includes("cannot") || 
-                              result.toLowerCase().includes("fail") || 
-                              result.toLowerCase().includes("only supported");
+                              res.toLowerCase().includes("fail") || 
+                              res.toLowerCase().includes("only supported") || 
+                              res.toLowerCase().includes("error");
               NotificationManager.getInstance().show(res, isError ? "error" : "success");
+          }
+
+          if ((result as CommandAction).action === 'svg_import') {
+            this.terminateActiveCommand();
           }
 
           return res;
@@ -2510,6 +2541,8 @@ export class App {
       this.viewer.addShape(entity, layer, layerColor, isVisible);
     } else if (entity instanceof Hatch) {
       this.viewer.addHatch(entity, layer, layerColor, isVisible);
+    } else if (entity instanceof ImagePlane) {
+      this.viewer.addImagePlane(entity, layer, isVisible);
     } else if (entity instanceof Insert) {
       const block = this.doc.blocks.getBlock(entity.blockName);
       if (block) {

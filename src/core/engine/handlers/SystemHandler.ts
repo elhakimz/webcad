@@ -39,6 +39,7 @@ export class SystemHandler implements ActionHandler {
     }
 
     if (action.action === 'finish' || action.action === 'close') {
+      console.log("[SystemHandler] Finishing command");
       terminateActiveCommand();
       return "Command finished.";
     }
@@ -62,12 +63,19 @@ export class SystemHandler implements ActionHandler {
     }
 
     if (action.action === 'regen') {
+      const progress = new GeneratorProgressModal("Regenerating Drawing");
+      progress.show();
+      progress.update(20, "Rehydrating geometric data...");
+
       await OpenCascadeService.getInstance().rehydrate(doc);
-      context.syncFromDocument(); 
-      const msg = (action as any)._echo ? `${(action as any)._echo}\nRegenerating drawing...` : "Regenerating drawing...";
+
+      progress.update(80, "Syncing scene...");
+      context.syncFromDocument();
+
+      progress.close();
+      const msg = (action as any)._echo ? `${(action as any)._echo}\nRegenerating drawing complete.` : "Regenerating drawing complete.";
       return msg;
     }
-
     if (action.action === 'delete' && action.ids) {
       const solidIds: string[] = [];
       for (const id of action.ids) {

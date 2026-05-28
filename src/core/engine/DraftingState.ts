@@ -4,6 +4,8 @@ export class DraftingState {
   gridSpacing: number = 10;
   snapEnabled: boolean = false;
   snapSpacing: number = 5;
+  osnapEnabled: boolean = true;
+  otrackEnabled: boolean = true;
   xyzEnabled: boolean = true;
   mode3d: boolean = false;
   axisEnabled: boolean = false;
@@ -30,6 +32,16 @@ export class DraftingState {
 
   toggleSnap() {
     this.snapEnabled = !this.snapEnabled;
+    this.notify();
+  }
+  
+  toggleOsnap() {
+    this.osnapEnabled = !this.osnapEnabled;
+    this.notify();
+  }
+  
+  toggleOtrack() {
+    this.otrackEnabled = !this.otrackEnabled;
     this.notify();
   }
 

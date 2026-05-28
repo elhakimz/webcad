@@ -10,6 +10,7 @@ import { Dimension } from "../model/Dimension";
 import { Spline } from "../model/Spline";
 import { Solid3D } from "../model/Solid3D";
 import { Donut } from "../model/Donut";
+import { ImagePlane } from "../model/ImagePlane";
 import { Insert } from "../model/Insert";
 import { IDocument } from "../model/Document";
 import * as MathUtils from "./MathUtils";
@@ -265,6 +266,23 @@ export class SelectionEngine {
     if (entity instanceof Solid3D) {
       const box = entity.getBoundingBox(); // XY projection
       return !(box.maxX < minX || box.minX > maxX || box.maxY < minY || box.minY > maxY);
+    }
+
+    if (entity instanceof ImagePlane) {
+        // For ImagePlane, check corner points and edges
+        const hw = entity.width / 2;
+        const hh = entity.height / 2;
+        const corners = [
+            { x: -hw, y: -hh }, { x: hw, y: -hh },
+            { x: hw, y: hh }, { x: -hw, y: hh }
+        ].map(c => MathUtils.rotatePoint(entity.cx + c.x, entity.cy + c.y, entity.cx, entity.cy, entity.rotation));
+
+        for (let i = 0; i < 4; i++) {
+            const p1 = corners[i];
+            const p2 = corners[(i + 1) % 4];
+            if (this.isLineIntersectingBox(p1.x, p1.y, p2.x, p2.y, minX, minY, maxX, maxY)) return true;
+        }
+        return false;
     }
 
     if (entity instanceof Line) return this.isLineIntersectingBox(entity.x1, entity.y1, entity.x2, entity.y2, minX, minY, maxX, maxY);

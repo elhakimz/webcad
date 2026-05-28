@@ -81,6 +81,8 @@ const draftingRibbon = new DraftingAidsRibbonBar(
     if (type === 'snap') app.drafting.toggleSnap();
     if (type === 'grid') app.drafting.toggleGrid();
     if (type === 'ortho') app.drafting.toggleOrtho();
+    if (type === 'osnap') app.drafting.toggleOsnap();
+    if (type === 'otrack') app.drafting.toggleOtrack();
     if (type === 'xyz') app.drafting.toggleXyz();
     if (type === 'mode') app.drafting.toggleMode3d();
     if (type === 'axis') app.drafting.toggleAxis();
@@ -136,6 +138,8 @@ function updateStatusBar() {
     snap: app.drafting.snapEnabled,
     grid: app.drafting.gridEnabled,
     ortho: app.drafting.orthoEnabled,
+    osnap: app.drafting.osnapEnabled,
+    otrack: app.drafting.otrackEnabled,
     xyz: app.drafting.xyzEnabled,
     mode3d: app.drafting.mode3d,
     axis: app.drafting.axisEnabled

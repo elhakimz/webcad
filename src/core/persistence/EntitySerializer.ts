@@ -16,6 +16,7 @@ import { Trace } from '../model/Trace'
 import { Note } from '../model/Note'
 import { Point } from '../model/Point'
 import { Solid3D } from '../model/Solid3D'
+import { ImagePlane } from '../model/ImagePlane'
 
 export function uint8ArrayToBase64(arr: Uint8Array): string {
   let binary = "";
@@ -81,6 +82,7 @@ export class EntitySerializer {
                position: e.position, rotation: e.rotation, features: e.features,
                baseBrepSnapshot: e.baseBrepSnapshot ? uint8ArrayToBase64(e.baseBrepSnapshot) : undefined }
     }
+    if (e instanceof ImagePlane) return { cx: e.cx, cy: e.cy, width: e.width, height: e.height, rotation: e.rotation, imageUrl: e.imageUrl, displayMode: e.displayMode, zoomFactor: e.zoomFactor, opacity: e.opacity }
     return {}
   }
 
@@ -156,6 +158,10 @@ export class EntitySerializer {
       }
       case 'Note':      entity = new Note(row.id, d.targetEntityId, d.anchorPoint, d.bendPoint, d.text, d.height); break
       case 'Point':     entity = new Point(row.id, d.x, d.y); break
+      case 'ImagePlane': {
+        entity = new ImagePlane(row.id, d.cx, d.cy, d.width, d.height, d.rotation, d.imageUrl, d.displayMode, d.zoomFactor, d.opacity, row.elevation, row.thickness);
+        break;
+      }
       case 'Solid3D': {
         const s3d = new Solid3D(row.id, [], [])   // geometry filled by PersistenceService
         if (d.position) s3d.position = d.position

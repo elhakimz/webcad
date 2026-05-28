@@ -67,6 +67,10 @@ import { StretchCommand } from "../commands/StretchCommand"
 import { OrthoCommand } from "../commands/OrthoCommand"
 import { GridCommand } from "../commands/GridCommand"
 import { SnapCommand } from "../commands/SnapCommand"
+import { OsnapCommand } from "../commands/OsnapCommand"
+import { OtrackCommand } from "../commands/OtrackCommand"
+import { SvgImportCommand } from "../commands/SvgImportCommand"
+import { PlaneCommand } from "../commands/PlaneCommand"
 import { ArrayCommand } from "../commands/ArrayCommand"
 import { OffsetCommand } from "../commands/OffsetCommand"
 import { TrimCommand } from "../commands/TrimCommand"
@@ -88,7 +92,7 @@ import { RebuildCommand } from "../commands/RebuildCommand"
 
 
 
-type CommandFactory = (selection?: string[]) => Command | CommandResponse;
+type CommandFactory = (selection?: string[], units?: UnitsConfig, entities?: Map<string, Entity>, doc?: Document) => Command | CommandResponse;
 
 const commandRegistry = new Map<string, CommandFactory>([
   ["LINE", () => new LineCommand()],
@@ -177,7 +181,12 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["ORTHO", () => new OrthoCommand()],
   ["GRID", () => new GridCommand()],
   ["SNAP", () => new SnapCommand()],
+  ["OSNAP", () => new OsnapCommand()],
+  ["OTRACK", () => new OtrackCommand()],
+  ["SVGIMPORT", () => new SvgImportCommand()],
+  ["PLANE", () => new PlaneCommand()],
   ["ARRAY", (selection) => new ArrayCommand(selection)],
+
   ["OFFSET", () => new OffsetCommand()],
   ["FILLET", () => new FilletCommand()],
   ["SFILLET", (selection) => new SFilletCommand(selection)],
@@ -235,6 +244,8 @@ export class CommandManager {
     const parts = cmd.trim().split(/\s+/);
     const cmdName = parts[0].toUpperCase();
     const args = parts.slice(1);
+    const effectiveSelection = (selection && selection.length > 0) ? selection : args;
+    console.log(`[CommandManager] Executing ${cmdName}, effectiveSelection:`, effectiveSelection);
 
     let response: CommandResponse | Promise<CommandResponse> | undefined;
 
@@ -243,7 +254,8 @@ export class CommandManager {
       return "Unknown command: " + cmdName;
     }
 
-    const result = factory(selection);
+    const result = factory(effectiveSelection, units, entities, doc);
+    console.log("[CommandManager] Command factory result:", result);
 
     // Special Case: ELEV/THICKNESS one-shot inform
     if ((cmdName === 'ELEV' || cmdName === 'THICKNESS') && args.length === 0) {
@@ -253,7 +265,8 @@ export class CommandManager {
 
     if (result && typeof result === 'object' && 'onPoint' in result) {
       this.active = result as Command;
-      response = cmdName;
+      console.log("[CommandManager] Command activated:", this.active.constructor.name);
+      return this.active.getPrompt ? this.active.getPrompt() : cmdName;
     } else {
       // If it's a direct action or string, we still might need to pass doc if we feed args
       if (typeof result === 'string' && args.length > 0) {

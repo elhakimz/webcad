@@ -103,6 +103,8 @@ export function analyzeDocumentDoF(
     } else if (c.type === 'equal_length') {
       addRef(c.l1[0]); addRef(c.l1[1]);
       addRef(c.l2[0]); addRef(c.l2[1]);
+    } else if (c.type === 'radius' || c.type === 'diameter') {
+      referencedEntityIds.add(c.entityId);
     }
   }
 
@@ -270,6 +272,12 @@ export function analyzeDocumentDoF(
         sketchConstraints.push({ type: 'equal_length', l1: [p1, p2], l2: [p3, p4] });
         constraintOwner.push(ci);
       }
+    } else if (c.type === 'radius') {
+        sketchConstraints.push({ type: 'radius' as any, entityId: c.entityId, value: c.value } as any);
+        constraintOwner.push(ci);
+    } else if (c.type === 'diameter') {
+        sketchConstraints.push({ type: 'radius' as any, entityId: c.entityId, value: c.value / 2 } as any);
+        constraintOwner.push(ci);
     }
   }
 

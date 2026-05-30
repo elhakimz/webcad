@@ -29,7 +29,7 @@ export const PROJECT_SCHEMA: RxJsonSchema<any> = {
 }
 
 export const ENTITY_SCHEMA: RxJsonSchema<any> = {
-  version: 1,
+  version: 2,
   primaryKey: 'id',
   type: 'object',
   properties: {
@@ -37,6 +37,8 @@ export const ENTITY_SCHEMA: RxJsonSchema<any> = {
     projectId:      { type: 'string', maxLength: 100 },
     type:           { type: 'string' },
     layer:          { type: 'string' },
+    color:          { type: 'number' },
+    linetype:       { type: 'string' },
     elevation:      { type: 'number' },
     thickness:      { type: 'number' },
     data:           { type: 'string' },        // JSON — entity-specific fields

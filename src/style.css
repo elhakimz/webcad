@@ -6,33 +6,34 @@
 }
 
 :root {
-  --bg-color: #1e1e1e; /* Graphite */
-  --text-color: #e5e2e1; /* Off-white */
+  --bg-color: #293742; /* Blueprint Dark Background */
+  --text-color: #f5f8fa; /* Blueprint Dark Text */
+  --text-muted: #a7b6c2; /* Blueprint Dark Muted Text */
+  --text-disabled: rgba(167, 182, 194, 0.6);
   --accent-color: #3b82f6; /* Professional Blue */
   --border-color: #3f3f3f; /* Ghost border */
   --menu-border-color: #3f3f3f;
-  --panel-bg: #2d2d2d; /* Slate */
+  --panel-bg: #30404d; /* Blueprint Dark Panel */
   --popover-bg: #363636;
   --error-color: #f97316; /* Constraint Orange */
-  --font-family: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-family: -apple-system, "BlinkMacSystemFont", "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  --font-mono: "JetBrains Mono", Consolas, "Liberation Mono", Menlo, Courier, monospace;
   --radius-sm: 2px;
   --radius-md: 4px;
+  --font-size-base: 14px;
 }
 
 .light-theme {
   --bg-color: #ffffff;
-  --text-color: #1a1a1a;
+  --text-color: #182026; /* Blueprint Light Text */
+  --text-muted: #5c7080; /* Blueprint Light Muted Text */
+  --text-disabled: rgba(92, 112, 128, 0.6);
   --accent-color: #0056b3; /* CATIA Blue */
   --border-color: #cccccc;
   --menu-border-color: #cccccc;
-  --panel-bg: #f0f0f0; /* Silver */
+  --panel-bg: #f5f8fa; /* Blueprint Light Panel */
   --popover-bg: #ffffff;
   --error-color: #ff7b00; /* Constraint Orange */
-  --font-family: "Segoe UI", Tahoma, Arial, sans-serif;
-  --font-mono: Consolas, "Courier New", monospace;
-  --radius-sm: 2px;
-  --radius-md: 4px;
 }
 
 .light-theme .tool-button img {
@@ -85,8 +86,66 @@ body {
   background-color: var(--bg-color);
   color: var(--text-color);
   font-family: var(--font-family);
-  font-size: 13px; /* Compact as requested */
-  line-height: 1.2;
+  font-size: var(--font-size-base);
+  line-height: 1.2857142857; /* Blueprint base line-height */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Blueprint Typography Utility Classes */
+.bp6-ui-text {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  font-weight: 400;
+  line-height: 1.2857142857;
+}
+
+.bp6-monospace-text {
+  font-family: var(--font-mono);
+  text-transform: none !important;
+}
+
+.bp6-text-muted {
+  color: var(--text-muted) !important;
+}
+
+.bp6-text-disabled {
+  color: var(--text-disabled) !important;
+  cursor: not-allowed;
+  user-select: none;
+}
+
+.bp6-text-large {
+  font-size: 16px;
+}
+
+.bp6-text-small {
+  font-size: 12px;
+}
+
+.bp6-heading {
+  color: var(--text-color);
+  font-weight: 600;
+  margin-top: 20px;
+  margin-bottom: 10px;
+}
+
+h1.bp6-heading { font-size: 36px; line-height: 40px; }
+h2.bp6-heading { font-size: 28px; line-height: 32px; }
+h3.bp6-heading { font-size: 22px; line-height: 25px; }
+h4.bp6-heading { font-size: 18px; line-height: 21px; }
+h5.bp6-heading { font-size: 16px; line-height: 19px; }
+h6.bp6-heading { font-size: 14px; line-height: 16px; }
+
+.bp6-code, .bp6-code-block {
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.1);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.light-theme .bp6-code, .light-theme .bp6-code-block {
+  background: rgba(0, 0, 0, 0.05);
 }
 
 #app {
@@ -303,7 +362,7 @@ body {
 
 #docking-pane {
   position: relative;
-  width: 180px;
+  width: 110px;
   background-color: var(--panel-bg);
   border-left: 1px solid var(--border-color);
   display: flex;
@@ -715,7 +774,7 @@ body {
   width: 100%;
   border-collapse: collapse;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
   table-layout: fixed; /* Force fixed layout to prevent overflow */
 }
 
@@ -731,7 +790,7 @@ body {
 .data-table th {
   background-color: var(--bg-color);
   color: var(--accent-color);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* Specific column widths for Layer Table */
@@ -1336,7 +1395,7 @@ body {
 
 .add-feature-bar {
   display: flex;
-  margin-top: 6px;
+  margin-top: 0px;
   padding: 4px 6px;
   justify-content: center;
 }
@@ -1399,7 +1458,7 @@ body {
   text-transform: uppercase;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   letter-spacing: 0.3px;
 }
 

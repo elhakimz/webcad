@@ -78,6 +78,11 @@ export class ScaleHandler implements ActionHandler {
             if (changed) {
                 doc.recordTransform(before, ent);
                 addEntity(ent, false, false);
+                
+                // TRIGGER ASSOCIATIVE REGEN (Phase 9)
+                if (context.checkAssociativeRegen) {
+                    context.checkAssociativeRegen(id);
+                }
             }
         }
       });

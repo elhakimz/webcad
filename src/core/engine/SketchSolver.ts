@@ -527,6 +527,8 @@ export type DocumentConstraint =
   | { type: 'symmetric'; p1: DocumentPointRef; p2: DocumentPointRef; p3: DocumentPointRef }
   | { type: 'midpoint'; pm: DocumentPointRef; ps: DocumentPointRef; pe: DocumentPointRef }
   | { type: 'equal_length'; l1: [DocumentPointRef, DocumentPointRef]; l2: [DocumentPointRef, DocumentPointRef] }
+  | { type: 'radius'; entityId: string; value: number }
+  | { type: 'diameter'; entityId: string; value: number }
   | { type: 'fix'; p1: DocumentPointRef; x?: number; y?: number };
 
 import { IDocument } from "../model/Document";
@@ -716,6 +718,8 @@ export function solveDocumentConstraints(
       referencedEntityIds.add(c.l1[1].entityId);
       referencedEntityIds.add(c.l2[0].entityId);
       referencedEntityIds.add(c.l2[1].entityId);
+      } else if (c.type === 'radius' || c.type === 'diameter') {
+      referencedEntityIds.add(c.entityId);
       }
       }
 
@@ -893,6 +897,21 @@ export function solveDocumentConstraints(
   for (let i = 0; i < uniqueRefs.length; i++) {
     const ref = uniqueRefs[i];
     setPointCoords(doc, ref, points[i]);
+  }
+
+  // 5.1 Apply Radius/Diameter properties directly (Phase 5 expansion)
+  for (const c of constraints) {
+      if (c.type === 'radius') {
+          const ent = doc.getEntity(c.entityId);
+          if (ent instanceof Circle || ent instanceof Arc) {
+              ent.r = c.value;
+          }
+      } else if (c.type === 'diameter') {
+          const ent = doc.getEntity(c.entityId);
+          if (ent instanceof Circle || ent instanceof Arc) {
+              ent.r = c.value / 2;
+          }
+      }
   }
 
   // 6. Update spatial index for all affected entities

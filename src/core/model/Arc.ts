@@ -75,6 +75,8 @@ export class Arc extends Entity {
   clone(newId: string): Arc {
     const copy = new Arc(newId, this.cx, this.cy, this.r, this.startAngle, this.endAngle, this.ccw, this.elevation, this.thickness);
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }

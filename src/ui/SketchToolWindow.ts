@@ -81,7 +81,7 @@ export class SketchToolWindow {
 
   public syncWithAppSelection() {
     const activeSelectedIds = this.app.selectedEntityIds;
-    
+
     // 1. Ensure all viewport-selected entities are in our element list
     activeSelectedIds.forEach(id => {
       if (!this.selectedElementIds.has(id)) {
@@ -94,7 +94,7 @@ export class SketchToolWindow {
           this.selectedElementIds.add(id);
         }
       }
-      
+
       // Auto-populate points for single-point entities
       const ent = this.app.doc.getEntity(id);
       if (ent instanceof Point) {
@@ -211,189 +211,33 @@ export class SketchToolWindow {
     `;
     this.container.appendChild(style);
 
-    // Active Sketch Mode UI
-    const header = document.createElement('div');
-    header.style.display = 'flex';
-    header.style.justifyContent = 'space-between';
-    header.style.alignItems = 'center';
-    header.style.borderBottom = '1px solid var(--border-color)';
-    header.style.paddingBottom = '6px';
-    header.style.flexShrink = '0';
-
-    const titleSpan = document.createElement('span');
-    titleSpan.textContent = `2D PARAMETRIC SOLVER`;
-    titleSpan.style.fontFamily = 'var(--font-mono, monospace)';
-    titleSpan.style.fontSize = '11px';
-    titleSpan.style.fontWeight = 'bold';
-    titleSpan.style.color = 'var(--accent-color)';
-    header.appendChild(titleSpan);
-
-    this.container.appendChild(header);
-
-    // Scrollable content area
     const content = document.createElement('div');
     content.style.display = 'flex';
     content.style.flexDirection = 'column';
-    content.style.flex = '1';
-    content.style.overflowY = 'auto';
     content.style.gap = '8px';
 
-    // 1. Vertices list from selected viewport entities
-    const ptsTitle = document.createElement('div');
-    ptsTitle.className = 'sketch-section-title';
-    ptsTitle.textContent = 'Selected Vertices';
-    content.appendChild(ptsTitle);
-
-    const ptsList = document.createElement('div');
-    ptsList.className = 'sketch-list-container';
-    ptsList.style.minHeight = '60px';
-
-    const selectedIds = this.app.selectedEntityIds;
-    const vertexRefs: DocumentPointRef[] = [];
-
-    selectedIds.forEach(id => {
-      const ent = this.app.doc.getEntity(id);
-      if (ent) {
-        if (ent instanceof Line) {
-          vertexRefs.push({ entityId: id, pointId: 'start' });
-          vertexRefs.push({ entityId: id, pointId: 'end' });
-        } else if (ent instanceof Circle) {
-          vertexRefs.push({ entityId: id, pointId: 'center' });
-        } else if (ent instanceof Arc) {
-          vertexRefs.push({ entityId: id, pointId: 'center' });
-          vertexRefs.push({ entityId: id, pointId: 'start' });
-          vertexRefs.push({ entityId: id, pointId: 'end' });
-        } else if (ent instanceof Polyline) {
-          ent.vertices.forEach((_, idx) => {
-            vertexRefs.push({ entityId: id, pointId: `vertex_${idx}` });
-          });
-        } else if (ent instanceof Text) {
-          vertexRefs.push({ entityId: id, pointId: 'position' });
-        } else if (ent instanceof MText) {
-          vertexRefs.push({ entityId: id, pointId: 'position' });
-        } else if (ent instanceof Point) {
-          vertexRefs.push({ entityId: id, pointId: 'position' });
-        }
-      }
-    });
-
-    if (vertexRefs.length === 0) {
-      const empty = document.createElement('div');
-      empty.textContent = 'Select drawing elements in viewport to list vertices.';
-      empty.style.color = '#555';
-      empty.style.padding = '4px';
-      ptsList.appendChild(empty);
-    } else {
-      vertexRefs.forEach(ref => {
-        const refKey = `${ref.entityId}::${ref.pointId}`;
-        const item = document.createElement('div');
-        item.className = `sketch-item ${this.selectedPointRefs.has(refKey) ? 'selected' : ''}`;
-
-        const chk = document.createElement('input');
-        chk.type = 'checkbox';
-        chk.checked = this.selectedPointRefs.has(refKey);
-        chk.style.cursor = 'pointer';
-
-        const coords = getPointCoords(this.app.doc, ref);
-        const coordText = coords ? `(${coords.x.toFixed(1)}, ${coords.y.toFixed(1)})` : '';
-        const labelText = `${ref.entityId.split('_')[0]} [${ref.pointId}]: ${coordText}`;
-
-        const txt = document.createElement('span');
-        txt.textContent = labelText;
-
-        item.appendChild(chk);
-        item.appendChild(txt);
-
-        const toggleSelect = () => {
-          if (this.selectedPointRefs.has(refKey)) {
-            this.selectedPointRefs.delete(refKey);
-          } else {
-            this.selectedPointRefs.add(refKey);
-          }
-          this.refresh();
-        };
-
-        chk.onchange = (e) => {
-          e.stopPropagation();
-          toggleSelect();
-        };
-        item.onclick = toggleSelect;
-
-        ptsList.appendChild(item);
-      });
-    }
-    content.appendChild(ptsList);
-
-    // 2. Elements list from selected viewport entities
-    const elTitle = document.createElement('div');
-    elTitle.className = 'sketch-section-title';
-    elTitle.textContent = 'Selected Elements';
-    content.appendChild(elTitle);
+    // 1. Selection List Section
+    const selTitle = document.createElement('div');
+    selTitle.className = 'sketch-section-title';
+    selTitle.textContent = 'Selected Entities';
+    content.appendChild(selTitle);
 
     const elList = document.createElement('div');
     elList.className = 'sketch-list-container';
-    elList.style.minHeight = '40px';
 
-    const selectedEntities = Array.from(selectedIds)
-      .map(id => this.app.doc.getEntity(id))
-      .filter((e): e is Entity => e instanceof Line || e instanceof Circle || e instanceof Arc || e instanceof Polyline || e instanceof Text || e instanceof MText || e instanceof Point);
-
-    if (selectedEntities.length === 0) {
+    if (this.app.selectedEntityIds.size === 0) {
       const empty = document.createElement('div');
-      empty.textContent = 'Select drawing elements in viewport.';
+      empty.textContent = 'No selection.';
       empty.style.color = '#555';
       empty.style.padding = '4px';
       elList.appendChild(empty);
     } else {
-      selectedEntities.forEach(ent => {
-        if (ent instanceof Polyline) {
-          const numSegments = ent.closed ? ent.vertices.length : ent.vertices.length - 1;
-          for (let i = 0; i < numSegments; i++) {
-            const segKey = `${ent.id}::segment_${i}`;
-            const isChecked = this.selectedElementIds.has(segKey) || this.selectedElementIds.has(ent.id);
-            const item = document.createElement('div');
-            item.className = `sketch-item ${isChecked ? 'selected' : ''}`;
-
-            const chk = document.createElement('input');
-            chk.type = 'checkbox';
-            chk.checked = isChecked;
-            chk.style.cursor = 'pointer';
-
-            const txt = document.createElement('span');
-            txt.textContent = `Polyline Segment: ${ent.id.split('_')[0]} [Seg ${i}]`;
-
-            item.appendChild(chk);
-            item.appendChild(txt);
-
-            const toggleSelect = () => {
-              if (this.selectedElementIds.has(ent.id)) {
-                // Transition from whole-object selection to individual segment selection
-                this.selectedElementIds.delete(ent.id);
-                for (let j = 0; j < numSegments; j++) {
-                  if (i !== j) this.selectedElementIds.add(`${ent.id}::segment_${j}`);
-                }
-              } else {
-                if (this.selectedElementIds.has(segKey)) {
-                  this.selectedElementIds.delete(segKey);
-                } else {
-                  this.selectedElementIds.add(segKey);
-                }
-              }
-              this.refresh();
-            };
-
-            chk.onchange = (e) => {
-              e.stopPropagation();
-              toggleSelect();
-            };
-            item.onclick = toggleSelect;
-
-            elList.appendChild(item);
-          }
-        } else {
+      this.app.selectedEntityIds.forEach(id => {
+        const ent = this.app.doc.getEntity(id);
+        if (ent) {
           const item = document.createElement('div');
-          item.className = `sketch-item ${this.selectedElementIds.has(ent.id) ? 'selected' : ''}`;
-
+          item.className = 'sketch-item' + (this.selectedElementIds.has(ent.id) ? ' selected' : '');
+          
           const chk = document.createElement('input');
           chk.type = 'checkbox';
           chk.checked = this.selectedElementIds.has(ent.id);
@@ -425,6 +269,70 @@ export class SketchToolWindow {
       });
     }
     content.appendChild(elList);
+
+    // 2. Point Selection Section (for vertices)
+    const ptsTitle = document.createElement('div');
+    ptsTitle.className = 'sketch-section-title';
+    ptsTitle.textContent = 'Selected Vertices';
+    content.appendChild(ptsTitle);
+
+    const ptsList = document.createElement('div');
+    ptsList.className = 'sketch-list-container';
+    ptsList.style.maxHeight = '80px';
+
+    if (this.app.selectedEntityIds.size === 0) {
+      const empty = document.createElement('div');
+      empty.textContent = 'No selection.';
+      empty.style.color = '#555';
+      empty.style.padding = '4px';
+      ptsList.appendChild(empty);
+    } else {
+      this.app.selectedEntityIds.forEach(id => {
+        const ent = this.app.doc.getEntity(id);
+        if (ent) {
+          const addPointItem = (pointId: string, label: string) => {
+            const key = `${id}::${pointId}`;
+            const item = document.createElement('div');
+            item.className = 'sketch-item' + (this.selectedPointRefs.has(key) ? ' selected' : '');
+            
+            const chk = document.createElement('input');
+            chk.type = 'checkbox';
+            chk.checked = this.selectedPointRefs.has(key);
+            
+            const txt = document.createElement('span');
+            txt.textContent = `${id.split('_')[0]}.${label}`;
+
+            item.appendChild(chk);
+            item.appendChild(txt);
+
+            const toggle = () => {
+              if (this.selectedPointRefs.has(key)) this.selectedPointRefs.delete(key);
+              else this.selectedPointRefs.add(key);
+              this.refresh();
+            };
+            item.onclick = toggle;
+            chk.onchange = (e) => { e.stopPropagation(); toggle(); };
+            ptsList.appendChild(item);
+          };
+
+          if (ent instanceof Line) {
+            addPointItem('start', 'Start');
+            addPointItem('end', 'End');
+          } else if (ent instanceof Circle) {
+            addPointItem('center', 'Center');
+          } else if (ent instanceof Arc) {
+            addPointItem('center', 'Center');
+            addPointItem('start', 'Start');
+            addPointItem('end', 'End');
+          } else if (ent instanceof Polyline) {
+            ent.vertices.forEach((_, idx) => addPointItem(`vertex_${idx}`, `V${idx}`));
+          } else if (ent instanceof Point) {
+            addPointItem('position', 'Pos');
+          }
+        }
+      });
+    }
+    content.appendChild(ptsList);
 
     // 3. Constraints List Section
     const constrTitle = document.createElement('div');
@@ -471,6 +379,8 @@ export class SketchToolWindow {
         else if (c.type === 'midpoint') txt.textContent = `Midpoint: ${shortName(c.pm)} on L(${shortName(c.ps)}-${shortName(c.pe)})`;
         else if (c.type === 'equal_length') txt.textContent = `Equal: ${shortName(c.l1[0])}-${shortName(c.l1[1])} = ${shortName(c.l2[0])}-${shortName(c.l2[1])}`;
         else if (c.type === 'angular') txt.textContent = `Angle: L1 ∠ L2 = ${(c.value * 180 / Math.PI).toFixed(1)}°`;
+        else if (c.type === 'radius') txt.textContent = `R: ${c.entityId.split('_')[0]} = ${c.value}`;
+        else if (c.type === 'diameter') txt.textContent = `Ø: ${c.entityId.split('_')[0]} = ${c.value}`;
         else if (c.type === 'fix') txt.textContent = `Fix: ${shortName(c.p1)}`;
 
         const delBtn = document.createElement('span');
@@ -480,7 +390,7 @@ export class SketchToolWindow {
         delBtn.style.fontWeight = 'bold';
         delBtn.onclick = (e) => {
           e.stopPropagation();
-          
+
           // Ensure constraints array is extensible
           if (!this.app.doc.constraints) {
             this.app.doc.constraints = [];
@@ -884,13 +794,13 @@ export class SketchToolWindow {
     const tangBtn = document.createElement('button');
     tangBtn.className = 'sketch-btn';
     tangBtn.textContent = '◯ Tangent';
-    
+
     const selectedForTangent = Array.from(this.app.selectedEntityIds).map(id => this.app.doc.getEntity(id)).filter(e => !!e);
     const linesCount = activeSegments.length;
     const arcsCount = selectedForTangent.filter(e => e instanceof Circle || e instanceof Arc).length;
 
     const isLineCircle = linesCount === 1 && arcsCount === 1;
-    
+
     // Smooth join check (2 arcs or arc+line sharing a vertex)
     let sharedPoint: DocumentPointRef | null = null;
     let arc1Center: DocumentPointRef | null = null;
@@ -904,7 +814,7 @@ export class SketchToolWindow {
         const tol = 1e-3;
         const pts1 = e1 instanceof Arc ? ['start', 'end'] : [];
         const pts2 = e2 instanceof Arc ? ['start', 'end'] : [];
-        
+
         for (const p1id of pts1) {
           for (const p2id of pts2) {
             const p1 = getPointCoords(this.app.doc, { entityId: e1.id, pointId: p1id });
@@ -924,7 +834,7 @@ export class SketchToolWindow {
     const isSmoothJoin = !!sharedPoint;
     tangBtn.disabled = !isLineCircle && !isSmoothJoin;
     tangBtn.title = isSmoothJoin ? 'Apply Smooth Join (Collinear Centers)' : 'Select exactly 1 Line/Segment and 1 Circle/Arc';
-    
+
     tangBtn.onclick = () => {
       if (isLineCircle) {
         const seg = activeSegments[0];
@@ -973,6 +883,89 @@ export class SketchToolWindow {
       });
     };
 
+    // RADIUS (Interactive)
+    const radBtn = document.createElement('button');
+    radBtn.className = 'sketch-btn';
+    radBtn.textContent = 'ℛ Radius';
+    const singleCircleOrArc = this.app.selectedEntityIds.size === 1 && (() => {
+        const id = Array.from(this.app.selectedEntityIds)[0];
+        const ent = this.app.doc.getEntity(id);
+        return ent instanceof Circle || ent instanceof Arc;
+    })();
+    radBtn.disabled = !singleCircleOrArc;
+    radBtn.title = 'Select exactly 1 Circle or Arc to set its radius';
+    radBtn.onclick = () => {
+        const id = Array.from(this.app.selectedEntityIds)[0];
+        const ent = this.app.doc.getEntity(id) as Circle | Arc;
+        if (!ent) return;
+
+        const currentRad = ent.r;
+        const canvasRect = this.app.viewer.canvas.getBoundingClientRect();
+        const vx = canvasRect.left + canvasRect.width / 2 - 80;
+        const vy = canvasRect.top + canvasRect.height / 2 - 40;
+
+        this.app.dynamicInput.show(
+            vx, vy,
+            ["SET TARGET RADIUS", `Current: ${currentRad.toFixed(3)}`],
+            [], true, [],
+            "Type radius and press Enter",
+            currentRad.toFixed(3)
+        );
+
+        this.app.dynamicInput.onInputSubmitted((text) => {
+            const val = parseFloat(text);
+            if (!isNaN(val) && val > 0) {
+                this.applyNewConstraint({
+                    type: 'radius',
+                    entityId: ent.id,
+                    value: val
+                });
+            } else {
+                NotificationManager.getInstance().show("Invalid radius value", "error");
+            }
+            this.app.dynamicInput.hide();
+        });
+    };
+
+    // DIAMETER (Interactive)
+    const diaBtn = document.createElement('button');
+    diaBtn.className = 'sketch-btn';
+    diaBtn.textContent = '∅ Diameter';
+    diaBtn.disabled = !singleCircleOrArc;
+    diaBtn.title = 'Select exactly 1 Circle or Arc to set its diameter';
+    diaBtn.onclick = () => {
+        const id = Array.from(this.app.selectedEntityIds)[0];
+        const ent = this.app.doc.getEntity(id) as Circle | Arc;
+        if (!ent) return;
+
+        const currentDia = ent.r * 2;
+        const canvasRect = this.app.viewer.canvas.getBoundingClientRect();
+        const vx = canvasRect.left + canvasRect.width / 2 - 80;
+        const vy = canvasRect.top + canvasRect.height / 2 - 40;
+
+        this.app.dynamicInput.show(
+            vx, vy,
+            ["SET TARGET DIAMETER", `Current: ${currentDia.toFixed(3)}`],
+            [], true, [],
+            "Type diameter and press Enter",
+            currentDia.toFixed(3)
+        );
+
+        this.app.dynamicInput.onInputSubmitted((text) => {
+            const val = parseFloat(text);
+            if (!isNaN(val) && val > 0) {
+                this.applyNewConstraint({
+                    type: 'diameter',
+                    entityId: ent.id,
+                    value: val
+                });
+            } else {
+                NotificationManager.getInstance().show("Invalid diameter value", "error");
+            }
+            this.app.dynamicInput.hide();
+        });
+    };
+
     constrGrid.appendChild(fixBtn);
     constrGrid.appendChild(coinBtn);
     constrGrid.appendChild(horizBtn);
@@ -983,6 +976,8 @@ export class SketchToolWindow {
     constrGrid.appendChild(angBtn);
     constrGrid.appendChild(tangBtn);
     constrGrid.appendChild(concBtn);
+    constrGrid.appendChild(radBtn);
+    constrGrid.appendChild(diaBtn);
 
     const selectedPoints = getSelectedPoints();
     const selectedSegments = getSelectedLineSegments();
@@ -1013,9 +1008,6 @@ export class SketchToolWindow {
     symmBtn.title = 'Select exactly 3 vertices (P1, P2, and Midpoint)';
     symmBtn.onclick = () => {
       const pts = getSelectedPoints();
-      // We assume the order of selection for now, or just pick the 3rd as midpoint if possible.
-      // Better: use the one closest to the average of others? 
-      // For now, just take them in order: p1, p2, p3 (mid)
       this.applyNewConstraint({
         type: 'symmetric',
         p1: pts[0],
@@ -1061,7 +1053,7 @@ export class SketchToolWindow {
     const isDuplicate = this.app.doc.constraints.some(existing => {
       if (existing.type !== c.type) return false;
 
-      const arePointRefsEqual = (r1: any, r2: any) => 
+      const arePointRefsEqual = (r1: any, r2: any) =>
         !!(r1 && r2 && r1.entityId === r2.entityId && r1.pointId === r2.pointId);
 
       const arePointListsEqual = (l1: DocumentPointRef[], l2: DocumentPointRef[]) => {
@@ -1101,11 +1093,10 @@ export class SketchToolWindow {
                                (arePointRefsEqual(e.ps, cn.pe) && arePointRefsEqual(e.pe, cn.ps));
         return arePointRefsEqual(e.pm, cn.pm) && endpointsMatch;
       }
-
-      if ('p1' in c && 'p2' in c) {
-        const e = existing as any, cn = c as any;
-        return (arePointRefsEqual(e.p1, cn.p1) && arePointRefsEqual(e.p2, cn.p2)) ||
-               (arePointRefsEqual(e.p1, cn.p2) && arePointRefsEqual(e.p2, cn.p1));
+      
+      if (c.type === 'radius' || c.type === 'diameter') {
+          const e = existing as any, cn = c as any;
+          return e.entityId === cn.entityId;
       }
 
       return false;
@@ -1134,7 +1125,7 @@ export class SketchToolWindow {
     } catch (err) {
       console.error("Constraint solver execution failed:", err);
       NotificationManager.getInstance().show("Conflict: Solver could not resolve constraints", "error");
-      
+
       // Rollback immediately if failed
       this.app.doc.constraints.pop();
       this.app.doc.history.commitTransaction(this.app.doc.constraints);
@@ -1170,7 +1161,7 @@ export class SketchToolWindow {
     this.runDoFAnalysis();
   }
 
-  private clearDoFBadge(): void {
+  public clearDoFBadge(): void {
     if (this.dofBadge) {
       const dot = this.dofBadge.querySelector('.sketch-dof-dot') as HTMLElement;
       const label = this.dofBadge.querySelector('.sketch-dof-label') as HTMLElement;

@@ -89,6 +89,8 @@ export class Polyline extends Entity {
   clone(newId: string): Polyline {
     const copy = new Polyline(newId, this.vertices.map(v => ({ ...v })), this.closed, this.elevation, this.thickness);
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     if (this.center) {
       copy.center = { ...this.center };

@@ -1,4 +1,5 @@
 import { Viewer } from "./render/Viewer"
+import { WebGPUPOC } from "./render/WebGPUPOC"
 import { CommandManager } from "./core/engine/CommandManager"
 import { Document } from "./core/model/Document"
 import { CommandResponse, CommandAction, HasSetEntity } from "./core/commands/types"
@@ -68,7 +69,9 @@ import { PlotHandler } from "./core/engine/handlers/PlotHandler"
 import { DraftingHandler } from "./core/engine/handlers/DraftingHandler"
 import { BlockHandler } from "./core/engine/handlers/BlockHandler"
 import { InquiryHandler } from "./core/engine/handlers/InquiryHandler"
+import { CenterlineHandler } from "./core/engine/handlers/CenterlineHandler"
 import { ImagePlaneHandler } from "./core/engine/handlers/ImagePlaneHandler"
+import { ProfileHandler } from "./core/engine/handlers/ProfileHandler"
 import { ImagePlane } from "./core/model/ImagePlane"
 import { AppContext } from "./core/engine/handlers/types"
 import { DraftingState } from "./core/engine/DraftingState"
@@ -77,6 +80,7 @@ import { GizmoManager } from "./core/engine/GizmoManager"
 import { PersistenceService } from "./core/persistence/PersistenceService"
 import { OpenCascadeService } from "./core/io/OpenCascadeService"
 import { NotificationManager } from "./ui/NotificationManager"
+import { Solid3DReevaluator } from "./core/engine/Solid3DReevaluator"
 
 export class App {
   viewer:Viewer
@@ -102,6 +106,48 @@ export class App {
   private dispatcher: ResultDispatcher;
   public activeGrip: { entityId: string, gripId: string, startPoint: { x: number, y: number } } | null = null;
   public activeCenterGrip: { center: {x: number, y: number}, mode: 'move'|'scale'|'rotate', startMouse: {x: number, y: number}, startScreenMouse: {x: number, y: number}, originalEntities: import('./core/model/Entity').Entity[] } | null = null;
+  public async checkAssociativeRegen(changedEntityId: string) {
+    const solids = this.doc.getAllEntities().filter(e => e instanceof Solid3D) as Solid3D[];
+    const dependents = solids.filter(s => {
+        const params = s.creationParams?.params as any;
+        return params && params.sourceEntityId === changedEntityId;
+    });
+
+    if (dependents.length === 0) return;
+
+    console.log(`[AssociativeRegen] Found ${dependents.length} solids depending on ${changedEntityId}.`);
+
+    for (const solid of dependents) {
+        try {
+            // Trigger the same logic as the Properties Window 'Edit' button
+            // but automatically.
+            const facetres = (this.doc as any).facetres || 5.0;
+            const geom = await Solid3DReevaluator.reevaluate(solid, facetres, this.doc as any);
+            
+            // Update Solid3D with new mesh data
+            solid.positions = Array.from(geom.getAttribute('position').array) as number[];
+            solid.indices = geom.getIndex() ? Array.from(geom.getIndex()!.array) : [];
+            
+            if (geom.userData) {
+                solid.faceMapping = geom.userData.faceMapping;
+                solid.edgeLines = geom.userData.edgeLines;
+                solid.brepSnapshot = geom.userData.brepSnapshot;
+                (solid as any).baseBrepSnapshot = geom.userData.brepSnapshot;
+            }
+
+            solid.updateAbsolutePosition();
+
+            // Refresh in viewer
+            this.viewer.removeObject(solid.id);
+            this.addEntity(solid, false, false);
+            this.viewer.requestRender();
+            
+            console.log(`[AssociativeRegen] Solid ${solid.id} regenerated successfully.`);
+        } catch (e) {
+            console.error(`[AssociativeRegen] Failed to regenerate solid ${solid.id}:`, e);
+        }
+    }
+  }
   public setPropertiesWindow(pw: any) {
     this.propertiesWindow = pw;
   }
@@ -286,8 +332,11 @@ export class App {
     this.dispatcher.registerHandler(new PlotHandler());
     this.dispatcher.registerHandler(new BlockHandler());
     this.dispatcher.registerHandler(new ImagePlaneHandler());
+    this.dispatcher.registerHandler(new ProfileHandler());
     this.dispatcher.registerHandler(new GeneratorHandler());
+
     this.dispatcher.registerHandler(new InquiryHandler());
+    this.dispatcher.registerHandler(new CenterlineHandler());
 
     this.drafting = new DraftingState()
     this.drafting.subscribe(() => {
@@ -485,7 +534,7 @@ export class App {
 
   private isEditCommand(name?: string): boolean {
     if (!name) return false;
-    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand', 'ArrayCommand', 'OffsetCommand', 'BlockCommand', 'JoinCommand', 'LengthenCommand', 'SFilletCommand', 'SChamferCommand', 'DraftCommand'];
+    const editCommands = ['EraseCommand', 'MoveCommand', 'CopyCommand', 'RotateCommand', 'ScaleCommand', 'MirrorCommand', 'TrimCommand', 'ExtendCommand', 'ArrayCommand', 'OffsetCommand', 'BlockCommand', 'JoinCommand', 'LengthenCommand', 'SFilletCommand', 'SChamferCommand', 'DraftCommand', 'CenterCommand'];
     const cmdName = name.endsWith('Command') ? name : name.charAt(0).toUpperCase() + name.slice(1).toLowerCase() + 'Command';
     return editCommands.includes(cmdName);
   }
@@ -505,6 +554,7 @@ export class App {
         ((step === 0 || step === 1) && activeName === 'DimAngularCommand') ||
         (step === 0 && (activeName === 'DimRadiusCommand' || activeName === 'DimDiameterCommand')) ||
         (step === 0 && (activeName === 'ExtrudeCommand' || activeName === 'RevolveCommand' || activeName === 'DraftCommand')) ||
+        ((step === 1 || step === 2) && (activeName === 'RevolveCommand' || activeName === 'ExtrudeCommand')) ||
         (step === 1 && activeName === 'DraftCommand') ||
         ((step === 1 || step === 2) && activeName === 'SweepCommand') ||
         ('operation' in active && (step === 0 || step === 1)) ||
@@ -552,6 +602,10 @@ export class App {
     }
 
     const cmdName = cmd.toUpperCase();
+    if (cmdName === 'WEBGPU_POC') {
+      WebGPUPOC.run(this.viewer.canvas);
+      return "Launching WebGPU POC...";
+    }
     if (cmdName === 'SHADING_ZEBRA') {
       this.viewer.setShadingMode('ZEBRA');
       return "Shading mode: ZEBRA";
@@ -1175,6 +1229,11 @@ export class App {
         return arePointRefsEqual(e.pm, cn.pm) && endpointsMatch;
       }
 
+      if (c.type === 'radius' || c.type === 'diameter') {
+        const e = existing as any, cn = c as any;
+        return e.entityId === cn.entityId;
+      }
+
       // Default fallback for simple p1/p2 constraints (coincident, distance, concentric)
       if ('p1' in c && 'p2' in c) {
         const e = existing as any, cn = c as any;
@@ -1288,13 +1347,40 @@ export class App {
       if (ent instanceof Line) {
         options.push("Horizontal", "Vertical", "Fix", "Cancel");
       } else if (ent instanceof Circle || ent instanceof Arc) {
-        options.push("Fix Center", "Cancel");
+        options.push("Radius", "Center Line", "Fix Center", "Cancel");
       } else {
         options.push("Fix", "Cancel");
       }
 
       this.dynamicMenu.show(screenX, screenY, headers, options);
       this.dynamicMenu.onOptionClicked((option) => {
+        if (option === "Center Line" && (ent instanceof Circle || ent instanceof Arc)) {
+          this.dynamicMenu.hide();
+          this.contextMenuVisible = false;
+          this.execute(`CENTER ${ent.id}`).then(result => {
+            if (typeof result === 'string') {
+              this.printToCommandLine(result);
+            }
+          });
+          return;
+        }
+
+        if (option === "Radius" && (ent instanceof Circle || ent instanceof Arc)) {
+          this.dynamicMenu.hide();
+          const currentRad = ent.r;
+          const rect = this.viewer.canvas.getBoundingClientRect();
+          this.dynamicInput.show(rect.left + rect.width / 2 - 80, rect.top + rect.height / 2 - 40, ["SET TARGET RADIUS", `Current: ${currentRad.toFixed(3)}`], [], true, [], "Type radius and press Enter", currentRad.toFixed(3));
+          this.dynamicInput.onInputSubmitted((text) => {
+            const val = parseFloat(text);
+            if (!isNaN(val) && val > 0) {
+              this.applyDirectConstraint({ type: 'radius', entityId: ent.id, value: val });
+            }
+            this.dynamicInput.hide();
+          });
+          this.contextMenuVisible = false;
+          return;
+        }
+        
         if (option === "Horizontal" && ent instanceof Line) {
           console.log("1. ContextMenu, Horizontal, applyDirectConstraint");
           this.applyDirectConstraint({
@@ -1825,14 +1911,18 @@ export class App {
     }
 
     if (this.activeCenterGrip) {
+      const gripState = this.activeCenterGrip;
+      this.activeCenterGrip = null; // Clear immediately to prevent re-entry crashes
+      this.viewer.setPreview(null);
+
       const worldPt = this.viewer.screenToWorld(screenX, screenY);
       const snapped = this.getSnappedPoint(worldPt.x, worldPt.y);
       const { x, y } = snapped;
       
-      const cx = this.activeCenterGrip.center.x;
-      const cy = this.activeCenterGrip.center.y;
-      const dx = x - this.activeCenterGrip.startMouse.x;
-      const dy = y - this.activeCenterGrip.startMouse.y;
+      const cx = gripState.center.x;
+      const cy = gripState.center.y;
+      const dx = x - gripState.startMouse.x;
+      const dy = y - gripState.startMouse.y;
       
       this.doc.history.startTransaction(this.doc.constraints);
       
@@ -1841,19 +1931,19 @@ export class App {
           beforeStates.set(id, ent.clone(id));
       });
 
-      this.activeCenterGrip.originalEntities.forEach(orig => {
+      gripState.originalEntities.forEach(orig => {
         const entity = this.doc.getEntity(orig.id);
         if (entity) {
-          if (this.activeCenterGrip!.mode === 'move') {
+          if (gripState.mode === 'move') {
             if (entity.move) entity.move(dx, dy);
-          } else if (this.activeCenterGrip!.mode === 'scale') {
-            const dyScreen = this.activeCenterGrip!.startScreenMouse.y - screenY;
+          } else if (gripState.mode === 'scale') {
+            const dyScreen = gripState.startScreenMouse.y - screenY;
             const scaleFactor = Math.max(0.01, 1 + dyScreen * 0.01);
             if (entity.scale) {
               entity.scale(cx, cy, scaleFactor);
             }
-          } else if (this.activeCenterGrip!.mode === 'rotate') {
-            const origAngle = Math.atan2(this.activeCenterGrip!.startMouse.y - cy, this.activeCenterGrip!.startMouse.x - cx);
+          } else if (gripState.mode === 'rotate') {
+            const origAngle = Math.atan2(gripState.startMouse.y - cy, gripState.startMouse.x - cx);
             const newAngle = Math.atan2(y - cy, x - cx);
             if (entity.rotate) {
               entity.rotate(cx, cy, newAngle - origAngle);
@@ -1883,9 +1973,6 @@ export class App {
       
       this.doc.history.commitTransaction(this.doc.constraints);
 
-      this.activeCenterGrip = null;
-      this.viewer.setPreview(null);
-
       this.syncFromDocument();
       
       // Refresh highlights and grips
@@ -1895,6 +1982,11 @@ export class App {
         .filter((e): e is Entity => e !== undefined);
       this.viewer.renderGrips(selectedEntities);
       
+      // TRIGGER ASSOCIATIVE REGEN (Phase 9)
+      gripState.originalEntities.forEach(orig => {
+          this.checkAssociativeRegen(orig.id);
+      });
+
       return "Center grip edit completed.";
     }
 
@@ -1967,6 +2059,7 @@ export class App {
         }
         
         this.syncFromDocument();
+        const changedId = this.activeGrip.entityId;
         this.activeGrip = null;
         this.viewer.setMainGroupVisibility(true);
         this.viewer.setPreview(null);
@@ -1977,7 +2070,10 @@ export class App {
           .map(id => this.doc.getEntity(id))
           .filter((e): e is Entity => e !== undefined);
         this.viewer.renderGrips(selectedEntities);
-        
+
+        // TRIGGER ASSOCIATIVE REGEN (Phase 9)
+        this.checkAssociativeRegen(changedId);
+
         return "Grip edit completed.";
       }
     }
@@ -2099,7 +2195,7 @@ export class App {
     // SFILLET/SCHAMFER Step 0 wants the SOLID object. Step 2+ wants FACES.
     const isSModSubStep = (activeName === 'SFilletCommand' || activeName === 'SChamferCommand') && activeStep >= 2;
 
-    const wantsSubEntity = (activeName === 'ShellCommand' || isDraftSubStep || isSModSubStep) || (this.cmd.active === null && this.selectionMode === 'SURFACE');
+    const wantsSubEntity = (activeName === 'ShellCommand' || activeName === 'ProfileCommand' || isDraftSubStep || isSModSubStep) || (this.cmd.active === null && this.selectionMode === 'SURFACE');
 
     if (subEntity && wantsSubEntity) {      if (subEntity.edgeIndex !== undefined) {
         let p1Str = "?";
@@ -2395,7 +2491,7 @@ export class App {
           const dy = entity.y2 - entity.y1;
           const len = Math.sqrt(dx * dx + dy * dy);
           const pIdx = this.cmd.active && 'points' in this.cmd.active ? (this.cmd.active as { points: unknown[] }).points.length : "";
-          return `${FormatUtils.formatPoint(entity.x2, entity.y2, this.doc.units, "P" + pIdx)}\nLine created. ${FormatUtils.formatDistance(len, this.doc.units)}`;
+          return `${FormatUtils.formatPoint(entity.x2, entity.y2, this.doc.units, "P" + pIdx)}\n<span class="bp6-monospace-text">Line created.</span> <span class="bp6-text-muted">${FormatUtils.formatDistance(len, this.doc.units)}</span>`;
         }
         if (entity instanceof Spline) {
           return `Spline created with ${entity.controlPoints.length} control points.`;
@@ -2403,11 +2499,11 @@ export class App {
 
         if (entity instanceof Polyline) {
           const last = entity.vertices[entity.vertices.length - 1];
-          return `${FormatUtils.formatPoint(last.x, last.y, this.doc.units, "P" + entity.vertices.length)}\nPolyline segment added.`;
+          return `${FormatUtils.formatPoint(last.x, last.y, this.doc.units, "P" + entity.vertices.length)}\n<span class="bp6-monospace-text">Polyline segment added.</span>`;
         }
 
         if (entity.constructor.name === "Solid3D" || entity instanceof Solid3D) {
-          return `3D Solid created.`;
+          return `<span class="bp6-monospace-text">3D Solid created.</span>`;
         }
 
         return entity;
@@ -2428,7 +2524,8 @@ export class App {
         onLayersChange: () => { if (this.layersWindowUpdate) this.layersWindowUpdate(); },
         onEntitiesChange: () => { if (this.objectsWindowUpdate) this.objectsWindowUpdate(); },
         onFilesChange: () => { if (this.filesWindowUpdate) this.filesWindowUpdate(); },
-        onElevationChange: (val) => { this.currentZ = val; }
+        onElevationChange: (val) => { this.currentZ = val; },
+        checkAssociativeRegen: (id) => this.checkAssociativeRegen(id)
       };
 
       const actionResult = await (async () => {
@@ -2438,16 +2535,18 @@ export class App {
           this.doc.history.commitTransaction(this.doc.constraints);
           this.updateDoFVisualization();
 
-          if (typeof res === 'string' && ((result as CommandAction).action === 'fillet' || (result as CommandAction).action === 'chamfer' || (result as CommandAction).action === 'svg_import')) {
+          if (typeof res === 'string') {
               this.printToCommandLine(res);
               const isError = res.toLowerCase().includes("cannot") || 
                               res.toLowerCase().includes("fail") || 
                               res.toLowerCase().includes("only supported") || 
-                              res.toLowerCase().includes("error");
+                              res.toLowerCase().includes("invalid") ||
+                              res.toLowerCase().includes("error") ||
+                              res.toLowerCase().includes("aborted");
               NotificationManager.getInstance().show(res, isError ? "error" : "success");
           }
 
-          if ((result as CommandAction).action === 'svg_import') {
+          if ((result as CommandAction).action === 'svg_import' || (result as CommandAction).action === 'profile') {
             this.terminateActiveCommand();
           }
 
@@ -2503,8 +2602,8 @@ export class App {
     const layerObj = this.doc.layers.getLayer(layer);
     const isVisible = layerObj ? layerObj.isVisible && !layerObj.isFrozen : true;
 
-    const layerColor = layerObj ? layerObj.color : 7;
-    const linetype = layerObj ? layerObj.linetype : "CONTINUOUS";
+    const layerColor = entity.color !== undefined && entity.color !== 256 ? entity.color : (layerObj ? layerObj.color : 7);
+    const linetype = entity.linetype !== undefined && entity.linetype !== 'BYLAYER' ? entity.linetype : (layerObj ? layerObj.linetype : "CONTINUOUS");
 
     if (entity instanceof Line) {
       this.viewer.addLine(entity.x1, entity.y1, entity.x2, entity.y2, entity.id, layer, layerColor, isVisible, linetype, entity.elevation, entity.thickness);

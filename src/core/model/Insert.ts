@@ -126,6 +126,10 @@ export class Insert extends Entity {
   clone(newId: string): Insert {
     const copy = new Insert(newId, this.blockName, this.x, this.y, this.scaleX, this.scaleY, this.rotation, this.z);
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
+    copy.elevation = this.elevation;
+    copy.thickness = this.thickness;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }

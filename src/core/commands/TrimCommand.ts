@@ -17,7 +17,6 @@ export class TrimCommand implements Command {
 
     if (this.step === 0) {
       if (val === "") {
-        if (this.boundaryIds.length === 0) return "No boundaries selected. Select cutting edges:";
         this.step = 1;
         return "Select object to trim:";
       }

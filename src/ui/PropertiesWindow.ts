@@ -28,10 +28,10 @@ export class PropertiesWindow {
   constructor(private toolWindow: ToolWindow, private app: App) {
     this.container = document.createElement('div');
     this.container.className = 'properties-window-inner';
-    this.container.style.padding = '10px';
+    this.container.style.padding = '5px';
     this.container.style.color = 'var(--text-color)';
     this.container.style.fontFamily = 'var(--font-mono)';
-    this.container.style.fontSize = '11px';
+    this.container.style.fontSize = '10px';
     
     this.toolWindow.setContent(this.container);
     this.renderEmpty();
@@ -320,6 +320,19 @@ export class PropertiesWindow {
         });
         actions.appendChild(delBtn);
       }
+
+      // NEW: Edit Profile button for Sketches and Extrudes
+      if (feat.type === "Sketch" || feat.type === "Extrude") {
+        const editBtn = document.createElement('button');
+        editBtn.className = 'feature-node-action-btn';
+        editBtn.textContent = '✎';
+        editBtn.title = 'Cycle Profile Shape (Test UI)';
+        editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.onEditProfile(feat, solid);
+        });
+        actions.appendChild(editBtn);
+      }
       
       header.appendChild(actions);
       
@@ -514,38 +527,122 @@ export class PropertiesWindow {
     return row;
   }
 
+  private async onEditProfile(feat: any, solid: Solid3D) {
+    console.log(`[PropertiesWindow] onEditProfile for feature: ${feat.type}`);
+    const { SketchModel } = await import("../core/sketcher/SketchModel");
+
+    // If sketchData is missing, start with an empty model
+    const model = feat.parameters.sketchData 
+        ? SketchModel.deserialize(feat.parameters.sketchData)
+        : new SketchModel();
+
+    const pts = model.getProfilePoints();
+    const newModel = new SketchModel();
+
+    // Use current solid center to keep the new shape in view
+    // (Circle at 166, 125 -> Square should be around 166, 125)
+    const center = solid.position || { x: 0, y: 0, z: 0 };
+    const ox = center.x - 50;
+    const oy = center.y - 50;
+
+    if (pts.length <= 4 && pts.length > 3) {
+        // Change to Triangle
+        const p1 = newModel.addPoint(ox, oy);
+        const p2 = newModel.addPoint(ox + 100, oy);
+        const p3 = newModel.addPoint(ox + 50, oy + 80);
+        newModel.addLine(p1, p2);
+        newModel.addLine(p2, p3);
+        newModel.addLine(p3, p1);
+        this.app.printToCommandLine("UI Test: Switched profile to TRIANGLE");
+    } else if (pts.length === 3) {
+        // Change to L-Shape (6 points)
+        const p1 = newModel.addPoint(ox, oy);
+        const p2 = newModel.addPoint(ox + 100, oy);
+        const p3 = newModel.addPoint(ox + 100, oy + 40);
+        const p4 = newModel.addPoint(ox + 40, oy + 40);
+        const p5 = newModel.addPoint(ox + 40, oy + 100);
+        const p6 = newModel.addPoint(ox, oy + 100);
+        newModel.addLine(p1, p2);
+        newModel.addLine(p2, p3);
+        newModel.addLine(p3, p4);
+        newModel.addLine(p4, p5);
+        newModel.addLine(p5, p6);
+        newModel.addLine(p6, p1);
+        this.app.printToCommandLine("UI Test: Switched profile to L-SHAPE");
+    } else {
+        // Back to Square
+        const p1 = newModel.addPoint(ox, oy);
+        const p2 = newModel.addPoint(ox + 100, oy);
+        const p3 = newModel.addPoint(ox + 100, oy + 100);
+        const p4 = newModel.addPoint(ox, oy + 100);
+        newModel.addLine(p1, p2);
+        newModel.addLine(p2, p3);
+        newModel.addLine(p3, p4);
+        newModel.addLine(p4, p1);
+        this.app.printToCommandLine("UI Test: Switched profile to SQUARE");
+    }
+
+    feat.parameters.sketchData = newModel.serialize();
+
+    // If it's a legacy Extrude feature (no linked sketchId), 
+    // update the points property directly so it's consumed by the reevaluator
+    if (feat.type === "Extrude" && !feat.parameters.sketchId) {
+        feat.parameters.points = newModel.getProfilePoints();
+    }
+
+    this.triggerReevaluate(solid);
+  }
   private async triggerReevaluate(solid: Solid3D) {
-    const before = solid.clone(solid.id) as Solid3D;
-    const tempId = solid.id;
-    const occ = OpenCascadeService.getInstance();
-    const deflection = 0.1 / ((this.app.doc as any).facetres || 5.0);
+    console.log(`[PropertiesWindow] Triggering re-evaluation for ${solid.id}`);
     
+    // SYNC: Before re-evaluating, ensure the base feature parameters 
+    // are pushed back to the main creationParams if they are linked.
+    if (solid.creationParams && solid.features.length > 0) {
+        const baseFeat = solid.features[0];
+        // Ensure we are syncing correctly for both Extrude and Sketch types
+        if (baseFeat.type === "Extrude" || (baseFeat.type === "Sketch" && solid.creationParams.type === "extrude")) {
+            console.log(`[PropertiesWindow] Syncing profile points to creationParams`);
+            solid.creationParams.params.points = baseFeat.parameters.points || [];
+        }
+    }
+
     try {
-      const facetres = (this.app.doc as any).facetres || 5.0;
-      const geom = await Solid3DReevaluator.reevaluate(solid, facetres, this.app.doc);
-      
-      solid.positions = Array.from(geom.getAttribute('position').array) as number[];
-      solid.indices = geom.getIndex() ? Array.from(geom.getIndex()!.array) : [];
-      if (geom.userData) {
-        solid.faceMapping = geom.userData.faceMapping;
-        solid.edgeLines = geom.userData.edgeLines;
-        solid.brepSnapshot = geom.userData.brepSnapshot;
-      }
-      solid.updateAbsolutePosition();
-      
-      this.app.doc.history.startTransaction();
-      this.app.doc.recordTransform(before, solid);
-      this.app.doc.history.commitTransaction();
-      
-      this.app.addEntity(solid, false, false);
-      this.app.syncFromDocument();
-      
-      this.renderSingle(solid);
-      
-    } catch (err: any) {
-      console.error("Parametric rebuild failed:", err);
-      this.app.syncFromDocument();
-      this.app.printToCommandLine(`Error: Parametric rebuild failed - ${err.message || err.toString()}`);
+        const facetres = (this.app.doc as any).facetres || 5.0;
+        
+        // 1. Perform the heavy B-Rep regeneration
+        const geom = await Solid3DReevaluator.reevaluate(solid, facetres, this.app.doc as any);
+        
+        // 2. Update Solid3D with new mesh data
+        solid.positions = Array.from(geom.getAttribute('position').array) as number[];
+        solid.indices = geom.getIndex() ? Array.from(geom.getIndex()!.array) : [];
+        
+        if (geom.userData) {
+          solid.faceMapping = geom.userData.faceMapping;
+          solid.edgeLines = geom.userData.edgeLines;
+          // IMPORTANT: Update the BRep snapshot so the new shape is what gets saved/loaded
+          solid.brepSnapshot = geom.userData.brepSnapshot;
+          // Also update baseBrepSnapshot if this is intended to be the new base
+          (solid as any).baseBrepSnapshot = geom.userData.brepSnapshot;
+          console.log(`[PropertiesWindow] Updated BRep snapshots (${solid.brepSnapshot?.length} bytes)`);
+        }
+
+        solid.updateAbsolutePosition();
+
+        // 3. FORCE VIEWER REFRESH
+        // We must remove and re-add to ensure Three.js builds a new mesh
+        this.app.viewer.removeObject(solid.id);
+        this.app.addEntity(solid, false, false);
+        
+        // 4. Request Render
+        this.app.viewer.requestRender();
+        console.log(`[PropertiesWindow] Solid ${solid.id} updated and viewer refreshed.`);
+        
+        // 5. Re-render the UI tab to show updated parameters if any
+        this.renderSingle(solid);
+        
+    } catch (e) {
+        console.error("[PropertiesWindow] Re-evaluation failed:", e);
+        this.app.printToCommandLine(`Error during regeneration: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

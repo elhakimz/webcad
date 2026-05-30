@@ -4,6 +4,7 @@ import { Line } from "../../../model/Line";
 import { Polyline } from "../../../model/Polyline";
 import { Arc as ArcEntity } from "../../../model/Arc";
 import * as MathUtils from "../../MathUtils";
+import { JoinUtility } from "./JoinUtility";
 
 interface SegmentInfo {
   p1: MathUtils.Point;
@@ -18,7 +19,7 @@ export class FilletHandler implements ActionHandler {
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, viewer: _viewer, addEntity } = context;
+    const { doc, viewer, addEntity } = context;
 
     if (action.action === 'fillet' && action.id1 && action.id2 && action.radius !== undefined && action.pick1 && action.pick2) {
       const e1 = doc.getEntity(action.id1);
@@ -61,24 +62,14 @@ export class FilletHandler implements ActionHandler {
                   const idx2 = s2.polyIndex;
                   const n = poly.vertices.length;
 
-                  // Check if adjacent
                   let cornerIdx = -1;
                   if ((idx1 + 1) % n === idx2) cornerIdx = idx2;
                   else if ((idx2 + 1) % n === idx1) cornerIdx = idx1;
 
                   if (cornerIdx !== -1) {
-                    // Replace corner with tp1 -> arc -> tp2
                     const tp1 = res.tp1;
                     const tp2 = res.tp2;
-                    
                     const newVertices = [...poly.vertices];
-                    // Bulge logic: an arc from p1 to p2 has bulge B.
-                    // The bulge is stored on the START vertex of the segment.
-                    // If corner is idx2: segment s1 ends at idx2, s2 starts at idx2.
-                    // We replace v_idx2 with {tp1, bulge} and {tp2, 0}.
-                    
-                    // To calculate bulge for res arc:
-                    // arc parameters are res.startAngle, res.endAngle, res.ccw
                     let angleSpan = res.endAngle - res.startAngle;
                     if (res.ccw && angleSpan < 0) angleSpan += 2 * Math.PI;
                     if (!res.ccw && angleSpan > 0) angleSpan -= 2 * Math.PI;
@@ -90,14 +81,16 @@ export class FilletHandler implements ActionHandler {
                       newVertices.splice(idx1, 1, { ...poly.vertices[idx1], x: tp2.x, y: tp2.y, bulge: -bulge }, { ...poly.vertices[idx1], x: tp1.x, y: tp1.y, bulge: 0 });
                     }
                     poly.vertices = newVertices;
+                    doc.history.startTransaction(doc.constraints);
                     doc.recordTransform(before1, poly);
                     addEntity(poly, false, false);
+                    doc.history.commitTransaction(doc.constraints);
                     this.cleanup(context);
                     return "Polyline corner filleted.";
                   }
                 }
 
-                // General case
+                // General case: Try to merge into a single Polyline if separate
                 const updateEntity = (s: SegmentInfo, tp: MathUtils.Point, intersect: MathUtils.Point, pick: MathUtils.Point) => {
                   const ent = s.entity;
                   if (ent instanceof Line) {
@@ -115,25 +108,67 @@ export class FilletHandler implements ActionHandler {
                   }
                 };
 
-                updateEntity(s1, res.tp1, inter, action.pick1!);
-                updateEntity(s2, res.tp2, inter, action.pick2!);
+                // Modify local clones in-memory for chaining
+                const e1Mod = e1.clone(e1.id);
+                const e2Mod = e2.clone(e2.id);
+                const s1Mod = getSegment(e1Mod, action.pick1!)!;
+                const s2Mod = getSegment(e2Mod, action.pick2!)!;
+                
+                updateEntity(s1Mod, res.tp1, inter, action.pick1!);
+                updateEntity(s2Mod, res.tp2, inter, action.pick2!);
 
-                doc.recordTransform(before1, e1);
-                addEntity(e1, false, false);
-                if (e1 !== e2) {
-                  doc.recordTransform(before2, e2);
-                  addEntity(e2, false, false);
+                const arc = new ArcEntity("temp_arc", res.cx, res.cy, res.radius, res.startAngle, res.endAngle, res.ccw);
+                
+                const chains = JoinUtility.buildChains([e1Mod, e2Mod, arc]);
+                const merged = JoinUtility.mergeChains(chains);
+
+                if (merged.length === 1) {
+                    const chain = merged[0];
+                    doc.history.startTransaction(doc.constraints);
+                    
+                    doc.recordRemove(e1);
+                    doc.removeEntity(e1.id);
+                    viewer.removeObject(e1.id);
+                    if (e1 !== e2) {
+                        doc.recordRemove(e2);
+                        doc.removeEntity(e2.id);
+                        viewer.removeObject(e2.id);
+                    }
+
+                    const polyId = doc.getNextId("PL");
+                    const poly = new Polyline(polyId, chain.vertices, false);
+                    poly.layer = e1.layer;
+                    poly.color = e1.color;
+                    
+                    doc.recordAdd(poly);
+                    addEntity(poly, false, false);
+                    
+                    doc.history.commitTransaction(doc.constraints);
+                    this.cleanup(context);
+                    return "Entities filleted and joined into polyline.";
+                } else {
+                    // Fallback to separate entities if joining failed
+                    doc.history.startTransaction(doc.constraints);
+                    updateEntity(s1, res.tp1, inter, action.pick1!);
+                    updateEntity(s2, res.tp2, inter, action.pick2!);
+                    
+                    doc.recordTransform(before1, e1);
+                    addEntity(e1, false, false);
+                    if (e1 !== e2) {
+                        doc.recordTransform(before2, e2);
+                        addEntity(e2, false, false);
+                    }
+                    if (action.radius! > 0) {
+                        const arcId = doc.getNextId("A");
+                        const arcFinal = new ArcEntity(arcId, res.cx, res.cy, res.radius, res.startAngle, res.endAngle, res.ccw);
+                        arcFinal.layer = (e1 as any).layer;
+                        doc.recordAdd(arcFinal);
+                        addEntity(arcFinal, true, false);
+                    }
+                    doc.history.commitTransaction(doc.constraints);
+                    this.cleanup(context);
+                    return "Fillet created (entities separate).";
                 }
-
-                if (action.radius! > 0) {
-                    const arcId = doc.getNextId("A");
-                    const arc = new ArcEntity(arcId, res.cx, res.cy, res.radius, res.startAngle, res.endAngle, res.ccw);
-                    arc.layer = (e1 as any).layer;
-                    addEntity(arc, true, false);
-                }
-
-                this.cleanup(context);
-                return "Fillet created.";
             }
         }
       }

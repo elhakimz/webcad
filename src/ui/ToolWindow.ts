@@ -15,7 +15,7 @@ export class ToolWindow {
     
     this.element.innerHTML = `
       <div class="tool-window-header">
-        <span class="tool-window-title">${title}</span>
+        <h6 class="tool-window-title bp6-heading" style="margin: 0;">${title}</h6>
         <div class="tool-window-controls">
           <span class="control-btn close-btn" title="Close">✕</span>
         </div>

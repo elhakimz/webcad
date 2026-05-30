@@ -79,6 +79,8 @@ export class Ellipse extends Entity {
   clone(newId: string): Ellipse {
     const copy = new Ellipse(newId, this.cx, this.cy, this.majorX, this.majorY, this.ratio, this.startAngle, this.endAngle, this.ccw, this.elevation, this.thickness);
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }

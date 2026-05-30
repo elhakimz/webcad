@@ -177,8 +177,8 @@ export class OpenCascadeService {
    * Creates a extruded shape from points.
    * Returns a Promise that resolves to THREE.BufferGeometry.
    */
-  async createExtrude(points: {x: number, y: number, z: number}[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<THREE.BufferGeometry> {
-    const data = await this.client.createExtrude(points, height, thickness, deflection, isClosed, entityId);
+  async createExtrude(points: any[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string, vector?: number[]): Promise<THREE.BufferGeometry> {
+    const data = await this.client.createExtrude(points, height, thickness, deflection, isClosed, entityId, vector);
     return this.buildGeometry(data);
   }
 
@@ -197,7 +197,7 @@ export class OpenCascadeService {
    * Creates a revolved shape from points.
    * Returns a Promise that resolves to THREE.BufferGeometry.
    */
-  async createRevolve(points: {x: number, y: number, z: number}[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<THREE.BufferGeometry> {
+  async createRevolve(points: any[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<THREE.BufferGeometry> {
     const data = await this.client.createRevolve(points, axisPoint, axisDir, angle, thickness, deflection, isClosed, entityId);
     return this.buildGeometry(data);
   }
@@ -277,6 +277,15 @@ export class OpenCascadeService {
   async draftSolidFaces(entityId: string, faceIndices: number[], neutralFaceIndex: number, angleRad: number, deflection: number = 0.1): Promise<THREE.BufferGeometry> {
     const data = await this.client.draftSolidFaces(entityId, faceIndices, neutralFaceIndex, angleRad, deflection);
     return this.buildGeometry(data);
+  }
+
+  async checkValidity(entityId: string): Promise<{ isValid: boolean, faceCount: number, errorMsg: string }> {
+    return this.client.checkValidity(entityId);
+  }
+
+  async extractFaceProfile(entityId: string, faceIndex: number, deflection: number = 0.1): Promise<{ x: number, y: number, bulge: number }[][]> {
+    const data = await this.client.extractFaceProfile(entityId, faceIndex, deflection);
+    return data.loops;
   }
 
   async rehydrate(doc: any): Promise<void> {

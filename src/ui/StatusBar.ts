@@ -31,11 +31,11 @@ export class StatusBar {
 
   updateLayer(layer: Layer) {
     const status = layer.isVisible ? "ON" : "OFF";
-    this.layerEl.textContent = `Layer ${layer.name} [${status}] C:${layer.color} L:${layer.linetype}`;
+    this.layerEl.innerHTML = `<span class="bp6-ui-text bp6-text-muted">Layer:</span> <span class="bp6-monospace-text">${layer.name}</span> <span class="bp6-text-muted">[${status}] C:${layer.color} L:${layer.linetype}</span>`;
   }
 
   updateCoordinates(x: number, y: number) {
-    this.coordsEl.textContent = `${x.toFixed(4)}, ${y.toFixed(4)}`;
+    this.coordsEl.innerHTML = `<span class="bp6-monospace-text">${x.toFixed(4)}, ${y.toFixed(4)}</span>`;
   }
 
   updateDraftingStatus(status: DraftingStatus) {

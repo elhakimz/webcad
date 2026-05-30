@@ -24,6 +24,7 @@ vi.mock('../../src/core/io/OpenCascadeService', () => {
         createTorus: vi.fn(),
         createBoolean: vi.fn(),
         importBRep: vi.fn().mockResolvedValue({}),
+        checkValidity: vi.fn().mockResolvedValue({ isValid: true, faceCount: 1 })
       })
     }
   };

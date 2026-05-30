@@ -84,6 +84,14 @@ export default defineConfig({
     fileStoragePlugin()
   ],
   assetsInclude: ["**/*.wasm"],
+  build: {
+    target: 'esnext'
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      target: 'esnext'
+    }
+  },
   server: {
     port: 5173,
     headers: {

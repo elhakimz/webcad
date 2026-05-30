@@ -63,6 +63,10 @@ export class Trace extends Entity {
   clone(newId: string): Trace {
     const copy = new Trace(newId, this.x1, this.y1, this.x2, this.y2, this.width);
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
+    copy.elevation = this.elevation;
+    copy.thickness = this.thickness;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }

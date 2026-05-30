@@ -51,6 +51,8 @@ export class Circle extends Entity {
   clone(newId: string): Circle {
     const copy = new Circle(newId, this.cx, this.cy, this.r, this.elevation, this.thickness);
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }

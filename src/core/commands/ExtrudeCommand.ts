@@ -7,7 +7,7 @@ import {Spline} from "../model/Spline"
 import {Solid3D} from "../model/Solid3D"
 import {Line} from "../model/Line"
 import {OpenCascadeService} from "../io/OpenCascadeService";
-import {bulgeToArc} from "../engine/MathUtils";
+import {ProfileUtility} from "../engine/ProfileUtility";
 import {FormatUtils} from "../engine/FormatUtils";
 import * as THREE from "three";
 
@@ -130,84 +130,18 @@ export class ExtrudeCommand implements Command {
     return false; // Circle is always closed
   }
 
-  private getProfilePoints(): { points: { x: number; y: number; z: number }[]; isClosed: boolean } {
-    if (!this.selectedEntity) return { points: [], isClosed: false };
-    
-    let points: {x: number, y: number, z: number}[] = [];
-    let isClosed = false;
-    const elevation = this.selectedEntity.elevation || 0;
-    
-    if (this.selectedEntity instanceof Polyline) {
-      points = [];
-      const count = this.selectedEntity.vertices.length;
-      const limit = this.selectedEntity.closed ? count : count - 1;
-      
-      for (let i = 0; i < limit; i++) {
-        const v1 = this.selectedEntity.vertices[i];
-        const v2 = this.selectedEntity.vertices[(i + 1) % count];
-        
-        if (v1.bulge && Math.abs(v1.bulge) >= 1e-6) {
-          const arcParams = bulgeToArc(v1, v2, v1.bulge);
-          if (arcParams) {
-            const startAngle = arcParams.startAngle;
-            const endAngle = arcParams.endAngle;
-            let sweep = endAngle - startAngle;
-            if (arcParams.ccw) {
-              if (sweep < 0) sweep += 2 * Math.PI;
-            } else {
-              if (sweep > 0) sweep -= 2 * Math.PI;
-            }
-            const segments = 16;
-            for (let j = 0; j < segments; j++) {
-              const angle = startAngle + (j / segments) * sweep;
-              points.push({
-                x: arcParams.cx + arcParams.r * Math.cos(angle),
-                y: arcParams.cy + arcParams.r * Math.sin(angle),
-                z: elevation
-              });
-            }
-          } else {
-            points.push({ x: v1.x, y: v1.y, z: elevation });
-          }
-        } else {
-          points.push({ x: v1.x, y: v1.y, z: elevation });
-        }
-      }
-      
-      if (!this.selectedEntity.closed && count > 0) {
-        const lastV = this.selectedEntity.vertices[count - 1];
-        points.push({ x: lastV.x, y: lastV.y, z: elevation });
-      }
-      
-      isClosed = this.selectedEntity.closed;
-    } else if (this.selectedEntity instanceof Circle) {
-      const segments = 32;
-      for (let i = 0; i < segments; i++) {
-        const angle = (i / segments) * 2 * Math.PI;
-        points.push({
-          x: this.selectedEntity.cx + this.selectedEntity.r * Math.cos(angle),
-          y: this.selectedEntity.cy + this.selectedEntity.r * Math.sin(angle),
-          z: elevation
-        });
-      }
-      isClosed = true;
-    } else if (this.selectedEntity instanceof Spline) {
-      points = this.selectedEntity.sampledPoints.map(v => ({ x: v.x, y: v.y, z: elevation }));
-      isClosed = this.selectedEntity.isClosed;
-    }
-    
-    return { points, isClosed };
-  }
-
   private executeExtrude(id: string, doc?: IDocument): Promise<CommandResponse> {
     if (!this.selectedEntity) return Promise.resolve("No profile selected.");
     
-    const { points, isClosed } = this.getProfilePoints();
+    const { points, isClosed } = ProfileUtility.getProfilePoints(this.selectedEntity);
     if (points.length === 0) return Promise.resolve("No profile points sampled.");
     
     const facetres = doc ? doc.facetres : 5.0;
     const deflection = 0.1 / facetres;
     
+    // Generate initial hash
+    const hash = ProfileUtility.getGeometryHash(this.selectedEntity);
+
     return this.occService.createExtrude(points, this.height, this.thickness, deflection, isClosed, id).then((geometry: THREE.BufferGeometry) => {
       const positions = Array.from(geometry.getAttribute('position').array) as number[];
       const indices = Array.from(geometry.getIndex()?.array || []) as number[];
@@ -216,7 +150,14 @@ export class ExtrudeCommand implements Command {
       solid.brepSnapshot = geometry.userData?.brepSnapshot;
       solid.creationParams = {
         type: 'extrude',
-        params: { points, height: this.height, thickness: this.thickness, isClosed }
+        params: { 
+          points, 
+          height: this.height, 
+          thickness: this.thickness, 
+          isClosed,
+          sourceEntityId: this.selectedEntity?.id,
+          sourceSnapshotHash: hash
+        }
       };
       if (this.selectedEntity) {
         solid.layer = this.selectedEntity.layer;
@@ -240,7 +181,7 @@ export class ExtrudeCommand implements Command {
   getPreview(x: number, y: number, _units: UnitsConfig, _doc?: IDocument): PreviewObject | null {
     if (this.step === 1 && this.selectedEntity && this.basePt) {
       const h = y - this.basePt.y;
-      const { points, isClosed } = this.getProfilePoints();
+      const { points, isClosed } = ProfileUtility.getProfilePoints(this.selectedEntity);
       if (points.length === 0) return null;
       
       const entities: Entity[] = [];

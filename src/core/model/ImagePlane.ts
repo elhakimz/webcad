@@ -136,6 +136,8 @@ export class ImagePlane extends Entity {
       this.thickness
     );
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }

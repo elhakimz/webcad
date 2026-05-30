@@ -289,6 +289,8 @@ export class MText extends Entity {
   clone(newId: string): MText {
     const copy = new MText(newId, { ...this.insertionPoint }, this.width, this.height, this.contents);
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
     copy.textHeight = this.textHeight;
     copy.lineSpacing = this.lineSpacing;
     copy.textAlign = this.textAlign;

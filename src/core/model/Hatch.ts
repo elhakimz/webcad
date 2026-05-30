@@ -92,6 +92,9 @@ export class Hatch extends Entity {
       this.color
     );
     copy.layer = this.layer;
+    copy.linetype = this.linetype;
+    copy.elevation = this.elevation;
+    copy.thickness = this.thickness;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }

@@ -15,6 +15,7 @@ import { PanCommand } from "../commands/PanCommand"
 import { Test3DCommand } from "../commands/Test3DCommand"
 import { ArcCommand } from "../commands/ArcCommand"
 import { PointCommand } from "../commands/PointCommand"
+import { CenterCommand } from "../commands/CenterCommand"
 import { PolylineCommand } from "../commands/PolylineCommand"
 import { PolygonCommand } from "../commands/PolygonCommand"
 import { RectangCommand } from "../commands/RectangCommand"
@@ -71,6 +72,7 @@ import { OsnapCommand } from "../commands/OsnapCommand"
 import { OtrackCommand } from "../commands/OtrackCommand"
 import { SvgImportCommand } from "../commands/SvgImportCommand"
 import { PlaneCommand } from "../commands/PlaneCommand"
+import { ProfileCommand } from "../commands/ProfileCommand"
 import { ArrayCommand } from "../commands/ArrayCommand"
 import { OffsetCommand } from "../commands/OffsetCommand"
 import { TrimCommand } from "../commands/TrimCommand"
@@ -151,6 +153,16 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["TEST3D", () => new Test3DCommand()],
   ["ARC", () => new ArcCommand()],
   ["POINT", () => new PointCommand()],
+  ["CENTER", (selection, units, entities, doc) => {
+    if (selection && selection.length > 0 && doc) {
+      const cmd = new CenterCommand();
+      const res = cmd.onInput(selection[0], `TMP_${Date.now()}`, units!, undefined, doc);
+      if (res && typeof res === 'object' && 'action' in res) {
+        return res;
+      }
+    }
+    return new CenterCommand();
+  }],
   ["PLINE", () => new PolylineCommand()],
   ["POLYGON", () => new PolygonCommand()],
   ["PG", () => new PolygonCommand()],
@@ -185,6 +197,7 @@ const commandRegistry = new Map<string, CommandFactory>([
   ["OTRACK", () => new OtrackCommand()],
   ["SVGIMPORT", () => new SvgImportCommand()],
   ["PLANE", () => new PlaneCommand()],
+  ["PROFILE", () => new ProfileCommand()],
   ["ARRAY", (selection) => new ArrayCommand(selection)],
 
   ["OFFSET", () => new OffsetCommand()],
@@ -323,6 +336,7 @@ export class CommandManager {
       'SolidCommand': 'SD',
       'TraceCommand': 'TR',
       'HatchCommand': 'H',
+      'BooleanCommand': 'CSG',
       'BoxCommand': 'S3D',
       'PolyhedronCommand': 'S3D',
       'HullCommand': 'S3D',

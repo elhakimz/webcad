@@ -21,6 +21,17 @@ export class TrimHandler implements ActionHandler {
         const originalTarget = doc.getEntity(action.id);
         if (!originalTarget) return undefined;
         
+        // 1. Identify explicit vs implicit mode
+        const explicitlySelected = action.boundaryIds.length > 0;
+        let boundaries: Entity[] = [];
+        if (explicitlySelected) {
+            boundaries = action.boundaryIds.map(bid => doc.getEntity(bid)).filter(Boolean) as Entity[];
+        } else {
+            // Implicit mode: all other entities are boundaries
+            boundaries = doc.getAllEntities().filter(e => e.id !== originalTarget.id);
+        }
+
+        // 2. Explode polyline target into segments if necessary
         const targets: Entity[] = [];
         if (originalTarget instanceof Polyline) {
             for (let i = 0; i < originalTarget.vertices.length - (originalTarget.closed ? 0 : 1); i++) {
@@ -43,9 +54,9 @@ export class TrimHandler implements ActionHandler {
         }
 
         let trimmedAnything = false;
-        const boundaries = action.boundaryIds.map(bid => doc.getEntity(bid)).filter(Boolean) as Entity[];
         
         for (const t of targets) {
+            // If target was a polyline, only process the segment that was actually picked
             if (originalTarget instanceof Polyline) {
                 let dist = Infinity;
                 if (t instanceof Line) dist = MathUtils.distancePointToLineSegment(action.pickPt.x, action.pickPt.y, t.x1, t.y1, t.x2, t.y2);
@@ -53,6 +64,7 @@ export class TrimHandler implements ActionHandler {
                 if (dist > 10 / viewer.camera.zoom) continue; 
             }
 
+            // 3. Find intersections with boundaries
             const intersections = [];
             for (const b of boundaries) {
                 intersections.push(...MathUtils.getEntityEntityIntersections(t, b));
@@ -60,7 +72,9 @@ export class TrimHandler implements ActionHandler {
 
             const uniqueIntersections: Point[] = [];
             intersections.forEach(p => {
-                if (!uniqueIntersections.some(up => MathUtils.distancePointToPoint(p.x, p.y, up.x, up.y) < 1e-4)) uniqueIntersections.push(p);
+                if (!uniqueIntersections.some(up => MathUtils.distancePointToPoint(p.x, p.y, up.x, up.y) < 1e-4)) {
+                    uniqueIntersections.push(p);
+                }
             });
 
             if (uniqueIntersections.length > 0) {
@@ -76,11 +90,23 @@ export class TrimHandler implements ActionHandler {
                     }
 
                     if (removeIdx !== -1) {
+                        doc.history.startTransaction(doc.constraints);
+                        
+                        // Record removal of the original entity
+                        doc.recordRemove(originalTarget);
                         doc.removeEntity(originalTarget.id);
                         viewer.removeObject(originalTarget.id);
+                        
+                        // If it was a polyline, add back all other segments
                         if (originalTarget instanceof Polyline) {
-                            targets.forEach(seg => { if (seg !== t) addEntity(seg, true, false); });
+                            targets.forEach(seg => { 
+                                if (seg !== t) {
+                                    addEntity(seg, true, false); 
+                                }
+                            });
                         }
+                        
+                        // Add the split pieces of the trimmed segment
                         for (let i = 0; i < pts.length - 1; i++) {
                             if (i === removeIdx) continue;
                             const newLine = new Line(doc.getNextId("L"), pts[i].x, pts[i].y, pts[i+1].x, pts[i+1].y);
@@ -88,38 +114,89 @@ export class TrimHandler implements ActionHandler {
                             newLine.properties = JSON.parse(JSON.stringify(t.properties));
                             addEntity(newLine, true, false);
                         }
+                        
+                        doc.history.commitTransaction(doc.constraints);
                         trimmedAnything = true;
                     }
                 } else if (t instanceof ArcEntity || t instanceof CircleEntity) {
-                    const cx = (t as ArcEntity).cx || (t as CircleEntity).cx;
-                    const cy = (t as ArcEntity).cy || (t as CircleEntity).cy;
-                    const r = (t as ArcEntity).r || (t as CircleEntity).r;
+                    const cx = (t as any).cx;
+                    const cy = (t as any).cy;
+                    const r = (t as any).r;
                     const ccw = (t instanceof ArcEntity) ? t.ccw : true;
                     const normalize = (a: number) => { while (a < 0) a += Math.PI * 2; while (a >= Math.PI * 2) a -= Math.PI * 2; return a; };
-                    const s = (t instanceof ArcEntity) ? normalize(t.startAngle) : normalize(Math.atan2(uniqueIntersections[0].y - cy, uniqueIntersections[0].x - cx));
-                    const e = (t instanceof ArcEntity) ? normalize(t.endAngle) : s;
+                    
+                    let s: number;
+                    let e: number;
+                    if (t instanceof ArcEntity) {
+                        s = normalize(t.startAngle);
+                        e = normalize(t.endAngle);
+                    } else {
+                        s = normalize(Math.atan2(uniqueIntersections[0].y - cy, uniqueIntersections[0].x - cx));
+                        e = s;
+                    }
+
                     const intersectionAngles = uniqueIntersections.map(p => normalize(Math.atan2(p.y - cy, p.x - cx)));
-                    const validIntersections = (t instanceof CircleEntity) ? intersectionAngles : intersectionAngles.filter(a => ccw ? (s <= e ? (a > s + 1e-4 && a < e - 1e-4) : (a > s + 1e-4 || a < e - 1e-4)) : (e <= s ? (a > e + 1e-4 && a < s - 1e-4) : (a > e + 1e-4 || a < s - 1e-4)));
+                    const validIntersections = (t instanceof CircleEntity) ? intersectionAngles : intersectionAngles.filter(a => {
+                        if (ccw) {
+                            return s <= e ? (a > s + 1e-4 && a < e - 1e-4) : (a > s + 1e-4 || a < e - 1e-4);
+                        } else {
+                            return e <= s ? (a > e + 1e-4 && a < s - 1e-4) : (a > e + 1e-4 || a < s - 1e-4);
+                        }
+                    });
+
                     const allAngles = [s, ...validIntersections];
-                    if (t instanceof ArcEntity) allAngles.push(e);
-                    else { allAngles.sort((a, b) => a - b); allAngles.push(allAngles[0]); }
-                    allAngles.sort((a, b) => { let da, db; if (ccw) { da = a - s; if (da < 0) da += Math.PI * 2; db = b - s; if (db < 0) db += Math.PI * 2; } else { da = s - a; if (da < 0) da += Math.PI * 2; db = s - b; if (db < 0) db += Math.PI * 2; } return da - db; });
+                    if (t instanceof ArcEntity) {
+                        allAngles.push(e);
+                    } else {
+                        allAngles.sort((a, b) => a - b);
+                        allAngles.push(allAngles[0]);
+                    }
+
+                    allAngles.sort((a, b) => {
+                        let da, db;
+                        if (ccw) {
+                            da = a - s; if (da < 0) da += Math.PI * 2;
+                            db = b - s; if (db < 0) db += Math.PI * 2;
+                        } else {
+                            da = s - a; if (da < 0) da += Math.PI * 2;
+                            db = s - b; if (db < 0) db += Math.PI * 2;
+                        }
+                        return da - db;
+                    });
+
                     const segments = [];
-                    for (let i = 0; i < allAngles.length - 1; i++) segments.push({ s: allAngles[i], e: allAngles[i+1] });
+                    for (let i = 0; i < allAngles.length - 1; i++) {
+                        segments.push({ s: allAngles[i], e: allAngles[i+1] });
+                    }
+
                     let removeIdx = -1, minDist = Infinity;
                     for (let i = 0; i < segments.length; i++) {
-                        const seg = segments[i]; let diff = seg.e - seg.s;
-                        if (ccw && diff < 0) diff += Math.PI * 2; if (!ccw && diff > 0) diff -= Math.PI * 2;
+                        const seg = segments[i];
+                        let diff = seg.e - seg.s;
+                        if (ccw && diff < 0) diff += Math.PI * 2;
+                        if (!ccw && diff > 0) diff -= Math.PI * 2;
                         const midAngle = normalize(seg.s + diff / 2);
-                        const d = Math.sqrt((action.pickPt.x - (cx + r * Math.cos(midAngle)))**2 + (action.pickPt.y - (cy + r * Math.sin(midAngle)))**2);
+                        const mx = cx + r * Math.cos(midAngle);
+                        const my = cy + r * Math.sin(midAngle);
+                        const d = Math.sqrt((action.pickPt.x - mx)**2 + (action.pickPt.y - my)**2);
                         if (d < minDist) { minDist = d; removeIdx = i; }
                     }
+
                     if (removeIdx !== -1) {
+                        doc.history.startTransaction(doc.constraints);
+                        
+                        doc.recordRemove(originalTarget);
                         doc.removeEntity(originalTarget.id);
                         viewer.removeObject(originalTarget.id);
+                        
                         if (originalTarget instanceof Polyline) {
-                            targets.forEach(seg => { if (seg !== t) addEntity(seg, true, false); });
+                            targets.forEach(seg => { 
+                                if (seg !== t) {
+                                    addEntity(seg, true, false); 
+                                }
+                            });
                         }
+                        
                         for (let i = 0; i < segments.length; i++) {
                             if (i === removeIdx) continue;
                             const newArc = new ArcEntity(doc.getNextId("A"), cx, cy, r, segments[i].s, segments[i].e, ccw);
@@ -127,6 +204,8 @@ export class TrimHandler implements ActionHandler {
                             newArc.properties = JSON.parse(JSON.stringify(t.properties));
                             addEntity(newArc, true, false);
                         }
+                        
+                        doc.history.commitTransaction(doc.constraints);
                         trimmedAnything = true;
                     }
                 } else if (t instanceof EllipseEntity) {
@@ -196,8 +275,12 @@ export class TrimHandler implements ActionHandler {
                     }
 
                     if (removeIdx !== -1) {
+                        doc.history.startTransaction(doc.constraints);
+                        
+                        doc.recordRemove(originalTarget);
                         doc.removeEntity(originalTarget.id);
                         viewer.removeObject(originalTarget.id);
+                        
                         for (let i = 0; i < segments.length; i++) {
                             if (i === removeIdx) continue;
                             const newEllipse = new EllipseEntity(doc.getNextId("E"), cx, cy, majorX, majorY, ratio, segments[i].s, segments[i].e, ccw);
@@ -205,13 +288,24 @@ export class TrimHandler implements ActionHandler {
                             newEllipse.properties = JSON.parse(JSON.stringify(t.properties));
                             addEntity(newEllipse, true, false);
                         }
+                        
+                        doc.history.commitTransaction(doc.constraints);
                         trimmedAnything = true;
                     }
                 }
+            } else if (!explicitlySelected && t === targets[targets.length - 1] && !trimmedAnything) {
+                // If we reach the last target in implicit mode and no intersections found
+                this.cleanup(context);
+                return "No crosspoints or cutting edges defined. Command cancelled. Please define cutting edges.";
             }
+
             if (trimmedAnything) break;
         }
-        if (trimmedAnything) { this.cleanup(context); return "Entity trimmed."; }
+
+        if (trimmedAnything) { 
+            this.cleanup(context); 
+            return "Entity trimmed."; 
+        }
     }
     return undefined;
   }
@@ -224,6 +318,6 @@ export class TrimHandler implements ActionHandler {
     viewer.setPreview(null);
     viewer.setHelpers(null);
     viewer.setBaseLine(null, null);
-    viewer.render();
+    context.syncFromDocument();
   }
 }

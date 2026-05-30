@@ -65,7 +65,7 @@ export class GeneratorHandler implements ActionHandler {
             const edgeLines = geo.userData?.edgeLines;
             const brepSnapshot = geo.userData?.brepSnapshot;
 
-            const entityId = doc.getNextId("SOLID");
+            const entityId = doc.getNextId("S3D");
             const solid = new Solid3D(entityId, positions, indices, faceMapping, edgeLines);
             solid.brepSnapshot = brepSnapshot;
             if (geo.userData?.color !== undefined) {
@@ -197,7 +197,24 @@ export class GeneratorHandler implements ActionHandler {
         if (finalSolid) {
           // Move the solid to the desired insertion point only if it is NOT a path-based generator
           if (!isPathBased) {
-            finalSolid.move3D(pt.x, pt.y, 0);
+            try {
+              // Ensure the shape is in worker cache (it should be from the previous steps, but we must use its current ID)
+              // If it was just fused, its shape is in worker as finalSolid.id
+              const geom = await OpenCascadeService.getInstance().transformShape(finalSolid.id, pt.x, pt.y, 0);
+              if (geom) {
+                finalSolid.positions = Array.from(geom.attributes.position.array) as number[];
+                finalSolid.indices = geom.index ? Array.from(geom.index.array) as number[] : [];
+                finalSolid.faceMapping = geom.userData.faceMapping;
+                finalSolid.edgeLines = geom.userData.edgeLines;
+                finalSolid.brepSnapshot = geom.userData.brepSnapshot;
+                finalSolid.updateAbsolutePosition();
+              } else {
+                finalSolid.move3D(pt.x, pt.y, 0);
+              }
+            } catch (err) {
+              console.warn("[GeneratorHandler] Failed to bake translation in worker, falling back to vertex move:", err);
+              finalSolid.move3D(pt.x, pt.y, 0);
+            }
           }
           
           // Add to document

@@ -3,6 +3,7 @@ import { CommandAction, CommandResponse } from "../../../commands/types";
 import { Line } from "../../../model/Line";
 import { Polyline } from "../../../model/Polyline";
 import * as MathUtils from "../../MathUtils";
+import { JoinUtility } from "./JoinUtility";
 
 interface SegmentInfo {
   p1: MathUtils.Point;
@@ -17,7 +18,7 @@ export class ChamferHandler implements ActionHandler {
   }
 
   async handle(action: CommandAction, context: AppContext): Promise<CommandResponse | undefined> {
-    const { doc, viewer: _viewer, addEntity } = context;
+    const { doc, viewer, addEntity } = context;
 
     if (action.action === 'chamfer' && action.id1 && action.id2 && action.dist1 !== undefined && action.dist2 !== undefined && action.pick1 && action.pick2) {
       const e1 = doc.getEntity(action.id1);
@@ -60,36 +61,30 @@ export class ChamferHandler implements ActionHandler {
                   const idx2 = s2.polyIndex;
                   const n = poly.vertices.length;
 
-                  // Check if adjacent
                   let cornerIdx = -1;
                   if ((idx1 + 1) % n === idx2) cornerIdx = idx2;
                   else if ((idx2 + 1) % n === idx1) cornerIdx = idx1;
 
                   if (cornerIdx !== -1) {
-                    // Replace the corner vertex with tp1 and tp2
-                    // We need to know which tp belongs to which segment
-                    const tp1 = res.tp1; // for s1
-                    const tp2 = res.tp2; // for s2
-                    
+                    const tp1 = res.tp1;
+                    const tp2 = res.tp2;
                     const newVertices = [...poly.vertices];
                     if (cornerIdx === idx2) {
-                      // v_idx1 -> v_idx2 -> v_idx2+1
-                      // s1 is idx1->idx2, s2 is idx2->idx2+1. Shared is idx2.
                       newVertices.splice(idx2, 1, { ...poly.vertices[idx2], x: tp1.x, y: tp1.y, bulge: 0 }, { ...poly.vertices[idx2], x: tp2.x, y: tp2.y, bulge: 0 });
                     } else {
-                      // v_idx2 -> v_idx1 -> v_idx1+1
-                      // s2 is idx2->idx1, s1 is idx1->idx1+1. Shared is idx1.
                       newVertices.splice(idx1, 1, { ...poly.vertices[idx1], x: tp2.x, y: tp2.y, bulge: 0 }, { ...poly.vertices[idx1], x: tp1.x, y: tp1.y, bulge: 0 });
                     }
                     poly.vertices = newVertices;
+                    doc.history.startTransaction(doc.constraints);
                     doc.recordTransform(before1, poly);
                     addEntity(poly, false, false);
+                    doc.history.commitTransaction(doc.constraints);
                     this.cleanup(context);
                     return "Polyline corner chamfered.";
                   }
                 }
 
-                // General case: update entities separately
+                // General case: Try to merge into a single Polyline if separate
                 const updateEntity = (s: SegmentInfo, tp: MathUtils.Point, intersect: MathUtils.Point, pick: MathUtils.Point) => {
                   const ent = s.entity;
                   if (ent instanceof Line) {
@@ -107,23 +102,66 @@ export class ChamferHandler implements ActionHandler {
                   }
                 };
 
-                updateEntity(s1, res.tp1, inter, action.pick1!);
-                updateEntity(s2, res.tp2, inter, action.pick2!);
+                // Modify local clones in-memory for chaining
+                const e1Mod = e1.clone(e1.id);
+                const e2Mod = e2.clone(e2.id);
+                const s1Mod = getSegment(e1Mod, action.pick1!)!;
+                const s2Mod = getSegment(e2Mod, action.pick2!)!;
+                
+                updateEntity(s1Mod, res.tp1, inter, action.pick1!);
+                updateEntity(s2Mod, res.tp2, inter, action.pick2!);
 
-                doc.recordTransform(before1, e1);
-                addEntity(e1, false, false);
-                if (e1 !== e2) {
-                  doc.recordTransform(before2, e2);
-                  addEntity(e2, false, false);
+                const chamferLine = new Line("temp_chamfer", res.cp1.x, res.cp1.y, res.cp2.x, res.cp2.y);
+                
+                const chains = JoinUtility.buildChains([e1Mod, e2Mod, chamferLine]);
+                const merged = JoinUtility.mergeChains(chains);
+
+                if (merged.length === 1) {
+                    const chain = merged[0];
+                    doc.history.startTransaction(doc.constraints);
+                    
+                    doc.recordRemove(e1);
+                    doc.removeEntity(e1.id);
+                    viewer.removeObject(e1.id);
+                    if (e1 !== e2) {
+                        doc.recordRemove(e2);
+                        doc.removeEntity(e2.id);
+                        viewer.removeObject(e2.id);
+                    }
+
+                    const polyId = doc.getNextId("PL");
+                    const poly = new Polyline(polyId, chain.vertices, false);
+                    poly.layer = e1.layer;
+                    poly.color = e1.color;
+                    
+                    doc.recordAdd(poly);
+                    addEntity(poly, false, false);
+                    
+                    doc.history.commitTransaction(doc.constraints);
+                    this.cleanup(context);
+                    return "Entities chamfered and joined into polyline.";
+                } else {
+                    // Fallback
+                    doc.history.startTransaction(doc.constraints);
+                    updateEntity(s1, res.tp1, inter, action.pick1!);
+                    updateEntity(s2, res.tp2, inter, action.pick2!);
+                    
+                    doc.recordTransform(before1, e1);
+                    addEntity(e1, false, false);
+                    if (e1 !== e2) {
+                        doc.recordTransform(before2, e2);
+                        addEntity(e2, false, false);
+                    }
+                    const chamferId = doc.getNextId("L");
+                    const finalChamfer = new Line(chamferId, res.cp1.x, res.cp1.y, res.cp2.x, res.cp2.y);
+                    finalChamfer.layer = (e1 as any).layer;
+                    doc.recordAdd(finalChamfer);
+                    addEntity(finalChamfer, true, false);
+                    
+                    doc.history.commitTransaction(doc.constraints);
+                    this.cleanup(context);
+                    return "Chamfer created (entities separate).";
                 }
-
-                const chamferId = doc.getNextId("L");
-                const chamferLine = new Line(chamferId, res.cp1.x, res.cp1.y, res.cp2.x, res.cp2.y);
-                chamferLine.layer = (e1 as any).layer;
-                addEntity(chamferLine, true, false);
-
-                this.cleanup(context);
-                return "Chamfer created.";
             }
         }
       }

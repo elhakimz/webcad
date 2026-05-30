@@ -304,8 +304,14 @@ export class PersistenceService {
     try {
       if (entity.brepSnapshot) {
         try {
-          await this.occ.importBRep(entity.id, entity.brepSnapshot, deflection);
-          console.log(`[PersistenceService] Rehydrated from B-Rep snapshot for ${entity.id}`);
+          const geoData = await this.occ.importBRep(entity.id, entity.brepSnapshot, deflection);
+          if (geoData && geoData.positions) {
+            entity.positions = geoData.positions;
+            entity.indices = geoData.indices;
+            entity.faceMapping = geoData.faceMapping;
+            entity.edgeLines = geoData.edgeLines;
+            console.log(`[PersistenceService] Rehydrated and re-tessellated from B-Rep snapshot for ${entity.id}`);
+          }
           return;
         } catch (err) {
           console.error(`[PersistenceService] Failed to import B-Rep snapshot for ${entity.id}:`, err);

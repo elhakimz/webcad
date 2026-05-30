@@ -102,11 +102,12 @@ export class CommandLine {
   print(msg: string) {
     if (!msg) return;
     const line = document.createElement('div');
-    line.textContent = msg;
+    line.className = 'bp6-ui-text';
+    line.innerHTML = msg; // Allow rendering of Blueprint markup from app.ts
     
     const upper = msg.toUpperCase();
     if (upper.startsWith("ERROR") || upper.startsWith("FAILED") || upper.includes("EXCEPTION") || upper.includes("FAIL")) {
-      line.style.color = "#ff4444"; // Use a bright red
+      line.style.color = "var(--error-color)";
     }
     
     this.logEl.appendChild(line);

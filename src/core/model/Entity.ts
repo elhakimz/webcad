@@ -17,6 +17,8 @@ export interface Grip {
 export abstract class Entity {
   id: string
   layer: string = "0"
+  color?: number;
+  linetype?: string;
   properties: Record<string, unknown> = {}
   _echo?: string;
   elevation: number = 0;

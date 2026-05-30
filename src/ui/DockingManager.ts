@@ -20,7 +20,7 @@ export class DockingManager {
       <div id="pane-resizer" class="pane-resizer"></div>
       <div class="pane-header">
         <span class="pane-title">Dock</span>
-        <span class="control-btn" id="pane-minimize">_</span>
+        <span class="control-btn" id="pane-minimize">&gt;</span>
       </div>
       <div class="pane-content"></div>
     `;
@@ -30,7 +30,7 @@ export class DockingManager {
     const minimizeBtn = this.pane.querySelector('#pane-minimize')!;
     minimizeBtn.addEventListener('click', () => {
       this.pane.classList.toggle('minimized');
-      minimizeBtn.textContent = this.pane.classList.contains('minimized') ? '[' : '_';
+      minimizeBtn.textContent = this.pane.classList.contains('minimized') ? '[' : '>';
     });
 
     const resizer = this.pane.querySelector('#pane-resizer') as HTMLElement;

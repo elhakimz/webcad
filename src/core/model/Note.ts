@@ -145,6 +145,10 @@ export class Note extends Entity {
   clone(newId: string): Note {
     const copy = new Note(newId, this.targetEntityId, { ...this.anchorPoint }, { ...this.bendPoint }, this.text, this.height);
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
+    copy.elevation = this.elevation;
+    copy.thickness = this.thickness;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }

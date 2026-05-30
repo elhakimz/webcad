@@ -1231,6 +1231,38 @@ export class Viewer {
 
     const meshMat = this.getMeshMaterial(color);
 
+    if (pattern && thickness === 0) {
+        const pathPoints: { x: number, y: number }[] = [];
+        for (let i = 0; i < entity.vertices.length - (entity.closed ? 0 : 1); i++) {
+            const v1 = entity.vertices[i];
+            const v2 = entity.vertices[(i + 1) % entity.vertices.length];
+            if (Math.abs(v1.bulge) < 1e-6) {
+                if (i === 0) pathPoints.push({ x: v1.x, y: v1.y });
+                pathPoints.push({ x: v2.x, y: v2.y });
+            } else {
+                const arcParams = bulgeToArc(v1, v2, v1.bulge);
+                if (arcParams) {
+                    const curve = new THREE.EllipseCurve(arcParams.cx, arcParams.cy, arcParams.r, arcParams.r, arcParams.startAngle, arcParams.endAngle, !arcParams.ccw, 0);
+                    const pts = curve.getPoints(20);
+                    if (i === 0) pathPoints.push({ x: pts[0].x, y: pts[0].y });
+                    for (let j = 1; j < pts.length; j++) pathPoints.push({ x: pts[j].x, y: pts[j].y });
+                } else {
+                    if (i === 0) pathPoints.push({ x: v1.x, y: v1.y });
+                    pathPoints.push({ x: v2.x, y: v2.y });
+                }
+            }
+        }
+        const dashed = this.generateDashedPath(pathPoints, pattern);
+        dashed.forEach(seg => {
+            const geo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(seg.x1, seg.y1, elevation),
+                new THREE.Vector3(seg.x2, seg.y2, elevation)
+            ]);
+            group.add(new THREE.Line(geo, material));
+        });
+        return group;
+    }
+
     for (let i = 0; i < entity.vertices.length - (entity.closed ? 0 : 1); i++) {
       const v1 = entity.vertices[i];
       const v2 = entity.vertices[(i + 1) % entity.vertices.length];
@@ -1238,142 +1270,61 @@ export class Viewer {
       const z2 = v2.z !== undefined ? v2.z : elevation;
 
       if (Math.abs(v1.bulge) < 1e-6) {
-        // Line segment
         if (thickness !== 0) {
-          const vertices: number[] = [
-            v1.x, v1.y, z1,
-            v2.x, v2.y, z2,
-            v2.x, v2.y, z2 + thickness,
-            v1.x, v1.y, z1 + thickness
-          ];
-          const indices = [
-            0, 1, 2,
-            0, 2, 3
-          ];
+          const vertices: number[] = [v1.x, v1.y, z1, v2.x, v2.y, z2, v2.x, v2.y, z2 + thickness, v1.x, v1.y, z1 + thickness];
+          const indices = [0, 1, 2, 0, 2, 3];
           const geo = new THREE.BufferGeometry();
           geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
           geo.setIndex(indices);
           geo.computeVertexNormals();
-          
           const mesh = new THREE.Mesh(geo, meshMat);
           mesh.userData = { type: 'Solid3D' };
           group.add(mesh);
-
-          // Wireframe for X/Y visibility
-          const linePts1 = [new THREE.Vector3(v1.x, v1.y, z1), new THREE.Vector3(v2.x, v2.y, z2)];
-          const linePts2 = [new THREE.Vector3(v1.x, v1.y, z1 + thickness), new THREE.Vector3(v2.x, v2.y, z2 + thickness)];
-          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePts1), material));
-          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePts2), material));
-          
-          // Vertical connectors
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(v1.x, v1.y, z1), new THREE.Vector3(v2.x, v2.y, z2)]), material));
+          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(v1.x, v1.y, z1 + thickness), new THREE.Vector3(v2.x, v2.y, z2 + thickness)]), material));
           group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(v1.x, v1.y, z1), new THREE.Vector3(v1.x, v1.y, z1 + thickness)]), material));
-        } else if (pattern) {
-            const dashed = this.generateDashedPath([{ x: v1.x, y: v1.y }, { x: v2.x, y: v2.y }], pattern);
-            dashed.forEach(seg => {
-                const lenFull = Math.sqrt((v2.x - v1.x)**2 + (v2.y - v1.y)**2) || 1;
-                const d1 = Math.sqrt((seg.x1 - v1.x)**2 + (seg.y1 - v1.y)**2);
-                const d2 = Math.sqrt((seg.x2 - v1.x)**2 + (seg.y2 - v1.y)**2);
-                const t1 = d1 / lenFull;
-                const t2 = d2 / lenFull;
-                const sz1 = z1 + t1 * (z2 - z1);
-                const sz2 = z1 + t2 * (z2 - z1);
-                const geo = new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(seg.x1, seg.y1, sz1),
-                    new THREE.Vector3(seg.x2, seg.y2, sz2)
-                ]);
-                group.add(new THREE.Line(geo, material));
-            });
         } else {
-            const geo = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(v1.x, v1.y, z1),
-                new THREE.Vector3(v2.x, v2.y, z2)
-            ]);
-            group.add(new THREE.Line(geo, material));
+            group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(v1.x, v1.y, z1), new THREE.Vector3(v2.x, v2.y, z2)]), material));
         }
       } else {
-        // Arc segment
         const arcParams = bulgeToArc(v1, v2, v1.bulge);
         if (arcParams) {
+          const curve = new THREE.EllipseCurve(arcParams.cx, arcParams.cy, arcParams.r, arcParams.r, arcParams.startAngle, arcParams.endAngle, !arcParams.ccw, 0);
+          const pts = curve.getPoints(50);
           if (thickness !== 0) {
-            const curve = new THREE.EllipseCurve(
-              arcParams.cx, arcParams.cy, arcParams.r, arcParams.r,
-              arcParams.startAngle, arcParams.endAngle, !arcParams.ccw, 0
-            );
-            const points = curve.getPoints(20); // 20 segments per arc segment is usually enough
-
             const vertices: number[] = [];
             const indices: number[] = [];
-            
-            for (let i = 0; i < points.length - 1; i++) {
-              const p1 = points[i];
-              const p2 = points[i + 1];
-              
+            for (let j = 0; j < pts.length - 1; j++) {
+              const p1 = pts[j], p2 = pts[j+1];
               const baseIdx = vertices.length / 3;
-              
-              // 4 vertices for the quad segment
-              vertices.push(p1.x, p1.y, z1); // 0
-              vertices.push(p2.x, p2.y, z1); // 1
-              vertices.push(p2.x, p2.y, z1 + thickness); // 2
-              vertices.push(p1.x, p1.y, z1 + thickness); // 3
-              
-              // 2 triangles for the quad
-              indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
-              indices.push(baseIdx, baseIdx + 2, baseIdx + 3);
+              vertices.push(p1.x, p1.y, z1, p2.x, p2.y, z1, p2.x, p2.y, z1 + thickness, p1.x, p1.y, z1 + thickness);
+              indices.push(baseIdx, baseIdx+1, baseIdx+2, baseIdx, baseIdx+2, baseIdx+3);
             }
-            
-            const geometry = new THREE.BufferGeometry();
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            geometry.setIndex(indices);
-            geometry.computeVertexNormals();
-            
-            const mesh = new THREE.Mesh(geometry, meshMat);
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            geo.setIndex(indices);
+            geo.computeVertexNormals();
+            const mesh = new THREE.Mesh(geo, meshMat);
             mesh.userData = { type: 'Solid3D' };
             group.add(mesh);
+            group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, z1))), material));
+            group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, z1 + thickness))), material));
           } else {
-            const curve = new THREE.EllipseCurve(
-              arcParams.cx, arcParams.cy, arcParams.r, arcParams.r,
-              arcParams.startAngle, arcParams.endAngle, !arcParams.ccw, 0
-            );
-            const points = curve.getPoints(50);
-            
-            if (pattern) {
-                const dashed = this.generateDashedPath(points, pattern);
-                dashed.forEach(seg => {
-                    const geo = new THREE.BufferGeometry().setFromPoints([
-                        new THREE.Vector3(seg.x1, seg.y1, z1),
-                        new THREE.Vector3(seg.x2, seg.y2, z1)
-                    ]);
-                    group.add(new THREE.Line(geo, material));
-                });
-            } else {
-                const pts3d = points.map(p => new THREE.Vector3(p.x, p.y, z1));
-                const geo = new THREE.BufferGeometry().setFromPoints(pts3d);
-                group.add(new THREE.Line(geo, material));
-            }
+            group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, p.y, z1))), material));
           }
         }
       }
     }
-
-    // Add control points for PLINE
     const markersGroup = new THREE.Group();
     markersGroup.name = 'control_points';
-    markersGroup.visible = false; // Hide by default!
-    
+    markersGroup.visible = false;
     const markerSize = 5 / this.camera.zoom;
     entity.vertices.forEach(v => {
       const vz = v.z !== undefined ? v.z : elevation;
-      const markerGeom = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(v.x - markerSize, v.y - markerSize, vz),
-        new THREE.Vector3(v.x + markerSize, v.y + markerSize, vz),
-        new THREE.Vector3(v.x - markerSize, v.y + markerSize, vz),
-        new THREE.Vector3(v.x + markerSize, v.y - markerSize, vz)
-      ]);
-      const markerMat = new THREE.LineBasicMaterial({ color: 0x00ffff });
-      const marker = new THREE.LineSegments(markerGeom, markerMat);
+      const markerGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(v.x - markerSize, v.y - markerSize, vz), new THREE.Vector3(v.x + markerSize, v.y + markerSize, vz), new THREE.Vector3(v.x - markerSize, v.y + markerSize, vz), new THREE.Vector3(v.x + markerSize, v.y - markerSize, vz)]);
+      const marker = new THREE.LineSegments(markerGeom, new THREE.LineBasicMaterial({ color: 0x00ffff }));
       markersGroup.add(marker);
     });
-    
     group.add(markersGroup);
     return group;
   }
@@ -1948,6 +1899,34 @@ export class Viewer {
           const m2x = (p3.x + p4.x) / 2, m2y = (p3.y + p4.y) / 2;
           this.createConstraintSprite('="', m1x, m1y, '#38bdf8');
           this.createConstraintSprite('="', m2x, m2y, '#38bdf8');
+        }
+        continue;
+      } else if (c.type === 'radius' || c.type === 'diameter') {
+        const ent = doc.getEntity(c.entityId);
+        if (ent && (ent instanceof Circle || ent instanceof Arc)) {
+          const cx = ent.cx, cy = ent.cy, r = ent.r;
+          // Offset angle based on index to avoid overlap
+          const angle = Math.PI / 4 + (doc.constraints.indexOf(c) * 0.2); 
+          const tx = cx + r * Math.cos(angle);
+          const ty = cy + r * Math.sin(angle);
+          
+          const dimType = c.type === 'radius' ? 'RADIUS' : 'DIAMETER';
+          const dim = new Dimension(`const_dim_${doc.constraints.indexOf(c)}`, dimType, cx, cy, tx, ty, 10);
+          dim.style = {
+            textHeight: 3.6,
+            arrowSize: 1.2,
+            offset: 10,
+            gap: 0.8,
+            precision: 2,
+            DIMTOH: false,
+            DIMTAD: true
+          };
+          // Position text slightly away from center for better visibility
+          dim.dimLineLocation = { x: cx + (tx - cx) * 0.7, y: cy + (ty - cy) * 0.7 };
+          
+          const units = doc.units || { type: 'decimal', precision: 2, scale: 1.0 };
+          const dimObj = this.createDimensionObject(dim, units, 0x38bdf8);
+          this.constraintGroup.add(dimObj);
         }
         continue;
       }
@@ -3482,44 +3461,49 @@ export class Viewer {
         const dx = p2.x - p1.x;
         const dy = p2.y - p1.y;
         const segmentLen = Math.sqrt(dx * dx + dy * dy);
-        if (segmentLen === 0) continue;
+        if (segmentLen < 1e-6) continue;
 
         const ux = dx / segmentLen;
         const uy = dy / segmentLen;
 
         let distanceProcessedInSegment = 0;
 
-        while (distanceProcessedInSegment < segmentLen) {
+        while (distanceProcessedInSegment < segmentLen - 1e-6) {
             const currentDashValue = dashPattern[patternIndex % dashPattern.length];
             const currentDashLimit = Math.abs(currentDashValue);
+            
+            // Parity-based dash detection: even indices are dashes/dots, odd are gaps
+            const isDashOrDot = (patternIndex % 2 === 0);
+            
             const remainingInDash = currentDashLimit - distanceInCurrentDash;
             const remainingInSegment = segmentLen - distanceProcessedInSegment;
 
+            if (currentDashLimit < 1e-6) {
+                // Dot case (0 length)
+                if (isDashOrDot) {
+                    const dotSize = 0.2; // Visible dot size
+                    const dotX = p1.x + ux * distanceProcessedInSegment;
+                    const dotY = p1.y + uy * distanceProcessedInSegment;
+                    results.push({
+                        x1: dotX, y1: dotY,
+                        x2: dotX + ux * dotSize, y2: dotY + uy * dotSize
+                    });
+                }
+                patternIndex++;
+                distanceInCurrentDash = 0;
+                continue;
+            }
+
             const step = Math.min(remainingInDash, remainingInSegment);
 
-            // AutoCAD PAT: Positive = Dash, Zero = Dot, Negative = Gap
-            if (currentDashValue > 0) {
-                // Dash
+            if (isDashOrDot) {
                 results.push({
                     x1: p1.x + ux * distanceProcessedInSegment,
                     y1: p1.y + uy * distanceProcessedInSegment,
                     x2: p1.x + ux * (distanceProcessedInSegment + step),
                     y2: p1.y + uy * (distanceProcessedInSegment + step)
                 });
-            } else if (currentDashValue === 0) {
-                // Dot (rendered as a tiny dash for visibility)
-                const dotX = p1.x + ux * distanceProcessedInSegment;
-                const dotY = p1.y + uy * distanceProcessedInSegment;
-                results.push({
-                    x1: dotX, y1: dotY,
-                    x2: dotX + ux * 0.01, y2: dotY + uy * 0.01
-                });
-                // Force advance since dash limit is 0
-                patternIndex++;
-                distanceInCurrentDash = 0;
-                continue; 
             }
-            // Negative values are gaps, we don't push anything
 
             distanceProcessedInSegment += step;
             distanceInCurrentDash += step;
@@ -3601,6 +3585,27 @@ export class Viewer {
     }
   }
 
+
+  /**
+   * Set the opacity of all mesh materials in the scene object with the given id.
+   * opacity=1 -> fully opaque; opacity<1 -> semi-transparent ghost effect.
+   */
+  setEntityOpacity(id: string, opacity: number) {
+    const obj = this.scene.getObjectByName(id);
+    if (!obj) return;
+    const isTransparent = opacity < 1.0;
+    obj.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.material) {
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        materials.forEach((m: THREE.Material) => {
+          m.transparent = isTransparent;
+          (m as any).opacity = opacity;
+          m.needsUpdate = true;
+        });
+      }
+    });
+    this.scheduleRender();
+  }
   getCenterOfObjects(ids: string[]): THREE.Vector3 | null {
     const box = new THREE.Box3();
     let hasValidObject = false;

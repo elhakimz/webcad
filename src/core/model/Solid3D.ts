@@ -427,6 +427,10 @@ export class Solid3D extends Entity {
       this.edgeLines ? this.edgeLines.map(arr => [...arr]) : undefined
     );
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
+    copy.elevation = this.elevation;
+    copy.thickness = this.thickness;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     copy.position = { ...this.position };
     copy.rotation = { ...this.rotation };

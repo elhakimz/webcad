@@ -19,6 +19,7 @@ describe('Polyline Chamfer & Fillet', () => {
       camera: { zoom: 1 },
       syncFromDocument: vi.fn(),
       clearSelection: vi.fn(),
+      requestRender: vi.fn(),
     } as any,
     selectedEntityIds: new Set(),
     addEntity: vi.fn((e) => doc.addEntity(e)),
@@ -39,8 +40,6 @@ describe('Polyline Chamfer & Fillet', () => {
     const handler = new ChamferHandler()
     const context = createMockContext(doc)
 
-    // Select segment 0 (0,0-10,0) and segment 1 (10,0-10,10)
-    // Distance 2 on both sides. Corner is at (10,0).
     const action = {
       action: 'chamfer',
       id1: 'PL1',
@@ -55,8 +54,6 @@ describe('Polyline Chamfer & Fillet', () => {
     expect(resp).toBe("Polyline corner chamfered.")
 
     const updatedPoly = doc.getEntity('PL1') as Polyline
-    // Original vertex at (10,0) should be replaced by (8,0) and (10,2)
-    // Vertices should be: (0,0), (8,0), (10,2), (10,10), (0,10)
     expect(updatedPoly.vertices.length).toBe(5)
     expect(updatedPoly.vertices[1].x).toBe(8)
     expect(updatedPoly.vertices[1].y).toBe(0)
@@ -89,17 +86,15 @@ describe('Polyline Chamfer & Fillet', () => {
     expect(resp).toBe("Polyline corner filleted.")
 
     const updatedPoly = doc.getEntity('PL1') as Polyline
-    // Corner at (10,0). Fillet radius 2 means tangent points at (8,0) and (10,2).
-    // Vertex 1 (10,0) is replaced by (8,0, bulge) and (10,2, 0).
     expect(updatedPoly.vertices.length).toBe(4)
     expect(updatedPoly.vertices[1].x).toBeCloseTo(8, 5)
     expect(updatedPoly.vertices[1].y).toBeCloseTo(0, 5)
-    expect(Math.abs(updatedPoly.vertices[1].bulge)).toBeGreaterThan(0.4) // tan(90/4) = 0.414
+    expect(Math.abs(updatedPoly.vertices[1].bulge)).toBeGreaterThan(0.4) 
     expect(updatedPoly.vertices[2].x).toBeCloseTo(10, 5)
     expect(updatedPoly.vertices[2].y).toBeCloseTo(2, 5)
   })
 
-  it('should chamfer between a line and a polyline segment', async () => {
+  it('should chamfer between a line and a polyline segment and join them', async () => {
     const doc = new Document()
     const line = new Line('L1', 0, 0, 10, 0)
     const poly = new Polyline('PL1', [{x: 10, y: 10, bulge: 0}, {x: 10, y: -10, bulge: 0}], false)
@@ -120,17 +115,66 @@ describe('Polyline Chamfer & Fillet', () => {
     }
 
     const resp = await handler.handle(action as any, context)
-    expect(resp).toBe("Chamfer created.")
+    expect(resp).toBe("Entities chamfered and joined into polyline.")
 
-    const updatedLine = doc.getEntity('L1') as Line
-    const updatedPoly = doc.getEntity('PL1') as Polyline
+    // Originals should be removed
+    expect(doc.getEntity('L1')).toBeUndefined()
+    expect(doc.getEntity('PL1')).toBeUndefined()
+
+    // A new polyline should exist
+    const allPolys = doc.getAllEntities().filter(e => e instanceof Polyline) as Polyline[]
+    expect(allPolys.length).toBe(1)
+    const resPoly = allPolys[0]
     
-    // Intersection is at (10,0). 
-    // Line L1 (0,0-10,0) trimmed by 1 -> (0,0-9,0)
-    expect(updatedLine.x2).toBeCloseTo(9, 5)
-    // Polyline segment trimmed by 1 -> (10,10-10,1)
-    // pick2 (10,5) is on same side as v0 (10,10). So v1 (index 1) is updated (it has the smaller dot product).
-    expect(updatedPoly.vertices[1].x).toBeCloseTo(10, 5)
-    expect(updatedPoly.vertices[1].y).toBeCloseTo(1, 5)
+    // Line was (0,0)-(10,0). Trimmed to (0,0)-(9,0).
+    // Chamfer was (9,0)-(10,1).
+    // Polyline was (10,10)-(10,-10). Trimmed to (10,10)-(10,1).
+    // Resulting chain: (0,0) -> (9,0) -> (10,1) -> (10,10)
+    expect(resPoly.vertices.length).toBe(4)
+    expect(resPoly.vertices[0].x).toBeCloseTo(0, 5)
+    expect(resPoly.vertices[1].x).toBeCloseTo(9, 5)
+    expect(resPoly.vertices[2].y).toBeCloseTo(1, 5)
+    expect(resPoly.vertices[3].y).toBeCloseTo(10, 5)
+  })
+
+  it('should fillet two separate lines and preserve the arc bulge', async () => {
+    const doc = new Document()
+    const l1 = new Line('L1', 0, 0, 10, 0)
+    const l2 = new Line('L2', 10, 10, 10, 0)
+    doc.addEntity(l1)
+    doc.addEntity(l2)
+
+    const handler = new FilletHandler()
+    const context = createMockContext(doc)
+
+    const action = {
+      action: 'fillet',
+      id1: 'L1',
+      id2: 'L2',
+      radius: 2,
+      pick1: {x: 5, y: 0},
+      pick2: {x: 10, y: 5}
+    }
+
+    const resp = await handler.handle(action as any, context)
+    expect(resp).toBe("Entities filleted and joined into polyline.")
+
+    const allPolys = doc.getAllEntities().filter(e => e instanceof Polyline) as Polyline[]
+    expect(allPolys.length).toBe(1)
+    const poly = allPolys[0]
+
+    // Line 1: (0,0)-(8,0). Corner: (8,0).
+    // Fillet Arc: (8,0) to (10,2) with radius 2.
+    // Line 2: (10,2)-(10,10).
+    // Vertices: [ (0,0), (8,0, bulge), (10,2), (10,10) ]
+    expect(poly.vertices.length).toBe(4)
+    expect(poly.vertices[1].x).toBeCloseTo(8, 5)
+    expect(poly.vertices[1].y).toBeCloseTo(0, 5)
+    
+    // The vertex at the start of the fillet (index 1) MUST have a non-zero bulge
+    expect(Math.abs(poly.vertices[1].bulge)).toBeGreaterThan(0.4) 
+    
+    expect(poly.vertices[2].x).toBeCloseTo(10, 5)
+    expect(poly.vertices[2].y).toBeCloseTo(2, 5)
   })
 })

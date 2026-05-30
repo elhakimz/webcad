@@ -744,7 +744,7 @@ difference() {
         const edgeLines = geo.userData?.edgeLines;
         const brepSnapshot = geo.userData?.brepSnapshot ?? geo.userData?.brepBytes;
 
-        const entityId = this.app.doc.getNextId('SOLID');
+        const entityId = this.app.doc.getNextId('S3D');
         const solid = new Solid3D(entityId, positions, indices, faceMapping, edgeLines);
         solid.brepSnapshot = brepSnapshot;
         if (geo.userData?.color !== undefined) {
@@ -805,7 +805,7 @@ difference() {
           // Support both the old format and the new high-performance brepBytes format
           const brepSnapshot = geo.userData?.brepSnapshot || geo.userData?.brepBytes;
 
-          const entityId = this.app.doc.getNextId("SOLID");
+          const entityId = this.app.doc.getNextId("S3D");
           const solid = new Solid3D(entityId, positions, indices, faceMapping, edgeLines);
           solid.brepSnapshot = brepSnapshot;
           if (geo.userData?.color !== undefined) {

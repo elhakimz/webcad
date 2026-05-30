@@ -178,3 +178,19 @@
   1. **Perfect RMF Math**: Leverage custom JS Rotation Minimizing Frames (Double Reflection Method / RMF) calculation at the worker level to calculate mathematically perfect, twist-free section coordinates.
   2. **ThruSections solid lofting**: Loop through the pre-calculated, perfectly-aligned RMF section point loops to build closed OCC wires, and feed them into `BRepOffsetAPI_ThruSections` to construct a native watertight CAD BRep solid.
   3. **Graceful Fallback**: Wrap the `ThruSections` solid builder inside a robust `try-catch` block. If solid construction fails, gracefully fall back to returning the perfect visual RMF mesh and a cached dummy shape. This guarantees that visual rendering remains 100% flawless under all conditions, while enabling full CSG/Boolean operation support whenever possible.
+
+### May 28, 2026 - SVG and Plane Integration
+- **Mistake:** Used an object (esult) instead of the string response (es) in a string method call, causing a TypeError.
+- **Mistake:** Called a class method (	erminateActiveCommand()) without the 	his. prefix, causing a ReferenceError.
+- **Lesson:** Always verify variable types and context (	his.) before finalizing command handler integrations, especially in large monolithic classes like App.ts.
+
+### May 28, 2026 - SCAD Persistence and Prefix Fix
+- **Issue:** SCAD generated solids reset to (0,0) after reload because the insertion translation was only applied to vertices and not the B-Rep snapshot.
+- **Fix:** Used OpenCascade kernel 'transformShape' to bake the translation into the B-Rep model before saving.
+- **Issue:** Inconsistent entity prefixes (SOLID vs CSG vs E).
+- **Fix:** Harmonized to S3D for all 3D primitives and generator results, and CSG for boolean results.
+
+### May 29, 2026 - PROFILE Command Mirroring Fix
+- **Issue:** Manual 3D-to-2D projection logic was producing horizontally mirrored results for certain face orientations (bottom, left, etc.).
+- **Fix:** Implemented a robust view-aligned dot-product projection.
+- **Lesson:** To avoid mirroring when extracting 2D profiles from 3D faces, explicitly derive 'Right' and 'Up' vectors from the outward face normal and a standard 'look' direction (-Normal). Project points using dot products (x = P . Right, y = P . Up) instead of complex transformation matrices. This ensures a consistent right-handed system that aligns with the user's visual expectation.

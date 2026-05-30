@@ -46,6 +46,8 @@ export class EntitySerializer {
       projectId,
       type:           entity.constructor.name,
       layer:          entity.layer,
+      color:          entity.color,
+      linetype:       entity.linetype,
       elevation:      entity.elevation,
       thickness:      entity.thickness,
       data:           JSON.stringify(this.serializeData(entity)),
@@ -175,6 +177,8 @@ export class EntitySerializer {
     }
 
     entity.layer     = row.layer
+    entity.color     = row.color
+    entity.linetype  = row.linetype
     entity.elevation = row.elevation
     entity.thickness = row.thickness
     entity.properties = JSON.parse(row.properties || '{}')

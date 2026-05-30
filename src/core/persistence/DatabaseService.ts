@@ -81,6 +81,12 @@ export class DatabaseService {
                 const doc = JSON.parse(JSON.stringify(oldDoc));
                 if (doc.updatedAt === undefined) doc.updatedAt = Date.now();
                 return doc;
+              },
+              2: (oldDoc: any) => {
+                const doc = JSON.parse(JSON.stringify(oldDoc));
+                if (doc.color === undefined) doc.color = undefined;
+                if (doc.linetype === undefined) doc.linetype = undefined;
+                return doc;
               }
             }
           },

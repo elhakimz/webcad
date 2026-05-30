@@ -74,6 +74,8 @@ export class Spline extends Entity {
     const knotsCopy = [...this.knots];
     const copy = new Spline(newId, cpCopy, this.degree, knotsCopy, this.isClosed, this.elevation, this.thickness);
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }

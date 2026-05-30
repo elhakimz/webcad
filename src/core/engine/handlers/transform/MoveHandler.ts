@@ -71,6 +71,11 @@ export class MoveHandler implements ActionHandler {
             if (changed) {
                 doc.recordTransform(before, ent);
                 context.addEntity(ent, false, false);
+                
+                // TRIGGER ASSOCIATIVE REGEN (Phase 9)
+                if (context.checkAssociativeRegen) {
+                    context.checkAssociativeRegen(id);
+                }
             }
         }
       });

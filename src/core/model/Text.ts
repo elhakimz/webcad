@@ -74,6 +74,8 @@ export class Text extends Entity {
   clone(newId: string): Text {
     const copy = new Text(newId, this.x, this.y, this.height, this.rotation, this.text, this.elevation, this.thickness);
     copy.layer = this.layer;
+    copy.color = this.color;
+    copy.linetype = this.linetype;
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     return copy;
   }

@@ -21,6 +21,7 @@ export interface AppContext {
   onEntitiesChange?(): void;
   onFilesChange?(): void;
   onElevationChange?(val: number): void;
+  checkAssociativeRegen?(changedId: string): Promise<void>;
 }
 
 export interface ActionHandler {

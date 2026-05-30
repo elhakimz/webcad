@@ -111,8 +111,8 @@ export class OCCWorkerClient {
     return this.send('createPyramid', { x, y, z, sides, radius, h, deflection, entityId });
   }
 
-  createExtrude(points: {x: number, y: number, z: number}[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
-    return this.send('createExtrude', { points, height, thickness, deflection, isClosed, entityId });
+  createExtrude(points: any[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string, vector?: number[]): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+    return this.send('createExtrude', { points, height, thickness, deflection, isClosed, entityId, vector });
   }
 
   createSweep(profilePoints: {x: number, y: number, z: number}[], spinePoints: {x: number, y: number, z: number}[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number, cornerMode?: string, isEllipse?: boolean): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
@@ -123,7 +123,7 @@ export class OCCWorkerClient {
     return this.send('createLoft', { profiles, isSolid, isRuled, deflection, entityId });
   }
 
-  createRevolve(points: {x: number, y: number, z: number}[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
+  createRevolve(points: any[], axisPoint: {x: number, y: number, z: number}, axisDir: {x: number, y: number, z: number}, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('createRevolve', { points, axisPoint, axisDir, angle, thickness, deflection, isClosed, entityId });
   }
 
@@ -153,6 +153,14 @@ export class OCCWorkerClient {
 
   multMatrixShape(entityId: string, m: number[], targetEntityId?: string, deflection?: number): Promise<{ positions: number[], indices: number[], faceMapping?: number[], edgeLines?: number[][], brepBytes?: Uint8Array }> {
     return this.send('multMatrixShape', { entityId, m, targetEntityId, deflection });
+  }
+
+  checkValidity(entityId: string): Promise<{ isValid: boolean, faceCount: number, errorMsg: string }> {
+    return this.send('checkValidity', { entityId });
+  }
+
+  extractFaceProfile(entityId: string, faceIndex: number, deflection?: number): Promise<{ loops: { x: number, y: number, bulge: number }[][] }> {
+    return this.send('extractFaceProfile', { entityId, faceIndex, deflection });
   }
 
   releaseShapes(entityIds: string[]): Promise<void> {

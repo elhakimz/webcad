@@ -23,7 +23,7 @@ export class ObjectsWindow {
   constructor(private toolWindow: ToolWindow, private app: App) {
     this.container = document.createElement("div");
     this.container.className = "objects-window-inner";
-    this.container.style.padding = "10px";
+    this.container.style.padding = "5px";
     this.container.style.overflowY = "auto";
     this.container.style.height = "100%";
     this.container.style.color = "var(--text-color)";
@@ -60,7 +60,7 @@ export class ObjectsWindow {
       }
       .objects-tree ul {
         list-style-type: none;
-        padding-left: 14px;
+        padding-left: 10px;
         margin: 0;
       }
       .tree-item {

@@ -116,6 +116,10 @@ export class Dimension extends Entity {
   clone(newId?: string): Dimension {
     const dim = new Dimension(newId || this.id, this.type, this.x1, this.y1, this.x2, this.y2, this.offset);
     dim.layer = this.layer;
+    dim.color = this.color;
+    dim.linetype = this.linetype;
+    dim.elevation = this.elevation;
+    dim.thickness = this.thickness;
     dim.properties = JSON.parse(JSON.stringify(this.properties));
     dim.style = { ...this.style };
     if (this.dimLineLocation) {

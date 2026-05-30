@@ -75,15 +75,23 @@ export interface ExtrudeCreationParams {
   height: number;
   thickness: number;
   isClosed: boolean;
+  sketchId?: string; // Reference to a Sketch feature in the DAG
+  sourceEntityId?: string; // ID of the 2D entity that drove this extrude
+  sourceSnapshotHash?: string; // Hash of the source entity's geometry to detect changes
 }
 
 export interface RevolveCreationParams {
   points: { x: number; y: number }[];
-  axisPoint: [number, number, number];
-  axisDir: [number, number, number];
+  axisPoint: [number, number, number] | { x: number; y: number; z: number };
+  axisDir: [number, number, number] | { x: number; y: number; z: number };
   angle: number;
   thickness: number;
   isClosed: boolean;
+  sketchId?: string; // Reference to a Sketch feature in the DAG
+  sourceEntityId?: string; // ID of the 2D entity that drove this revolve
+  sourceSnapshotHash?: string; // Hash of the source entity's geometry to detect changes
+  axisEntityId?: string; // Optional: ID of an entity (Line/Polyline) that defines the axis
+  axisSegmentIndex?: number; // Optional: index of the segment if axis is a Polyline
 }
 
 export interface SweepCreationParams {
@@ -107,6 +115,12 @@ export type Solid3DCreationParams =
   | { type: "revolve"; params: RevolveCreationParams }
   | { type: "sweep"; params: SweepCreationParams };
 
+
+export interface WorkplaneDefinition {
+  origin: { x: number; y: number; z: number };
+  normal: { x: number; y: number; z: number };
+  xAxis: { x: number; y: number; z: number }; // defines 2D X in 3D space
+}
 
 export interface GeometricSignature {
   centroid?: { x: number; y: number; z: number };
@@ -175,22 +189,35 @@ export class Solid3D extends Entity {
   }
 
   ensureFeaturesFromCreationParams() {
-    if (this.features.length === 0) {
-      if (this.creationParams) {
-        this.features.push({
+    // If we have creationParams, ensure we have a matching base feature
+    if (this.creationParams) {
+      const type = this.creationParams.type;
+      const featureType = type.charAt(0).toUpperCase() + type.slice(1);
+      
+      const existingBase = this.features.find(f => f.id === this.id + "_base");
+      
+      if (!existingBase) {
+        this.features.unshift({
           id: this.id + "_base",
-          type: this.creationParams.type === "extrude" ? "Extrude" : "Sketch",
-          parameters: { ...this.creationParams.params, primitiveType: this.creationParams.type },
+          type: featureType,
+          parameters: { ...this.creationParams.params, primitiveType: type },
           isActive: true
         });
-      } else if (this.brepSnapshot) {
-        this.features.push({
-          id: this.id + "_base",
-          type: "Sketch",
-          parameters: { primitiveType: "brep" },
-          isActive: true
-        });
+      } else {
+        // Force update the base feature type and params to match the primitive
+        existingBase.type = featureType;
+        // Merge parameters to preserve sketchData if it exists
+        existingBase.parameters = { ...existingBase.parameters, ...this.creationParams.params, primitiveType: type };
       }
+    } 
+    // Fallback for generic BRep solids (e.g. from STEP import or legacy)
+    else if (this.features.length === 0 && this.brepSnapshot) {
+      this.features.push({
+        id: this.id + "_base",
+        type: "Sketch",
+        parameters: { primitiveType: "brep" },
+        isActive: true
+      });
     }
   }
 

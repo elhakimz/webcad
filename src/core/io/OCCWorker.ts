@@ -4,6 +4,16 @@ import { initOpenCascade } from "opencascade.js";
 let oc: any = null;
 const shapeCache = new Map<string, any>();
 
+/**
+ * Normalizes any point format ({x,y,z}, [x,y,z], etc.) to a standard object.
+ */
+const getXYZ = (p: any) => {
+  if (!p) return { x: 0, y: 0, z: 0 };
+  if (Array.isArray(p)) return { x: Number(p[0] ?? 0), y: Number(p[1] ?? 0), z: Number(p[2] ?? 0) };
+  if (typeof p === 'object') return { x: Number(p.x ?? 0), y: Number(p.y ?? 0), z: Number(p.z ?? 0) };
+  return { x: 0, y: 0, z: 0 };
+};
+
 function cacheShape(entityId: string, shape: any) {
   if (shapeCache.has(entityId)) {
     const oldShape = shapeCache.get(entityId);
@@ -2655,18 +2665,40 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'error', error: 'Not initialized', id });
       return;
     }
-    const { points, height, thickness, deflection, isClosed, entityId } = payload;
+    const { points, height, thickness, deflection, isClosed, entityId, vector } = payload;
     const buildersToCleanup: any[] = [];
     try {
       let resultShape: any = null;
 
-      if (thickness > 0 && isClosed) {
+      // Helper for robust coordinate access with explicit Number casting for WASM
+      const getXYZ = (p: any) => {
+        if (!p) return { x: 0, y: 0, z: 0 };
+        if (Array.isArray(p)) return { x: Number(p[0] ?? 0), y: Number(p[1] ?? 0), z: Number(p[2] ?? 0) };
+        if (typeof p === 'object') return { x: Number(p.x ?? 0), y: Number(p.y ?? 0), z: Number(p.z ?? 0) };
+        return { x: 0, y: 0, z: 0 };
+      };
 
-        // Sheet-based design: create thick face for each segment and extrude
+      // 1. Setup extrusion direction vector
+      let dirVec: any;
+      const hVal = Number(height ?? 1);
+      
+      if (vector) {
+        const v = getXYZ(vector);
+        dirVec = new oc.gp_Vec_4(v.x * hVal, v.y * hVal, v.z * hVal);
+      } else {
+        dirVec = new oc.gp_Vec_4(0, 0, hVal);
+      }
+      buildersToCleanup.push(dirVec);
+
+      const tVal = Number(thickness ?? 0);
+      const defVal = Number(deflection ?? 0.1);
+
+      if (tVal > 0 && isClosed) {
+        // Sheet-based design (Thin-walled extrusion)
         const shapes: any[] = [];
         for (let i = 0; i < points.length - 1; i++) {
-          const p1 = points[i];
-          const p2 = points[i + 1];
+          const p1 = getXYZ(points[i]);
+          const p2 = getXYZ(points[i + 1]);
           const dx = p2.x - p1.x;
           const dy = p2.y - p1.y;
           const len = Math.sqrt(dx * dx + dy * dy);
@@ -2675,91 +2707,80 @@ self.onmessage = async (e) => {
           const nx = -dy / len;
           const ny = dx / len;
 
-          const pts = [
+          const cornerPts = [
             new oc.gp_Pnt_3(p1.x - nx * thickness / 2, p1.y - ny * thickness / 2, p1.z),
             new oc.gp_Pnt_3(p2.x - nx * thickness / 2, p2.y - ny * thickness / 2, p2.z),
             new oc.gp_Pnt_3(p2.x + nx * thickness / 2, p2.y + ny * thickness / 2, p2.z),
             new oc.gp_Pnt_3(p1.x + nx * thickness / 2, p1.y + ny * thickness / 2, p1.z)
           ];
 
-          const e0 = new oc.BRepBuilderAPI_MakeEdge_3(pts[0], pts[1]);
+          const e0 = new oc.BRepBuilderAPI_MakeEdge_3(cornerPts[0], cornerPts[1]);
           const makeWire = new oc.BRepBuilderAPI_MakeWire_2(e0.Edge());
           e0.delete();
 
           for (let j = 1; j < 4; j++) {
-            const e = new oc.BRepBuilderAPI_MakeEdge_3(pts[j], pts[(j + 1) % 4]);
+            const e = new oc.BRepBuilderAPI_MakeEdge_3(cornerPts[j], cornerPts[(j + 1) % 4]);
             makeWire.Add_1(e.Edge());
             e.delete();
           }
 
           const wire = makeWire.Wire();
           const faceMaker = new oc.BRepBuilderAPI_MakeFace_15(wire, false);
-          if (!faceMaker.IsDone()) {
-            faceMaker.delete();
-            makeWire.delete();
-            throw new Error("Failed to create face for segment.");
+          if (faceMaker.IsDone()) {
+            const builder = new oc.BRepPrimAPI_MakePrism_1(faceMaker.Face(), dirVec, false, true);
+            shapes.push(builder.Shape());
+            builder.delete();
           }
-          const realFace = faceMaker.Face();
-
-
-          const dirVec = new oc.gp_Vec_4(0, 0, height);
-          const builder = new oc.BRepPrimAPI_MakePrism_1(realFace, dirVec, false, true);
-          shapes.push(builder.Shape());
-
-          pts.forEach(p => p.delete());
+          
+          cornerPts.forEach(p => p.delete());
           makeWire.delete();
-          wire.delete();
           faceMaker.delete();
-          dirVec.delete();
-          builder.delete();
         }
-
-
 
         if (shapes.length > 0) {
           resultShape = shapes[0];
           for (let i = 1; i < shapes.length; i++) {
-            const prevResult = resultShape;
             const fuse = makeBooleanBuilder(oc, 'fuse', resultShape, shapes[i]);
             configureBooleanOp(fuse);
             buildBooleanOp(oc, fuse);
             if (fuse.IsDone()) {
+              const old = resultShape;
               resultShape = fuse.Shape();
-              prevResult.delete();
+              old.delete();
             }
             shapes[i].delete();
             fuse.delete();
           }
         }
-
-
-
       } else {
-        // Build wire from all profile points
+        // Standard Solid Extrusion
         const makeWire = new oc.BRepBuilderAPI_MakeWire_1();
 
         for (let i = 0; i < points.length - 1; i++) {
-          const pi = new oc.gp_Pnt_3(points[i].x, points[i].y, points[i].z);
-          const pi1 = new oc.gp_Pnt_3(points[i + 1].x, points[i + 1].y, points[i + 1].z);
-          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pi, pi1);
+          const p1 = getXYZ(points[i]);
+          const p2 = getXYZ(points[i+1]);
+          const gp1 = new oc.gp_Pnt_3(p1.x, p1.y, p1.z);
+          const gp2 = new oc.gp_Pnt_3(p2.x, p2.y, p2.z);
+          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(gp1, gp2);
           if (makeEdge.IsDone()) {
             makeWire.Add_1(makeEdge.Edge());
           }
-          pi.delete();
-          pi1.delete();
+          gp1.delete();
+          gp2.delete();
           makeEdge.delete();
         }
 
-        // For closed profiles: add the closing edge from last point back to first
-        if (isClosed) {
-          const pLast = new oc.gp_Pnt_3(points[points.length - 1].x, points[points.length - 1].y, points[points.length - 1].z);
-          const pFirst = new oc.gp_Pnt_3(points[0].x, points[0].y, points[0].z);
-          const closeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pLast, pFirst);
+        if (isClosed && points.length > 2) {
+          const pFirst = getXYZ(points[0]);
+          const pLast = getXYZ(points[points.length - 1]);
+          const gpFirst = new oc.gp_Pnt_3(pFirst.x, pFirst.y, pFirst.z);
+          const gpLast = new oc.gp_Pnt_3(pLast.x, pLast.y, pLast.z);
+          const closeEdge = new oc.BRepBuilderAPI_MakeEdge_3(gpLast, gpFirst);
           if (closeEdge.IsDone()) {
             makeWire.Add_1(closeEdge.Edge());
           }
-          pLast.delete();
-          pFirst.delete();
+          gpFirst.delete();
+          gpLast.delete();
           closeEdge.delete();
         }
 
@@ -2768,51 +2789,50 @@ self.onmessage = async (e) => {
           throw new Error("Failed to build wire from profile points.");
         }
 
-        const dirVec = new oc.gp_Vec_4(0, 0, height);
-
         if (isClosed) {
           const faceMaker = new oc.BRepBuilderAPI_MakeFace_15(makeWire.Wire(), false);
           if (!faceMaker.IsDone()) {
             faceMaker.delete();
             makeWire.delete();
-            dirVec.delete();
             throw new Error("Failed to create face from closed profile.");
           }
-          const face = faceMaker.Face();
-          const builder = new oc.BRepPrimAPI_MakePrism_1(face, dirVec, false, true);
+          const builder = new oc.BRepPrimAPI_MakePrism_1(faceMaker.Face(), dirVec, false, true);
           resultShape = builder.Shape();
 
+          // Ensure positive volume
+          try {
+              const props = new (oc.GProp_GProps_1 || oc.GProp_GProps)();
+              if (oc.BRepGProp && typeof oc.BRepGProp.VolumeProperties_1 === 'function') {
+                  oc.BRepGProp.VolumeProperties_1(resultShape, props, false, false, false);
+              } else if (oc.BRepGProp && typeof oc.BRepGProp.VolumeProperties === 'function') {
+                  oc.BRepGProp.VolumeProperties(resultShape, props, false, false, false);
+              }
+              if (props.Mass() < 0) {
+                  resultShape.Reverse();
+              }
+              props.delete();
+          } catch(e) {}
+
           faceMaker.delete();
-          // builder.delete() moved to cleanup section
           buildersToCleanup.push(builder);
         } else {
-          // Open profile: sweep along a line to create a shell
-          const p1 = new oc.gp_Pnt_3(0, 0, 0);
-          const p2 = new oc.gp_Pnt_3(0, 0, height);
-          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2);
+          // Open profile: sweep along the direction to create a shell
+          const pStart = new oc.gp_Pnt_3(0, 0, 0);
+          const pEnd = new oc.gp_Pnt_3(dirVec.X(), dirVec.Y(), dirVec.Z());
+          const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pStart, pEnd);
           const makeSpine = new oc.BRepBuilderAPI_MakeWire_2(makeEdge.Edge());
-          const spine = makeSpine.Wire();
-
-          const sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(spine);
+          const sweepBuilder = new oc.BRepOffsetAPI_MakePipeShell(makeSpine.Wire());
           sweepBuilder.Add_1(makeWire.Wire(), false, false);
           sweepBuilder.Build();
-
           resultShape = sweepBuilder.Shape();
 
-          p1.delete();
-          p2.delete();
+          pStart.delete();
+          pEnd.delete();
           makeEdge.delete();
           makeSpine.delete();
-          // sweepBuilder.delete() moved to cleanup section
           buildersToCleanup.push(sweepBuilder);
         }
-
         makeWire.delete();
-        dirVec.delete();
-
-
-
-
       }
 
       if (!resultShape) {
@@ -3718,33 +3738,46 @@ self.onmessage = async (e) => {
     try {
       let resultShape: any = null;
       let builder: any = undefined;
-      const angleRad = angle * Math.PI / 180;
-      const revAxis = new oc.gp_Ax1_2(new oc.gp_Pnt_3(axisPoint.x, axisPoint.y, axisPoint.z), new oc.gp_Dir_4(axisDir.x, axisDir.y, axisDir.z));
+      const angleRad = (Number(angle) || 360) * Math.PI / 180;
+      const axPt = getXYZ(axisPoint);
+      const axDir = getXYZ(axisDir);
+      
+      const revAxis = new oc.gp_Ax1_2(
+        new oc.gp_Pnt_3(axPt.x, axPt.y, axPt.z), 
+        new oc.gp_Dir_4(axDir.x, axDir.y, axDir.z)
+      );
 
       // Build wire from all profile points
       const makeWire = new oc.BRepBuilderAPI_MakeWire_1();
 
 
       for (let i = 0; i < points.length - 1; i++) {
+        const p1 = getXYZ(points[i]);
+        const p2 = getXYZ(points[i + 1]);
+        
+        // Prevent zero-length edge creation which crashes MakeWire
+        const dSq = Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2) + Math.pow(p2.z - p1.z, 2);
+        if (dSq < 1e-10) continue;
 
-        const pi = new oc.gp_Pnt_3(points[i].x, points[i].y, points[i].z);
-        const pi1 = new oc.gp_Pnt_3(points[i + 1].x, points[i + 1].y, points[i + 1].z);
-        const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pi, pi1);
+        const gp1 = new oc.gp_Pnt_3(p1.x, p1.y, p1.z);
+        const gp2 = new oc.gp_Pnt_3(p2.x, p2.y, p2.z);
+
+        const makeEdge = new oc.BRepBuilderAPI_MakeEdge_3(gp1, gp2);
         if (makeEdge.IsDone()) {
           makeWire.Add_1(makeEdge.Edge());
         }
-        pi.delete();
-        pi1.delete();
+        gp1.delete();
+        gp2.delete();
         makeEdge.delete();
       }
 
       // For closed profiles: add the closing edge from last point back to first if not already closed
-      if (isClosed) {
-        const p0 = points[0];
-        const pN = points[points.length - 1];
-        const dist = Math.sqrt((p0.x - pN.x) ** 2 + (p0.y - pN.y) ** 2 + (p0.z - pN.z) ** 2);
+      if (isClosed && points.length >= 2) {
+        const p0 = getXYZ(points[0]);
+        const pN = getXYZ(points[points.length - 1]);
+        const distSq = Math.pow(p0.x - pN.x, 2) + Math.pow(p0.y - pN.y, 2) + Math.pow(p0.z - pN.z, 2);
 
-        if (dist >= 1e-5) {
+        if (distSq > 1e-10) {
           const pLast = new oc.gp_Pnt_3(pN.x, pN.y, pN.z);
           const pFirst = new oc.gp_Pnt_3(p0.x, p0.y, p0.z);
           const closeEdge = new oc.BRepBuilderAPI_MakeEdge_3(pLast, pFirst);
@@ -3778,6 +3811,24 @@ self.onmessage = async (e) => {
       builder = new oc.BRepPrimAPI_MakeRevol_1(isClosed ? faceMaker.Face() : profile, revAxis, angleRad, false);
 
       resultShape = builder.Shape();
+
+      // Ensure positive volume (fix inverted normals)
+      if (isClosed && angle === 360) {
+          try {
+              const props = new (oc.GProp_GProps_1 || oc.GProp_GProps)();
+              if (oc.BRepGProp && typeof oc.BRepGProp.VolumeProperties_1 === 'function') {
+                  oc.BRepGProp.VolumeProperties_1(resultShape, props, false, false, false);
+              } else if (oc.BRepGProp && typeof oc.BRepGProp.VolumeProperties === 'function') {
+                  oc.BRepGProp.VolumeProperties(resultShape, props, false, false, false);
+              }
+              if (props.Mass() < 0) {
+                  resultShape.Reverse();
+              }
+              props.delete();
+          } catch(e) {
+              console.warn("Volume check failed", e);
+          }
+      }
 
       makeWire.delete();
       if (isClosed) {
@@ -3888,6 +3939,10 @@ self.onmessage = async (e) => {
         if (!resultShape.IsNull()) {
           resultShape.delete();
         }
+        if (operation === 'cut' || operation === 'common') {
+            boolBuilder.delete();
+            throw new Error(`Boolean ${operation} produced an empty result. Check if tool solid is invalid or consumes the entire target.`);
+        }
         const emptyShape = new oc.TopoDS_Compound();
         const builder = new oc.BRep_Builder();
         builder.MakeCompound(emptyShape);
@@ -3913,6 +3968,53 @@ self.onmessage = async (e) => {
         } finally {
           analyzer.delete();
         }
+      }
+
+      // **STRICT VALIDITY CHECK**: If cutting, compare target and result volumes/faces
+      if (operation === 'cut' && hasFaces) {
+          try {
+              const propsTarget = new (oc.GProp_GProps_1 || oc.GProp_GProps)();
+              const propsResult = new (oc.GProp_GProps_1 || oc.GProp_GProps)();
+              
+              const calcVol = (oc.BRepGProp && typeof oc.BRepGProp.VolumeProperties_1 === 'function') 
+                ? oc.BRepGProp.VolumeProperties_1 
+                : oc.BRepGProp.VolumeProperties;
+
+              if (typeof calcVol === 'function') {
+                  calcVol(shapeA, propsTarget, false, false, false);
+                  calcVol(finalResultShape, propsResult, false, false, false);
+                  
+                  const volTarget = propsTarget.Mass();
+                  const volResult = propsResult.Mass();
+
+                  // Count faces in target vs result
+                  let facesA = 0;
+                  const expA = new oc.TopExp_Explorer_2(shapeA, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+                  while (expA.More()) { facesA++; expA.Next(); }
+                  expA.delete();
+
+                  let facesRes = 0;
+                  const expRes = new oc.TopExp_Explorer_2(finalResultShape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+                  while (expRes.More()) { facesRes++; expRes.Next(); }
+                  expRes.delete();
+                  
+                  propsTarget.delete();
+                  propsResult.delete();
+
+                  console.log(`[Worker] Boolean Cut Check: VolA=${volTarget.toFixed(4)}, VolRes=${volResult.toFixed(4)}, FacesA=${facesA}, FacesRes=${facesRes}`);
+
+                  // If volumes are identical AND face count is identical (or smaller), the cut failed.
+                  // A successful cut usually INCREASES face count or decreases volume significantly.
+                  if (Math.abs(volTarget - volResult) < 1e-4 && facesRes <= facesA) {
+                      finalResultShape.delete();
+                      boolBuilder.delete();
+                      throw new Error(`Boolean cut failed: Result is identical to Target. Tool solid might be invalid or non-intersecting.`);
+                  }
+              }
+          } catch(e: any) {
+              if (e.message?.includes("failed")) throw e; // Re-throw our explicit errors
+              console.warn("Strict boolean cut volume check skipped:", e.message);
+          }
       }
 
       if (entityId) {
@@ -4243,6 +4345,182 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'importBRepResult', success: true, payload: geometryData, id });
     } catch (err: any) {
       self.postMessage({ type: 'importBRepResult', success: false, error: err.message, id });
+    }
+  } else if (type === 'checkValidity') {
+    const { entityId } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not found for entity: ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+      
+      let isValid = true;
+      let errorMsg = "";
+      
+      if (oc.BRepCheck_Analyzer) {
+        const analyzer = new oc.BRepCheck_Analyzer(shape, true);
+        const isValidFn = analyzer.IsValid || (analyzer as any).isValid;
+        if (typeof isValidFn === 'function') {
+          isValid = isValidFn.call(analyzer);
+        }
+        analyzer.delete();
+      }
+      
+      // Also check if it has faces (if it's supposed to be a solid)
+      let faceCount = 0;
+      const exp = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      while (exp.More()) { faceCount++; exp.Next(); }
+      exp.delete();
+      
+      if (faceCount === 0) {
+        isValid = false;
+        errorMsg = "Shape has no faces (might be a wire or open shell).";
+      }
+
+      self.postMessage({ type: 'checkValidity', success: true, payload: { isValid, faceCount, errorMsg }, id });
+    } catch (err: any) {
+      self.postMessage({ type: 'checkValidity', success: false, error: err.message, id });
+    }
+  } else if (type === 'extractFaceProfile') {
+    if (!oc) {
+      self.postMessage({ type: 'error', error: 'Not initialized', id });
+      return;
+    }
+    const { entityId, faceIndex, deflection = 0.1 } = payload;
+    try {
+      if (!shapeCache.has(entityId)) {
+        throw new Error(`Shape not found for entity: ${entityId}`);
+      }
+      const shape = shapeCache.get(entityId);
+
+      // 1. Find the target face
+      let targetFace: any = null;
+      let currentIndex = 0;
+      const fExp = new oc.TopExp_Explorer_2(shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      while (fExp.More()) {
+        if (currentIndex === faceIndex) {
+          targetFace = oc.TopoDS.Face_1(fExp.Current());
+          break;
+        }
+        currentIndex++;
+        fExp.Next();
+      }
+      fExp.delete();
+
+      if (!targetFace) {
+        throw new Error(`Face index ${faceIndex} not found in solid ${entityId}.`);
+      }
+
+      // 2. Determine plane for projection
+      const adaptor = new oc.BRepAdaptor_Surface_2(targetFace, true);
+      const isPlane = adaptor.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Plane;
+      
+      let plane: any;
+      if (isPlane) {
+        plane = adaptor.Plane();
+      } else {
+        // Fallback: Use bounding box center and global XY for projection if not planar
+        // But for "Profile", we usually want the planar face.
+        // For now, let's strictly require a plane.
+        adaptor.delete();
+        targetFace.delete();
+        throw new Error("Only planar faces are supported for profile extraction.");
+      }
+
+      // 3. Define view-aligned projection axes (Non-Mirrored)
+      const pln = adaptor.Plane();
+      const pos = pln.Location();
+      const geomNorm = pln.Axis().Direction();
+      
+      // Determine outward normal based on topological orientation
+      let nx = geomNorm.X();
+      let ny = geomNorm.Y();
+      let nz = geomNorm.Z();
+      if (targetFace.Orientation_1() === oc.TopAbs_Orientation.TopAbs_REVERSED) {
+          nx = -nx; ny = -ny; nz = -nz;
+      }
+      
+      const norm = new oc.gp_Dir_4(nx, ny, nz);
+      const look = new oc.gp_Dir_4(-nx, -ny, -nz); // Viewer looks INTO the face
+      
+      let up: any;
+      if (Math.abs(look.Z()) < 0.9) {
+          up = new oc.gp_Dir_4(0, 0, 1); // Prefer World Z as UP
+      } else {
+          // Looking up or down: use Y as UP
+          up = new oc.gp_Dir_4(0, look.Z() > 0 ? -1 : 1, 0);
+      }
+      
+      const right = look.Crossed(up);
+      
+      const loops: { x: number, y: number, bulge: number }[][] = [];
+
+      // 4. Explore wires (loops) of the face
+      const wExp = new oc.TopExp_Explorer_2(targetFace, oc.TopAbs_ShapeEnum.TopAbs_WIRE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+      while (wExp.More()) {
+        const wire = oc.TopoDS.Wire_1(wExp.Current());
+        const loop: { x: number, y: number, bulge: number }[] = [];
+        
+        const eExp = new oc.TopExp_Explorer_2(wire, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        while (eExp.More()) {
+          const edge = oc.TopoDS.Edge_1(eExp.Current());
+          const curveAdaptor = new oc.BRepAdaptor_Curve_2(edge);
+          const first = curveAdaptor.FirstParameter();
+          const last = curveAdaptor.LastParameter();
+
+          const sampler = new oc.GCPnts_QuasiUniformDeflection_4(curveAdaptor, deflection, first, last, oc.GeomAbs_Shape.GeomAbs_C1);
+          if (sampler.IsDone()) {
+            const n = sampler.NbPoints();
+            for (let i = 1; i <= n; i++) {
+              const p3d = sampler.Value(i);
+              
+              // Direct dot-product projection into our view-aligned plane
+              const dx = p3d.X() - pos.X();
+              const dy = p3d.Y() - pos.Y();
+              const dz = p3d.Z() - pos.Z();
+              
+              const lx = dx * right.X() + dy * right.Y() + dz * right.Z();
+              const ly = dx * up.X() + dy * up.Y() + dz * up.Z();
+              
+              loop.push({ x: lx, y: ly, bulge: 0 });
+              
+              p3d.delete();
+            }
+          }
+          sampler.delete();
+          curveAdaptor.delete();
+          edge.delete();
+          eExp.Next();
+        }
+        eExp.delete();
+        
+        if (loop.length > 1) {
+          const d2 = (p1: any, p2: any) => Math.pow(p1.x-p2.x, 2) + Math.pow(p1.y-p2.y, 2);
+          if (d2(loop[0], loop[loop.length-1]) < 1e-10) {
+            loop.pop();
+          }
+          loops.push(loop);
+        }
+        
+        wire.delete();
+        wExp.Next();
+      }
+      wExp.delete();
+
+      // Cleanup
+      right.delete();
+      up.delete();
+      look.delete();
+      norm.delete();
+      geomNorm.delete();
+      pos.delete();
+      pln.delete();
+      adaptor.delete();
+      targetFace.delete();
+
+      self.postMessage({ type: 'extractFaceProfile', success: true, payload: { loops }, id });
+    } catch (err: any) {
+      self.postMessage({ type: 'extractFaceProfile', success: false, error: err.message, id });
     }
   }
 }

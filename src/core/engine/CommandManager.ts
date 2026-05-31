@@ -91,7 +91,7 @@ import { BooleanCommand } from "../commands/BooleanCommand"
 import { LoftCommand } from "../commands/LoftCommand"
 import { Entity } from "../model/Entity"
 import { RebuildCommand } from "../commands/RebuildCommand"
-
+import { RegenCommand } from "../commands/RegenCommand"
 
 
 type CommandFactory = (selection?: string[], units?: UnitsConfig, entities?: Map<string, Entity>, doc?: Document) => Command | CommandResponse;
@@ -279,6 +279,15 @@ export class CommandManager {
     if (result && typeof result === 'object' && 'onPoint' in result) {
       this.active = result as Command;
       console.log("[CommandManager] Command activated:", this.active.constructor.name);
+      
+      // Feed additional arguments if provided BEFORE returning prompt
+      for (const arg of args) {
+        if (this.active) {
+          const nextRes = this.inputString(arg, units, undefined, undefined, doc);
+          if (nextRes) response = nextRes;
+        }
+      }
+      
       return this.active.getPrompt ? this.active.getPrompt() : cmdName;
     } else {
       // If it's a direct action or string, we still might need to pass doc if we feed args
@@ -291,16 +300,6 @@ export class CommandManager {
       // we might need a different handling. But for now, most are stateful.
       return result as CommandResponse;
     }
-
-    // Feed additional arguments if provided
-    for (const arg of args) {
-      if (this.active) {
-        const nextRes = this.inputString(arg, units, undefined, undefined, doc);
-        if (nextRes) response = nextRes;
-      }
-    }
-
-    return response || "";
   }
 
   inputPoint(x:number,y:number, units: UnitsConfig, idGenerator?: (prefix: string) => string, doc?: Document, z?: number): CommandResponse | Promise<CommandResponse> | undefined {

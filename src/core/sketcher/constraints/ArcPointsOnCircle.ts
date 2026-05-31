@@ -31,8 +31,8 @@ export class ArcPointsOnCircle extends ConstraintBase {
     const eqE = dxE.square().plus(dyE.square()).minus(r.square());
 
     return [
-      { expr: eqS, tag: 0 },
-      { expr: eqE, tag: 0 }
+      { expr: eqS, tag: 0, owner: this },
+      { expr: eqE, tag: 0, owner: this }
     ];
   }
 

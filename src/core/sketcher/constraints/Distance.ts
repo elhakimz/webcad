@@ -21,7 +21,7 @@ export class Distance extends ConstraintBase {
     const dy = Expr.param(pA.py).minus(Expr.param(pB.py));
     const eq = dx.square().plus(dy.square()).minus(Expr.const_(this.value ** 2));
     
-    return [{ expr: eq, tag: 0 }];
+    return [{ expr: eq, tag: 0, owner: this }];
   }
 
   modifyToSatisfy(model: SketchModel): void {

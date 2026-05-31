@@ -19,12 +19,19 @@ export class JoinHandler implements ActionHandler {
       const initialChains = JoinUtility.buildChains(allEntities);
       if (initialChains.length < 1) return "No joinable entities selected.";
 
-      // 2. Greedy merging algorithm
-      const mergedChains = JoinUtility.mergeChains(initialChains);
+      // 2. Greedy merging algorithm with strict tolerance
+      const tol = 1e-10;
+      const mergedChains = JoinUtility.mergeChains(initialChains, tol);
 
-      // 3. Apply changes to document
+      // 3. Validation: All selected joinable entities must form a single continuous chain
+      // if endpoints do not meet at same coords, joining is failed and canceled.
+      if (initialChains.length > 1 && mergedChains.length > 1) {
+        this.cleanup(context);
+        return "Entities do not meet at same coordinates. Join canceled.";
+      }
+
+      // 4. Apply changes to document
       let joinCount = 0;
-      const tol = 1e-3;
 
       for (const chain of mergedChains) {
         // If multiple entities merged OR if it's a single entity that isn't a Polyline (e.g. Arc conversion)

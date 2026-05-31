@@ -29,7 +29,7 @@ export class Parallel extends ConstraintBase {
     const dxB = Expr.param(pB2.px).minus(Expr.param(pB1.px));
     const dyB = Expr.param(pB2.py).minus(Expr.param(pB1.py));
 
-    return [{ expr: dxA.times(dyB).minus(dyA.times(dxB)), tag: 0 }];
+    return [{ expr: dxA.times(dyB).minus(dyA.times(dxB)), tag: 0, owner: this }];
   }
 
   modifyToSatisfy(_model: SketchModel): void {}

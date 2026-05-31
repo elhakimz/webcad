@@ -16,7 +16,7 @@ export class Radius extends ConstraintBase {
     if (!ent || (ent.type !== 'CIRCLE' && ent.type !== 'ARC_OF_CIRCLE') || ent.distance === undefined) return [];
 
     // r - value = 0
-    return [{ expr: Expr.param(ent.distance).minus(Expr.const_(this.value)), tag: 0 }];
+    return [{ expr: Expr.param(ent.distance).minus(Expr.const_(this.value)), tag: 0, owner: this }];
   }
 
   modifyToSatisfy(model: SketchModel): void {

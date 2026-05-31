@@ -23,14 +23,11 @@ import {
   getPointCoords,
 } from './SketchSolver';
 import type { IDocument } from '../model/Document';
+import { STYLE } from '../sketcher/SketchStyle';
 
 // ── Entity-level DoF result ────────────────────────────────────────────────
 
-export type EntityDoFStatus =
-  | 'underconstrained'   // at least one coordinate is free → blue
-  | 'fullyconstrained'   // all coordinates bound, no redundancy → green
-  | 'overconstrained'    // involves a redundant constraint → red
-  | 'normal';            // not referenced by any constraint → default color
+export type EntityDoFStatus = typeof STYLE[keyof typeof STYLE];
 
 export interface DocumentDoFResult {
   /** Overall status of the sketch */
@@ -328,11 +325,11 @@ export function analyzeDocumentDoF(
 
   for (const entId of referencedEntityIds) {
     if (overEntityIds.has(entId)) {
-      entityStatus.set(entId, 'overconstrained');
+      entityStatus.set(entId, STYLE.OVERCONSTRAINED);
     } else if (freeEntityIds.has(entId)) {
-      entityStatus.set(entId, 'underconstrained');
+      entityStatus.set(entId, STYLE.UNDERCONSTRAINED);
     } else {
-      entityStatus.set(entId, 'fullyconstrained');
+      entityStatus.set(entId, STYLE.FULLYCONSTRAINED);
     }
   }
 

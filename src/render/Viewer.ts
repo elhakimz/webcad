@@ -24,13 +24,14 @@ import { ImagePlane } from "../core/model/ImagePlane"
 import { Insert } from "../core/model/Insert"
 import { BlockDefinition } from "../core/model/Block"
 import { bulgeToArc, generateHatchLines, clipLineWithPolygon, aciToRgb, getLinetypeSettings, tessellateSpline } from "../core/engine/MathUtils"
+import { STYLE, SKETCH_COLORS } from "../core/sketcher/SketchStyle"
 import { Spline } from "../core/model/Spline"
-import { DocumentConstraint, getPointCoords } from "../core/engine/SketchSolver"
 import { Note } from "../core/model/Note"
-import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
-import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview, EntitiesPreview } from "../core/commands/types"
+import { SnapPoint } from "../core/engine/SnapEngine"
+import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview } from "../core/commands/types"
 import { GridRenderer } from "./GridRenderer"
 import { CursorRenderer } from "./CursorRenderer"
+import {getPointCoords} from "../core/engine/SketchSolver";
 
 export class Viewer {
   scene: THREE.Scene
@@ -157,24 +158,24 @@ export class Viewer {
     this.canvas = canvas
     this.scene = new THREE.Scene()
     
-    // Create modelling background (Deep Cyan)
+    // Create modelling background (Deep Cyan Gradient)
     const mCanvas = document.createElement('canvas');
     mCanvas.width = 2; mCanvas.height = 512;
     const mCtx = mCanvas.getContext('2d')!;
     const mGrad = mCtx.createLinearGradient(0, 0, 0, 512);
-    mGrad.addColorStop(0, '#000000');
-    mGrad.addColorStop(1, '#002222');
+    mGrad.addColorStop(0, '#000808'); // Very dark cyan top
+    mGrad.addColorStop(1, '#004444'); // Distinct dark cyan bottom
     mCtx.fillStyle = mGrad;
     mCtx.fillRect(0, 0, 2, 512);
     this.modellingBg = new THREE.CanvasTexture(mCanvas);
 
-    // Create scripting background (Darker / Deep Space)
+    // Create scripting background (Deep Space Gradient)
     const sCanvas = document.createElement('canvas');
     sCanvas.width = 2; sCanvas.height = 512;
     const sCtx = sCanvas.getContext('2d')!;
     const sGrad = sCtx.createLinearGradient(0, 0, 0, 512);
-    sGrad.addColorStop(0, '#020205');
-    sGrad.addColorStop(1, '#0c0c14');
+    sGrad.addColorStop(0, '#01050a'); 
+    sGrad.addColorStop(1, '#0a1424'); 
     sCtx.fillStyle = sGrad;
     sCtx.fillRect(0, 0, 2, 512);
     this.scriptingBg = new THREE.CanvasTexture(sCanvas);
@@ -4285,10 +4286,10 @@ export class Viewer {
 
   // DOF COLORS — tuned to be visible on the dark CAD background
   private static readonly DOF_COLOR = {
-    underconstrained:  0x4da6ff,   // blue — has free movement
-    fullyconstrained:  0x44cc77,   // green — fully solved
-    overconstrained:   0xff4444,   // red — conflicting constraints
-    normal:            0xebf2ff,   // default entity color (unchanged)
+    [STYLE.UNDERCONSTRAINED]: SKETCH_COLORS[STYLE.UNDERCONSTRAINED],
+    [STYLE.FULLYCONSTRAINED]: SKETCH_COLORS[STYLE.FULLYCONSTRAINED],
+    [STYLE.OVERCONSTRAINED]:  SKETCH_COLORS[STYLE.OVERCONSTRAINED],
+    [STYLE.NORMAL]:           SKETCH_COLORS[STYLE.NORMAL],
   } as const;
 
   public setDoFColors(
@@ -4305,7 +4306,7 @@ export class Viewer {
 
     // Apply new tints
     for (const [entityId, status] of entityStatus) {
-      const color = Viewer.DOF_COLOR[status] ?? Viewer.DOF_COLOR.normal;
+      const color = (Viewer.DOF_COLOR as any)[status] ?? Viewer.DOF_COLOR[STYLE.NORMAL];
       this.tintEntityLines(entityId, color);
       this.doFColorMap.set(entityId, color);
     }
@@ -4336,11 +4337,11 @@ export class Viewer {
       const originalColor = this.getEntityLayerColor(entityId);
       obj.traverse(child => {
         if (
-          (child instanceof THREE.Line || child instanceof THREE.LineSegments) &&
-          child.material instanceof THREE.LineBasicMaterial
+          (child instanceof THREE.Line || child instanceof THREE.LineSegments || child instanceof THREE.Mesh) &&
+          child.material && (child.material as any).color
         ) {
-          child.material.color.setHex(originalColor);
-          child.material.needsUpdate = true;
+          (child.material as any).color.setHex(originalColor);
+          (child.material as any).needsUpdate = true;
         }
       });
       return;
@@ -4348,11 +4349,11 @@ export class Viewer {
 
     obj.traverse(child => {
       if (
-        (child instanceof THREE.Line || child instanceof THREE.LineSegments) &&
-        child.material instanceof THREE.LineBasicMaterial
+        (child instanceof THREE.Line || child instanceof THREE.LineSegments || child instanceof THREE.Mesh) &&
+        child.material && (child.material as any).color
       ) {
-        child.material.color.setHex(color);
-        child.material.needsUpdate = true;
+        (child.material as any).color.setHex(color);
+        (child.material as any).needsUpdate = true;
       }
     });
   }
@@ -4362,6 +4363,6 @@ export class Viewer {
     if (obj?.userData?.originalColor !== undefined) {
       return obj.userData.originalColor as number;
     }
-    return Viewer.DOF_COLOR.normal;
+    return Viewer.DOF_COLOR[STYLE.NORMAL];
   }
 }

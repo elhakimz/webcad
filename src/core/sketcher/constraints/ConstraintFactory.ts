@@ -11,6 +11,12 @@ import { Tangent } from "./Tangent";
 import { Angle } from "./Angle";
 import { Concentric } from "./Concentric";
 import { ArcPointsOnCircle } from "./ArcPointsOnCircle";
+import { ArcLineTangent } from "./ArcLineTangent";
+import { EqualLength } from "./EqualLength";
+import { EqualRadius } from "./EqualRadius";
+import { Symmetric } from "./Symmetric";
+import { Midpoint } from "./Midpoint";
+import { WhereDragged } from "./WhereDragged";
 
 export class ConstraintFactory {
   static create(data: any): ConstraintBase | null {
@@ -37,6 +43,18 @@ export class ConstraintFactory {
         return new Concentric(data.entityA, data.entityB);
       case 'ArcPointsOnCircle':
         return new ArcPointsOnCircle(data.arc);
+      case 'ArcLineTangent':
+        return new ArcLineTangent(data.arc, data.line, data.atStart);
+      case 'EqualLength':
+        return new EqualLength(data.entityA, data.entityB);
+      case 'EqualRadius':
+        return new EqualRadius(data.circleA, data.circleB);
+      case 'Symmetric':
+        return new Symmetric(data.ptA, data.ptB, data.axisEntity);
+      case 'Midpoint':
+        return new Midpoint(data.pt, data.entityA);
+      case 'WhereDragged':
+        return new WhereDragged(data.pt, data.tx, data.ty);
       default:
         console.warn(`Unknown constraint type: ${data.type}`);
         return null;

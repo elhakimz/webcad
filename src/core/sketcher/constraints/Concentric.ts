@@ -22,8 +22,8 @@ export class Concentric extends ConstraintBase {
     if (!pA || !pB) return [];
 
     return [
-      { expr: Expr.param(pA.px).minus(Expr.param(pB.px)), tag: 0 },
-      { expr: Expr.param(pA.py).minus(Expr.param(pB.py)), tag: 0 }
+      { expr: Expr.param(pA.px).minus(Expr.param(pB.px)), tag: 0, owner: this },
+      { expr: Expr.param(pA.py).minus(Expr.param(pB.py)), tag: 0, owner: this }
     ];
   }
 

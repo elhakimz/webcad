@@ -120,4 +120,33 @@ describe('JoinHandler', () => {
     expect(poly.vertices[1].bulge).toBeCloseTo(expectedBulge, 5)
     expect(poly.vertices[2].bulge).toBe(0)
   })
+
+  it('should fail and cancel if endpoints do not meet at same coordinates', async () => {
+    const doc = new Document()
+    
+    // Line 1: (0,0) to (10,0)
+    const poly1 = new Polyline('PL1', [{x: 0, y: 0, bulge: 0}, {x: 10, y: 0, bulge: 0}], false)
+    doc.addEntity(poly1)
+    
+    // Line 2: (10.1, 0) to (20.1, 0) -- Gap of 0.1
+    const poly2 = new Polyline('PL2', [{x: 10.1, y: 0, bulge: 0}, {x: 20.1, y: 0, bulge: 0}], false)
+    doc.addEntity(poly2)
+
+    const handler = new JoinHandler()
+    const context = createMockContext(doc)
+
+    const action = {
+      action: 'join',
+      ids: ['PL1', 'PL2']
+    }
+
+    const response = await handler.handle(action as any, context)
+
+    expect(response).toBe("Entities do not meet at same coordinates. Join canceled.")
+    
+    // Verify no entities were removed/added
+    expect(doc.getEntity('PL1')).toBeDefined()
+    expect(doc.getEntity('PL2')).toBeDefined()
+    expect(doc.getAllEntities().length).toBe(2)
+  })
 })

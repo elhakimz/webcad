@@ -76,7 +76,7 @@ export class JoinUtility {
    * Greedily merges chains together based on endpoint proximity.
    */
   static mergeChains(chains: Chain[], tolerance: number = 1e-3): Chain[] {
-    let result = [...chains];
+    const result = [...chains];
     let changed = true;
     while (changed) {
       changed = false;

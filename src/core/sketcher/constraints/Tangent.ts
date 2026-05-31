@@ -35,7 +35,7 @@ export class Tangent extends ConstraintBase {
     const baseSq = dxL.square().plus(dyL.square());
 
     // distSq - r^2 * baseSq = 0
-    return [{ expr: distSq.minus(r.square().times(baseSq)), tag: 0 }];
+    return [{ expr: distSq.minus(r.square().times(baseSq)), tag: 0, owner: this }];
   }
 
   modifyToSatisfy(_model: SketchModel): void {}

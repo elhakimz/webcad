@@ -17,7 +17,7 @@ export class Vertical extends ConstraintBase {
     if (!pA || !pB) return [];
 
     // xA - xB = 0
-    return [{ expr: Expr.param(pA.px).minus(Expr.param(pB.px)), tag: 0 }];
+    return [{ expr: Expr.param(pA.px).minus(Expr.param(pB.px)), tag: 0, owner: this }];
   }
 
   modifyToSatisfy(model: SketchModel): void {

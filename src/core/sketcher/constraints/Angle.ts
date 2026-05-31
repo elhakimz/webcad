@@ -26,8 +26,7 @@ export class Angle extends ConstraintBase {
     const dxB = Expr.param(pB2.px).minus(Expr.param(pB1.px));
     const dyB = Expr.param(pB2.py).minus(Expr.param(pB1.py));
 
-    const angleRad = (this.angleDeg * Math.PI) / 180;
-    const cosVal = Math.cos(angleRad);
+    const cosVal = Math.cos(this.angleDeg);
 
     // dot(A, B) = |A||B| cos(theta)
     // (dxA*dxB + dyA*dyB)^2 = (dxA^2 + dyA^2) * (dxB^2 + dyB^2) * cos(theta)^2
@@ -35,7 +34,7 @@ export class Angle extends ConstraintBase {
     const magASq = dxA.square().plus(dyA.square());
     const magBSq = dxB.square().plus(dyB.square());
 
-    return [{ expr: dot.square().minus(magASq.times(magBSq).times(Expr.const_(cosVal * cosVal))), tag: 0 }];
+    return [{ expr: dot.square().minus(magASq.times(magBSq).times(Expr.const_(cosVal * cosVal))), tag: 0, owner: this }];
   }
 
   modifyToSatisfy(_model: SketchModel): void {}

@@ -1,7 +1,7 @@
 import { ActionHandler, AppContext } from "../types";
 import { CommandAction, CommandResponse } from "../../../commands/types";
 import { OpenCascadeService } from "../../../io/OpenCascadeService";
-import { solveDocumentConstraints } from "../../SketchSolver";
+import { solveDocumentGCS } from "../../../sketcher/GCSBridge";
 
 export class RotateHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -54,7 +54,7 @@ export class RotateHandler implements ActionHandler {
 
       // After applying raw rotation, solve constraints to honor 'Fix' etc.
       try {
-        solveDocumentConstraints(doc, doc.constraints);
+        solveDocumentGCS(doc, doc.constraints);
       } catch (err) {
         console.warn("Solver failed after rotate:", err);
       }

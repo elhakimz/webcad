@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import WebGPURenderer from 'three/examples/jsm/renderers/webgpu/WebGPURenderer.js';
+import WebGPURenderer from "three/examples/jsm/renderers/webgpu/WebGPURenderer.js";
 import { createZebraTSLMaterial } from './ZebraTSL';
 
 export class WebGPUPOC {

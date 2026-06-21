@@ -2,7 +2,7 @@ import { Viewer } from "./render/Viewer"
 import { WebGPUPOC } from "./render/WebGPUPOC"
 import { CommandManager } from "./core/engine/CommandManager"
 import { Document } from "./core/model/Document"
-import { CommandResponse, CommandAction, HasSetEntity } from "./core/commands/types"
+import { CommandResponse, CommandAction, HasSetEntity, PreviewObject } from "./core/commands/types"
 import { Entity } from "./core/model/Entity"
 import { Line } from "./core/model/Line"
 import { Solid3D } from "./core/model/Solid3D"
@@ -22,8 +22,10 @@ import { Hatch } from "./core/model/Hatch"
 import { getAllPatternNames } from "./core/io/Patterns"
 import { Insert } from "./core/model/Insert"
 import { Spline } from "./core/model/Spline"
-import { solveDocumentConstraints, DocumentConstraint, DocumentPointRef, getPointCoords } from "./core/engine/SketchSolver"
-import { analyzeDocumentDoF } from "./core/engine/DocumentDoFAnalyzer"
+import { DocumentConstraint, DocumentPointRef, getPointCoords } from "./core/engine/SketchSolver"
+import { solveDocumentGCS } from "./core/sketcher/GCSBridge"
+import { EntityDoFStatus, analyzeDocumentDoF, DocumentDoFResult } from "./core/engine/DocumentDoFAnalyzer"
+import { STYLE } from "./core/sketcher/SketchStyle"
 import { FormatUtils } from "./core/engine/FormatUtils"
 import { Note } from "./core/model/Note"
 import { SelectionEngine } from "./core/engine/SelectionEngine"
@@ -96,9 +98,9 @@ export class App {
   private lastWorldPt: { x: number, y: number, z?: number } | null = null;
   private commandLinePrint: ((msg: string) => void) | null = null
   private currentControls: any[] | null | undefined = null;
-  private statusBarUpdate: ((layer: Layer) => void) | null = null
-  private layersWindowUpdate: (() => void) | null = null
-  private objectsWindowUpdate: (() => void) | null = null
+  statusBarUpdate: ((layer: Layer) => void) | null = null
+  layersWindowUpdate: (() => void) | null = null
+  objectsWindowUpdate: (() => void) | null = null
   private filesWindowUpdate: (() => void) | null = null
   private promptUpdate: (() => void) | null = null;
   public propertiesWindow: any = null;
@@ -162,7 +164,7 @@ export class App {
   setPromptUpdate(updateFn: () => void) {
     this.promptUpdate = updateFn;
   }
-  private dynamicInput: DynamicInput;
+  dynamicInput: DynamicInput;
   private dynamicMenu: DynamicMenu;
   private lastScreenX: number = 0;
   private lastScreenY: number = 0;
@@ -717,7 +719,7 @@ export class App {
     });
 
     try {
-      solveDocumentConstraints(mockDoc, this.doc.constraints || []);
+      solveDocumentGCS(mockDoc, this.doc.constraints || []);
     } catch (err) {
       // Ignore solver errors in preview
     }
@@ -783,7 +785,7 @@ export class App {
         });
 
         try {
-          solveDocumentConstraints(mockDoc, this.doc.constraints);
+          solveDocumentGCS(mockDoc, this.doc.constraints);
         } catch (err) {
           console.error("Constraint solver error during center grip preview:", err);
         }
@@ -872,7 +874,7 @@ export class App {
           };
 
           try {
-            solveDocumentConstraints(mockDoc, this.doc.constraints, lockedPoint);
+            solveDocumentGCS(mockDoc, this.doc.constraints, lockedPoint);
           } catch (err) {
             console.error("Constraint solver error during mousemove preview:", err);
           }
@@ -1260,7 +1262,7 @@ export class App {
     this.doc.constraints.push(c);
 
     try {
-      solveDocumentConstraints(this.doc, this.doc.constraints);
+      solveDocumentGCS(this.doc, this.doc.constraints);
     } catch (err) {
       console.error("Constraint solver execution failed:", err);
       this.printToCommandLine("Conflict: Solver could not resolve constraints.");
@@ -1450,7 +1452,28 @@ export class App {
       if (hasLine1 && hasLine2) {
         options.push("Coincident", "Parallel", "Perpendicular", "Equal Length", "Angular", "Distance", "Cancel");
       } else if (hasCircle1 && hasCircle2) {
-        options.push("Coincident", "Concentric", "Tangent", "Distance", "Cancel");
+        // Only show Tangent for arc+arc if they share a point (smooth join)
+        const entA = selectedEntities[0], entB = selectedEntities[1];
+        const arcA = entA instanceof Arc ? entA : (entA instanceof Circle ? null : null);
+        const arcB = entB instanceof Arc ? entB : (entB instanceof Circle ? null : null);
+        let hasSharedPoint = false;
+        if (arcA && arcB) {
+          const tol = 1e-3;
+          const ptsA = arcA instanceof Arc ? ['start', 'end'] : [];
+          const ptsB = arcB instanceof Arc ? ['start', 'end'] : [];
+          for (const pA of ptsA) {
+            for (const pB of ptsB) {
+              const cA = getPointCoords(this.doc, { entityId: entA.id, pointId: pA });
+              const cB = getPointCoords(this.doc, { entityId: entB.id, pointId: pB });
+              if (cA && cB && Math.sqrt((cA.x - cB.x)**2 + (cA.y - cB.y)**2) < tol) {
+                hasSharedPoint = true; break;
+              }
+            }
+            if (hasSharedPoint) break;
+          }
+        }
+        const tangentOpts = hasSharedPoint ? ["Coincident", "Concentric", "Tangent", "Distance", "Cancel"] : ["Coincident", "Concentric", "Distance", "Cancel"];
+        options.push(...tangentOpts);
       } else if ((hasLine1 && hasCircle2) || (hasLine2 && hasCircle1)) {
         options.push("Coincident", "Tangent", "Distance", "Cancel");
       } else if (hasLine1 || hasLine2) {
@@ -1572,35 +1595,36 @@ export class App {
           console.log("1. ContextMenu, Angular, applyDirectConstraint");
           this.dynamicMenu.hide();
           
-          const intersect = getLineLineIntersectionInfinite(
-            { x: ent1.x1, y: ent1.y1 }, { x: ent1.x2, y: ent1.y2 },
-            { x: ent2.x1, y: ent2.y1 }, { x: ent2.x2, y: ent2.y2 }
-          );
+          // Use document point coordinates (like the Sketch Tool Window button does)
+          const p1 = getPointCoords(this.doc, { entityId: ent1.id, pointId: 'start' });
+          const p2 = getPointCoords(this.doc, { entityId: ent1.id, pointId: 'end' });
+          const p3 = getPointCoords(this.doc, { entityId: ent2.id, pointId: 'start' });
+          const p4 = getPointCoords(this.doc, { entityId: ent2.id, pointId: 'end' });
+          if (!p1 || !p2 || !p3 || !p4) return;
 
+          const intersect = getLineLineIntersectionInfinite(p1, p2, p3, p4);
           if (!intersect) return;
 
           // Determine which endpoint of each line is closer to the intersection
-          const d1a = Math.sqrt((ent1.x1 - intersect.x)**2 + (ent1.y1 - intersect.y)**2);
-          const d1b = Math.sqrt((ent1.x2 - intersect.x)**2 + (ent1.y2 - intersect.y)**2);
-          const l1Refs: [DocumentPointRef, DocumentPointRef] = d1a < d1b 
+          const d1a = Math.sqrt((p1.x - intersect.x)**2 + (p1.y - intersect.y)**2);
+          const d1b = Math.sqrt((p2.x - intersect.x)**2 + (p2.y - intersect.y)**2);
+          const l1Refs: [DocumentPointRef, DocumentPointRef] = d1a < d1b
             ? [{ entityId: ent1.id, pointId: 'start' }, { entityId: ent1.id, pointId: 'end' }]
             : [{ entityId: ent1.id, pointId: 'end' }, { entityId: ent1.id, pointId: 'start' }];
 
-          const d2a = Math.sqrt((ent2.x1 - intersect.x)**2 + (ent2.y1 - intersect.y)**2);
-          const d2b = Math.sqrt((ent2.x2 - intersect.x)**2 + (ent2.y2 - intersect.y)**2);
+          const d2a = Math.sqrt((p3.x - intersect.x)**2 + (p3.y - intersect.y)**2);
+          const d2b = Math.sqrt((p4.x - intersect.x)**2 + (p4.y - intersect.y)**2);
           const l2Refs: [DocumentPointRef, DocumentPointRef] = d2a < d2b
             ? [{ entityId: ent2.id, pointId: 'start' }, { entityId: ent2.id, pointId: 'end' }]
             : [{ entityId: ent2.id, pointId: 'end' }, { entityId: ent2.id, pointId: 'start' }];
 
-          const pStart1 = getPointCoords(this.doc, l1Refs[0]);
-          const pEnd1 = getPointCoords(this.doc, l1Refs[1]);
-          const pStart2 = getPointCoords(this.doc, l2Refs[0]);
-          const pEnd2 = getPointCoords(this.doc, l2Refs[1]);
+          const ap1 = getPointCoords(this.doc, l1Refs[0])!;
+          const ap2 = getPointCoords(this.doc, l1Refs[1])!;
+          const ap3 = getPointCoords(this.doc, l2Refs[0])!;
+          const ap4 = getPointCoords(this.doc, l2Refs[1])!;
 
-          if (!pStart1 || !pEnd1 || !pStart2 || !pEnd2) return;
-
-          const vx1 = pEnd1.x - pStart1.x, vy1 = pEnd1.y - pStart1.y;
-          const vx2 = pEnd2.x - pStart2.x, vy2 = pEnd2.y - pStart2.y;
+          const vx1 = ap2.x - ap1.x, vy1 = ap2.y - ap1.y;
+          const vx2 = ap4.x - ap3.x, vy2 = ap4.y - ap3.y;
           
           const diff = Math.atan2(vy2, vx2) - Math.atan2(vy1, vx1);
           let d = diff; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
@@ -1615,11 +1639,11 @@ export class App {
               let targetDiff = val * Math.PI / 180;
               if (d < 0) targetDiff = -targetDiff;
               
-              this.applyDirectConstraint({ 
-                type: 'angular', 
-                l1: l1Refs, 
-                l2: l2Refs, 
-                value: targetDiff 
+              this.applyDirectConstraint({
+                type: 'angular',
+                l1: l1Refs,
+                l2: l2Refs,
+                value: targetDiff
               });
             }
             this.dynamicInput.hide();
@@ -1954,7 +1978,7 @@ export class App {
 
       // Solve constraints after the manual transformation
       try {
-        solveDocumentConstraints(this.doc, this.doc.constraints);
+        solveDocumentGCS(this.doc, this.doc.constraints);
       } catch (err) {
         console.error("Constraint solver error during center grip commit:", err);
       }
@@ -2032,7 +2056,7 @@ export class App {
           };
 
           try {
-            solveDocumentConstraints(this.doc, this.doc.constraints, lockedPoint);
+            solveDocumentGCS(this.doc, this.doc.constraints, lockedPoint);
           } catch (err) {
             console.error("Constraint solver error during mouseup commit:", err);
           }
@@ -2209,10 +2233,11 @@ export class App {
           }
         });
         
-        if (foundLine && foundLine.geometry) {
-           const pos = foundLine.geometry.getAttribute('position');
+        const fLine = foundLine as THREE.Line | null;
+        if (fLine && fLine.geometry) {
+           const pos = fLine.geometry.getAttribute('position');
            if (pos && pos.count >= 2) {
-             const worldMatrix = foundLine.matrixWorld;
+             const worldMatrix = fLine.matrixWorld;
              const p1 = new THREE.Vector3(pos.getX(0), pos.getY(0), pos.getZ(0)).applyMatrix4(worldMatrix);
              const last = pos.count - 1;
              const p2 = new THREE.Vector3(pos.getX(last), pos.getY(last), pos.getZ(last)).applyMatrix4(worldMatrix);
@@ -2684,9 +2709,14 @@ export class App {
       this.sketchToolWindow?.clearDoFBadge();
       return;
     }
-    const result = analyzeDocumentDoF(this.doc, constraints);
-    this.viewer.setDoFColors(result.entityStatus, result.dof);
-    this.sketchToolWindow?.runDoFAnalysis();
+
+    try {
+        const result = analyzeDocumentDoF(this.doc, constraints);
+        this.viewer.setDoFColors(result.entityStatus, result.dof);
+        this.sketchToolWindow?.runDoFAnalysis(); // Sync badge
+    } catch (e) {
+        console.error("DoF Analysis failed:", e);
+    }
   }
 
   public updateGizmoAttachment() {

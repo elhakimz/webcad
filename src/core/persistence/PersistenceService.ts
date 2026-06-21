@@ -11,7 +11,7 @@ import { Solid3DReevaluator } from '../engine/Solid3DReevaluator'
 export class PersistenceService {
   private static instance: PersistenceService;
   private db: DatabaseService;
-  private cache: ShapeCacheDB;
+  cache: ShapeCacheDB;
   private occ: OpenCascadeService;
 
   private autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -323,7 +323,7 @@ export class PersistenceService {
         case 'box': geoData = await this.occ.createBox(cp.params.x, cp.params.y, cp.params.z, cp.params.dx, cp.params.dy, cp.params.dz, deflection, entity.id); break
         case 'cylinder': geoData = await this.occ.createCylinder(cp.params.x, cp.params.y, cp.params.z, cp.params.radius, cp.params.height, deflection, entity.id); break
         case 'sphere': geoData = await this.occ.createSphere(cp.params.x, cp.params.y, cp.params.z, cp.params.r, deflection, entity.id); break
-        case 'cone': geoData = await this.occ.createCone(cp.params.x, cp.params.y, cp.params.z, cp.params.r, cp.params.h, deflection, entity.id); break
+        case 'cone': geoData = await this.occ.createCone(cp.params.x, cp.params.y, cp.params.z, cp.params.r1, cp.params.h, deflection, entity.id); break
         case 'polyhedron': geoData = await this.occ.createPolyhedron(cp.params.points, cp.params.faces, deflection, entity.id); break
         case 'hull': geoData = await this.occ.createConvexHull(cp.params.points, cp.params.shapeIds, deflection, entity.id); break
         case 'torus': geoData = await this.occ.createTorus(cp.params.x, cp.params.y, cp.params.z, cp.params.r1, cp.params.r2, deflection, entity.id); break

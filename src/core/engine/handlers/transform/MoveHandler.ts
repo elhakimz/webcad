@@ -1,7 +1,7 @@
 import { ActionHandler, AppContext } from "../types";
 import { CommandAction, CommandResponse } from "../../../commands/types";
 import { OpenCascadeService } from "../../../io/OpenCascadeService";
-import { solveDocumentConstraints } from "../../SketchSolver";
+import { solveDocumentGCS } from "../../../sketcher/GCSBridge";
 
 export class MoveHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {
@@ -58,7 +58,7 @@ export class MoveHandler implements ActionHandler {
 
       // After applying raw movement, solve constraints to honor 'Fix' etc.
       try {
-        solveDocumentConstraints(doc, doc.constraints);
+        solveDocumentGCS(doc, doc.constraints);
       } catch (err) {
         console.warn("Solver failed after move:", err);
       }

@@ -10,7 +10,7 @@ describe('ConeCommand', () => {
     const units = { type: 'decimal' as const, precision: 2, scale: 1.0 }
 
     // Step 0 -> Step 1 (Specify center)
-    const res0 = cmd.onPoint(10, 20, 'entity_1', units, null, 5)
+    const res0 = cmd.onPoint(10, 20, 'entity_1', units, undefined, 5)
     expect(cmd.step).toBe(1)
     expect(cmd.center).toEqual({ x: 10, y: 20, z: 5 })
     expect(res0).toContain('Specify base radius:')
@@ -32,7 +32,7 @@ describe('ConeCommand', () => {
     const cmd = new ConeCommand()
     const units = { type: 'decimal' as const, precision: 2, scale: 1.0 }
 
-    cmd.onPoint(0, 0, 'entity_1', units, null, 0)
+    cmd.onPoint(0, 0, 'entity_1', units, undefined, 0)
     expect(cmd.step).toBe(1)
 
     // Input base radius R1
@@ -50,7 +50,7 @@ describe('ConeCommand', () => {
     const cmd = new ConeCommand()
     const units = { type: 'decimal' as const, precision: 2, scale: 1.0 }
 
-    cmd.onPoint(0, 0, 'entity_1', units, null, 10)
+    cmd.onPoint(0, 0, 'entity_1', units, undefined, 10)
 
     // Step 1 Preview: Bottom circle only
     const prev1 = cmd.getPreview(5, 0, units) as Circle
@@ -67,7 +67,7 @@ describe('ConeCommand', () => {
     expect(prev2.entities.length).toBe(5) // 1 circle + 4 lines
     expect(prev2.entities[0]).toBeInstanceOf(Circle)
     expect(prev2.entities[1]).toBeInstanceOf(Line)
-    expect(prev2.entities[1].x1).toBe(5) // cx + r
+    expect((prev2.entities[1] as Line).x1).toBe(5) // cx + r
     expect(prev2.entities[1].elevation).toBe(10) // elevation z
     expect(prev2.entities[1].thickness).toBe(12) // height h
 
@@ -79,13 +79,13 @@ describe('ConeCommand', () => {
     expect(prev3.type).toBe('entities')
     expect(prev3.entities.length).toBe(6) // 2 circles + 4 lines
     expect(prev3.entities[0]).toBeInstanceOf(Circle) // bottom circle (R = 5)
-    expect(prev3.entities[0].r).toBe(5)
+    expect((prev3.entities[0] as Circle).r).toBe(5)
     expect(prev3.entities[1]).toBeInstanceOf(Circle) // top circle (R = 3)
-    expect(prev3.entities[1].r).toBe(3)
+    expect((prev3.entities[1] as Circle).r).toBe(3)
     expect(prev3.entities[1].elevation).toBe(22) // elevation 10 + height 12
     expect(prev3.entities[2]).toBeInstanceOf(Line) // slanted line
-    expect(prev3.entities[2].x1).toBe(5) // cx + r1
-    expect(prev3.entities[2].x2).toBe(3) // cx + r2
+    expect((prev3.entities[2] as Line).x1).toBe(5) // cx + r1
+    expect((prev3.entities[2] as Line).x2).toBe(3) // cx + r2
   })
 
   it('should provide informative dynamic input cues', () => {

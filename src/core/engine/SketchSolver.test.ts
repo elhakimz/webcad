@@ -134,14 +134,14 @@ describe("solveDocumentConstraints integration with Text, MText, and Point", () 
 
     // Make text insertion point coincident with point position
     const c1 = {
-      type: "coincident",
+      type: "coincident" as const,
       p1: { entityId: "text1", pointId: "position" },
       p2: { entityId: "point1", pointId: "position" }
     };
 
     // Lock point position to (5, 5) using a fix constraint
     const c2 = {
-      type: "fix",
+      type: "fix" as const,
       p1: { entityId: "point1", pointId: "position" },
       x: 5,
       y: 5

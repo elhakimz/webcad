@@ -173,6 +173,9 @@ export class LoftCommand implements Command {
       
       progress.update(80, "Constructing solid boundary representation...");
       const positions = Array.from(geometry.attributes.position.array as Float32Array);
+      if (!geometry.index) {
+        throw new Error('Loft geometry is missing an index buffer');
+      }
       const indices = Array.from(geometry.index.array as Uint16Array | Uint32Array);
 
 

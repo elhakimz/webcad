@@ -31,6 +31,7 @@ describe('TransformHandler Trim Ellipse', () => {
       selectedEntityIds: new Set(),
       addEntity: vi.fn((e) => doc.addEntity(e)),
       terminateActiveCommand: vi.fn(),
+      syncFromDocument: vi.fn(),
     } as unknown as AppContext
 
     const action = {
@@ -68,6 +69,7 @@ describe('TransformHandler Trim Ellipse', () => {
       selectedEntityIds: new Set(),
       addEntity: vi.fn((e) => doc.addEntity(e)),
       terminateActiveCommand: vi.fn(),
+      syncFromDocument: vi.fn(),
     } as unknown as AppContext
 
     const action = {

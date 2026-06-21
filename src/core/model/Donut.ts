@@ -7,12 +7,14 @@ export class Donut extends Entity {
   innerRadius: number;
   outerRadius: number;
 
-  constructor(id: string, cx: number, cy: number, innerRadius: number, outerRadius: number) {
+  constructor(id: string, cx: number, cy: number, innerRadius: number, outerRadius: number, elevation = 0, thickness = 0) {
     super(id);
     this.cx = cx;
     this.cy = cy;
     this.innerRadius = innerRadius;
     this.outerRadius = outerRadius;
+    this.elevation = elevation;
+    this.thickness = thickness;
   }
 
   move(dx: number, dy: number) {

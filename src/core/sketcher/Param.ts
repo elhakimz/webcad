@@ -14,7 +14,7 @@ export class Param {
 
 export class ParamStore {
   private map = new Map<hParam, Param>();
-  private nextId = 1;
+  public nextId = 1;
 
   add(initialVal: number): hParam {
     const h = this.nextId++;
@@ -31,4 +31,12 @@ export class ParamStore {
   getAll(): Param[] { return [...this.map.values()]; }
 
   clearTags() { for (const p of this.map.values()) p.known = false; }
+
+  load(params: Param[], nextId: number) {
+    this.map.clear();
+    for (const p of params) {
+        this.map.set(p.h, new Param(p.h, p.val, p.known, p.free, p.substd));
+    }
+    this.nextId = nextId;
+  }
 }

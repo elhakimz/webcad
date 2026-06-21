@@ -1,5 +1,5 @@
 import { Command, CommandResponse } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 
 export class CopyCommand implements Command {
   step = 0

@@ -3,7 +3,7 @@ import { IDocument } from "../model/Document";
 import { DocumentConstraint, DocumentPointRef, getPointCoords } from "../engine/SketchSolver";
 import { SketchModel } from "./SketchModel";
 import { System } from "./System";
-import { SolveResult, SolveOutput } from "./Solver";
+import { SolveOutput } from "./Solver";
 import { hEntity } from "./SketchPoint";
 import { Coincident } from "./constraints/Coincident";
 import { Horizontal } from "./constraints/Horizontal";
@@ -22,9 +22,10 @@ import { Arc } from "../model/Arc";
 import { Polyline } from "../model/Polyline";
 
 export function solveDocumentGCS(
-  doc: IDocument, 
-  constraints: DocumentConstraint[], 
-  lockedPoint?: DocumentPointRef
+  doc: IDocument,
+  constraints: DocumentConstraint[],
+  lockedPoint?: DocumentPointRef,
+  dryRun: boolean = false
 ): SolveOutput {
   const model = new SketchModel();
   
@@ -162,7 +163,7 @@ export function solveDocumentGCS(
         case 'angular': {
             const h1 = entityToHandle.get(c.l1[0].entityId);
             const h2 = entityToHandle.get(c.l2[0].entityId);
-            if (h1 !== undefined && h2 !== undefined) model.constraints.push(new Angle(h1, h2, c.value * 180 / Math.PI));
+            if (h1 !== undefined && h2 !== undefined) model.constraints.push(new Angle(h1, h2, c.value));
             break;
         }
         case 'concentric': {
@@ -187,7 +188,8 @@ export function solveDocumentGCS(
   // 6. Solve
   const result = System.solve(model);
 
-  // 7. Sync back to document
+  // 7. Sync back to document (skip for dry-run / DoF analysis)
+  if (!dryRun) {
   for (const rKey of uniqueRefs) {
     const [entId, ptId] = rKey.split(':');
     const h = refToHandle.get(rKey);
@@ -223,8 +225,10 @@ export function solveDocumentGCS(
         }
     }
   }
+  }
   
   // Sync Radius/Distance back
+  if (!dryRun) {
   for (const entId of referencedEntityIds) {
       const ent = doc.getEntity(entId);
       const h = entityToHandle.get(entId);
@@ -237,6 +241,9 @@ export function solveDocumentGCS(
           }
       }
   }
+  }
 
   return result;
 }
+
+

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CommandAction } from './types';
+import { CommandAction } from '../types';
 
 describe('CommandAction Types', () => {
   it('should support svg_import actions', () => {

@@ -65,7 +65,7 @@ describe('ScaleCommand', () => {
       getEntity: (id: string) => id === 'S3D1' ? mockEntity : null
     }
     
-    const res2 = cmd.onInput('O', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc)
+    const res2 = cmd.onInput('O', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
     expect(cmd.step).toBe(2)
     expect(cmd.basePoint.x).toBe(50)
     expect(cmd.basePoint.y).toBe(60)
@@ -86,7 +86,7 @@ describe('ScaleCommand', () => {
       getEntity: (id: string) => id === 'S3D1' ? mockEntity : null
     }
     
-    const res2 = cmd.onInput('c', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc)
+    const res2 = cmd.onInput('c', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
     expect(cmd.step).toBe(2)
     expect(cmd.basePoint.x).toBe(15)
     expect(cmd.basePoint.y).toBe(25)
@@ -149,7 +149,7 @@ describe('ScaleCommand', () => {
       getEntity: (id: string) => id === 'L1' ? mockEntity : null
     }
 
-    const res1 = cmd.onInput('O', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc)
+    const res1 = cmd.onInput('O', 'DUMMY', { type: 'decimal', precision: 2, scale: 1.0 }, undefined, mockDoc as any)
     expect(cmd.step).toBe(2)
     expect(cmd.basePoint.x).toBe(12)
     expect(cmd.basePoint.y).toBe(34)

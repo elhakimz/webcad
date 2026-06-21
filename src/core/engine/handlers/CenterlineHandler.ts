@@ -1,5 +1,5 @@
-import { ActionHandler, AppContext } from "../types";
-import { CommandAction, CommandResponse } from "../../../commands/types";
+import { ActionHandler, AppContext } from "./types";
+import { CommandAction, CommandResponse } from "../../commands/types";
 
 export class CenterlineHandler implements ActionHandler {
   canHandle(action: CommandAction): boolean {

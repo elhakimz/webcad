@@ -3,7 +3,7 @@ import { ElevCommand } from './ElevCommand';
 import { UnitsConfig } from '../model/Document';
 
 describe('ElevCommand', () => {
-  const units: UnitsConfig = { type: 'decimal', precision: 4 };
+  const units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 };
 
   it('should return information when input is empty', () => {
     const cmd = new ElevCommand();

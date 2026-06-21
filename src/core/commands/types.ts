@@ -2,7 +2,7 @@ import { Entity } from "../model/Entity";
 import { UnitsConfig, IDocument } from "../model/Document";
 
 export type CommandAction = {
-  action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerLineweight' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen' | 'create3d' | 'save' | 'load' | 'ortho' | 'orthoToggle' | 'grid' | 'gridToggle' | 'gridSet' | 'snap' | 'snapToggle' | 'snapSet' | 'osnap' | 'osnapToggle' | 'otrack' | 'otrackToggle' | 'svg_import' | 'svg_import_file' | 'svg_import_done' | 'array' | 'offset' | 'trim' | 'extend' | 'block' | 'insert' | 'blockList' | 'unitsSet' | 'fillet' | 'chamfer' | 'break' | 'join' | 'lengthen' | 'dimlinear' | 'dimaligned' | 'dimradius' | 'dimangular' | 'new' | 'listFiles' | 'stretch' | 'dimtoh' | 'dimtad' | 'dimtohToggle' | 'dimtadToggle' | 'id' | 'dist' | 'area' | 'list' | 'plot' | 'plot_window' | 'showPlotDialog' | 'boolean_result' | 'sweep' | 'loft_result' | 'fillet_solid' | 'chamfer_solid' | 'fillet_solid_face' | 'chamfer_solid_face' | 'shell' | 'draft_solid' | 'generator_placed' | 'rebuild_all' | 'rebuild' | 'elevationSet' | 'thicknessSet' | 'image_plane' | 'profile' | 'centerline';
+  action: 'finish' | 'close' | 'delete' | 'undo' | 'redo' | 'move' | 'zoom' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trace' | 'hatch' | 'layerList' | 'layerNew' | 'layerSetCurrent' | 'layerOn' | 'layerOff' | 'layerFreeze' | 'layerThaw' | 'layerLock' | 'layerUnlock' | 'layerColor' | 'layerLinetype' | 'layerLineweight' | 'layerDelete' | 'linetypeList' | 'linetypeSet' | 'regen' | 'create3d' | 'save' | 'load' | 'ortho' | 'orthoToggle' | 'grid' | 'gridToggle' | 'gridSet' | 'snap' | 'snapToggle' | 'snapSet' | 'osnap' | 'osnapToggle' | 'otrack' | 'otrackToggle' | 'svg_import' | 'svg_import_file' | 'svg_import_done' | 'array' | 'offset' | 'trim' | 'extend' | 'block' | 'insert' | 'blockList' | 'unitsSet' | 'fillet' | 'chamfer' | 'break' | 'join' | 'lengthen' | 'dimlinear' | 'dimaligned' | 'dimradius' | 'dimangular' | 'new' | 'listFiles' | 'stretch' | 'dimtoh' | 'dimtad' | 'dimtohToggle' | 'dimtadToggle' | 'id' | 'dist' | 'area' | 'list' | 'plot' | 'plot_window' | 'showPlotDialog' | 'boolean_result' | 'sweep' | 'loft_result' | 'fillet_solid' | 'chamfer_solid' | 'fillet_solid_face' | 'chamfer_solid_face' | 'shell' | 'draft_solid' | 'generator_placed' | 'rebuild_all' | 'rebuild' | 'elevationSet' | 'thicknessSet' | 'image_plane' | 'profile' | 'centerline' | 'dbsave' | 'dbload' | 'dblistFiles';
 
   svgFile?: File;
   imageUrl?: string;
@@ -19,6 +19,7 @@ export type CommandAction = {
   dist1?: number;
   dist2?: number;
   filename?: string;
+  projectName?: string;
   value?: boolean | number;
   spacing?: number;
   precision?: number;
@@ -68,6 +69,7 @@ export type CommandAction = {
   toX?: number;
   toY?: number;
   width?: number;
+  height?: number;
   lineweight?: number;
   boundaryId?: string;
   pattern?: string;
@@ -115,11 +117,11 @@ export type PreviewObject = Entity | ZoomWindowPreview | SelectionBoxPreview | X
 
 export interface Command {
   onPoint(x: number, y: number, id: string, units: UnitsConfig, doc?: IDocument, z?: number): CommandResponse | Promise<CommandResponse>;
-  onInput?(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | Promise<CommandResponse> | undefined;
+  onInput?(text: string, id: string, units: UnitsConfig, pickPt?: { x: number, y: number }, doc?: IDocument): CommandResponse | Promise<CommandResponse | undefined> | undefined;
   getPreview?(x: number, y: number, units: UnitsConfig, doc?: IDocument): PreviewObject | null;
   getReferencePoints?(): { x: number, y: number }[];
   getPrompt?(doc?: IDocument): string;
-  getDynamicInput?(x: number, y: number, units: UnitsConfig): string[] | null;
+  getDynamicInput?(x: number, y: number, units: UnitsConfig): string[] | null | undefined;
   getOptions?(units: UnitsConfig): string[];
   step?: number;
 }

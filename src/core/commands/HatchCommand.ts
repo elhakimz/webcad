@@ -1,6 +1,6 @@
 import { Hatch } from "../model/Hatch"
 import { Command, CommandResponse, PreviewObject } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { getAllPatternNames, getPattern } from "../io/Patterns"
 
 export class HatchCommand implements Command {

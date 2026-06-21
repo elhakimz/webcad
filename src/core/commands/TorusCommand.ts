@@ -105,7 +105,7 @@ export class TorusCommand implements Command {
       solid.brepSnapshot = geometry.userData?.brepSnapshot;
       solid.creationParams = {
         type: 'torus',
-        params: { x: center.x, y: center.y, z: center.z, rMajor: r1, rMinor: r2 }
+        params: { x: center.x, y: center.y, z: center.z, r1: r1, r2: r2 }
       };
       this.step = 0; // Reset
       return solid;

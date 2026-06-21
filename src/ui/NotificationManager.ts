@@ -13,7 +13,7 @@ export class NotificationManager {
     return this.instance;
   }
 
-  show(message: string, type: 'success' | 'error' | 'info' = 'info', duration = 3000) {
+  show(message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info', duration = 3000) {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     toast.textContent = message;

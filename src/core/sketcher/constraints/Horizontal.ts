@@ -17,7 +17,7 @@ export class Horizontal extends ConstraintBase {
     if (!pA || !pB) return [];
 
     // yA - yB = 0
-    return [{ expr: Expr.param(pA.py).minus(Expr.param(pB.py)), tag: 0 }];
+    return [{ expr: Expr.param(pA.py).minus(Expr.param(pB.py)), tag: 0, owner: this }];
   }
 
   modifyToSatisfy(model: SketchModel): void {

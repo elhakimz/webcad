@@ -61,12 +61,12 @@ export interface PyramidCreationParams {
 }
 
 export interface PolyhedronCreationParams {
-  points: [number, number, number][];
+  points: { x: number; y: number; z: number }[];
   faces: number[][];
 }
 
 export interface HullCreationParams {
-  points: [number, number, number][];
+  points: { x: number; y: number; z: number }[];
   shapeIds: string[];
 }
 
@@ -101,6 +101,13 @@ export interface SweepCreationParams {
   cornerMode?: string;
 }
 
+export interface SolidTransform {
+  type: 'translate' | 'rotate';
+  dx: number; dy: number; dz: number;
+  rx: number; ry: number; rz: number;
+  cx: number; cy: number; cz: number;
+}
+
 export type Solid3DCreationParams =
   | { type: "box"; params: BoxCreationParams }
   | { type: "cylinder"; params: CylinderCreationParams }
@@ -132,7 +139,7 @@ export interface GeometricSignature {
 
 export interface FeatureNode {
   id: string;
-  type: "Extrude" | "Cut" | "Fillet" | "Scale" | "Sketch" | "Chamfer" | "Shell";
+  type: "Extrude" | "Cut" | "Fillet" | "Scale" | "Sketch" | "Chamfer" | "Shell" | "Draft";
   // The data needed to rebuild this specific step
   parameters: Record<string, any>; 
   // If this feature depends on a specific face (Topological Naming)
@@ -148,6 +155,7 @@ export class Solid3D extends Entity {
   edgeLines?: number[][];
   position: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
   rotation: { x: number; y: number; z: number } = { x: 0, y: 0, z: 0 };
+  transform?: SolidTransform;
   private _creationParams?: Solid3DCreationParams;
   private _brepSnapshot?: Uint8Array;
   baseBrepSnapshot?: Uint8Array;
@@ -192,7 +200,7 @@ export class Solid3D extends Entity {
     // If we have creationParams, ensure we have a matching base feature
     if (this.creationParams) {
       const type = this.creationParams.type;
-      const featureType = type.charAt(0).toUpperCase() + type.slice(1);
+      const featureType = (type.charAt(0).toUpperCase() + type.slice(1)) as FeatureNode["type"];
       
       const existingBase = this.features.find(f => f.id === this.id + "_base");
       
@@ -434,6 +442,9 @@ export class Solid3D extends Entity {
     copy.properties = JSON.parse(JSON.stringify(this.properties));
     copy.position = { ...this.position };
     copy.rotation = { ...this.rotation };
+    if (this.transform) {
+      copy.transform = { ...this.transform };
+    }
     if (this.creationParams) {
       copy.creationParams = JSON.parse(JSON.stringify(this.creationParams));
     }

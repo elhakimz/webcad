@@ -108,12 +108,13 @@ export class IOHandler implements ActionHandler {
     }
 
     if (action.action === 'dbload' && action.projectName) {
+      const projectName = action.projectName;
       const progress = new GeneratorProgressModal("Loading Database Project");
       progress.show();
       try {
-        progress.update(10, `Searching for "${action.projectName}" in database...`);
+        progress.update(10, `Searching for "${projectName}" in database...`);
         const history = await PersistenceService.getInstance().getHistory();
-        const project = history.find(h => h.name.toLowerCase() === action.projectName.toLowerCase());
+        const project = history.find(h => h.name.toLowerCase() === projectName.toLowerCase());
         if (!project) {
           progress.close();
           return `ERROR: Project "${action.projectName}" not found in database.`;
@@ -284,7 +285,7 @@ export class IOHandler implements ActionHandler {
           } else if (cp.type === 'sphere') {
             geoData = await occService.createSphere(cp.params.x, cp.params.y, cp.params.z, cp.params.r, deflection, entity.id);
           } else if (cp.type === 'cone') {
-            geoData = await occService.createCone(cp.params.x, cp.params.y, cp.params.z, cp.params.r, cp.params.h, deflection, entity.id);
+            geoData = await occService.createCone(cp.params.x, cp.params.y, cp.params.z, cp.params.r1, cp.params.h, deflection, entity.id);
           } else if (cp.type === 'torus') {
             geoData = await occService.createTorus(cp.params.x, cp.params.y, cp.params.z, cp.params.r1, cp.params.r2, deflection, entity.id);
           } else if (cp.type === 'polyhedron') {

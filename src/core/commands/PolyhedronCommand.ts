@@ -5,6 +5,7 @@ import { Solid3D } from "../model/Solid3D";
 import { OpenCascadeService } from "../io/OpenCascadeService";
 import { Line } from "../model/Line";
 import { Point } from "../model/Point";
+import { Entity } from "../model/Entity";
 import * as THREE from "three";
 
 export class PolyhedronCommand implements Command {

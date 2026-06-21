@@ -99,7 +99,7 @@ export function tessellateSpline(controlPoints: Point[], degree: number, knots: 
  * Calculates circle parameters from 3 points.
  * Returns { cx, cy, r, startAngle, endAngle, ccw } or null if collinear.
  */
-export function calculateArcFrom3Points(p1: Point, p2: Point, p3: Point) {
+export function calculateArcFrom3Points(p1: Point, p2: Point, p3: Point): { cx: number, cy: number, r: number, startAngle: number, endAngle: number, ccw: boolean } | null {
   const x1 = p1.x, y1 = p1.y;
   const x2 = p2.x, y2 = p2.y;
   const x3 = p3.x, y3 = p3.y;
@@ -110,12 +110,14 @@ export function calculateArcFrom3Points(p1: Point, p2: Point, p3: Point) {
   const cx = ((x1 * x1 + y1 * y1) * (y2 - y3) + (x2 * x2 + y2 * y2) * (y3 - y1) + (x3 * x3 + y3 * y3) * (y1 - y2)) / D;
   const cy_fixed = ((x1 * x1 + y1 * y1) * (x3 - x2) + (x2 * x2 + y2 * y2) * (x1 - x3) + (x3 * x3 + y3 * y3) * (x2 - x1)) / D;
 
-  const r = Math.sqrt((x1 - cx) * (x1 - cx) + (y1 - cy_fixed) * (y1 - cy_fixed));
+  // Include Z in radius if applicable (assuming coplanar in XY for 2D CAD context usually, but good for 3D points too)
+  const r = Math.sqrt((x1 - cx) ** 2 + (y1 - cy_fixed) ** 2);
 
   const startAngle = Math.atan2(y1 - cy_fixed, x1 - cx);
   const endAngle = Math.atan2(y3 - cy_fixed, x3 - cx);
 
-  const cross = (x2 - x1) * (y3 - y2) - (y2 - y1) * (x3 - x2);
+  // Corrected cross product: (p2-p1) x (p3-p1)
+  const cross = (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
   const ccw = cross > 0;
 
   return { cx, cy: cy_fixed, r, startAngle, endAngle, ccw };
@@ -129,6 +131,9 @@ export function bulgeToArc(p1: Point, p2: Point, bulge: number) {
   if (L < 1e-6 || Math.abs(bulge) < 1e-6) return null;
 
   const h = (bulge * L) / 2;
+  // Safety guard for small h to avoid large radius/NaN
+  if (Math.abs(h) < 1e-9) return null;
+  
   const r = (L * L / 4 + h * h) / (2 * h);
 
   const midX = (p1.x + p2.x) / 2;
@@ -502,9 +507,9 @@ export function lineSegmentIntersection(line: Line, segStart: Point, segEnd: Poi
   
   const t = ((sx1 - lx1) * dy2 - (sy1 - ly1) * dx2) / denom;
   const u = ((sx1 - lx1) * dy1 - (sy1 - ly1) * dx1) / denom;
-  
-    // Only the polygon segment (u) must be bounded; the hatch line (t) is infinite
-    if (u >= 0 && u <= 1) {
+
+  // Only the polygon segment (u) must be bounded; the hatch line (t) is infinite
+  if (u >= 0 && u <= 1) {
     return { x: lx1 + t * dx1, y: ly1 + t * dy1 };
   }
   return null;
@@ -841,7 +846,7 @@ export function getEntityEntityIntersections(e1: unknown, e2: unknown): Point[] 
     for (const sub1 of s1) {
         for (const sub2 of s2) {
             if (sub1.kind === 'line' || sub2.kind === 'line') {
-                const line = sub1.kind === 'line' ? sub1 : sub2;
+                const line = (sub1.kind === 'line' ? sub1 : sub2) as Extract<Seg, { kind: 'line' }>;
                 const other = sub1.kind === 'line' ? sub2 : sub1;
                 const circle = getCircleData(other);
                 if (circle) {

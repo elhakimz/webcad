@@ -1,5 +1,5 @@
 import { Command, CommandResponse } from "./types";
-import { UnitsConfig } from "../model/Document";
+import { UnitsConfig, IDocument } from "../model/Document";
 import { FormatUtils } from "../engine/FormatUtils";
 import { Solid3D } from "../model/Solid3D";
 import { OpenCascadeService } from "../io/OpenCascadeService";

@@ -550,9 +550,9 @@ export class PropertiesWindow {
         const p1 = newModel.addPoint(ox, oy);
         const p2 = newModel.addPoint(ox + 100, oy);
         const p3 = newModel.addPoint(ox + 50, oy + 80);
-        newModel.addLine(p1, p2);
-        newModel.addLine(p2, p3);
-        newModel.addLine(p3, p1);
+        newModel.addLine(p1.h, p2.h);
+        newModel.addLine(p2.h, p3.h);
+        newModel.addLine(p3.h, p1.h);
         this.app.printToCommandLine("UI Test: Switched profile to TRIANGLE");
     } else if (pts.length === 3) {
         // Change to L-Shape (6 points)
@@ -562,12 +562,12 @@ export class PropertiesWindow {
         const p4 = newModel.addPoint(ox + 40, oy + 40);
         const p5 = newModel.addPoint(ox + 40, oy + 100);
         const p6 = newModel.addPoint(ox, oy + 100);
-        newModel.addLine(p1, p2);
-        newModel.addLine(p2, p3);
-        newModel.addLine(p3, p4);
-        newModel.addLine(p4, p5);
-        newModel.addLine(p5, p6);
-        newModel.addLine(p6, p1);
+        newModel.addLine(p1.h, p2.h);
+        newModel.addLine(p2.h, p3.h);
+        newModel.addLine(p3.h, p4.h);
+        newModel.addLine(p4.h, p5.h);
+        newModel.addLine(p5.h, p6.h);
+        newModel.addLine(p6.h, p1.h);
         this.app.printToCommandLine("UI Test: Switched profile to L-SHAPE");
     } else {
         // Back to Square
@@ -575,10 +575,10 @@ export class PropertiesWindow {
         const p2 = newModel.addPoint(ox + 100, oy);
         const p3 = newModel.addPoint(ox + 100, oy + 100);
         const p4 = newModel.addPoint(ox, oy + 100);
-        newModel.addLine(p1, p2);
-        newModel.addLine(p2, p3);
-        newModel.addLine(p3, p4);
-        newModel.addLine(p4, p1);
+        newModel.addLine(p1.h, p2.h);
+        newModel.addLine(p2.h, p3.h);
+        newModel.addLine(p3.h, p4.h);
+        newModel.addLine(p4.h, p1.h);
         this.app.printToCommandLine("UI Test: Switched profile to SQUARE");
     }
 
@@ -602,7 +602,9 @@ export class PropertiesWindow {
         // Ensure we are syncing correctly for both Extrude and Sketch types
         if (baseFeat.type === "Extrude" || (baseFeat.type === "Sketch" && solid.creationParams.type === "extrude")) {
             console.log(`[PropertiesWindow] Syncing profile points to creationParams`);
-            solid.creationParams.params.points = baseFeat.parameters.points || [];
+            if (solid.creationParams.type === "extrude" || solid.creationParams.type === "revolve") {
+                solid.creationParams.params.points = baseFeat.parameters.points || [];
+            }
         }
     }
 

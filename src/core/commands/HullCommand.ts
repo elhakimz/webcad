@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { OpenCascadeService } from "../io/OpenCascadeService";
 import { Line } from "../model/Line";
 import { Point } from "../model/Point";
+import { Entity } from "../model/Entity";
 import { SelectionEngine } from "../engine/SelectionEngine";
 
 interface Point3D {

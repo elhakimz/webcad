@@ -64,7 +64,7 @@ export class SvgImportHandler implements ActionHandler {
     
     // Final scene re-sync to ensure everything is visible
     syncFromDocument()
-    viewer.zoomExtents?.()
+    viewer.zoomAll(Array.from(doc.entities.values()))
     progress.close()
 
     const layerNames = svgLayers.map(l=>l.name).join(', ')

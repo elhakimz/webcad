@@ -1,8 +1,9 @@
 // src/core/sketcher/Expr.ts
 import { hParam, Param, ParamStore } from "./Param";
-import { SketchPoint } from "./SketchPoint";
+import {hEntity, SketchPoint} from "./SketchPoint";
+import {SketchDocument} from "./SketchModel";
 
-export const enum ExprOp {
+export enum ExprOp {
   PARAM    = 0,
   CONSTANT = 1,
   PLUS  = 10, MINUS  = 11, TIMES  = 12, DIV    = 13,
@@ -131,18 +132,27 @@ export class Expr {
     const fa = this.a?.foldConstants();
     const fb = this.b?.foldConstants();
 
-    // If both operands are constants, evaluate immediately
-    if (fa?.op === ExprOp.CONSTANT && fb?.op === ExprOp.CONSTANT) {
-      const e = new Expr();
-      e.op = ExprOp.CONSTANT;
-      e.a = fa; e.b = fb;
-      e.val = e.eval();
-      return e;
+    const isUnary = (this.op === ExprOp.NEGATE || this.op === ExprOp.SQUARE || this.op === ExprOp.SQRT || 
+                     this.op === ExprOp.SIN || this.op === ExprOp.COS || this.op === ExprOp.ASIN || this.op === ExprOp.ACOS);
+
+    // Fold unary op on constant
+    if (isUnary && fa?.op === ExprOp.CONSTANT) {
+      // Create a temp expr to evaluate the result of the operation
+      const temp = new Expr();
+      temp.op = this.op;
+      temp.a = fa;
+      return Expr.const_(temp.eval());
     }
-    if (fa?.op === ExprOp.CONSTANT && !fb) {
-      const e = new Expr(); e.op = ExprOp.CONSTANT; e.a = fa;
-      e.val = e.eval(); return e;
+
+    // Fold binary op on constants
+    if (!isUnary && fa?.op === ExprOp.CONSTANT && fb?.op === ExprOp.CONSTANT) {
+      const temp = new Expr();
+      temp.op = this.op;
+      temp.a = fa;
+      temp.b = fb;
+      return Expr.const_(temp.eval());
     }
+
     const r = new Expr(); r.op = this.op; r.a = fa; r.b = fb; return r;
   }
 
@@ -162,14 +172,13 @@ export class Expr {
     return e;
   }
 
-  // ── 61-bit params-used scoreboard ─────────────────────────────────────
-  // Quick check: does this expr reference param h at all?
-  // If not, skip PartialWrt entirely (returns zero trivially).
-  paramsUsed(): bigint {
-    if (this.op === ExprOp.PARAM) return 1n << BigInt(this.param % 61);
-    const a = this.a?.paramsUsed() ?? 0n;
-    const b = this.b?.paramsUsed() ?? 0n;
-    return a | b;
+  // ── params-used tracking ───────────────────────────────────────────────
+  // Returns a Set of all param handles referenced by this expression
+  paramsUsed(): Set<hParam> {
+    if (this.op === ExprOp.PARAM) return new Set([this.param]);
+    const a = this.a?.paramsUsed() ?? new Set<hParam>();
+    const b = this.b?.paramsUsed() ?? new Set<hParam>();
+    return new Set([...a, ...b]);
   }
 
   dependsOn(h: hParam): boolean {
@@ -210,4 +219,21 @@ export class ExprVector {
   eval(): { x: number; y: number } {
     return { x: this.x.eval(), y: this.y.eval() };
   }
+}
+
+// ── lineDir: unit direction vector for a LINE_SEGMENT entity ────────────────
+// Returns an ExprVector pointing from point[0] to point[1].
+export function lineDir(points: hEntity[], doc: SketchDocument): ExprVector {
+  const p0 = doc.points.get(points[0])!;
+  const p1 = doc.points.get(points[1])!;
+  return new ExprVector(
+    Expr.param(p1.px).minus(Expr.param(p0.px)),
+    Expr.param(p1.py).minus(Expr.param(p0.py)),
+  );
+}
+
+// ── lineLength: symbolic length of a LINE_SEGMENT entity ───────────────────
+export function lineLength(points: hEntity[], doc: SketchDocument): Expr {
+  const d = lineDir(points, doc);
+  return d.magnitude();
 }

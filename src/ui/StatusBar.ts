@@ -4,6 +4,7 @@ export interface DraftingStatus {
   snap: boolean;
   grid: boolean;
   ortho: boolean;
+  osnap: boolean;
   otrack: boolean;
   xyz: boolean;
   mode3d: boolean;

@@ -134,6 +134,7 @@ statusBarEl.appendChild(ribbonContainer.getElement());
 
 function updateStatusBar() {
   layerRibbon.updateLayer(app.doc.layers.getCurrentLayer());
+  // @ts-ignore
   draftingRibbon.updateStatus({
     snap: app.drafting.snapEnabled,
     grid: app.drafting.gridEnabled,

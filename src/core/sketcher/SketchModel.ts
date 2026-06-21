@@ -1,9 +1,12 @@
 // src/core/sketcher/SketchModel.ts
-import { ParamStore } from "./Param";
+import {hParam, ParamStore} from "./Param";
 import { SketchPoint, hEntity } from "./SketchPoint";
-import { SketchEntity, SketchEntityType } from "./SketchEntity";
-import { ConstraintBase } from "./Constraint";
+import { SketchEntity } from "./SketchEntity";
 import { STYLE } from "./SketchStyle";
+import { ConstraintFactory } from "./constraints/ConstraintFactory";
+import {ConstraintBase} from "./Constraint";
+
+export type SketchDocument = SketchModel;
 
 export class SketchModel {
   readonly params  = new ParamStore();
@@ -52,6 +55,33 @@ export class SketchModel {
     return ent;
   }
 
+  addArc(centerPt: hEntity, startPt: hEntity, endPt: hEntity, radius: number): SketchEntity {
+    const h: hEntity = this.nextEntityId++;
+    const rParam = this.params.add(radius);
+    const ent: SketchEntity = {
+      h, type: 'ARC_OF_CIRCLE',
+      group: 'default', workplane: 0,
+      point: [centerPt, startPt, endPt],
+      distance: rParam,
+      construction: false, style: STYLE.NORMAL,
+    };
+    this.entities.set(h, ent);
+    return ent;
+  }
+
+  addWorkplane(originPt: hEntity, normalParams: hParam[]): SketchEntity {
+    const h: hEntity = this.nextEntityId++;
+    const ent: SketchEntity = {
+      h, type: 'WORKPLANE',
+      group: 'default', workplane: 0,
+      point: [originPt],
+      normal: normalParams,
+      construction: false, style: STYLE.NORMAL,
+    };
+    this.entities.set(h, ent);
+    return ent;
+  }
+
   // Connect two entities at a shared point — no coincident constraint needed
   connectAt(entityA: hEntity, ptIndexA: number,
             entityB: hEntity, ptIndexB: number): void {
@@ -62,7 +92,6 @@ export class SketchModel {
   }
 
   getProfilePoints(): { x: number; y: number }[] {
-    // Basic implementation for Phase 1
     const pts: { x: number; y: number }[] = [];
     for (const ent of this.entities.values()) {
         if (ent.type === 'LINE_SEGMENT') {
@@ -70,6 +99,31 @@ export class SketchModel {
             const p2 = this.points.get(ent.point[1])?.getNum(this.params);
             if (p1) pts.push(p1);
             if (p2) pts.push(p2);
+        } else if (ent.type === 'CIRCLE') {
+            const center = this.points.get(ent.point[0])?.getNum(this.params);
+            const r = this.params.get(ent.distance!).val;
+            if (center) {
+                for (let i = 0; i <= 64; i++) {
+                    const ang = (i / 64) * Math.PI * 2;
+                    pts.push({ x: center.x + r * Math.cos(ang), y: center.y + r * Math.sin(ang) });
+                }
+            }
+        } else if (ent.type === 'ARC_OF_CIRCLE') {
+            const center = this.points.get(ent.point[0])?.getNum(this.params);
+            const start  = this.points.get(ent.point[1])?.getNum(this.params);
+            const end    = this.points.get(ent.point[2])?.getNum(this.params);
+            const r      = this.params.get(ent.distance!).val;
+            
+            if (center && start && end) {
+                const startAng = Math.atan2(start.y - center.y, start.x - center.x);
+                let endAng     = Math.atan2(end.y - center.y, end.x - center.x);
+                if (endAng <= startAng) endAng += Math.PI * 2;
+                
+                for (let i = 0; i <= 32; i++) {
+                    const ang = startAng + (endAng - startAng) * (i / 32);
+                    pts.push({ x: center.x + r * Math.cos(ang), y: center.y + r * Math.sin(ang) });
+                }
+            }
         }
     }
     return pts;
@@ -78,18 +132,43 @@ export class SketchModel {
   serialize(): string {
     return JSON.stringify({
       params: this.params.getAll(),
+      nextParamId: this.params.nextId,
       points: Array.from(this.points.entries()),
       entities: Array.from(this.entities.entries()),
       constraints: this.constraints,
-      nextId: this.nextEntityId
+      nextEntityId: this.nextEntityId
     });
   }
 
   static deserialize(data: string): SketchModel {
     const obj = JSON.parse(data);
     const model = new SketchModel();
-    // Complex re-hydration would go here
-    // For now, minimal implementation to satisfy Reevaluator
+    
+    if (obj.params) {
+        model.params.load(obj.params, obj.nextParamId || 1);
+    }
+    
+    if (obj.points) {
+        for (const [h, p] of obj.points) {
+            model.points.set(h, new SketchPoint(p.h, p.px, p.py, p.construction, p.fixed));
+        }
+    }
+    
+    if (obj.entities) {
+        for (const [h, e] of obj.entities) {
+            model.entities.set(h, { ...e });
+        }
+    }
+    
+    model.nextEntityId = obj.nextEntityId || 1;
+    
+    if (obj.constraints) {
+        for (const cData of obj.constraints) {
+            const c = ConstraintFactory.create(cData);
+            if (c) model.constraints.push(c);
+        }
+    }
+    
     return model;
   }
 }

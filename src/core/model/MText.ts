@@ -33,7 +33,7 @@ export class MText extends Entity {
   layoutLines: LayoutLine[] = [];
   bounds: { x: number; y: number; width: number; height: number } = { x: 0, y: 0, width: 0, height: 0 };
 
-  constructor(id: string, insertionPoint: { x: number; y: number }, width: number, height: number, contents: string) {
+  constructor(id: string, insertionPoint: { x: number; y: number }, width: number, height: number, contents: string, elevation = 0, thickness = 0) {
     super(id);
     this.insertionPoint = insertionPoint;
     this.width = width;
@@ -44,6 +44,8 @@ export class MText extends Entity {
     this.textAlign = "LEFT";
     this.attachmentPoint = AttachmentPoint.TOP_LEFT;
     this.rotation = 0;
+    this.elevation = elevation;
+    this.thickness = thickness;
   }
 
   private static measureCanvas: HTMLCanvasElement | null = null;

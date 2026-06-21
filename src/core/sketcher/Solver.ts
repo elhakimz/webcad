@@ -1,6 +1,8 @@
 // src/core/sketcher/Solver.ts
 
-export const enum SolveResult {
+import {ConstraintBase} from "./Constraint";
+
+export enum SolveResult {
   SOLVED_OKAY        = 0,
   DIDNT_CONVERGE     = 1,
   SINGULAR_JACOBIAN  = 2,  // over-constrained
@@ -10,6 +12,6 @@ export const enum SolveResult {
 export interface SolveOutput {
   result: SolveResult;
   dof: number;                  // degrees of freedom remaining
-  redundant: any[];             // constraints to remove to fix over-constraint
+  redundant: ConstraintBase[];  // constraints to remove
   freeParams: number[];         // params with no binding constraint
 }

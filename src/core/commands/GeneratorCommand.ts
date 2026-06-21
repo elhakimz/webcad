@@ -1,5 +1,5 @@
-import { Command, CommandResponse } from "./types"
-import { UnitsConfig } from "../model/Document"
+import { Command, CommandResponse, CommandAction } from "./types"
+import { UnitsConfig, IDocument } from "../model/Document"
 import { Point, bulgeToArc } from "../engine/MathUtils"
 import { Entity } from "../model/Entity"
 import { Polyline } from "../model/Polyline"

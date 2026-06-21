@@ -260,7 +260,7 @@ export class CommandManager {
     const effectiveSelection = (selection && selection.length > 0) ? selection : args;
     console.log(`[CommandManager] Executing ${cmdName}, effectiveSelection:`, effectiveSelection);
 
-    let response: CommandResponse | Promise<CommandResponse> | undefined;
+    let response: CommandResponse | Promise<CommandResponse | undefined> | undefined;
 
     const factory = commandRegistry.get(cmdName);
     if (!factory) {
@@ -310,7 +310,7 @@ export class CommandManager {
     }
   }
 
-  inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }, doc?: Document): CommandResponse | Promise<CommandResponse> | undefined {
+  inputString(text:string, units: UnitsConfig, idGenerator?: (prefix: string) => string, pickPt?: { x: number, y: number }, doc?: Document): CommandResponse | Promise<CommandResponse | undefined> | undefined {
     const pt = CoordinateParser.parseCoordinate(text, units, this.lastPoint || undefined, doc?.currentElevation || 0)
     if (pt) {
       return this.inputPoint(pt.x, pt.y, units, idGenerator, doc, pt.z)

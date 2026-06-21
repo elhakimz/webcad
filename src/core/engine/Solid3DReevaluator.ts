@@ -7,13 +7,15 @@ import { SketchModel } from "../sketcher/SketchModel";
 import { System } from "../sketcher/System";
 import { SolveResult } from "../sketcher/Solver";
 import { ProfileUtility } from "./ProfileUtility";
+import { Line } from "../model/Line";
+import { Polyline } from "../model/Polyline";
 
 export class Solid3DReevaluator {
   static async reevaluate(solid: Solid3D, facetres: number, doc: Document): Promise<THREE.BufferGeometry> {
     console.log(`[Reevaluator] Starting re-evaluation for solid: ${solid.id}`);
     const tempId = solid.id;
     const occ = OpenCascadeService.getInstance();
-    const deflection = 0.1 / (facetres || 5.0);
+    const deflection = 0.1 / Math.max(1, facetres ?? 5.0);
 
     let geom: THREE.BufferGeometry | undefined = undefined;
 
@@ -25,7 +27,7 @@ export class Solid3DReevaluator {
       if (!sketchFeat.parameters.sketchData) continue;
       try {
         const model = SketchModel.deserialize(sketchFeat.parameters.sketchData);
-        const result = System.solve(model, model.constraints);
+        const result = System.solve(model);
         if (result.result === SolveResult.SOLVED_OKAY || result.result === 2 /* Singular/Redundant */) {
           const wp = sketchFeat.parameters.workplane as WorkplaneDefinition;
           const pts2d = model.getProfilePoints();
@@ -67,10 +69,31 @@ export class Solid3DReevaluator {
           Number(params.r), deflection, tempId
         );
       } else if (primType === "cone") {
-        geom = await occ.createCone(
+        geom = await occ.createFrustum(
           Number(params.x ?? 0), Number(params.y ?? 0), Number(params.z ?? 0),
-          Number(params.r), Number(params.h), deflection, tempId
+          Number(params.r1), Number(params.r2), Number(params.h), deflection, tempId
         );
+      } else if (primType === "torus") {
+        geom = await occ.createTorus(
+          Number(params.x ?? 0), Number(params.y ?? 0), Number(params.z ?? 0),
+          Number(params.r1), Number(params.r2), deflection, tempId
+        );
+      } else if (primType === "wedge") {
+        geom = await occ.createWedge(
+          Number(params.x ?? 0), Number(params.y ?? 0), Number(params.z ?? 0),
+          Number(params.dx), Number(params.dy), Number(params.dz),
+          Number(params.ltx), deflection, tempId
+        );
+      } else if (primType === "pyramid") {
+        geom = await occ.createPyramid(
+          Number(params.x ?? 0), Number(params.y ?? 0), Number(params.z ?? 0),
+          Number(params.sides), Number(params.radius), Number(params.height),
+          deflection, tempId
+        );
+      } else if (primType === "polyhedron") {
+        geom = await occ.createPolyhedron(params.points, params.faces, deflection, tempId);
+      } else if (primType === "hull") {
+        geom = await occ.createConvexHull(params.points, params.shapeIds, deflection, tempId);
       } else if (primType === "extrude") {
         let pts: any = params.points || [];
         let isClosed = params.isClosed !== false;
@@ -187,7 +210,16 @@ export class Solid3DReevaluator {
         const profileEntity = doc.getEntity(params.profileId);
         const spineEntity = doc.getEntity(params.spineId);
         if (profileEntity && spineEntity) {
-            geom = await rebuildSweepGeometry(profileEntity, spineEntity, params, deflection, tempId);
+            const data = await rebuildSweepGeometry(profileEntity, spineEntity, params.isSolid, facetres, deflection, tempId, params.cornerMode);
+            geom = new THREE.BufferGeometry();
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+            geom.setIndex(data.indices);
+            geom.computeVertexNormals();
+            geom.userData = {
+              faceMapping: data.faceMapping,
+              edgeLines: data.edgeLines,
+              brepSnapshot: data.brepSnapshot,
+            };
         }
       } else if (primType === "brep") {
         // Hydrate from base snapshot if it exists
@@ -211,7 +243,11 @@ export class Solid3DReevaluator {
 
     // 2. APPLY TRANSFORMATIONS (Global solid move/rotate)
     if (geom && solid.transform) {
-        // Note: In a fully parametric DAG, transform would be a feature node too.
+        if (solid.transform.type === 'translate') {
+          geom = await occ.transformShape(tempId, solid.transform.dx, solid.transform.dy, solid.transform.dz, tempId, deflection);
+        } else if (solid.transform.type === 'rotate') {
+          geom = await occ.rotateShape(tempId, solid.transform.rx, solid.transform.ry, solid.transform.rz, solid.transform.cx, solid.transform.cy, solid.transform.cz, tempId, deflection);
+        }
     }
 
     // 3. APPLY FEATURES (The DAG nodes)
@@ -245,6 +281,11 @@ export class Solid3DReevaluator {
         const faceIndices = params.faceIndices as number[] ?? [];
         const removeFaces = params.removeFaces !== false;
         geom = await occ.makeThickSolid(tempId, faceIndices, thickness, deflection, removeFaces);
+      } else if (feat.type === "Cut") {
+        const toolId = params.toolId;
+        if (toolId) {
+            geom = await occ.createBoolean('cut', tempId, toolId, tempId, deflection);
+        }
       }
     }
 

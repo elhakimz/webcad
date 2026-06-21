@@ -10,7 +10,7 @@ export interface BoundingBox {
 
 export interface Grip {
   id: string;
-  point: { x: number; y: number };
+  point: { x: number; y: number; z?: number };
   type: 'endpoint' | 'midpoint' | 'center' | 'custom';
 }
 

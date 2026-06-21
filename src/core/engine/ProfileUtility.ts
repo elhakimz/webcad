@@ -76,11 +76,17 @@ export class ProfileUtility {
 
     } else if (entity instanceof Ellipse) {
         const segments = 32;
+        const rMajor = Math.hypot(entity.majorX, entity.majorY);
+        const rMinor = rMajor * entity.ratio;
+        const rot = Math.atan2(entity.majorY, entity.majorX);
+        const cosR = Math.cos(rot), sinR = Math.sin(rot);
         for (let i = 0; i < segments; i++) {
           const angle = (i / segments) * 2 * Math.PI;
+          const lx = rMajor * Math.cos(angle);
+          const ly = rMinor * Math.sin(angle);
           points.push({
-            x: entity.cx + entity.rx * Math.cos(angle),
-            y: entity.cy + entity.ry * Math.sin(angle),
+            x: entity.cx + lx * cosR - ly * sinR,
+            y: entity.cy + lx * sinR + ly * cosR,
             z: elevation
           });
         }

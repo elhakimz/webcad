@@ -42,6 +42,12 @@ A faithful CAD drafting experience, reimagined for the modern web using **TypeSc
 - **Proportional Scaling:** Gizmo handles dynamically scale based on selected entity bounding box sizes.
 - **Physical Save/Load (STEP):** 3D boolean shapes are serialized directly to professional STEP format in the persistent drawing DB.
 
+### 🖼️ Rendering
+- **Renderer:** Three.js **r185**, drawing into a single `<canvas>` through one `THREE.OrthographicCamera`. The `PERSPECTIVE_*` view presets are angled orthographic views, not a perspective projection.
+- **Coalesced frame loop:** `viewer.render()` marks the frame dirty rather than drawing. Every caller across the handlers and UI collapses into a single draw per tick.
+- **Pluggable backend:** the renderer sits behind a small `RendererBackend` seam (`src/render/RendererBackend.ts`), with an async capability probe and a `?renderer=webgl|webgpu` override. **WebGL is the only backend that draws today, and stays the default.** WebGPU is a work in progress — the probe reports honestly which backend is running and whether it fell back.
+- **Shading modes:** wireframe, shaded, Phong, Blinn, and a zebra surface-analysis shader (`SHADING_ZEBRA`), with outlined edges over shaded geometry.
+
 ### 🖱️ Selection & Interaction
 - **Advanced Selection Engine:** Precise AABB spatial tree hit-testing supporting individual entity selection, Window/Crossing selection boxes, and intersection matching.
 - **Layer-Locked Selection:** Selection mechanisms respect layer visibility, frozen, and locked states.
@@ -68,20 +74,35 @@ Open [http://localhost:5173/](http://localhost:5173/) in your browser.
 
 ### Testing
 ```bash
-# Run unit tests (Vitest)
+# Unit tests (Vitest)
 npm test
 
-# Run linting
+# End-to-end tests (Playwright, Chromium) — see tests/e2e/README.md
+npm run test:ui
+
+# Type check. `npm run build` strips types without checking them, so this is
+# the only thing that will catch a type error.
+npm run typecheck
+
+# Linting
 npm run lint
 ```
+
+End-to-end tests drive the app through an in-app **test bridge** (`window.__webcadTest`)
+rather than by clicking pixels, so a test can ask "is the front face selected?" or
+"is this solid still valid in the kernel?" instead of guessing from a screenshot. It is
+installed in dev builds and in any build loaded with `?testBridge=1`; production builds
+without that flag never construct it. See [`tests/e2e/README.md`](tests/e2e/README.md).
 
 ## 🏗️ Architecture
 
 -   **`src/core/engine/handlers/`**: Strategy-based action handlers (Layer, Transform, View, IO, System).
 -   **`src/core/engine/`**: Command management, drafting state, math utilities, and snapping logic.
--   **`src/core/io/`**: **DXF Exporter/Importer** and OpenCascade Service for geometric kernels.
+-   **`src/core/io/`**: **DXF Exporter/Importer** and the OpenCascade service, which talks to the OCCT kernel in a Web Worker.
 -   **`src/core/model/`**: CAD entity definitions and the central `Document` store with centralized ID generation.
--   **`src/ui/`**: DOS-style screens and components (`MainMenuScreen`, `CommandLine`, `StatusBar`).
+-   **`src/render/`**: The `Viewer` (scene graph, picking, entity rendering), the grid/cursor/gizmo renderers, and the `RendererBackend` seam that decides and owns the renderer.
+-   **`src/ui/`**: Toolbars, tool windows, ribbon, command line, and the SCAD editor.
+-   **`src/testing/`**: The test bridge. Zero-cost in production — it is never constructed unless enabled.
 
 ## 📍 Roadmap Priorities
 -   [x] **Plotting:** Added `PLOT` command with support for SVG and high-quality vector PDF export (using text outlining via `opentype.js`).
@@ -95,6 +116,8 @@ npm run lint
 - [x] Snaps: Intersection and Perpendicular snapping modes.
 - [x] **Constraint Solver:** Real-time 2D PBD solver supporting Coincident, Parallel, Tangent, and DoF analysis.
 - [x] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT with robust STEP persistence.
+- [x] **Test automation:** In-app test bridge giving the e2e suite a semantic API into camera, scene graph, selection, snap state, and kernel validity.
+- [ ] **WebGPU renderer** *(in progress)* — the groundwork has landed: antialiasing, a coalesced frame loop, a `RendererBackend` seam, a capability probe with automatic fallback, and the three.js r160 → r185 upgrade. The WebGPU backend itself is not wired up yet; WebGL will remain a permanent fallback either way, since WebGPU coverage still has gaps. See [`plans/rendering_roadmap.md`](plans/rendering_roadmap.md).
 
 ## 📄 License
 MIT

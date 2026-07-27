@@ -4,19 +4,35 @@
 > reinforce each other instead of colliding. Companion to
 > [`kernel_abstraction.md`](./kernel_abstraction.md) (geometry side).
 
-## Current state (audited)
+## Current state
+
+> **Updated after phases A and B landed** (Plane epic #158, branch
+> `feat/webgpu-migration-phase-a-b`). The original audit is in the git history.
 
 | Area | Today | File |
 |---|---|---|
-| Renderer | `WebGLRenderer`, **no `antialias`** | `src/render/Viewer.ts:201` (typed `:39`) |
-| Shadows | enabled, `PCFSoftShadowMap` | `Viewer.ts:202` |
+| Renderer | `WebGLRenderer` with `antialias`, behind a `RendererBackend` seam | `src/render/RendererBackend.ts` |
+| Backend selection | async probe, `?renderer=` override, automatic WebGL fallback | `RendererBackend.ts` (`chooseRenderer`) |
+| Frame loop | one coalesced draw per tick; `render()` queues, `renderNow()` draws | `Viewer.ts` (`scheduleRender`) |
+| Shadows | enabled, `PCFSoftShadowMap` | `RendererBackend.ts` (`createWebGLRenderer`) |
+| Colour management | `outputColorSpace = SRGBColorSpace`; **tone mapping deliberately off** | `RendererBackend.ts` |
 | Lighting | single `DirectionalLight`, **no IBL/environment** | `Viewer.ts:43` |
-| Edges | `EdgesGeometry` + `LineSegments` present | `Viewer.ts:661` |
+| Edges | `EdgesGeometry` + `LineSegments`, plus `OutlineEffect` on shaded frames | `Viewer.ts` |
 | Post-processing | **none** (no `EffectComposer`) | — |
-| Selection | raycaster pick, **no hover pre-highlight** | `Viewer.ts:1580` |
-| WebGPU | POC only (`WebGPUPOC.ts`, `ZebraTSL.ts`) on old API paths | `src/render/` |
-| three.js | **r160.1** runtime / `@types/three` r184 (mismatch) | `package.json` |
+| Selection | raycaster pick, **no hover pre-highlight** | `Viewer.ts` |
+| WebGPU | **not wired up.** POC and TSL material deleted; probe and reporting in place | `RendererBackend.ts` |
+| three.js | **r185.1**, `@types/three` aligned | `package.json` |
 | Cross-origin isolation | COOP/COEP set → `SharedArrayBuffer` available | `vite.config.ts:97` |
+
+### What blocks the swap
+
+Both found by doing the work, not by planning it:
+
+- **`OutlineEffect` is WebGL-only** and draws every SHADED and ZEBRA frame. It wraps a
+  `WebGLRenderer` and cannot be pointed at a `WebGPURenderer` (Plane #174).
+- **A canvas can only ever hold one context type.** Once `getContext('webgl2')` has run,
+  `getContext('webgpu')` returns null — so a renderer cannot be swapped in after boot,
+  and the async decision has to move ahead of `new Viewer()` in `main.ts` (Plane #169).
 
 "Onshape look" decomposed: **AA + soft IBL studio lighting + ambient occlusion +
 crisp edges.** We have edges; the other three are unclaimed.

@@ -25,6 +25,8 @@ export class SettingsRibbonBar extends RibbonBar {
   private createButton(label: string, onClick: () => void): HTMLElement {
     const btn = document.createElement('button');
     btn.textContent = label;
+    // Stable across the label flip between "Light Theme" and "Dark Theme".
+    btn.dataset.testid = `settings-${label.toLowerCase().includes('theme') ? 'theme' : label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
     btn.style.padding = '2px 6px';
     btn.style.fontSize = '11px';
     btn.style.cursor = 'pointer';

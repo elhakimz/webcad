@@ -1,5 +1,4 @@
 import { Viewer } from "./render/Viewer"
-import { WebGPUPOC } from "./render/WebGPUPOC"
 import { CommandManager } from "./core/engine/CommandManager"
 import { Document } from "./core/model/Document"
 import { CommandResponse, CommandAction, HasSetEntity, PreviewObject } from "./core/commands/types"
@@ -92,6 +91,12 @@ export class App {
   selectedEntityIds: Set<string> = new Set()
   selectedEdge: { entityId: string, edgeIndex: number } | null = null;
   selectedFaces: { entityId: string, faceIndex: number }[] = [];
+  /**
+   * Result of the most recent snap resolution, kept so the drafting aids can be
+   * inspected after the fact (the test bridge reports it as `getSnapState()`).
+   * `snap` is null when the cursor resolved to a free point.
+   */
+  public lastSnap: { x: number, y: number, snap: SnapPoint | null } | null = null;
   private selectionStartPoint: { x: number, y: number, screenX?: number, screenY?: number } | null = null;
   private selectionBoxEl: HTMLDivElement | null = null;
   private selectionMode: 'OBJECT' | 'SURFACE' = 'OBJECT';
@@ -478,6 +483,7 @@ export class App {
         }
     }
 
+    this.lastSnap = { x, y, snap };
     return { x, y, snap };
   }
 
@@ -570,7 +576,7 @@ export class App {
         (step === 2 && activeName === 'LengthenCommand');
   }
 
-  private getSelectableEntities(): Entity[] {
+  public getSelectableEntities(): Entity[] {
     return this.doc.getAllEntities().filter(e => {
       const layer = this.doc.layers.getLayer(e.layer);
       if (!layer) return true;
@@ -580,7 +586,7 @@ export class App {
     });
   }
 
-  private getSolid3DSelectables(): Entity[] {
+  public getSolid3DSelectables(): Entity[] {
     return this.getSelectableEntities().filter(e => {
       if ((e as any).type === "Solid3D" || e instanceof Solid3D) return true;
       if (e instanceof Insert) {
@@ -604,10 +610,6 @@ export class App {
     }
 
     const cmdName = cmd.toUpperCase();
-    if (cmdName === 'WEBGPU_POC') {
-      WebGPUPOC.run(this.viewer.canvas);
-      return "Launching WebGPU POC...";
-    }
     if (cmdName === 'SHADING_ZEBRA') {
       this.viewer.setShadingMode('ZEBRA');
       return "Shading mode: ZEBRA";
@@ -2621,7 +2623,7 @@ export class App {
 
     this.persistence.scheduleAutoSave(
       this.doc,
-      () => this.viewer.canvas.toDataURL('image/jpeg', 0.5)
+      () => this.viewer.captureImage('image/jpeg', 0.5)
     );
     const layer = entity.layer;
     const layerObj = this.doc.layers.getLayer(layer);

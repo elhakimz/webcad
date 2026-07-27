@@ -1,315 +1,161 @@
 import { test, expect } from '@playwright/test';
+import { CadApp, READY_MESSAGE, collectErrors } from './helpers';
 
-test.describe('AutoCAD 2.18 DOS UI', () => {
+/**
+ * App shell + command-line behaviour.
+ *
+ * Rewritten 2026-07-26: the previous version of this file gated every test on a
+ * `#main-menu-input` screen that no longer exists in index.html, so all 19 tests
+ * failed in `beforeEach`. The app now boots straight into the drawing editor.
+ */
+
+test.describe('App shell', () => {
+  let app: CadApp;
+
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-    // Start drawing to get past Main Menu
-    // Wait for CAD kernel to load (input becomes enabled)
-    const menuInput = page.locator('#main-menu-input');
-    await expect(menuInput).toBeEnabled({ timeout: 60000 }); // Increase timeout for heavy WASM
-    
-    await menuInput.fill('1');
-    await page.press('#main-menu-input', 'Enter');
-    // Ensure drawing editor is visible
+    app = new CadApp(page);
+    await app.boot();
+  });
+
+  test('boots straight into the drawing editor with no main-menu gate', async ({ page }) => {
     await expect(page.locator('#drawing-editor')).toBeVisible();
+    await expect(app.canvas).toBeVisible();
+    await expect(app.cmd).toBeEnabled();
+    await expect(app.log).toContainText(READY_MESSAGE);
+    await expect(app.prompt).toHaveText('Command:');
+
+    // The removed main-menu markup must not come back without updating these tests.
+    await expect(page.locator('#main-menu-screen')).toHaveCount(0);
+    await expect(page.locator('#main-menu-input')).toHaveCount(0);
   });
 
-  test('should display status bar with initial values', async ({ page }) => {
-    await expect(page.locator('#layer-info')).toHaveText('Layer 0');
-    await expect(page.locator('#coords-info')).toContainText('0.0000, 0.0000');
+  test('shows the status ribbon with layer, coords and drafting toggles', async () => {
+    await expect(app.layerName).toHaveText('0');
+    await expect(app.coords).toContainText('X:');
+    await expect(app.coords).toContainText('Y:');
+    await expect(app.ribbonToggle('ortho')).toBeVisible();
+    await expect(app.ribbonToggle('otrack')).toBeVisible();
   });
 
-  test('should navigate side menu DRAW -> LINE:', async ({ page }) => {
-    // Click DRAW in the side menu (use #side-menu to scope)
-    await page.locator('#side-menu >> text=DRAW').click();
-    // Submenu should appear, verify LINE: is visible
-    await expect(page.locator('#side-menu >> text=LINE:')).toBeVisible();
-    
-    // Click LINE:
-    await page.locator('#side-menu >> text=LINE:').click();
-    // Command log should reflect the command start
-    await expect(page.locator('#command-log')).toContainText('Command: LINE');
-    await expect(page.locator('#command-log')).toContainText('LINE command started');
+  test('has Modelling and Scripting tabs, Modelling active on boot', async () => {
+    await expect(app.tab('Modelling')).toHaveClass(/active/);
+    await expect(app.tab('Scripting')).not.toHaveClass(/active/);
   });
 
-  test('should support manual command entry', async ({ page }) => {
-    const cmdInput = page.locator('#cmd');
-    await cmdInput.fill('CIRCLE');
-    await cmdInput.press('Enter');
-    
-    await expect(page.locator('#command-log')).toContainText('Command: CIRCLE');
-    await expect(page.locator('#command-log')).toContainText('CIRCLE command started');
+  test('boots without page errors', async ({ page }) => {
+    // Fresh listener on a fresh load so we only capture this navigation.
+    const errors = collectErrors(page);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await app.cmd.waitFor({ state: 'visible', timeout: 60000 });
+    await expect(app.log).toContainText(READY_MESSAGE, { timeout: 60000 });
+
+    const fatal = errors.filter((e) => e.startsWith('pageerror:'));
+    expect(fatal, `unexpected page errors:\n${fatal.join('\n')}`).toHaveLength(0);
+  });
+});
+
+test.describe('Command line', () => {
+  let app: CadApp;
+
+  test.beforeEach(async ({ page }) => {
+    app = new CadApp(page);
+    await app.boot();
   });
 
-  test('should support keyboard shortcuts (C/U) during LINE command', async ({ page }) => {
-    await page.locator('#side-menu >> text=DRAW').click();
-    await page.locator('#side-menu >> text=LINE:').click();
-    
-    const canvas = page.locator('#c');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Draw 3 segments (4 points) with slight delays
-      await page.mouse.click(box.x + 100, box.y + 100);
-      await page.waitForTimeout(50);
-      await page.mouse.click(box.x + 200, box.y + 100);
-      await page.waitForTimeout(50);
-      await page.mouse.click(box.x + 200, box.y + 200);
-      await page.waitForTimeout(50);
-      await page.mouse.click(box.x + 100, box.y + 200);
-      await page.waitForTimeout(50);
-      
-      // Press 'u' to undo the last segment (L3)
-      await page.keyboard.press('u');
-      await expect(page.locator('#command-log')).toContainText('Entities [L3] removed.');
-      
-      // Press 'c' to close the sequence
-      await page.keyboard.press('c');
-      await expect(page.locator('#command-log')).toContainText('Command finished.');
-    }
+  test('echoes a typed command and shows its prompt', async () => {
+    await app.run('CIRCLE');
+    await expect(app.log).toContainText('Command: CIRCLE');
+    await expect(app.prompt).toContainText('CIRCLE specify center point:');
   });
 
-  test('should go back on header click', async ({ page }) => {
-    await page.locator('#side-menu >> text=DRAW').click();
-    await expect(page.locator('#side-menu >> text=LINE:')).toBeVisible();
-    
-    await page.click('.menu-header');
-    await expect(page.locator('#side-menu >> text=DRAW')).toBeVisible();
-    await expect(page.locator('#side-menu >> text=LINE:')).not.toBeVisible();
+  test('accepts lower-case command names', async () => {
+    await app.run('circle');
+    await expect(app.prompt).toContainText('CIRCLE specify center point:');
   });
 
-  test('should reset to root on MENU command', async ({ page }) => {
-    await page.locator('#side-menu >> text=EDIT').click();
-    await expect(page.locator('#side-menu >> text=ERASE')).toBeVisible();
-    
-    const cmdInput = page.locator('#cmd');
-    await cmdInput.fill('MENU');
-    await cmdInput.press('Enter');
-    
-    await expect(page.locator('#side-menu >> text=DRAW')).toBeVisible();
-    await expect(page.locator('#side-menu >> text=ERASE')).not.toBeVisible();
-    await expect(page.locator('#command-log')).toContainText('Returned to root menu.');
+  test('Escape cancels the active command', async () => {
+    await app.run('LINE');
+    await expect(app.prompt).toContainText('specify first point');
+    await app.cancel();
+    await expect(app.log).toContainText('*Cancel*');
   });
 
-  test('should return to main menu on QUIT command', async ({ page }) => {
-    const cmdInput = page.locator('#cmd');
-    await cmdInput.fill('QUIT');
-    await cmdInput.press('Enter');
-    
-    await expect(page.locator('#main-menu-screen')).toBeVisible();
-    await expect(page.locator('#drawing-editor')).not.toBeVisible();
+  test('reports an unknown command without breaking the prompt', async () => {
+    await app.run('DEFINITELYNOTACOMMAND');
+    await expect(app.log).toContainText('DEFINITELYNOTACOMMAND');
+    // The command line must stay usable afterwards.
+    await app.run('CIRCLE');
+    await expect(app.prompt).toContainText('CIRCLE specify center point:');
+  });
+});
+
+test.describe('Drawing primitives', () => {
+  let app: CadApp;
+
+  test.beforeEach(async ({ page }) => {
+    app = new CadApp(page);
+    await app.boot();
   });
 
-  test('should update coordinates on mouse move', async ({ page }) => {
-    const canvas = page.locator('#c');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Move mouse to some point on canvas
-      await page.mouse.move(box.x + 100, box.y + 100);
-      // Coordinate display should change from 0,0
-      await expect(page.locator('#coords-info')).not.toHaveText('0.0000, 0.0000');
-    }
+  test('canvas centre maps to world origin', async () => {
+    await app.run('CIRCLE');
+    await app.clickOrigin();
+    await expect(app.log).toContainText('Center[X:0.0000, Y:0.0000, Z:0.0000]');
   });
 
-  test('should support PLINE with Arc mode switching', async ({ page }) => {
-    const cmdInput = page.locator('#cmd');
-    await cmdInput.fill('PLINE');
-    await cmdInput.press('Enter');
-    
-    const canvas = page.locator('#c');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // P1
-      await page.mouse.click(box.x + 100, box.y + 100);
-      await expect(page.locator('#command-prompt')).toContainText('Endpoint of line');
-
-      // P2
-      await page.mouse.click(box.x + 200, box.y + 100);
-      await expect(page.locator('#command-log')).toContainText('Polyline segment added.');
-
-      // Switch to Arc
-      await cmdInput.fill('A');
-      await cmdInput.press('Enter');
-      await expect(page.locator('#command-log')).toContainText('Switched to Arc mode.');
-      await expect(page.locator('#command-prompt')).toContainText('Endpoint of arc');
-
-      // P3 (Arc)
-      await page.mouse.click(box.x + 200, box.y + 200);
-      await expect(page.locator('#command-log')).toContainText('Polyline segment added.');
-      await expect(page.locator('#command-prompt')).toContainText('Endpoint of arc');
-
-      // Switch back to Line
-      await cmdInput.fill('L');
-      await cmdInput.press('Enter');
-      await expect(page.locator('#command-log')).toContainText('Switched to Line mode.');
-      await expect(page.locator('#command-prompt')).toContainText('Endpoint of line');
-
-      // Close
-      await cmdInput.fill('C');
-      await cmdInput.press('Enter');
-      await expect(page.locator('#command-log')).toContainText('Command finished.');
-    }
+  test('draws a circle from centre and typed radius', async () => {
+    await app.run('CIRCLE');
+    await app.clickOrigin();
+    await expect(app.prompt).toContainText('Radius');
+    await app.input('50');
+    await expect(app.log).toContainText('[R:50.0000]');
   });
 
-  test('should support PLINE shortcut "A" from viewport', async ({ page }) => {
-    const cmdInput = page.locator('#cmd');
-    await cmdInput.fill('PLINE');
-    await cmdInput.press('Enter');
-    
-    const canvas = page.locator('#c');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // P1
-      await page.mouse.click(box.x + 100, box.y + 100);
-      
-      // Ensure focus is NOT on cmd input (click canvas)
-      await canvas.click();
-      
-      // Press 'a' on keyboard
-      await page.keyboard.press('a');
-      
-      // Should switch to arc mode
-      await expect(page.locator('#command-log')).toContainText('Switched to Arc mode.');
-      await expect(page.locator('#command-prompt')).toContainText('Endpoint of arc');
-
-      // P2 (Arc)
-      await page.mouse.click(box.x + 200, box.y + 200);
-      await expect(page.locator('#command-log')).toContainText('Polyline segment added.');
-    }
+  test('draws a line and reports its length', async () => {
+    await app.run('LINE');
+    await app.clickWorld(-100, 0);
+    await app.clickWorld(100, 0);
+    // 200 units apart on screen at the default 1:1 view.
+    await expect(app.log).toContainText('Line created. Distance: 200.0000');
   });
 
-  test('should support TEXT command workflow', async ({ page }) => {
-    const cmdInput = page.locator('#cmd');
-    await cmdInput.fill('TEXT');
-    await cmdInput.press('Enter');
-    
-    const canvas = page.locator('#c');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // Step 0: Insertion Point
-      await page.mouse.click(box.x + 100, box.y + 100);
-      await expect(page.locator('#command-prompt')).toContainText('Height');
+  test('chains line segments, undoes one with U and closes with C', async () => {
+    await app.run('LINE');
+    await app.clickWorld(-150, 100);
+    await app.clickWorld(150, 100);
+    await app.clickWorld(150, -100);
+    await app.clickWorld(-150, -100);
+    await expect(app.log).toContainText('Line created.');
 
-      // Step 1: Height (Accept default by pressing Enter)
-      await cmdInput.press('Enter');
-      await expect(page.locator('#command-prompt')).toContainText('Rotation');
+    // Single-key shortcuts only reach the app when focus is off the command input.
+    await app.focusViewport();
+    await app.page.keyboard.press('u');
+    await expect(app.log).toContainText('Undo performed.');
 
-      // Step 2: Rotation (Accept default by pressing Enter)
-      await cmdInput.press('Enter');
-      await expect(page.locator('#command-prompt')).toContainText('Text:');
-
-      // Step 3: Input Text
-      await cmdInput.fill('AUTOCAD 2.18');
-      await cmdInput.press('Enter');
-      
-      await expect(page.locator('#command-log')).toContainText('Text created.');
-    }
+    await app.page.keyboard.press('c');
+    await expect(app.log).toContainText('Command finished.');
   });
 
-  test('should not have duplicated prompts in the log for TEXT', async ({ page }) => {
-    const cmdInput = page.locator('#cmd');
-    await cmdInput.fill('TEXT');
-    await cmdInput.press('Enter');
-    
-    const log = page.locator('#command-log');
-    // "TEXT start point:" should appear exactly once in the log (excluding the bottom prompt)
-    const text = await log.innerText();
-    const count = (text.match(/TEXT start point:/g) || []).length;
-    expect(count).toBe(1);
+  test('updates the coordinate readout as the pointer moves', async () => {
+    const before = await app.coords.innerText();
+    await app.moveWorld(120, 80);
+    await expect(app.coords).not.toHaveText(before);
+
+    // The canvas width is fractional, so the centre lands on a half pixel and the
+    // mapping is accurate to about a unit rather than exact.
+    const { x, y } = await app.readCoords();
+    expect(x).toBeGreaterThan(118);
+    expect(x).toBeLessThan(122);
+    expect(y).toBeGreaterThan(78);
+    expect(y).toBeLessThan(82);
   });
 
-  test('should preserve case in TEXT command', async ({ page }) => {
-    const cmdInput = page.locator('#cmd');
-    await cmdInput.fill('text'); // Test command name case-insensitivity
-    await cmdInput.press('Enter');
-    
-    const canvas = page.locator('#c');
-    const box = await canvas.boundingBox();
-    if (box) {
-      await page.mouse.click(box.x + 100, box.y + 100);
-      await cmdInput.press('Enter'); // Default height
-      await cmdInput.press('Enter'); // Default rotation
-      
-      // Input mixed case text
-      await cmdInput.fill('AutoCAD Web');
-      await cmdInput.press('Enter');
-      
-      // We can't easily check the 3D scene text content in E2E, 
-      // but we can check if the echo in the log was uppercased or not.
-      // Wait, TextCommand doesn't echo the text itself, it just says "Text created."
-      await expect(page.locator('#command-log')).toContainText('Text created.');
-    }
-  });
-
-  test('should support selecting and erasing an entity', async ({ page }) => {
-    const cmdInput = page.locator('#cmd');
-    const canvas = page.locator('#c');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // 1. Draw a line
-      await cmdInput.fill('LINE');
-      await cmdInput.press('Enter');
-      await page.mouse.click(box.x + 100, box.y + 100);
-      await page.mouse.click(box.x + 300, box.y + 100);
-      await page.keyboard.press('Escape');
-
-      // 2. Erase it
-      await cmdInput.fill('ERASE');
-      await cmdInput.press('Enter');
-      // Click near the middle of the line (with tolerance)
-      await page.mouse.click(box.x + 200, box.y + 101);
-      
-      await expect(page.locator('#command-log')).toContainText('removed.');
-    }
-  });
-
-  test('should support selecting and moving an entity', async ({ page }) => {
-    const cmdInput = page.locator('#cmd');
-    const canvas = page.locator('#c');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // 1. Draw a point
-      await cmdInput.fill('POINT');
-      await cmdInput.press('Enter');
-      await page.mouse.click(box.x + 150, box.y + 150);
-
-      // 2. Move it
-      await cmdInput.fill('MOVE');
-      await cmdInput.press('Enter');
-      // Select the point
-      await page.mouse.click(box.x + 150, box.y + 150);
-      await expect(page.locator('#command-prompt')).toContainText('Base point:');
-      
-      // Specify base and second point
-      await page.mouse.click(box.x + 150, box.y + 150);
-      await page.mouse.click(box.x + 250, box.y + 250);
-
-      await expect(page.locator('#command-log')).toContainText('moved.');
-    }
-  });
-
-  test('should support selecting and copying an entity', async ({ page }) => {
-    const cmdInput = page.locator('#cmd');
-    const canvas = page.locator('#c');
-    const box = await canvas.boundingBox();
-    if (box) {
-      // 1. Draw a circle
-      await cmdInput.fill('CIRCLE');
-      await cmdInput.press('Enter');
-      await page.mouse.click(box.x + 100, box.y + 100); // Center
-      await cmdInput.fill('50'); // Radius
-      await cmdInput.press('Enter');
-
-      // 2. Copy it
-      await cmdInput.fill('COPY');
-      await cmdInput.press('Enter');
-      // Select the circle (click on the edge)
-      await page.mouse.click(box.x + 150, box.y + 100);
-      await expect(page.locator('#command-prompt')).toContainText('Base point:');
-      
-      await page.mouse.click(box.x + 100, box.y + 100);
-      await page.mouse.click(box.x + 200, box.y + 200);
-
-      await expect(page.locator('#command-log')).toContainText('copied to');
-    }
+  test('ORTHO toggle flips its active state', async () => {
+    const ortho = app.ribbonToggle('ortho');
+    await expect(ortho).not.toHaveClass(/active/);
+    await ortho.click();
+    await expect(ortho).toHaveClass(/active/);
+    await ortho.click();
+    await expect(ortho).not.toHaveClass(/active/);
   });
 });

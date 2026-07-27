@@ -27,6 +27,7 @@ export class DazViewControl {
 
     const shaderBtn = document.createElement('div');
     shaderBtn.className = 'daz-shader-btn';
+    shaderBtn.dataset.testid = 'view-shader-button';
     shaderBtn.innerHTML = '&#127761;'; // Sphere icon placeholder
     shaderBtn.title = "Shader: Shaded";
     shaderBtn.style.color = '#00ff00';
@@ -38,6 +39,7 @@ export class DazViewControl {
     options.forEach(opt => {
       const item = document.createElement('div');
       item.className = 'daz-shader-item';
+      item.dataset.testid = `view-shader-${opt.toLowerCase()}`;
       item.textContent = opt;
       item.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -74,6 +76,7 @@ export class DazViewControl {
 
     const viewSelector = document.createElement('select');
     viewSelector.className = 'daz-view-selector';
+    viewSelector.dataset.testid = 'view-selector';
     this.viewSelectorEl = viewSelector;
     const views = ['Orthogonal View', 'Top View', 'Bottom View', 'Left View', 'Right View', 'Front View', 'Back View'];
     views.forEach(v => {
@@ -106,6 +109,7 @@ export class DazViewControl {
     faces.forEach(f => {
       const face = document.createElement('div');
       face.className = `daz-cube-face daz-face-${f.toLowerCase()}`;
+      face.dataset.testid = `view-cube-${f.toLowerCase()}`;
       face.textContent = f;
       face.addEventListener('click', () => this.onCubeFaceClick(f.toUpperCase()));
       cube.appendChild(face);
@@ -129,6 +133,7 @@ export class DazViewControl {
     arrowButtons.forEach(b => {
       const btn = document.createElement('div');
       btn.className = `daz-arrow-btn daz-arrow-${b.id}`;
+      btn.dataset.testid = `view-arrow-${b.id}`;
       btn.innerHTML = b.label;
       btn.title = `Switch to ${b.view} View`;
       btn.addEventListener('click', (e) => {
@@ -152,6 +157,7 @@ export class DazViewControl {
     buttons.forEach(b => {
       const btn = document.createElement('div');
       btn.className = `daz-btn daz-btn-${b.id}`;
+      btn.dataset.testid = `view-button-${b.id}`;
       btn.innerHTML = b.label;
       btn.title = b.title;
       btn.addEventListener('click', () => this.onButtonClick(b.id));

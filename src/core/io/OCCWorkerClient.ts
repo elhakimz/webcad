@@ -176,6 +176,11 @@ export class OCCWorkerClient {
   }
 
 
+  /** Requests sent to the worker that have not yet resolved. Used by the test bridge's idle signal. */
+  get pendingCount(): number {
+    return this.resolvers.size;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private send(type: string, payload: any, timeoutMs: number = 120000): Promise<any> {
     const id = this.messageId++;

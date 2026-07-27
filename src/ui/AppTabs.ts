@@ -18,6 +18,7 @@ export class AppTabs {
   private createTab(label: string, id: 'modelling' | 'scripting', active: boolean): HTMLElement {
     const tab = document.createElement('div');
     tab.className = `app-tab ${active ? 'active' : ''}`;
+    tab.dataset.testid = `app-tab-${id}`;
     tab.textContent = label;
     tab.onclick = () => {
       if (tab.classList.contains('active')) return;

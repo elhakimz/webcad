@@ -54,6 +54,16 @@ export class OpenCascadeService {
     return this.workerClient;
   }
 
+  /** True once the worker has finished booting. Read-only probe — unlike `client`, never throws. */
+  get isInitialized(): boolean {
+    return this.workerClient !== null;
+  }
+
+  /** Kernel requests still in flight. 0 means the kernel is idle. */
+  get pendingCount(): number {
+    return this.workerClient ? this.workerClient.pendingCount : 0;
+  }
+
   async clearCache(): Promise<{ success: boolean }> {
     return this.client.clearCache();
   }

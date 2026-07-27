@@ -44,6 +44,7 @@ need `waitForTimeout`.
 | Coordinates | `worldToScreen`, `screenToWorld`, `getCanvasRect`, `isClickable` |
 | Scene graph | `listObjects`, `getObject`, `getBoundingBox`, `getVertices`, `getEdges`, `getFaces` |
 | Kernel truth | `checkValidity`, `expectValid`, `syncToKernel` |
+| Renderer | `getRendererInfo`, `expectRenderer` |
 | Selection | `selectObject`, `selectFace`, `selectEdge`, `clearSelection`, `getSelection`, `pickAt` |
 | Commands | `run`, `runOk`, `pressEnter`, `getCommandLog` |
 | Drafting aids | `getSnapState`, `moveCursor`, `moveCursorToWorld`, `getDraftingSettings`, `setDrafting` |
@@ -76,6 +77,25 @@ holding a solid the kernel has never heard of, so the next boolean or fillet wou
 Call `syncToKernel(id)` explicitly if a test wants the shape pushed in. (The
 `inKernel: false` path was verified manually by clearing the worker cache mid-session;
 there is no fault-injection API for it yet.)
+
+### Which renderer drew the frame
+
+The app picks a backend at boot and **falls back to WebGL on any WebGPU failure,
+silently and by design**. That is right at runtime and wrong in a test: a suite
+launched with `?renderer=webgpu` against a machine with no adapter would fall back and
+still pass, having tested the wrong thing.
+
+```ts
+await cad.expectRenderer('webgl');   // fails if the run fell back, with the reason
+```
+
+So `fellBack` is the assertion that matters, not `kind` — a fallback run still reports
+`kind: 'webgl'` and would pass a naive check. `getRendererInfo()` returns the requested
+backend, the active one, whether it fell back, and a reason string that is always
+populated.
+
+CI stays on WebGL: headless Chromium has no WebGPU adapter and rasterises WebGL in
+software.
 
 ### Real mouse input
 
@@ -112,6 +132,7 @@ plausible-looking wrong answer. Assert on them with `expectRejection`:
 | `selection.spec.ts` | object/face/edge selection, `pickAt`, real drag-select |
 | `commands.spec.ts` | command execution, geometry read-back, command log |
 | `snap.spec.ts` | OSNAP capture and drafting-aid toggles |
+| `renderer.spec.ts` | which backend is active, and that a WebGPU request is recorded as a fallback |
 | `visual.spec.ts` | canvas screenshots — opt-in, see below |
 | `ui.spec.ts`, `grip_edit.spec.ts`, `toolbars.spec.ts`, `uat.spec.ts` | older DOM-driven specs built on `helpers.ts` |
 

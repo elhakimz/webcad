@@ -157,6 +157,29 @@ export class Document implements IDocument {
     this.history.recordTransform(before, after);
   }
 
+  /**
+   * Push a solid's previous B-rep back into the OCC worker.
+   *
+   * The restored entity clone already carries the tessellation it had before the
+   * operation, so the viewport is correct without this. What is not correct is the
+   * worker's shape cache: it still holds the post-operation shape, so the next
+   * boolean/fillet would be computed against geometry the user already undid.
+   */
+  private restoreSolidBRep = (id: string, brep: Uint8Array): void => {
+    const deflection = 0.1 / (this.facetres || 5.0);
+    // The history callback is synchronous; the worker round-trip is not. Nothing
+    // downstream depends on its result, so let it settle on its own and make sure
+    // a failure surfaces rather than becoming an unhandled rejection.
+    Promise.resolve(OpenCascadeService.getInstance().importBRep(id, brep, deflection)).catch(
+      (err) => {
+        console.error(
+          `[Document] failed to restore B-rep for ${id}; the OCC worker may be out of sync:`,
+          err
+        );
+      }
+    );
+  }
+
   undo() {
     return this.history.undo(
       (id) => this.getEntity(id),
@@ -165,7 +188,7 @@ export class Document implements IDocument {
       (id, dx, dy, dz) => {
         OpenCascadeService.getInstance().transformShape(id, dx, dy, dz);
       },
-      undefined,
+      this.restoreSolidBRep,
       (constraints) => {
         this.constraints = constraints;
       }
@@ -180,7 +203,7 @@ export class Document implements IDocument {
       (id, dx, dy, dz) => {
         OpenCascadeService.getInstance().transformShape(id, dx, dy, dz);
       },
-      undefined,
+      this.restoreSolidBRep,
       (constraints) => {
         this.constraints = constraints;
       }

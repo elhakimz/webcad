@@ -22,16 +22,16 @@
     </div>
     <div id="main-area">
       <div id="viewport-container">
-        <canvas id="c"></canvas>
+        <canvas id="c" data-testid="viewport"></canvas>
       </div>
 
-      <div id="docking-pane"></div>
+      <div id="docking-pane" data-testid="docking-pane"></div>
     </div>
     <div id="command-area">
-      <div id="command-log"></div>
+      <div id="command-log" data-testid="command-log"></div>
       <div id="command-input-container">
-        <span id="command-prompt">Command:</span>
-        <input id="cmd" autocomplete="off" />
+        <span id="command-prompt" data-testid="command-prompt">Command:</span>
+        <input id="cmd" data-testid="command-input" autocomplete="off" />
       </div>
     </div>
   </div>

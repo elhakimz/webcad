@@ -111,6 +111,7 @@ export class SolidToolbar {
       const btn = document.createElement('div');
       btn.className = 'tool-button';
       btn.title = item.cmd;
+      btn.dataset.testid = `tool-solid-${String(item.cmd).trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-')}`;
       btn.style.width = '32px';
       btn.style.height = '32px';
       btn.style.border = '1px solid var(--border-color)';

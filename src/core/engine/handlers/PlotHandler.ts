@@ -44,8 +44,10 @@ export class PlotHandler implements ActionHandler {
     const engine   = new PlotEngine();
     const renderer = new PlotSVGRenderer();
 
-    // Get canvas dimensions from the viewer's renderer
-    const canvas  = viewer.renderer.domElement;
+    // The viewport canvas, for its aspect ratio. Read from the viewer rather than
+    // reaching through viewer.renderer.domElement — same object, but it keeps the
+    // concrete renderer type from leaking out of src/render (WEBCAD-161).
+    const canvas  = viewer.canvas;
     const canvasW = canvas.clientWidth  || canvas.width;
     const canvasH = canvas.clientHeight || canvas.height;
 

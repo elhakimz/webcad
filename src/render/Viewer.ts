@@ -31,12 +31,44 @@ import { SnapPoint } from "../core/engine/SnapEngine"
 import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview } from "../core/commands/types"
 import { GridRenderer } from "./GridRenderer"
 import { CursorRenderer } from "./CursorRenderer"
+import { RendererBackend, RendererSelection, createWebGLRenderer, requestedRendererKind } from "./RendererBackend"
 import {getPointCoords} from "../core/engine/SketchSolver";
 
 export class Viewer {
   scene: THREE.Scene
   camera: THREE.OrthographicCamera
-  renderer: THREE.WebGLRenderer
+  /**
+   * Typed as the seam, not the concrete class (WEBCAD-161). The concrete renderer is
+   * named in `RendererBackend.ts` and nowhere else.
+   */
+  renderer: RendererBackend
+  private _rendererInfo: Omit<RendererSelection, 'renderer'>
+
+  /**
+   * Which backend is drawing, and why (WEBCAD-170). Read by the test bridge so a
+   * silent fallback to WebGL fails a WebGPU test loudly instead of passing vacuously.
+   */
+  get rendererInfo(): Readonly<Omit<RendererSelection, 'renderer'>> {
+    return this._rendererInfo;
+  }
+
+  /**
+   * Refine the recorded reason once the async capability probe lands (WEBCAD-162).
+   *
+   * The probe deliberately does not gate first paint, so the viewer is already drawing
+   * by the time it resolves. `kind` is fixed at construction and cannot change here —
+   * this only replaces "not probed yet" with the adapter's actual answer.
+   */
+  setRendererChoice(choice: Omit<RendererSelection, 'renderer'>): void {
+    if (choice.kind !== this._rendererInfo.kind) {
+      console.warn(
+        `[renderer] probe chose ${choice.kind} but ${this._rendererInfo.kind} is already running; ` +
+          `keeping the running backend`,
+      );
+      return;
+    }
+    this._rendererInfo = choice;
+  }
   effect!: any
   canvas: HTMLCanvasElement
   font: InstanceType<typeof Font> | null = null
@@ -154,8 +186,30 @@ export class Viewer {
     return this.pointTexture;
   }
 
-  constructor(canvas:HTMLCanvasElement){
+  /**
+   * @param selection  Optional pre-built backend from `createRenderer()`. WebGPU is
+   *   initialised asynchronously, so the renderer has to be constructed and awaited
+   *   *before* the viewer exists — passing a ready backend in is what makes "is the
+   *   device ready?" unrepresentable rather than a flag the frame loop has to check.
+   *   Omitted, this builds WebGL synchronously, which is what the boot path does today.
+   */
+  constructor(canvas:HTMLCanvasElement, selection?: RendererSelection){
     this.canvas = canvas
+    // Without a pre-built selection this is the synchronous WebGL path, so the answer
+    // is already known: anything other than a WebGL request has fallen back, and it is
+    // recorded as such immediately rather than after the async probe resolves — a
+    // reader must never see fellBack: false for a request that was not honoured.
+    const requested = selection?.requested ?? requestedRendererKind()
+    this._rendererInfo = selection
+      ? { kind: selection.kind, requested: selection.requested, fellBack: selection.fellBack, reason: selection.reason }
+      : {
+          kind: 'webgl',
+          requested,
+          fellBack: requested !== 'webgl',
+          reason: requested === 'webgl'
+            ? 'WebGL, constructed synchronously at boot'
+            : 'WebGPU requested, but only the WebGL backend is built today (WEBCAD-169)',
+        }
     this.scene = new THREE.Scene()
     
     // Create modelling background (Deep Cyan Gradient)
@@ -198,11 +252,13 @@ export class Viewer {
     
     this.cursorRenderer = new CursorRenderer(this.scene, this.camera);
 
-    this.renderer = new THREE.WebGLRenderer({canvas})
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    
-    this.effect = new OutlineEffect(this.renderer, {
+    this.renderer = selection?.renderer ?? createWebGLRenderer(canvas)
+
+    // OutlineEffect is a WebGL-only addon: it wraps a WebGLRenderer and patches its
+    // material cache. It draws every SHADED and ZEBRA frame, so it is a hard blocker
+    // for the WebGPU swap and is tracked separately (WEBCAD-174). The cast is the one
+    // place the seam is deliberately broken, and it is why `effect` stays `any`.
+    this.effect = new OutlineEffect(this.renderer as unknown as THREE.WebGLRenderer, {
       defaultThickness: 0.002,
       defaultColor: [0, 0, 0],
       defaultAlpha: 0.8,
@@ -4258,12 +4314,17 @@ export class Viewer {
 
   private renderRequested = false;
 
+  /** True while a frame is queued but not yet drawn. Used by the test bridge's idle signal. */
+  get isRenderPending(): boolean {
+    return this.renderRequested;
+  }
+
   scheduleRender() {
     if (!this.renderRequested) {
       this.renderRequested = true;
       requestAnimationFrame(() => {
         this.renderRequested = false;
-        this.render();
+        this.renderNow();
       });
     }
   }
@@ -4274,7 +4335,29 @@ export class Viewer {
 
   public onBeforeRender: () => void = () => {};
 
+  /**
+   * Request a frame (WEBCAD-160).
+   *
+   * This used to draw immediately, and ~44 call sites across the handlers and UI call
+   * it — several of them in the same tick, which is the duplicate-draw bug in
+   * WEBCAD-31. It now coalesces into the single queued frame, so the number of draws
+   * per tick is one regardless of how many callers ask.
+   *
+   * Callers that genuinely need pixels *now* (image capture) must use `renderNow()`,
+   * and there are exactly two of those.
+   */
   render(){
+    this.scheduleRender();
+  }
+
+  /**
+   * The one and only draw. Called by the frame loop and by `captureImage()`.
+   *
+   * Private on purpose: an immediate draw from arbitrary call sites is what made the
+   * render path impossible to reason about, and a WebGPU backend needs the single
+   * entry point to sit behind.
+   */
+  private renderNow(){
     this.onBeforeRender();
     this.gridRenderer.updateAxesScale(1 / this.camera.zoom);
     if (this.shadingMode === 'SHADED' || this.shadingMode === 'ZEBRA') {
@@ -4282,6 +4365,20 @@ export class Viewer {
     } else {
       this.renderer.render(this.scene, this.camera);
     }
+  }
+
+  /**
+   * Snapshot the viewport as a data URL (WEBCAD-163).
+   *
+   * The drawing buffer is not preserved, so its contents are undefined once the frame
+   * has been composited — reading the canvas at an arbitrary later moment happens to
+   * work on WebGL today and will not survive the backend swap, where the swap-chain
+   * texture is genuinely gone. Drawing and reading in the same turn is the only
+   * version of this that is correct on both.
+   */
+  captureImage(type: string = 'image/jpeg', quality: number = 0.5): string {
+    this.renderNow();
+    return this.canvas.toDataURL(type, quality);
   }
 
   // DOF COLORS — tuned to be visible on the dark CAD background

@@ -12,3 +12,7 @@ AGENTS.md
 GEMINI.md
 *.dxf
 files/
+.idea/
+
+# Plane.so API token — never commit
+plane-secret-key.csv

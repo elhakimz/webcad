@@ -62,7 +62,7 @@ export class FileToolWindow {
           await this.app.persistence.saveProject(
             this.app.doc, 
             name,
-            this.app.viewer.canvas.toDataURL('image/jpeg', 0.5)
+            this.app.viewer.captureImage('image/jpeg', 0.5)
           );
           NotificationManager.getInstance().show(`Saved as ${name}`, 'success');
           this.renderTableBody();

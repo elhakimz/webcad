@@ -92,6 +92,7 @@ export class EditToolbar {
       const btn = document.createElement('div');
       btn.className = 'tool-button';
       btn.title = b.title;
+      btn.dataset.testid = `tool-edit-${String(b.title).trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-')}`;
       btn.style.width = '32px';
       btn.style.height = '32px';
       btn.style.border = '1px solid var(--border-color)';

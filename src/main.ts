@@ -31,10 +31,24 @@ import { ProjectToolWindow } from "./ui/ProjectToolWindow"
 import { BlockToolWindow } from "./ui/BlockToolWindow"
 import { GeneratorToolWindow } from "./ui/GeneratorToolWindow"
 import { SketchToolWindow } from "./ui/SketchToolWindow"
+import { installTestBridge } from "./testing/TestBridge"
+import { chooseRenderer } from "./render/RendererBackend"
 
 // 1. Core Setup
 const canvas = document.getElementById("c") as HTMLCanvasElement
 const viewer = new Viewer(canvas)
+
+// Capability probe (WEBCAD-162). Deliberately not awaited: WebGPU adapter acquisition
+// is async, and blocking module evaluation on it would delay first paint on every
+// browser — including the ones that will never get past the probe. The viewer records
+// the honest answer synchronously and this only refines the reason.
+chooseRenderer()
+  .then((choice) => {
+    viewer.setRendererChoice(choice)
+    console.info(`[renderer] ${choice.kind} — ${choice.reason}`)
+  })
+  .catch((err) => console.warn('[renderer] capability probe failed', err))
+
 const app = new App(viewer)
 ;(window as any).app = app
 const cmdLine = new CommandLine()
@@ -398,12 +412,16 @@ Promise.all([
   await app.execute('NEW');
   viewer.resize();
   viewer.render();
-  
+
   const cmdInput = document.getElementById('cmd') as HTMLInputElement;
   if (cmdInput) cmdInput.focus();
   updatePrompt();
-  
+
   fileToolWindow.renderTableBody();
+
+  // Automation hook — see src/testing/TestBridge.ts. No-op unless this is a dev
+  // build or the page was loaded with ?testBridge=1.
+  installTestBridge(app, viewer);
 })
 .catch((err: any) => {
   console.error("Failed to initialize CAD Engine:", err);

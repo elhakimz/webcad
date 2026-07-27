@@ -19,6 +19,7 @@ export class ToolWindowBar {
     btn.classList.add('bar-item');
     btn.setAttribute('data-id', window.getId());
     btn.setAttribute('title', window.getTitle());
+    btn.setAttribute('data-testid', `tool-window-bar-${window.getId()}`);
     
     btn.innerHTML = `<span class="icon">${icon}</span>`;
     

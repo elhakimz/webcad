@@ -68,31 +68,35 @@ benefit.
 Build-time bookkeeping records `edgeRanges: { edgeIndex, start, count }[]` so a
 single topological edge can be addressed inside the shared buffer.
 
-### Materials: two classes behind one seam
+### Layer factory: two classes behind one seam
 
-`RendererBackend.ts` gains a factory:
+`src/render/EdgeLayer.ts` (beside `RendererBackend.ts`) gains a factory:
 
 ```ts
-createEdgeMaterial(kind: RendererKind, opts: EdgeMaterialOptions): EdgeMaterialHandle
+createEdgeLayer(kind: RendererKind, segments: EdgeSegments, opts): EdgeLayerHandle
 
-interface EdgeMaterialHandle {
-  material: LineMaterial | Line2NodeMaterial;
+interface EdgeLayerHandle {
+  object: THREE.Mesh;                    // LineSegments2, either flavour
   setResolution(width: number, height: number): void;
+  setSelected(edgeIndex: number | null): void;
+  getInfo(): EdgeLayerInfo;
 }
 ```
 
-- `webgl` → `LineMaterial` (`three/addons/lines/LineMaterial`), whose
-  `resolution` uniform must be written explicitly and re-written on every resize
-- `webgpu` → `Line2NodeMaterial` (exported from `three/webgpu`) drawing
-  `three/addons/lines/webgpu/LineSegments2`; it has **no `resolution` property**
-  (it inherits `LineDashedMaterial` defaults and the node renderer supplies
-  screen size), so `setResolution` is a no-op
+- `webgl` → `LineMaterial` + `three/examples/jsm/lines/LineSegments2.js`,
+  whose `resolution` uniform must be written explicitly and re-written on every
+  resize
+- `webgpu` → `Line2NodeMaterial` + `three/examples/jsm/lines/webgpu/LineSegments2.js`;
+  the object reads its resolution from the renderer's viewport, so
+  `setResolution` is a no-op
 
-That asymmetry is exactly why the factory returns a handle rather than a bare
-material: `Viewer.resize()` calls `handle.setResolution(w, h)` and never branches
-on backend. Callers otherwise use the shared surface (`color`, `linewidth`,
-`opacity`, `transparent`, `depthTest`), and `Viewer` already holds
-`_rendererInfo.kind`.
+The two `LineSegments2` classes are the same implementation modulo imports and
+resolution plumbing, but they are distinct modules and cannot be swapped by
+material alone — hence the factory returns the whole layer, not a material.
+`Viewer.resize()` calls `handle.setResolution(w, h)` and never branches on
+backend. The `webgpu` branch is registered by the WebGPU module in WEBCAD-169
+(`registerWebGPUEdgeLayerFactory`), so `three/webgpu` is not pulled into the
+main bundle before it is used.
 
 ### Picking: unchanged
 
@@ -141,7 +145,7 @@ Two consequences worth stating explicitly:
 |---|---|
 | Width | 2 px, screen space (constant at any zoom) |
 | Colour | `#000000`, unlit; selected edge `#ffa500` |
-| Resolution | Refreshed through `EdgeMaterialHandle.setResolution()` in `Viewer.resize()` (no-op on WebGPU) |
+| Resolution | Refreshed through `EdgeLayerHandle.setResolution()` in `Viewer.resize()` (no-op on WebGPU) |
 | Depth | `depthTest: true`, `depthWrite: false`, drawn after the mesh |
 | Visible in | `SHADED`, `ZEBRA` (unchanged from today) |
 | Not visible in | `WIREFRAME`, `PHONG`, `BLINN` (unchanged from today) |
@@ -179,10 +183,12 @@ still the line material and not a `MeshPhongMaterial`. This is the regression
 that would otherwise ship silently as "edges turned into white surfaces".
 
 **E2E (bridge).** Fill the proxy gap found during the audit: add
-`setShadingMode(mode)` / `getShadingMode()` to `TestBridge` and the Playwright
-driver, so a spec can pin `SHADED` without a command string. Then assert
-semantically: the solid exposes 12 edges, `selectEdge()` reports the selected
-edge, `pickAt()` still resolves it. Colour stays out of the semantic layer.
+`setShadingMode(mode)` / `getShadingMode()` and a read-only
+`getEdgeOutlineInfo(objectId)` (material type, segment count, selected edge,
+resolution, visibility — the rendering counterpart to `getRendererInfo`). Then
+assert semantically: the solid exposes 12 edges, `selectEdge()` reports the
+selected edge, `pickAt()` still resolves it. Colour stays out of the semantic
+layer.
 
 **Visual.** New opt-in `edges.spec.ts` under `WEBCAD_VISUAL=1` with before/after
 baselines (OutlineEffect vs fat lines), plus a manual WebGPU parity run

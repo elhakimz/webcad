@@ -33,6 +33,7 @@ import { CursorRenderer } from "./CursorRenderer"
 import { RendererBackend, RendererSelection, createWebGLRenderer, requestedRendererKind } from "./RendererBackend"
 import { buildEdgeSegments, segmentsFromPositions, type EdgeSegments } from "./EdgeGeometry"
 import { createEdgeLayer, type EdgeLayerHandle, type EdgeOutlineInfo } from "./EdgeLayer"
+import { createClosedLine } from "./ClosedLine"
 import { createZebraMaterial, enableNodeMaterials } from "./ZebraMaterial"
 import type { MeshBasicNodeMaterial } from "three/webgpu"
 import { NotificationManager } from "../ui/NotificationManager"
@@ -899,10 +900,9 @@ export class Viewer {
       const z = entity.elevation || 0;
       const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, 0, 2 * Math.PI, false, 0);
       const points = curve.getPoints(50);
-      const geo = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, z)));
       const color = this.resolveColor(entity.properties?.color, previewColor);
       const mat = new THREE.LineBasicMaterial({ color });
-      obj = new THREE.LineLoop(geo, mat);
+      obj = createClosedLine(points.map(p => new THREE.Vector3(p.x, p.y, z)), mat);
     } else if (entity instanceof Arc) {
       const z = entity.elevation || 0;
       const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, entity.startAngle, entity.endAngle, !entity.ccw, 0);
@@ -2839,8 +2839,8 @@ export class Viewer {
 
       // Add wireframe caps
       const topPts = points.map(p => new THREE.Vector3(p.x, p.y, elevation + thickness));
-      group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, elevation))), material));
-      group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(topPts), material));
+      group.add(createClosedLine(points.map(p => new THREE.Vector3(p.x, p.y, elevation)), material));
+      group.add(createClosedLine(topPts, material));
 
       return group;
     }
@@ -2854,7 +2854,7 @@ export class Viewer {
         });
         return group;
     } else {
-        return new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts3d), material);
+        return createClosedLine(pts3d, material);
     }
   }
 
@@ -3079,8 +3079,8 @@ export class Viewer {
       const topPts = points.map(p => new THREE.Vector3(p.x, p.y, elevation + thickness));
       
       if (isFullEllipse) {
-        group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(bottomPts), mat));
-        group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(topPts), mat));
+        group.add(createClosedLine(bottomPts, mat));
+        group.add(createClosedLine(topPts, mat));
       } else {
         group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(bottomPts), mat));
         group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(topPts), mat));
@@ -3091,11 +3091,11 @@ export class Viewer {
       return group;
     }
     
-    const geo = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, elevation)));
+    const pts3d = points.map(p => new THREE.Vector3(p.x, p.y, elevation));
     if (isFullEllipse) {
-      return new THREE.LineLoop(geo, mat);
+      return createClosedLine(pts3d, mat);
     }
-    return new THREE.Line(geo, mat);
+    return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts3d), mat);
   }
 
   private createDimensionObject(entity: Dimension, units: UnitsConfig, colorIndex: number): THREE.Object3D {
@@ -4418,6 +4418,7 @@ export class Viewer {
       ];
       const sepGeo = new THREE.BufferGeometry().setFromPoints(sepPoints);
       const sepLine = new THREE.Line(sepGeo, mat);
+      sepLine.computeLineDistances();
       group.add(sepLine);
 
       // Place text

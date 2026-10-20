@@ -468,6 +468,11 @@ export class TestBridge {
     return this.viewer.getShadingMode();
   }
 
+  /** Solid material diagnostics (WEBCAD-166). Never mutates the scene. */
+  getSolidMaterialInfo(objectId: string): { materialType: string; color: number | null } {
+    return this.viewer.getSolidMaterialInfo(objectId);
+  }
+
   /** Fat-line outline diagnostics (WEBCAD-174). Never mutates the scene. */
   getEdgeOutlineInfo(objectId: string): EdgeOutlineInfo {
     this.solid(objectId);

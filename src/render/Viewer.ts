@@ -33,6 +33,9 @@ import { CursorRenderer } from "./CursorRenderer"
 import { RendererBackend, RendererSelection, createWebGLRenderer, requestedRendererKind } from "./RendererBackend"
 import { buildEdgeSegments, segmentsFromPositions, type EdgeSegments } from "./EdgeGeometry"
 import { createEdgeLayer, type EdgeLayerHandle, type EdgeOutlineInfo } from "./EdgeLayer"
+import { createZebraMaterial, enableNodeMaterials } from "./ZebraMaterial"
+import type { MeshBasicNodeMaterial } from "three/webgpu"
+import { NotificationManager } from "../ui/NotificationManager"
 import {getPointCoords} from "../core/engine/SketchSolver";
 
 export type ShadingMode = 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' | 'ZEBRA'
@@ -96,39 +99,8 @@ export class Viewer {
   private selectionBox: THREE.Line | null = null
   private shadingMode: ShadingMode = 'SHADED';
 
-  private zebraMaterial: THREE.ShaderMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-      frequency: { value: 30.0 }
-    },
-    vertexShader: `
-      varying vec3 vNormal;
-      varying vec3 vViewPosition;
-      void main() {
-        vNormal = normalize(normalMatrix * normal);
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        vViewPosition = -mvPosition.xyz;
-        gl_Position = projectionMatrix * mvPosition;
-      }
-    `,
-    fragmentShader: `
-      varying vec3 vNormal;
-      varying vec3 vViewPosition;
-      uniform float frequency;
-      void main() {
-        vec3 normal = normalize(vNormal);
-        vec3 viewDir = normalize(vViewPosition);
-        vec3 reflectDir = reflect(-viewDir, normal);
-        
-        // Compute procedural stripes based on reflection vector
-        // Using both x and y for more natural diagnostic flow over curved surfaces
-        float val = sin((reflectDir.y + reflectDir.x * 0.3) * frequency);
-        float stripe = step(0.0, val);
-        
-        gl_FragColor = vec4(vec3(stripe), 1.0);
-      }
-    `,
-    side: THREE.DoubleSide
-  });
+  private readonly zebraMaterial: MeshBasicNodeMaterial = createZebraMaterial()
+  private nodeMaterialsReady = true
   public target: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   /** True when camera is locked to a flat orthographic view (TOP/FRONT/LEFT/RIGHT/BOTTOM/BACK). */
   public isPlainView = true;
@@ -255,6 +227,15 @@ export class Viewer {
     this.cursorRenderer = new CursorRenderer(this.scene, this.camera);
 
     this.renderer = selection?.renderer ?? createWebGLRenderer(canvas)
+
+    if (this.renderer instanceof THREE.WebGLRenderer) {
+      try {
+        enableNodeMaterials(this.renderer)
+      } catch (error) {
+        this.nodeMaterialsReady = false
+        console.error('[zebra] node materials unavailable', error)
+      }
+    }
 
     this.resize();
     this.camera.position.set(0, 0, 500);
@@ -552,6 +533,12 @@ export class Viewer {
 
   setShadingMode(mode: ShadingMode) {
     this.shadingMode = mode;
+    if (mode === 'ZEBRA' && !this.nodeMaterialsReady) {
+      NotificationManager.getInstance().show(
+        'Zebra shading unavailable: node materials failed to initialize',
+        'error',
+      )
+    }
     this.scene.traverse((obj) => {
       if (obj.userData.type === 'EdgeOutline') {
         obj.visible = (mode === 'SHADED' || mode === 'ZEBRA');
@@ -562,9 +549,13 @@ export class Viewer {
           obj.userData.type !== 'Edge' && 
           obj.userData.type !== 'Silhouette' &&
           obj.userData.handle === undefined) {
-        const material = obj.material as any;
+        const material = (Array.isArray(obj.material) ? obj.material[0] : obj.material) as
+          THREE.Material & { color?: THREE.Color };
         let color = 0xebf2ff;
-        if (material.color) {
+        if (material === this.zebraMaterial && obj.userData.originalColor !== undefined) {
+          // MeshBasicNodeMaterial has a default-white .color; the old ShaderMaterial did not.
+          color = obj.userData.originalColor;
+        } else if (material.color) {
           color = material.color.getHex();
         } else if (obj.userData.originalColor !== undefined) {
           color = obj.userData.originalColor;
@@ -617,6 +608,36 @@ export class Viewer {
 
     const layer = object.userData.edgeLayer as EdgeLayerHandle;
     return { present: true, visible: object.visible, ...layer.getInfo() };
+  }
+
+  /**
+   * Material diagnostics for the zebra port (WEBCAD-166): lets a test prove the
+   * node material is active and that leaving ZEBRA restored the original colour.
+   */
+  getSolidMaterialInfo(entityId: string): { materialType: string; color: number | null } {
+    let solid: THREE.Mesh | null = null;
+    this.scene.traverse((obj) => {
+      if (
+        solid === null &&
+        obj instanceof THREE.Mesh &&
+        obj.userData?.type === 'Solid3D' &&
+        obj.userData?.entityId === entityId
+      ) {
+        solid = obj;
+      }
+    });
+
+    if (solid === null) {
+      return { materialType: 'none', color: null };
+    }
+
+    const mesh = solid as THREE.Mesh;
+    const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    const color =
+      'color' in material && material.color instanceof THREE.Color
+        ? material.color.getHex()
+        : null;
+    return { materialType: material.type, color };
   }
 
   getMeshMaterial(color: number): THREE.Material {

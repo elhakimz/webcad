@@ -118,6 +118,8 @@ export class CadBridge {
 
   getShadingMode = () => this.call<ShadingMode>('getShadingMode');
   setShadingMode = (mode: ShadingMode) => this.call<ShadingMode>('setShadingMode', mode);
+  getSolidMaterialInfo = (objectId: string) =>
+    this.call<{ materialType: string; color: number | null }>('getSolidMaterialInfo', objectId);
   getEdgeOutlineInfo = (objectId: string) => this.call<EdgeOutlineInfo>('getEdgeOutlineInfo', objectId);
 
   /**

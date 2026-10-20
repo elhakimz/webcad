@@ -127,7 +127,10 @@ it twice — wasteful.
   rendering it natively is the only zebra work left here; no custom
   `ShaderMaterial` remains in `Viewer.ts`. Stock materials (44
   `LineBasicMaterial`, 18 `MeshBasicMaterial`, etc.) auto-convert.
-- Re-validate Phase 0–3 features under WebGPU.
+- Re-validate Phase 0-3 features under WebGPU.
+- Stock materials audited on both backends (#167): `LineLoop` replaced with closed
+  lines, note separator dash distances completed. WebGPU `EdgeLayer` remains part of
+  the swap (#169).
 - Real upside is **compute shaders** (next phase), not raw FPS on static scenes.
 
 **Outcome:** future-proof renderer, fallback intact. **Risk:** medium.

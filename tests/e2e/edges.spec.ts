@@ -104,4 +104,23 @@ test.describe('fat edge layer', () => {
     expect(info.present).toBe(true);
     expect(info.edgeCount).toBeGreaterThanOrEqual(12);
   });
+
+  test('turning a layer on does not bring the outline back in PHONG', async ({ page }) => {
+    const cad = await CadBridge.boot(page, '/');
+    await cad.setView('orthogonal');
+    await cad.runOk('BOX', '-50,-50', '50,50', '100');
+    const solid = await cad.onlySolid();
+
+    await cad.setShadingMode('PHONG');
+    expect((await cad.getEdgeOutlineInfo(solid.id)).visible).toBe(false);
+
+    // Layer visibility is a generic Mesh traversal; LineSegments2 is a Mesh, and
+    // without an explicit guard the outline would be treated as layer "0".
+    await cad.runOk('LAYER', 'ON', '0', '');
+
+    expect(
+      (await cad.getEdgeOutlineInfo(solid.id)).visible,
+      'layer bookkeeping must not override the shading-mode guard',
+    ).toBe(false);
+  });
 });

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { buildEdgeSegments } from './EdgeGeometry';
+import { buildEdgeSegments, SELECTED_EDGE_COLOR } from './EdgeGeometry';
 import {
   createEdgeLayer,
   registerWebGPUEdgeLayerFactory,
@@ -44,7 +44,7 @@ describe('createEdgeLayer (webgl)', () => {
     expect(colourBuffer(layer)).toBe(before);
     expect(before[0]).toBe(0);
     expect(before[6]).toBeCloseTo(1, 6);
-    expect(before[7]).toBeCloseTo(165 / 255, 6);
+    expect(before[7]).toBeCloseTo(SELECTED_EDGE_COLOR[1], 6);
     expect(layer.getInfo().selectedEdge).toBe(1);
   });
 
@@ -63,6 +63,23 @@ describe('createEdgeLayer (webgl)', () => {
     layer.setResolution(800, 600);
 
     expect(layer.getInfo().resolution).toEqual([800, 600]);
+  });
+
+  it('never stores a zero resolution, which would produce NaN vertices', () => {
+    const layer = createEdgeLayer('webgl', buildEdgeSegments(twoEdges));
+
+    layer.setResolution(0, 0);
+
+    expect(layer.getInfo().resolution).toEqual([1, 1]);
+  });
+
+  it('reports the material linewidth rather than the option it was handed', () => {
+    const layer = createEdgeLayer('webgl', buildEdgeSegments(twoEdges), { linewidth: 3 });
+
+    expect(layer.getInfo().linewidth).toBe(
+      (layer.object.material as unknown as { linewidth: number }).linewidth,
+    );
+    expect(layer.getInfo().linewidth).toBe(3);
   });
 });
 

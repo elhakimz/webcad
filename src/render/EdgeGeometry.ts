@@ -24,8 +24,25 @@ export interface EdgeSegments {
 
 export interface Vec3Like { x: number; y: number; z: number }
 
-/** `#ffa500`, the same cue `Viewer.highlightEdge()` uses today. */
-export const SELECTED_EDGE_COLOR: [number, number, number] = [1, 165 / 255, 0];
+/** sRGB → linear, matching `THREE.ColorManagement` for an 8-bit UI colour. */
+function srgbToLinear(channel: number): number {
+  return channel <= 0.04045
+    ? channel / 12.92
+    : Math.pow((channel + 0.055) / 1.055, 2.4);
+}
+
+/**
+ * `#ffa500`, the same cue `Viewer.highlightEdge()` uses today.
+ *
+ * Stored linear: `LineMaterial` multiplies raw `instanceColor` values into the
+ * shader without an sRGB decode, so the naive `[1, 165/255, 0]` would render as
+ * a washed-out #ffd300.
+ */
+export const SELECTED_EDGE_COLOR: [number, number, number] = [
+  1,
+  srgbToLinear(165 / 255),
+  0,
+];
 
 const BLACK: [number, number, number] = [0, 0, 0];
 
@@ -58,6 +75,35 @@ export function buildEdgeSegments(
   });
 
   return { positions, edgeRanges, segmentCount };
+}
+
+/**
+ * Segments from a flat list of line pairs — the `EdgesGeometry` fallback used
+ * when the kernel returns no BRep edges.
+ *
+ * `edgeRanges` stays empty on purpose: these lines carry no `edgeIndex`, so
+ * nothing can be selected on them and they only need to be drawn.
+ */
+export function segmentsFromPositions(
+  positions: ArrayLike<number>,
+  center: Vec3Like = { x: 0, y: 0, z: 0 },
+): EdgeSegments {
+  const out: number[] = [];
+  let segmentCount = 0;
+
+  for (let i = 0; i + 5 < positions.length; i += 6) {
+    out.push(
+      positions[i] - center.x,
+      positions[i + 1] - center.y,
+      positions[i + 2] - center.z,
+      positions[i + 3] - center.x,
+      positions[i + 4] - center.y,
+      positions[i + 5] - center.z,
+    );
+    segmentCount += 1;
+  }
+
+  return { positions: out, edgeRanges: [], segmentCount };
 }
 
 export function buildEdgeColors(

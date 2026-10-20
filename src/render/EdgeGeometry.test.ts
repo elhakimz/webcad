@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildEdgeColors, buildEdgeSegments, SELECTED_EDGE_COLOR } from './EdgeGeometry';
+import { buildEdgeColors, buildEdgeSegments, segmentsFromPositions, SELECTED_EDGE_COLOR } from './EdgeGeometry';
 
 const square = [
   [0, 0, 0, 10, 0, 0],      // edge 0: one segment
@@ -33,6 +33,32 @@ describe('buildEdgeSegments', () => {
 
   it('returns an empty result for undefined or empty edge lists', () => {
     expect(buildEdgeSegments([])).toEqual({ positions: [], edgeRanges: [], segmentCount: 0 });
+  });
+});
+
+describe('SELECTED_EDGE_COLOR', () => {
+  it('is stored in linear space, matching what the shader multiplies in', () => {
+    // #ffa500 → linear green channel; the sRGB literal would be 0.647.
+    expect(SELECTED_EDGE_COLOR[0]).toBe(1);
+    expect(SELECTED_EDGE_COLOR[1]).toBeCloseTo(0.3763, 3);
+    expect(SELECTED_EDGE_COLOR[2]).toBe(0);
+  });
+});
+
+describe('segmentsFromPositions', () => {
+  it('turns flat line pairs into segments with no selectable edge ranges', () => {
+    const result = segmentsFromPositions([0, 0, 0, 10, 0, 0, 10, 0, 0, 10, 10, 0]);
+
+    expect(result.segmentCount).toBe(2);
+    expect(result.positions).toEqual([0, 0, 0, 10, 0, 0, 10, 0, 0, 10, 10, 0]);
+    expect(result.edgeRanges, 'fallback edges carry no edgeIndex').toEqual([]);
+  });
+
+  it('subtracts the centre and ignores a trailing partial pair', () => {
+    const result = segmentsFromPositions([10, 0, 0, 30, 0, 0, 99, 99, 99], { x: 10, y: 0, z: 0 });
+
+    expect(result.segmentCount).toBe(1);
+    expect(result.positions).toEqual([0, 0, 0, 20, 0, 0]);
   });
 });
 
@@ -70,7 +96,7 @@ describe('buildEdgeColors', () => {
 
     for (const segment of [0, 1]) {
       expect(colors[segment * 6]).toBeCloseTo(1, 6);
-      expect(colors[segment * 6 + 1]).toBeCloseTo(165 / 255, 6);
+      expect(colors[segment * 6 + 1]).toBeCloseTo(SELECTED_EDGE_COLOR[1], 6);
       expect(colors[segment * 6 + 2]).toBeCloseTo(0, 6);
     }
     // Edge 1 stays black.

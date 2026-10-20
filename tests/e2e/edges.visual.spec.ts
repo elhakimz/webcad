@@ -5,16 +5,23 @@ import { CadBridge } from './bridge';
  * Edge rendering regression for WEBCAD-174.
  *
  * Opt in with WEBCAD_VISUAL=1; record baselines on the machine that will run
- * them. The classic/OutlineEffect half of the original comparison has been
- * removed along with the effect itself.
+ * them. The old WebGL-only outline pass and its half of the comparison have
+ * been removed with the effect itself.
  *
  *   WEBCAD_VISUAL=1 npx playwright test edges.visual --update-snapshots
  *   WEBCAD_VISUAL=1 npx playwright test edges.visual
  *
  * One test per shape: the viewport screenshot includes the command-log overlay,
  * so sharing a page would make each baseline depend on the previous command.
+ * Toasts are hidden because they fade on their own clock.
  */
-const boot = (page: Page) => CadBridge.boot(page, '/');
+const boot = async (page: Page) => {
+  const cad = await CadBridge.boot(page, '/');
+  await page.addStyleTag({
+    content: '#notification-container { display: none !important; }',
+  });
+  return cad;
+};
 
 test.describe('edge rendering', () => {
   test.skip(!process.env.WEBCAD_VISUAL, 'set WEBCAD_VISUAL=1 to run canvas screenshot tests');

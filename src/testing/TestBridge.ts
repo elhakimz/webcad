@@ -474,14 +474,6 @@ export class TestBridge {
     return this.viewer.getEdgeOutlineInfo(objectId);
   }
 
-  /** Draw statistics for the last rendered frame (WEBCAD-174 perf evidence). */
-  getRenderStats(): { drawCalls: number; triangles: number } {
-    return {
-      drawCalls: this.viewer.renderer.info.render.calls,
-      triangles: this.viewer.renderer.info.render.triangles,
-    };
-  }
-
   // ---------------------------------------------------------------- Epic 3: scene graph
 
   listObjects(): ObjectSummary[] {

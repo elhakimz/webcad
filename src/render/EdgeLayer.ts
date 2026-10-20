@@ -27,7 +27,13 @@ export interface EdgeOutlineInfo extends EdgeLayerInfo {
 }
 
 export interface EdgeLayerHandle {
-  /** `LineSegments2` on WebGL, its `lines/webgpu` twin on WebGPU. */
+  /**
+   * `LineSegments2` on WebGL, its `lines/webgpu` twin on WebGPU.
+   *
+   * A `Mesh` on purpose: the generic teardown in `removeObject`/`clear`
+   * traverses the scene and disposes Mesh geometry and materials, so any
+   * provider must return one.
+   */
   object: THREE.Mesh
   setResolution(width: number, height: number): void
   setSelected(selectedEdgeIndex: number | null): void
@@ -91,16 +97,17 @@ function createWebGLEdgeLayer(
   object.name = 'edgeOutline'
 
   let selected: number | null = null
-  let resolution: [number, number] = [0, 0]
   const colorScratch = new Float32Array(segments.segmentCount * 6)
 
   return {
     object,
     setResolution(width, height) {
-      resolution = [width, height]
-      material.resolution.set(width, height)
+      // three divides by this in the shader; a zero-sized buffer would
+      // produce NaN vertex positions for a frame.
+      material.resolution.set(Math.max(1, width), Math.max(1, height))
     },
     setSelected(edgeIndex) {
+      if (edgeIndex === selected) return
       selected = edgeIndex
       // setColors() allocates a fresh interleaved buffer every call, and this
       // runs on hover, so write into the existing one instead.
@@ -115,12 +122,12 @@ function createWebGLEdgeLayer(
         : segments.edgeRanges.find((range) => range.edgeIndex === selected)
       return {
         materialType: material.type,
-        linewidth,
+        linewidth: material.linewidth,
         edgeCount: segments.edgeRanges.length,
         segmentCount: segments.segmentCount,
         selectedEdge: selected,
         selectedSegmentCount: selectedRange?.count ?? 0,
-        resolution,
+        resolution: [material.resolution.x, material.resolution.y],
       }
     },
   }

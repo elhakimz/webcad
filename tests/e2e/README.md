@@ -44,7 +44,7 @@ need `waitForTimeout`.
 | Coordinates | `worldToScreen`, `screenToWorld`, `getCanvasRect`, `isClickable` |
 | Scene graph | `listObjects`, `getObject`, `getBoundingBox`, `getVertices`, `getEdges`, `getFaces` |
 | Kernel truth | `checkValidity`, `expectValid`, `syncToKernel` |
-| Renderer | `getRendererInfo`, `expectRenderer`, `getRenderStats` |
+| Renderer | `getRendererInfo`, `expectRenderer` |
 | Edge outlines | `getEdgeOutlineInfo` — presence, material type, edge/segment counts, selected edge, resolution, visibility |
 | Shading | `getShadingMode`, `setShadingMode` |
 | Selection | `selectObject`, `selectFace`, `selectEdge`, `clearSelection`, `getSelection`, `pickAt` |

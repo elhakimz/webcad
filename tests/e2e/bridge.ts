@@ -119,7 +119,6 @@ export class CadBridge {
   getShadingMode = () => this.call<ShadingMode>('getShadingMode');
   setShadingMode = (mode: ShadingMode) => this.call<ShadingMode>('setShadingMode', mode);
   getEdgeOutlineInfo = (objectId: string) => this.call<EdgeOutlineInfo>('getEdgeOutlineInfo', objectId);
-  getRenderStats = () => this.call<{ drawCalls: number; triangles: number }>('getRenderStats');
 
   /**
    * Assert the viewport is on the expected backend.

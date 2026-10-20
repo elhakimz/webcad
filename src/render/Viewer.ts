@@ -31,7 +31,7 @@ import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, 
 import { GridRenderer } from "./GridRenderer"
 import { CursorRenderer } from "./CursorRenderer"
 import { RendererBackend, RendererSelection, createWebGLRenderer, requestedRendererKind } from "./RendererBackend"
-import { buildEdgeSegments } from "./EdgeGeometry"
+import { buildEdgeSegments, segmentsFromPositions, type EdgeSegments } from "./EdgeGeometry"
 import { createEdgeLayer, type EdgeLayerHandle, type EdgeOutlineInfo } from "./EdgeLayer"
 import {getPointCoords} from "../core/engine/SketchSolver";
 
@@ -2171,6 +2171,16 @@ export class Viewer {
         const line = new THREE.LineSegments(edgesGeo, lineMatBasic);
         line.userData = { isEdge: true, type: 'Profile', entityId: entity.id };
         group.add(line);
+
+        // The fallback used to be thin-line-only, so it lost its edges entirely
+        // when the old outline pass was removed. Same display layer, no edge
+        // ranges: these lines have no `edgeIndex`, so nothing can be selected
+        // on them.
+        const fallback = this.createEdgeOutlineFromSegments(
+          segmentsFromPositions(edgesGeo.attributes.position.array),
+          entity.id,
+        );
+        if (fallback) group.add(fallback);
       }
     }
     
@@ -2191,7 +2201,17 @@ export class Viewer {
    * zoom, which is the affordance chamfer/fillet/trim depend on.
    */
   private createEdgeOutline(entity: Solid3D, center: THREE.Vector3): THREE.Object3D | null {
-    const segments = buildEdgeSegments(entity.edgeLines ?? [], center);
+    return this.createEdgeOutlineFromSegments(
+      buildEdgeSegments(entity.edgeLines ?? [], center),
+      entity.id,
+    );
+  }
+
+  /** Shared by the BRep path and the `EdgesGeometry` fallback. */
+  private createEdgeOutlineFromSegments(
+    segments: EdgeSegments,
+    entityId: string,
+  ): THREE.Object3D | null {
     if (segments.segmentCount === 0) return null;
 
     const edgeLayer = createEdgeLayer(this._rendererInfo.kind, segments, { linewidth: 2 });
@@ -2200,9 +2220,8 @@ export class Viewer {
     object.userData = {
       type: 'EdgeOutline',
       isEdge: false,        // keeps it out of the thin-line registries
-      entityId: entity.id,
+      entityId,
       edgeLayer,
-      segments,
     };
     // Display only: picking must stay on the thin lines that carry edgeIndex.
     object.raycast = () => {};
@@ -2275,19 +2294,28 @@ export class Viewer {
   }
 
   highlightEdge(entityId: string, edgeIndex: number | null) {
-    // Find all edge lines belonging to this entity
+    // One pass collects both renderings of the same selection: the thin lines
+    // that are pick targets, and the fat layer that draws the colour.
     const entityEdgeLines: THREE.Object3D[] = [];
+    const edgeLayers: EdgeLayerHandle[] = [];
     this.scene.traverse(obj => {
+      if (obj.userData?.type === 'EdgeOutline' && obj.userData.entityId === entityId) {
+        edgeLayers.push(obj.userData.edgeLayer as EdgeLayerHandle);
+        return;
+      }
       if (obj.userData.entityId === entityId && obj.userData.edgeIndex !== undefined) {
         entityEdgeLines.push(obj);
       }
     });
 
-    if (entityEdgeLines.length === 0) return;
+    // Runs before the early return: the layer is the visible cue and must stay
+    // in sync even for an entity whose thin lines are missing.
+    edgeLayers.forEach(layer => layer.setSelected(edgeIndex));
 
-    // Same selection, second rendering: the fat layer reads the colour attribute
-    // instead of the thin line's material.
-    this.edgeOutlinesFor(entityId).forEach(layer => layer.setSelected(edgeIndex));
+    if (entityEdgeLines.length === 0) {
+      if (edgeLayers.length > 0) this.scheduleRender();
+      return;
+    }
 
     // Reset all edges to dark gray (invisible by default)
     entityEdgeLines.forEach(line => {
@@ -2319,17 +2347,6 @@ export class Viewer {
     }
 
     this.scheduleRender();
-  }
-
-  /** Every fat edge layer belonging to an entity (usually exactly one). */
-  private edgeOutlinesFor(entityId: string): EdgeLayerHandle[] {
-    const layers: EdgeLayerHandle[] = [];
-    this.scene.traverse((obj) => {
-      if (obj.userData?.type === 'EdgeOutline' && obj.userData.entityId === entityId) {
-        layers.push(obj.userData.edgeLayer as EdgeLayerHandle);
-      }
-    });
-    return layers;
   }
 
   drawDebugLine(p1: {x:number,y:number,z:number}, p2: {x:number,y:number,z:number}, color: number = 0xffa500) {
@@ -3764,6 +3781,10 @@ export class Viewer {
 
   updateLayerVisibility(layerMap: Map<string, { isVisible: boolean, isFrozen: boolean }>) {
     this.scene.traverse((obj) => {
+      // Edge outlines are display-only: their visibility is owned by the
+      // shading mode, not by a layer. They carry no `userData.layer`, so the
+      // default below would otherwise pop them back on in PHONG/WIREFRAME.
+      if (obj.userData?.type === 'EdgeOutline') return;
       if (obj instanceof THREE.Mesh || obj instanceof THREE.Line || 
           obj instanceof THREE.LineLoop || obj instanceof THREE.Points) {
         const layerName = (obj.userData as { layer?: string }).layer || "0";
@@ -3904,6 +3925,9 @@ export class Viewer {
 
     const objectsToProcess: THREE.Object3D[] = [];
     this.scene.traverse((obj) => {
+      // The fat edge layer is a Mesh with a name of its own; highlighting must
+      // go through `highlightEdge`, not through a material recolour.
+      if (obj.userData?.type === 'EdgeOutline') return;
       if (obj.name && obj.name !== "PREVIEW" && !obj.name.startsWith("CURSOR")) {
         objectsToProcess.push(obj);
       }

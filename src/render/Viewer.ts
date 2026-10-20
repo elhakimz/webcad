@@ -1,5 +1,4 @@
 import * as THREE from "three"
-import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js'
 import { Font } from 'three/examples/jsm/loaders/FontLoader.js'
 import { TTFLoader } from 'three/examples/jsm/loaders/TTFLoader.js'
 import { Entity } from "../core/model/Entity"
@@ -73,7 +72,6 @@ export class Viewer {
     }
     this._rendererInfo = choice;
   }
-  effect!: any
   canvas: HTMLCanvasElement
   font: InstanceType<typeof Font> | null = null
   public directionalLight: THREE.DirectionalLight | null = null;
@@ -97,14 +95,6 @@ export class Viewer {
   private noteQueue: Note[] = []
   private selectionBox: THREE.Line | null = null
   private shadingMode: ShadingMode = 'SHADED';
-
-  /**
-   * Rollout switch for WEBCAD-174. `?edges=fat` paints solid edges with the
-   * backend-neutral line layer; classic keeps OutlineEffect on WebGL. Task 5
-   * flips the default and deletes the flag.
-   */
-  private readonly edgeStyle: 'classic' | 'fat' =
-    new URLSearchParams(window.location.search).get('edges') === 'fat' ? 'fat' : 'classic'
 
   private zebraMaterial: THREE.ShaderMaterial = new THREE.ShaderMaterial({
     uniforms: {
@@ -266,19 +256,6 @@ export class Viewer {
 
     this.renderer = selection?.renderer ?? createWebGLRenderer(canvas)
 
-    // OutlineEffect is a WebGL-only addon: it wraps a WebGLRenderer and patches its
-    // material cache. It draws every SHADED and ZEBRA frame, so it is a hard blocker
-    // for the WebGPU swap and is tracked separately (WEBCAD-174). The cast is the one
-    // place the seam is deliberately broken, and it is why `effect` stays `any`.
-    this.effect = new OutlineEffect(this.renderer as unknown as THREE.WebGLRenderer, {
-      defaultThickness: 0.002,
-      defaultColor: [0, 0, 0],
-      defaultAlpha: 0.8,
-      defaultKeepAlive: true
-    });
-    
-
-    
     this.resize();
     this.camera.position.set(0, 0, 500);
     this.camera.lookAt(0, 0, 0); 
@@ -2197,10 +2174,8 @@ export class Viewer {
       }
     }
     
-    if (this.edgeStyle === 'fat') {
-      const outline = this.createEdgeOutline(entity, center);
-      if (outline) group.add(outline);
-    }
+    const outline = this.createEdgeOutline(entity, center);
+    if (outline) group.add(outline);
 
     group.userData = { type: 'Solid3D' };
     group.position.copy(center);
@@ -4468,11 +4443,7 @@ export class Viewer {
   private renderNow(){
     this.onBeforeRender();
     this.gridRenderer.updateAxesScale(1 / this.camera.zoom);
-    if (this.shadingMode === 'SHADED' || this.shadingMode === 'ZEBRA') {
-      this.effect.render(this.scene, this.camera);
-    } else {
-      this.renderer.render(this.scene, this.camera);
-    }
+    this.renderer.render(this.scene, this.camera);
   }
 
   /**

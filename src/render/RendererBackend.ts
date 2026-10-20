@@ -80,10 +80,9 @@ export function createWebGLRenderer(canvas: HTMLCanvasElement): THREE.WebGLRende
  * Split from `createRenderer` so the decision is testable: constructing a real
  * `WebGLRenderer` needs a GPU context, which node does not have.
  *
- * The WebGPU branch is not wired up yet and says so instead of pretending: three r160
- * has no first-class `three/webgpu` entry point, and `OutlineEffect` — which draws
- * every shaded frame — is WebGL-only. Both are gated on WEBCAD-164. Until then this
- * chooses WebGL with a stated reason, which is the same shape the real fallback takes.
+ * The WebGPU branch is not wired up yet and says so instead of pretending: the
+ * adapter probe succeeds, but `createRenderer()` still builds WebGL until
+ * WEBCAD-169 lands the backend itself.
  */
 export async function chooseRenderer(
   requested: RendererKind = requestedRendererKind(),
@@ -112,8 +111,7 @@ export async function chooseRenderer(
   }
 
   return webgl(
-    'WebGPU adapter is available, but the renderer is not wired up yet — blocked on the ' +
-      'three.js upgrade (WEBCAD-164) and the OutlineEffect replacement (WEBCAD-174)',
+    'WebGPU adapter is available, but the renderer is not wired up yet (WEBCAD-169)',
   );
 }
 

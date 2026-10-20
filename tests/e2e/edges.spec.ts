@@ -2,16 +2,14 @@ import { test, expect } from '@playwright/test';
 import { CadBridge } from './bridge';
 
 /**
- * The fat edge layer (WEBCAD-174) under its rollout flag.
+ * The fat edge layer (WEBCAD-174).
  *
- * `?edges=fat` opts into the replacement while `?edges=classic` (the default
- * until Task 5) keeps OutlineEffect. These assertions are the semantic half of
- * the visual comparison: the layer exists, carries the right material, and
- * survives a shading round-trip.
+ * These assertions are the semantic half of the visual comparison: the layer
+ * exists, carries the right material, and survives a shading round-trip.
  */
 test.describe('fat edge layer', () => {
   test('is present on a shaded solid and keeps its material across shading modes', async ({ page }) => {
-    const cad = await CadBridge.boot(page, '/?edges=fat');
+    const cad = await CadBridge.boot(page, '/');
     await cad.setView('orthogonal');
     await cad.runOk('BOX', '-50,-50', '50,50', '100');
     await cad.zoomToFit();
@@ -38,7 +36,7 @@ test.describe('fat edge layer', () => {
   });
 
   test('tracks the canvas resolution after a viewport resize', async ({ page }) => {
-    const cad = await CadBridge.boot(page, '/?edges=fat');
+    const cad = await CadBridge.boot(page, '/');
     await cad.setView('orthogonal');
     await cad.runOk('BOX', '-50,-50', '50,50', '100');
     const solid = await cad.onlySolid();
@@ -56,7 +54,7 @@ test.describe('fat edge layer', () => {
   });
 
   test('selecting an edge marks exactly that edge, and clearing removes the mark', async ({ page }) => {
-    const cad = await CadBridge.boot(page, '/?edges=fat');
+    const cad = await CadBridge.boot(page, '/');
     await cad.setView('orthogonal');
     await cad.runOk('BOX', '-50,-50', '50,50', '100');
     const solid = await cad.onlySolid();
@@ -73,7 +71,7 @@ test.describe('fat edge layer', () => {
   });
 
   test('a curved edge keeps its whole polyline selected', async ({ page }) => {
-    const cad = await CadBridge.boot(page, '/?edges=fat');
+    const cad = await CadBridge.boot(page, '/');
     await cad.setView('orthogonal');
     await cad.runOk('CYLINDER', '0,0', '30', '80');
     const solid = await cad.onlySolid();
@@ -92,7 +90,7 @@ test.describe('fat edge layer', () => {
   });
 
   test('a new solid after a delete gets its own live layer', async ({ page }) => {
-    const cad = await CadBridge.boot(page, '/?edges=fat');
+    const cad = await CadBridge.boot(page, '/');
     await cad.setView('orthogonal');
     await cad.runOk('BOX', '-50,-50', '50,50', '100');
     const first = await cad.onlySolid();

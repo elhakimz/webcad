@@ -88,7 +88,7 @@ describe('chooseRenderer fallback', () => {
     expect(sel.kind).toBe('webgl');
     expect(sel.fellBack).toBe(true);
     // Named so the reason points at what actually has to land first.
-    expect(sel.reason).toMatch(/WEBCAD-164/);
+    expect(sel.reason).toMatch(/WEBCAD-169/);
   });
 
   it('never reports fellBack for a plain WebGL request', async () => {

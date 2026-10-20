@@ -46,7 +46,7 @@ A faithful CAD drafting experience, reimagined for the modern web using **TypeSc
 - **Renderer:** Three.js **r185**, drawing into a single `<canvas>` through one `THREE.OrthographicCamera`. The `PERSPECTIVE_*` view presets are angled orthographic views, not a perspective projection.
 - **Coalesced frame loop:** `viewer.render()` marks the frame dirty rather than drawing. Every caller across the handlers and UI collapses into a single draw per tick.
 - **Pluggable backend:** the renderer sits behind a small `RendererBackend` seam (`src/render/RendererBackend.ts`), with an async capability probe and a `?renderer=webgl|webgpu` override. **WebGL is the only backend that draws today, and stays the default.** WebGPU is a work in progress — the probe reports honestly which backend is running and whether it fell back.
-- **Shading modes:** wireframe, shaded, Phong, Blinn, and a zebra surface-analysis shader (`SHADING_ZEBRA`), with outlined edges over shaded geometry.
+- **Shading modes:** wireframe, shaded, Phong, Blinn, and a zebra surface-analysis shader (`SHADING_ZEBRA`). Solid edges are drawn by a per-solid fat-line layer (`src/render/EdgeLayer.ts`): 2 px at any zoom, black, with the selected edge in orange.
 
 ### 🖱️ Selection & Interaction
 - **Advanced Selection Engine:** Precise AABB spatial tree hit-testing supporting individual entity selection, Window/Crossing selection boxes, and intersection matching.

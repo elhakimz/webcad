@@ -16,6 +16,10 @@ export interface RendererBackend {
   /** The canvas being drawn into. Prefer `viewer.canvas` — this exists because three owns it. */
   readonly domElement: HTMLCanvasElement;
   shadowMap: { enabled: boolean; type: THREE.ShadowMapType };
+  /** Draw statistics for the last frame. Both backends populate this. */
+  readonly info: {
+    render: { calls: number; triangles: number };
+  };
   setSize(width: number, height: number, updateStyle?: boolean): void;
   render(scene: THREE.Object3D, camera: THREE.Camera): void;
   dispose(): void;

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WebCAD material audit</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #111; color: #eee; font: 13px system-ui, sans-serif; }
+      main { display: grid; grid-template-columns: 1fr 1fr; height: 100%; }
+      .pane { position: relative; min-width: 0; border-right: 1px solid #333; }
+      .pane:last-child { border-right: 0; }
+      canvas { display: block; width: 100%; height: 100%; }
+      .tag { position: absolute; left: 10px; top: 10px; z-index: 2; background: #000b; padding: 4px 7px; letter-spacing: .04em; }
+      #case { position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 3; background: #000c; padding: 5px 9px; border: 1px solid #444; }
+      #status { position: fixed; left: 10px; bottom: 10px; z-index: 3; max-width: 70vw; white-space: pre-wrap; background: #000c; padding: 6px 8px; color: #9f9; }
+      #status.error { color: #f99; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="pane"><span class="tag">WebGL</span><canvas id="webgl"></canvas></div>
+      <div class="pane"><span class="tag">WebGPU</span><canvas id="webgpu"></canvas></div>
+    </main>
+    <div id="case">case</div>
+    <div id="status">booting…</div>
+    <script type="module" src="./materials-audit.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,58 @@
+logs
+index.ts:74 -------------- RxDB dev-mode warning -------------------------------
+you are seeing this because you use the RxDB dev-mode plugin https://rxdb.info/dev-mode.html?console=dev-mode 
+This is great in development mode, because it will run many checks to ensure
+that you use RxDB correct. If you see this in production mode,
+you did something wrong because the dev-mode plugin will decrease the performance.
+
+🤗 Hint: To get the most out of RxDB, check out the Premium Plugins
+to get access to faster storages and more professional features: https://rxdb.info/premium/?console=dev-mode 
+
+You can disable this warning by calling disableWarnings() from the dev-mode plugin.
+---------------------------------------------------------------------
+init @ index.ts:74
+DatabaseService.ts:56 [DatabaseService] Initializing database (stable + AJV)...
+rx-storage-instance-dexie.ts:87 -------------- RxDB Open Core RxStorage -------------------------------
+You are using the free Dexie.js based RxStorage implementation from RxDB https://rxdb.info/rx-storage-dexie.html?console=dexie 
+While this is a great option, we want to let you know that there are faster storage solutions available in our premium plugins.
+For professional users and production environments, we highly recommend considering these premium options to enhance performance and reliability.
+ https://rxdb.info/premium/?console=dexie 
+If you already purchased premium access you can disable this log by calling the setPremiumFlag() function from rxdb-premium/plugins/shared.
+---------------------------------------------------------------------
+bulkWrite @ rx-storage-instance-dexie.ts:87
+DatabaseService.ts:64 [DatabaseService] Syncing collections...
+DatabaseService.ts:95 [DatabaseService] Database initialization successful.
+ShapeCacheDB.ts:18 [ShapeCacheDB] Initializing SQLite...
+ShapeCacheDB.ts:33 [ShapeCacheDB] OPFS unavailable — falling back to in-memory (data will not persist)
+(anonymous) @ ShapeCacheDB.ts:33
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] BRepTools keys: argCount, UVBounds_1, UVBounds_2, UVBounds_3, AddUVBounds_1, AddUVBounds_2, AddUVBounds_3, Update_1, Update_2, Update_3, Update_4, Update_5, Update_6, Update_7, Update_8, Update_9, UpdateFaceUVPoints, Clean, CleanGeometry, RemoveUnusedPCurves, Triangulation, Compare_1, Compare_2, OuterWire, Map3DEdges, IsReallyClosed, DetectClosedness, Dump, Write_1, Read_1, Write_2, Read_2, EvalAndUpdateTol
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] Progress/Message keys: Message_ProgressIndicator, Message_ProgressScale, Message_ProgressSentry, Message_ProgressSentry_1, Message_ProgressSentry_2, Handle_Message_ProgressIndicator, Handle_Message_ProgressIndicator_1, Handle_Message_ProgressIndicator_2, Handle_Message_ProgressIndicator_3
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] BinTools keys: 
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] Message_ProgressIndicator prototype keys: constructor, Reset, SetName_1, SetName_2, SetRange, SetStep, SetInfinite, SetScale_1, SetScale_2, GetScale, SetValue, GetValue, Increment_1, Increment_2, NewScope_1, NewScope_2, NewScope_3, NewScope_4, EndScope, NextScope_1, NextScope_2, UserBreak, Show, GetPosition, GetNbScopes, GetScope, DynamicType
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] Range keys in oc: BRepMesh_BoundaryParamsRangeSplitter, BRepMesh_ConeRangeSplitter, BRepMesh_CylinderRangeSplitter, BRepMesh_DefaultRangeSplitter, BRepMesh_NURBSRangeSplitter, BRepMesh_SphereRangeSplitter, BRepMesh_TorusRangeSplitter, BRepMesh_UVParamRangeSplitter, Bnd_Range, Bnd_Range_1, Bnd_Range_2, IFSelect_SelectRange, IntTools_BaseRangeSample, IntTools_BaseRangeSample_1, IntTools_BaseRangeSample_2, IntTools_CurveRangeLocalizeData, IntTools_CurveRangeSample, IntTools_CurveRangeSample_1, IntTools_CurveRangeSample_2, IntTools_CurveRangeSampleMapHasher, IntTools_MarkedRangeSet, IntTools_MarkedRangeSet_1, IntTools_MarkedRangeSet_2, IntTools_MarkedRangeSet_3, IntTools_Range, IntTools_Range_1, IntTools_Range_2, IntTools_ShrunkRange, IntTools_SurfaceRangeLocalizeData, IntTools_SurfaceRangeLocalizeData_1, IntTools_SurfaceRangeLocalizeData_2, IntTools_SurfaceRangeLocalizeData_3, IntTools_SurfaceRangeSample, IntTools_SurfaceRangeSample_1, IntTools_SurfaceRangeSample_2, IntTools_SurfaceRangeSample_3, IntTools_SurfaceRangeSample_4, IntTools_SurfaceRangeSampleMapHasher, SelectMgr_ViewClipRange, Standard_OutOfRange, Standard_OutOfRange_1, Standard_OutOfRange_2, Standard_RangeError, Standard_RangeError_1, Standard_RangeError_2, StepRepr_ValueRange, Handle_Standard_RangeError, Handle_Standard_RangeError_1, Handle_Standard_RangeError_2, Handle_Standard_RangeError_3, Handle_Standard_OutOfRange, Handle_Standard_OutOfRange_1, Handle_Standard_OutOfRange_2, Handle_Standard_OutOfRange_3, Handle_IFSelect_SelectRange, Handle_IFSelect_SelectRange_1, Handle_IFSelect_SelectRange_2, Handle_IFSelect_SelectRange_3, Handle_StepRepr_ValueRange, Handle_StepRepr_ValueRange_1, Handle_StepRepr_ValueRange_2, Handle_StepRepr_ValueRange_3, IntTools_Array1OfRange, IntTools_Array1OfRange_1, IntTools_Array1OfRange_2, IntTools_Array1OfRange_3, IntTools_Array1OfRange_4, IntTools_ListOfCurveRangeSample, IntTools_ListOfCurveRangeSample_1, IntTools_ListOfCurveRangeSample_2, IntTools_ListOfCurveRangeSample_3, IntTools_ListOfSurfaceRangeSample, IntTools_ListOfSurfaceRangeSample_1, IntTools_ListOfSurfaceRangeSample_2, IntTools_ListOfSurfaceRangeSample_3
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] ShapeSet keys in oc: BRepTools_ShapeSet, BRepTools_ShapeSet_1, BRepTools_ShapeSet_2, TopOpeBRepBuild_ShapeSet, TopTools_ShapeSet
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] BRepTools_ShapeSet instantiation failed: BRepTools_ShapeSet has no accessible constructor
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] BRepTools_ShapeSet_1 instantiation failed: Tried to invoke ctor of BRepTools_ShapeSet_1 with invalid number of parameters (0) - expected (1) parameters instead!
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] BRepTools_ShapeSet_2 instantiation failed: Tried to invoke ctor of BRepTools_ShapeSet_2 with invalid number of parameters (0) - expected (2) parameters instead!
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] BRepTools.Write_1.length (arg count): 0
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] BRepTools.Write_2.length (arg count): 0
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] BRepTools.Read_1.length (arg count): 0
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] BRepTools.Read_2.length (arg count): 0
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] Handle_Message_ProgressIndicator prototype keys: constructor, Nullify, IsNull, reset, operator_assign_1, operator_assign_2, operator_assign_3, get, operator_dereference, operator_bool
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] Handle_Message_ProgressIndicator_1 prototype keys: constructor
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] Handle_Message_ProgressIndicator_2 prototype keys: constructor
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] Found working Writer: STEPControl_Writer_1
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] Found working Reader: STEPControl_Reader_1
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] Virtual FS (oc.FS) is functional.
+OpenCascadeService.ts:36 OpenCascade Worker initialized successfully
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] Native BREP failed for S3D3_1779883936768. Transparently falling back to STEP cache.
+OCCWorkerClient.ts:18 [WorkerLog] [Worker] Export SUCCESS for S3D3_1779883936768: ShapeType=SOLID IsNull=false faces=3 (5941 bytes)
+PersistenceService.ts:376 [PersistenceService] [persistBRepNow] BREP SNAPSHOT EXISTS?  Uint8Array(5941)
+PersistenceService.ts:382 [PersistenceService] persistBRepNow S3D3_1779883936768 5941
+PersistenceService.ts:414 [PersistenceService] Immediately persisted S3D3_1779883936768 and updated project metadata.
+PersistenceService.ts:482 [PersistenceService] Auto-saved "Untitled"
+DazViewControl.ts:181 Cube face clicked: TOP
+GizmoManager.ts:54 GizmoManager attaching to object: S3D3_1779883936768
+GizmoManager.ts:54 GizmoManager attaching to object: S3D3_1779883936768
+GizmoManager.ts:54 GizmoManager attaching to object: S3D3_1779883936768
+GizmoManager.ts:54 GizmoManager attaching to object: S3D3_1779883936768

@@ -5,6 +5,8 @@ export default [
   {
     ignores: [
       "Documents/**",
+      "docs/**",
+      "vendors/**",
       "dist/**",
       "node_modules/**",
       "public/**",

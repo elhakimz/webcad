@@ -5,6 +5,7 @@ playwright-report/
 blob-report/
 playwright/.cache/
 Documents/
+vendors/
 tasks/
 uidesign/
 icons/

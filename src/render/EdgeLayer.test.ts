@@ -82,6 +82,7 @@ describe('createEdgeLayer (webgpu provider)', () => {
       getInfo: () => ({
         materialType: 'Line2NodeMaterial',
         linewidth: 2,
+        edgeCount: 2,
         segmentCount: 2,
         selectedEdge: selected,
         selectedSegmentCount: 1,

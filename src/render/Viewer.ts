@@ -32,7 +32,11 @@ import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, 
 import { GridRenderer } from "./GridRenderer"
 import { CursorRenderer } from "./CursorRenderer"
 import { RendererBackend, RendererSelection, createWebGLRenderer, requestedRendererKind } from "./RendererBackend"
+import { buildEdgeSegments } from "./EdgeGeometry"
+import { createEdgeLayer, type EdgeLayerHandle, type EdgeOutlineInfo } from "./EdgeLayer"
 import {getPointCoords} from "../core/engine/SketchSolver";
+
+export type ShadingMode = 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' | 'ZEBRA'
 
 export class Viewer {
   scene: THREE.Scene
@@ -92,7 +96,15 @@ export class Viewer {
   private textQueue: Text[] = []
   private noteQueue: Note[] = []
   private selectionBox: THREE.Line | null = null
-  private shadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' | 'ZEBRA' = 'SHADED';
+  private shadingMode: ShadingMode = 'SHADED';
+
+  /**
+   * Rollout switch for WEBCAD-174. `?edges=fat` paints solid edges with the
+   * backend-neutral line layer; classic keeps OutlineEffect on WebGL. Task 5
+   * flips the default and deletes the flag.
+   */
+  private readonly edgeStyle: 'classic' | 'fat' =
+    new URLSearchParams(window.location.search).get('edges') === 'fat' ? 'fat' : 'classic'
 
   private zebraMaterial: THREE.ShaderMaterial = new THREE.ShaderMaterial({
     uniforms: {
@@ -561,9 +573,13 @@ export class Viewer {
     this.scheduleRender();
   }
 
-  setShadingMode(mode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' | 'ZEBRA') {
+  setShadingMode(mode: ShadingMode) {
     this.shadingMode = mode;
     this.scene.traverse((obj) => {
+      if (obj.userData.type === 'EdgeOutline') {
+        obj.visible = (mode === 'SHADED' || mode === 'ZEBRA');
+        return;
+      }
       if (obj instanceof THREE.Mesh && 
           obj.userData.type !== 'Text' && 
           obj.userData.type !== 'Edge' && 
@@ -589,6 +605,41 @@ export class Viewer {
     });
     
     this.scheduleRender();
+  }
+
+  getShadingMode(): ShadingMode {
+    return this.shadingMode;
+  }
+
+  /**
+   * Rendering counterpart to `rendererInfo` (WEBCAD-174): lets a test prove the
+   * layer exists and that a shading-mode switch did not replace its material.
+   */
+  getEdgeOutlineInfo(entityId: string): EdgeOutlineInfo {
+    const matches: THREE.Object3D[] = [];
+    this.scene.traverse((obj) => {
+      if (obj.userData?.type === 'EdgeOutline' && obj.userData.entityId === entityId) {
+        matches.push(obj);
+      }
+    });
+
+    const object = matches[0];
+    if (!object) {
+      return {
+        present: false,
+        visible: false,
+        materialType: 'none',
+        linewidth: 0,
+        edgeCount: 0,
+        segmentCount: 0,
+        selectedEdge: null,
+        selectedSegmentCount: 0,
+        resolution: [0, 0],
+      };
+    }
+
+    const layer = object.userData.edgeLayer as EdgeLayerHandle;
+    return { present: true, visible: object.visible, ...layer.getInfo() };
   }
 
   getMeshMaterial(color: number): THREE.Material {
@@ -696,13 +747,11 @@ export class Viewer {
     
     this.camera.updateProjectionMatrix();
     
-    // Update resolution for all LineMaterials
+    // Fat edge lines need the drawing-buffer size; WebGL stores it as a
+    // uniform, WebGPU's layer reads it from the renderer viewport (no-op).
     this.scene.traverse(obj => {
-      const anyObj = obj as any;
-      if (anyObj.material && anyObj.material.isLineMaterial) {
-        // No-op for now as we are moving away from Line2, 
-        // but keeping the loop if we have other line materials
-      }
+      const edgeLayer = obj.userData?.edgeLayer as EdgeLayerHandle | undefined;
+      if (edgeLayer) edgeLayer.setResolution(this.canvas.width, this.canvas.height);
     });
     
     this.scheduleRender();
@@ -2148,10 +2197,46 @@ export class Viewer {
       }
     }
     
+    if (this.edgeStyle === 'fat') {
+      const outline = this.createEdgeOutline(entity, center);
+      if (outline) group.add(outline);
+    }
+
     group.userData = { type: 'Solid3D' };
     group.position.copy(center);
     
     return group;
+  }
+
+  /**
+   * Fat-line edges (WEBCAD-174): one LineSegments2 per solid, display only.
+   *
+   * The thin per-edge THREE.Line objects created above remain the raycast
+   * targets; this layer exists so the edges stay visible with weight at any
+   * zoom, which is the affordance chamfer/fillet/trim depend on.
+   */
+  private createEdgeOutline(entity: Solid3D, center: THREE.Vector3): THREE.Object3D | null {
+    const segments = buildEdgeSegments(entity.edgeLines ?? [], center);
+    if (segments.segmentCount === 0) return null;
+
+    const edgeLayer = createEdgeLayer(this._rendererInfo.kind, segments, { linewidth: 2 });
+    const object = edgeLayer.object;
+
+    object.userData = {
+      type: 'EdgeOutline',
+      isEdge: false,        // keeps it out of the thin-line registries
+      entityId: entity.id,
+      edgeLayer,
+      segments,
+    };
+    // Display only: picking must stay on the thin lines that carry edgeIndex.
+    object.raycast = () => {};
+    object.renderOrder = 1;
+    object.visible = this.shadingMode === 'SHADED' || this.shadingMode === 'ZEBRA';
+
+    // Drawing-buffer pixels, not CSS pixels: that is what LineMaterial needs.
+    edgeLayer.setResolution(this.canvas.width || 1, this.canvas.height || 1);
+    return object;
   }
   highlightFace(entityId: string, faceIndex: number | null) {
     const obj = this.scene.getObjectByName(entityId);
@@ -2613,6 +2698,14 @@ export class Viewer {
                 this.edgeLines.push(line);
                 line.visible = (this.shadingMode === 'SHADED');
             });
+
+            // Outlines are display-only and are not in `edgeLines`, so remap their
+            // entityId to the Insert here; otherwise they would never highlight.
+            const outline = obj.children.find(child => child.userData?.type === 'EdgeOutline');
+            if (outline) {
+                outline.userData.entityId = entity.id;
+                outline.visible = (this.shadingMode === 'SHADED' || this.shadingMode === 'ZEBRA');
+            }
         }
 
         if (obj) group.add(obj);
@@ -4434,6 +4527,7 @@ export class Viewer {
       const originalColor = this.getEntityLayerColor(entityId);
       obj.traverse(child => {
         if (
+          child.userData?.type !== 'EdgeOutline' &&
           (child instanceof THREE.Line || child instanceof THREE.LineSegments || child instanceof THREE.Mesh) &&
           child.material && (child.material as any).color
         ) {
@@ -4446,6 +4540,7 @@ export class Viewer {
 
     obj.traverse(child => {
       if (
+        child.userData?.type !== 'EdgeOutline' &&
         (child instanceof THREE.Line || child instanceof THREE.LineSegments || child instanceof THREE.Mesh) &&
         child.material && (child.material as any).color
       ) {

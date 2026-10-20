@@ -5,6 +5,7 @@ import type {
   CommandResult,
   DraftingSettings,
   EdgeInfo,
+  EdgeOutlineInfo,
   FaceInfo,
   ObjectDetail,
   ObjectSummary,
@@ -13,6 +14,7 @@ import type {
   ScreenPoint,
   SelectMode,
   SelectionState,
+  ShadingMode,
   SnapState,
   ValidityReport,
   Vec3,
@@ -113,6 +115,11 @@ export class CadBridge {
   /** Which backend drew the frame, and whether it is the one that was asked for. */
   getRendererInfo = () =>
     this.call<RendererInfo>('getRendererInfo');
+
+  getShadingMode = () => this.call<ShadingMode>('getShadingMode');
+  setShadingMode = (mode: ShadingMode) => this.call<ShadingMode>('setShadingMode', mode);
+  getEdgeOutlineInfo = (objectId: string) => this.call<EdgeOutlineInfo>('getEdgeOutlineInfo', objectId);
+  getRenderStats = () => this.call<{ drawCalls: number; triangles: number }>('getRenderStats');
 
   /**
    * Assert the viewport is on the expected backend.

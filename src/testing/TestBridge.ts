@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import type { App } from "../app";
-import type { Viewer } from "../render/Viewer";
+import type { ShadingMode, Viewer } from "../render/Viewer";
+import type { EdgeOutlineInfo } from "../render/EdgeLayer";
+
+export type { ShadingMode } from "../render/Viewer";
+export type { EdgeOutlineInfo } from "../render/EdgeLayer";
 import type { Entity } from "../core/model/Entity";
 import { Solid3D } from "../core/model/Solid3D";
 import { Arc } from "../core/model/Arc";
@@ -449,6 +453,33 @@ export class TestBridge {
    */
   getRendererInfo(): RendererInfo {
     return { ...this.viewer.rendererInfo };
+  }
+
+  /** The current shading mode, and a way to pin it without a command string. */
+  getShadingMode(): ShadingMode {
+    return this.viewer.getShadingMode();
+  }
+
+  setShadingMode(mode: ShadingMode): ShadingMode {
+    if (!['WIREFRAME', 'SHADED', 'PHONG', 'BLINN', 'ZEBRA'].includes(mode)) {
+      throw new TestBridgeError('bad-argument', `unknown shading mode "${mode}"`);
+    }
+    this.viewer.setShadingMode(mode);
+    return this.viewer.getShadingMode();
+  }
+
+  /** Fat-line outline diagnostics (WEBCAD-174). Never mutates the scene. */
+  getEdgeOutlineInfo(objectId: string): EdgeOutlineInfo {
+    this.solid(objectId);
+    return this.viewer.getEdgeOutlineInfo(objectId);
+  }
+
+  /** Draw statistics for the last rendered frame (WEBCAD-174 perf evidence). */
+  getRenderStats(): { drawCalls: number; triangles: number } {
+    return {
+      drawCalls: this.viewer.renderer.info.render.calls,
+      triangles: this.viewer.renderer.info.render.triangles,
+    };
   }
 
   // ---------------------------------------------------------------- Epic 3: scene graph

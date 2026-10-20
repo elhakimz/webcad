@@ -12,6 +12,8 @@ export interface EdgeLayerOptions {
 export interface EdgeLayerInfo {
   materialType: string
   linewidth: number
+  /** Topological edges carried by the layer (before tessellation). */
+  edgeCount: number
   segmentCount: number
   selectedEdge: number | null
   /** Segments the selected edge covers; proves a curved edge is not a chord. */
@@ -114,6 +116,7 @@ function createWebGLEdgeLayer(
       return {
         materialType: material.type,
         linewidth,
+        edgeCount: segments.edgeRanges.length,
         segmentCount: segments.segmentCount,
         selectedEdge: selected,
         selectedSegmentCount: selectedRange?.count ?? 0,

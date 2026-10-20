@@ -1,0 +1,886 @@
+DIMDIAMETER
+
+# 📄 WebCAD — Deep Pseudocode
+
+## Engineering Annotation System
+
+### Commands:
+
+* DIMDIAMETER
+* DIMSTYLE
+* STYLE (TextStyle)
+
+Target:
+
+* WebCAD (Three.js CAD engine)
+* AutoCAD 2.x/early R-style behavior
+* Render-time style resolution
+
+---
+
+# 🧩 PART 1 — DIMDIAMETER
+
+---
+
+# 🧠 1. Purpose
+
+`DIMDIAMETER` measures circle/arc diameter using:
+
+```text id="8d3jcv"
+leader line
++
+arrow
++
+diameter symbol prefix (⌀)
++
+dimension text
+```
+
+---
+
+# 🚀 CAD Behavior
+
+Depending on available space:
+
+| Case         | Behavior              |
+| ------------ | --------------------- |
+| Large circle | text inside           |
+| Small circle | text outside + leader |
+
+---
+
+# 📦 2. Semantic Data Model
+
+```pseudo id="wd7xul"
+DiameterDimension {
+
+  targetEntityId
+
+  center
+  radius
+
+  pickPoint
+
+  textPosition?     // optional override
+
+  styleId
+
+  userTextOverride?
+}
+```
+
+---
+
+# 🚀 IMPORTANT
+
+Do NOT store final geometry.
+
+Store semantic intent only.
+
+---
+
+# ⚙️ 3. Main Pipeline
+
+```pseudo id="sbcgpi"
+FUNCTION buildDiameterDimension(dim):
+
+  solveAnchor()
+
+  solveLeader()
+
+  solveArrow()
+
+  solveText()
+
+  buildRenderData()
+
+  RETURN renderData
+```
+
+---
+
+# 📐 4. Solve Diameter Direction
+
+---
+
+# STEP 1 — Vector From Center
+
+```pseudo id="4k1k25"
+v = NORMALIZE(
+    pickPoint - center
+)
+```
+
+This determines:
+
+* leader direction
+* arrow direction
+* text side
+
+---
+
+# STEP 2 — Circle Edge Point
+
+```pseudo id="rk0n6o"
+edgePoint =
+    center + v * radius
+```
+
+---
+
+# STEP 3 — Opposite Point
+
+```pseudo id="yjlwmk"
+oppositePoint =
+    center - v * radius
+```
+
+---
+
+# 🚀 These define actual diameter axis.
+
+---
+
+# 📏 5. Measurement
+
+```pseudo id="nt1x2j"
+diameter = radius * 2
+```
+
+---
+
+# 🔠 6. Format Text
+
+---
+
+# Default Text
+
+```pseudo id="ezn0mq"
+text =
+    "⌀" +
+    formatUnits(diameter)
+```
+
+---
+
+# User Override
+
+```pseudo id="38mm1u"
+IF userTextOverride EXISTS:
+    text = userTextOverride
+```
+
+---
+
+# 🏹 7. Arrow Solver
+
+---
+
+# Arrow Always Points Toward Center
+
+```pseudo id="nq9i8v"
+arrow.position = edgePoint
+
+arrow.direction = -v
+```
+
+---
+
+# Pixel-Space Size
+
+```pseudo id="mjlwm2"
+arrowSizeWorld =
+    pixelsToWorld(
+        style.arrowSizePx
+    )
+```
+
+---
+
+# Build Geometry
+
+```pseudo id="ys4rx4"
+arrow =
+    buildArrow(
+        edgePoint,
+        -v,
+        arrowSizeWorld
+    )
+```
+
+---
+
+# 📐 8. Placement Decision Engine
+
+This is critical.
+
+---
+
+# STEP 1 — Text Width
+
+```pseudo id="g7jlwm"
+textWidthPx =
+    measureText(text)
+```
+
+---
+
+# STEP 2 — Convert To World
+
+```pseudo id="sqq2mh"
+textWidthWorld =
+    pixelsToWorld(
+        textWidthPx
+    )
+```
+
+---
+
+# STEP 3 — Compare Against Diameter
+
+```pseudo id="x9ucb3"
+available =
+    radius * 2
+```
+
+---
+
+# STEP 4 — Fit Check
+
+```pseudo id="4dffiv"
+fitsInside =
+    textWidthWorld <
+    available * 0.75
+```
+
+---
+
+# 🚀 Same principle as AutoCAD.
+
+---
+
+# 📐 9A. INSIDE Placement
+
+---
+
+# Text Position
+
+```pseudo id="xjlwm3"
+textPos = center
+```
+
+---
+
+# Leader
+
+```pseudo id="aprm3g"
+leader =
+    LINE(
+        edgePoint,
+        oppositePoint
+    )
+```
+
+---
+
+# Text Rotation
+
+```pseudo id="7vjlwm"
+rotation =
+    normalizeReadable(
+        ATAN2(v.y,v.x)
+    )
+```
+
+---
+
+# 📐 9B. OUTSIDE Placement
+
+---
+
+# Leader End
+
+```pseudo id="xjlwm4"
+leaderEnd =
+    edgePoint
+    + v * outsideOffset
+```
+
+---
+
+# Text Position
+
+```pseudo id="jlwm51"
+textPos =
+    leaderEnd
+    + v * textGap
+```
+
+---
+
+# Leader Geometry
+
+```pseudo id="jlwm52"
+leader1 =
+    LINE(center, edgePoint)
+
+leader2 =
+    LINE(edgePoint, leaderEnd)
+```
+
+---
+
+# 🚀 Classic CAD dog-leg leader.
+
+---
+
+# ⚡ 10. Optional Dogleg
+
+---
+
+# Horizontal Dogleg
+
+```pseudo id="5jlwm5"
+doglegEnd =
+    leaderEnd + (doglegLength,0)
+```
+
+---
+
+# Common in mechanical drawings.
+
+---
+
+# 📦 11. Final Render Data
+
+```pseudo id="jlwm54"
+RenderData {
+
+  leaderLines[]
+
+  arrowheads[]
+
+  text
+
+  textPosition
+
+  textRotation
+}
+```
+
+---
+
+# 🧠 12. Important Production Rules
+
+---
+
+# A. Keep Text Upright
+
+```pseudo id="jlwm55"
+IF rotation upsideDown:
+    rotation += 180°
+```
+
+---
+
+# B. Small Circle
+
+If radius too small:
+
+```pseudo id="jlwm56"
+forceOutsidePlacement()
+```
+
+---
+
+# C. Zoom Stability
+
+| Component | Space  |
+| --------- | ------ |
+| leader    | world  |
+| arrow     | screen |
+| text      | screen |
+
+---
+
+---
+
+# 🧩 PART 2 — DIMSTYLE SYSTEM
+
+---
+
+# 🧠 1. Purpose
+
+`DIMSTYLE` provides:
+
+```text id="i2oqqv"
+named reusable dimension appearance rules
+```
+
+Like AutoCAD:
+
+* ISO
+* ANSI
+* Mechanical
+
+---
+
+# 📦 2. Data Model
+
+```pseudo id="jlwm57"
+DimStyle {
+
+  name
+
+  textHeightPx
+
+  arrowSizePx
+
+  extensionOffset
+
+  gapPx
+
+  precision
+
+  color
+
+  suppressLeadingZeros
+
+  textInsideAlign
+
+  decimalSeparator
+}
+```
+
+---
+
+# 🚀 IMPORTANT
+
+Style properties applied at RENDER TIME.
+
+NOT baked into geometry.
+
+---
+
+# ⚙️ 3. Style Registry
+
+```pseudo id="jlwm58"
+DimStyleRegistry {
+
+  styles : Map<String,DimStyle>
+
+  currentStyleName
+}
+```
+
+---
+
+# 📐 4. DIMSTYLE Command
+
+---
+
+# Main Entry
+
+```pseudo id="jlwm59"
+COMMAND DIMSTYLE
+```
+
+---
+
+# Supported Operations
+
+| Operation | Behavior    |
+| --------- | ----------- |
+| LIST      | show styles |
+| NEW       | create      |
+| SET       | set current |
+| DELETE    | remove      |
+
+---
+
+# 📋 LIST
+
+```pseudo id="jlwm5a"
+FUNCTION listDimStyles():
+
+  FOR style IN registry:
+
+      PRINT style.name
+```
+
+---
+
+# ➕ NEW
+
+```pseudo id="jlwm5b"
+FUNCTION createDimStyle(name):
+
+  style =
+      clone(defaultStyle)
+
+  style.name = name
+
+  registry.add(style)
+```
+
+---
+
+# 🎯 SET CURRENT
+
+```pseudo id="jlwm5c"
+FUNCTION setCurrentDimStyle(name):
+
+  registry.currentStyleName = name
+```
+
+---
+
+# 🚀 Newly created dimensions inherit current style.
+
+---
+
+# 📐 5. Render-Time Resolution
+
+---
+
+# IMPORTANT ARCHITECTURE
+
+Dimension entity stores:
+
+```pseudo id="jlwm5d"
+styleId
+```
+
+Renderer resolves:
+
+```pseudo id="jlwm5e"
+style =
+    registry.get(styleId)
+```
+
+---
+
+# 🚀 This enables:
+
+* global updates
+* style edits
+* standards switching
+
+---
+
+# ⚡ 6. Dimension Rendering With Style
+
+```pseudo id="jlwm5f"
+arrowSize =
+    pixelsToWorld(
+        style.arrowSizePx
+    )
+```
+
+---
+
+# Same for:
+
+* text height
+* gaps
+* precision
+
+---
+
+---
+
+# 🧩 PART 3 — TEXTSTYLE SYSTEM
+
+---
+
+# 🧠 1. Purpose
+
+`STYLE` defines reusable text appearance.
+
+Referenced by:
+
+* TEXT
+* DIMENSIONS
+* LEADERS
+
+---
+
+# 📦 2. Data Model
+
+```pseudo id="jlwm5g"
+TextStyle {
+
+  name
+
+  fontFamily
+
+  height
+
+  widthFactor
+
+  obliqueAngle
+
+  upsideDown
+
+  backwards
+
+  vertical
+
+  color
+}
+```
+
+---
+
+# 🚀 Similar to AutoCAD STYLE command.
+
+---
+
+# ⚙️ 3. Registry
+
+```pseudo id="jlwm5h"
+TextStyleRegistry {
+
+  styles : Map<String,TextStyle>
+
+  currentStyleName
+}
+```
+
+---
+
+# 📐 4. STYLE Command
+
+---
+
+# Main Entry
+
+```pseudo id="jlwm5i"
+COMMAND STYLE
+```
+
+---
+
+# Supported Operations
+
+| Operation | Behavior    |
+| --------- | ----------- |
+| LIST      | list styles |
+| NEW       | create      |
+| SET       | current     |
+| MODIFY    | edit        |
+
+---
+
+# ➕ NEW
+
+```pseudo id="jlwm5j"
+FUNCTION createTextStyle(name):
+
+  style =
+      clone(defaultTextStyle)
+
+  style.name = name
+
+  registry.add(style)
+```
+
+---
+
+# ✏️ MODIFY
+
+```pseudo id="jlwm5k"
+FUNCTION modifyTextStyle(name,props):
+
+  style =
+      registry.get(name)
+
+  APPLY props
+```
+
+---
+
+# 🔤 5. TEXT Entity Reference
+
+---
+
+# TEXT Entity
+
+```pseudo id="jlwm5l"
+TextEntity {
+
+  content
+
+  position
+
+  rotation
+
+  styleId
+}
+```
+
+---
+
+# 🚀 Text does NOT store:
+
+* final font
+* resolved size
+
+Renderer resolves dynamically.
+
+---
+
+# 📐 6. Text Rendering Pipeline
+
+---
+
+# STEP 1
+
+```pseudo id="jlwm5m"
+style =
+    registry.get(
+        entity.styleId
+    )
+```
+
+---
+
+# STEP 2
+
+Apply:
+
+* font
+* oblique
+* width factor
+* height
+
+---
+
+# STEP 3
+
+Render:
+
+* SDF text
+* sprite text
+* vector SHX later
+
+---
+
+# ⚡ 7. Oblique Angle
+
+Classic CAD slanted text.
+
+---
+
+# Transform
+
+```pseudo id="jlwm5n"
+x' =
+    x + tan(oblique)*y
+```
+
+---
+
+# 🚀 Same as AutoCAD oblique text.
+
+---
+
+# 📏 8. Width Factor
+
+---
+
+# Horizontal Scale
+
+```pseudo id="jlwm5o"
+x *= widthFactor
+```
+
+---
+
+# Example
+
+| Factor | Result    |
+| ------ | --------- |
+| 1.0    | normal    |
+| 0.8    | condensed |
+| 1.2    | expanded  |
+
+---
+
+# 🔥 9. Important Production Architecture
+
+---
+
+# NEVER bake style properties permanently.
+
+Always:
+
+```text id="t7vc4h"
+entity → style reference → renderer
+```
+
+---
+
+# This enables:
+
+✅ global edits
+✅ standards support
+✅ theme switching
+✅ engineering consistency
+
+---
+
+# 🧠 Final CAD Architecture
+
+```text id="6khmxl"
+Entity
+    ↓
+Style Resolver
+    ↓
+Viewport Layout Engine
+    ↓
+Renderer
+```
+
+---
+
+# 🚀 Recommended MVP Order
+
+---
+
+# Phase 1
+
+✅ DIMDIAMETER
+✅ basic DIMSTYLE
+✅ basic STYLE
+
+---
+
+# Phase 2
+
+* style inheritance
+* alternate units
+* tolerances
+* arrow types
+
+---
+
+# Phase 3
+
+* SHX support
+* annotative scaling
+* standards templates
+
+---
+
+# 🔚 Final Insight
+
+Professional CAD annotation systems are fundamentally:
+
+```text id="zhb1bw"
+style-driven rendering engines
+```
+
+NOT just geometry objects.
+
+That architectural distinction is what makes CAD systems scalable and maintainable.

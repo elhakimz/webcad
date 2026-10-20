@@ -117,7 +117,7 @@ without that flag never construct it. See [`tests/e2e/README.md`](tests/e2e/READ
 - [x] **Constraint Solver:** Real-time 2D PBD solver supporting Coincident, Parallel, Tangent, and DoF analysis.
 - [x] **3D Modeling:** Initial primitives (BOX, CYLINDER, SPHERE) and CSG operations via OCCT with robust STEP persistence.
 - [x] **Test automation:** In-app test bridge giving the e2e suite a semantic API into camera, scene graph, selection, snap state, and kernel validity.
-- [ ] **WebGPU renderer** *(in progress)* — the groundwork has landed: antialiasing, a coalesced frame loop, a `RendererBackend` seam, a capability probe with automatic fallback, and the three.js r160 → r185 upgrade. The WebGPU backend itself is not wired up yet; WebGL will remain a permanent fallback either way, since WebGPU coverage still has gaps. See [`plans/rendering_roadmap.md`](plans/rendering_roadmap.md).
+- [ ] **WebGPU renderer** *(in progress)* — the groundwork has landed: antialiasing, a coalesced frame loop, a `RendererBackend` seam, a capability probe with automatic fallback, and the three.js r160 → r185 upgrade. The WebGPU backend itself is not wired up yet; WebGL will remain a permanent fallback either way, since WebGPU coverage still has gaps. See [`docs/plans/rendering_roadmap.md`](docs/plans/rendering_roadmap.md).
 
 ## 📄 License
 MIT

@@ -44,7 +44,9 @@ need `waitForTimeout`.
 | Coordinates | `worldToScreen`, `screenToWorld`, `getCanvasRect`, `isClickable` |
 | Scene graph | `listObjects`, `getObject`, `getBoundingBox`, `getVertices`, `getEdges`, `getFaces` |
 | Kernel truth | `checkValidity`, `expectValid`, `syncToKernel` |
-| Renderer | `getRendererInfo`, `expectRenderer` |
+| Renderer | `getRendererInfo`, `expectRenderer`, `getRenderStats` |
+| Edge outlines | `getEdgeOutlineInfo` — presence, material type, edge/segment counts, selected edge, resolution, visibility |
+| Shading | `getShadingMode`, `setShadingMode` |
 | Selection | `selectObject`, `selectFace`, `selectEdge`, `clearSelection`, `getSelection`, `pickAt` |
 | Commands | `run`, `runOk`, `pressEnter`, `getCommandLog` |
 | Drafting aids | `getSnapState`, `moveCursor`, `moveCursorToWorld`, `getDraftingSettings`, `setDrafting` |
@@ -133,7 +135,8 @@ plausible-looking wrong answer. Assert on them with `expectRejection`:
 | `commands.spec.ts` | command execution, geometry read-back, command log |
 | `snap.spec.ts` | OSNAP capture and drafting-aid toggles |
 | `renderer.spec.ts` | which backend is active, and that a WebGPU request is recorded as a fallback |
-| `visual.spec.ts` | canvas screenshots — opt-in, see below |
+| `edges.spec.ts` | the fat edge layer: material survives a shading switch, resolution tracks the canvas, selection reaches the layer |
+| `visual.spec.ts`, `edges.visual.spec.ts` | canvas screenshots - opt-in, see below |
 | `ui.spec.ts`, `grip_edit.spec.ts`, `toolbars.spec.ts`, `uat.spec.ts` | older DOM-driven specs built on `helpers.ts` |
 
 ## Running
@@ -149,7 +152,7 @@ context that headless Chromium rasterises in software, which is CPU-bound. On a
 Visual tests are opt-in, because software rasterisation differs between machines:
 
 ```bash
-WEBCAD_VISUAL=1 npx playwright test visual --update-snapshots
+WEBCAD_VISUAL=1 npx playwright test visual edges.visual --update-snapshots
 ```
 
 ## Known defect covered here

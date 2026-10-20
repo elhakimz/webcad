@@ -2,7 +2,7 @@
 
 **Ticket:** WEBCAD-174 (Phase C4) — blocker for WEBCAD-169 (Phase D1)
 **Date:** 2026-10-20
-**Status:** Approved design, ready for implementation planning
+**Status:** Implemented (2026-10-20)
 
 ## Problem
 

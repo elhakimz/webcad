@@ -122,8 +122,11 @@ it twice — wasteful.
 
 - Async bootstrap: `await renderer.init()` (WebGPU is async, unlike WebGL).
 - **Detect `navigator.gpu`; fall back to WebGL** automatically. Keep both paths.
-- Port the **3 custom shaders** (only hits are in `Viewer.ts`) to TSL; stock
-  materials (44 `LineBasicMaterial`, 18 `MeshBasicMaterial`, etc.) auto-convert.
+- Zebra is already a TSL node material (`src/render/ZebraMaterial.ts`, #166) and runs
+  on the classic renderer through `WebGLNodesHandler`. Dropping that handler and
+  rendering it natively is the only zebra work left here; no custom
+  `ShaderMaterial` remains in `Viewer.ts`. Stock materials (44
+  `LineBasicMaterial`, 18 `MeshBasicMaterial`, etc.) auto-convert.
 - Re-validate Phase 0–3 features under WebGPU.
 - Real upside is **compute shaders** (next phase), not raw FPS on static scenes.
 

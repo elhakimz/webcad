@@ -2310,6 +2310,10 @@ export class Viewer {
 
     if (entityEdgeLines.length === 0) return;
 
+    // Same selection, second rendering: the fat layer reads the colour attribute
+    // instead of the thin line's material.
+    this.edgeOutlinesFor(entityId).forEach(layer => layer.setSelected(edgeIndex));
+
     // Reset all edges to dark gray (invisible by default)
     entityEdgeLines.forEach(line => {
       const mat = (line as any).material;
@@ -2340,6 +2344,17 @@ export class Viewer {
     }
 
     this.scheduleRender();
+  }
+
+  /** Every fat edge layer belonging to an entity (usually exactly one). */
+  private edgeOutlinesFor(entityId: string): EdgeLayerHandle[] {
+    const layers: EdgeLayerHandle[] = [];
+    this.scene.traverse((obj) => {
+      if (obj.userData?.type === 'EdgeOutline' && obj.userData.entityId === entityId) {
+        layers.push(obj.userData.edgeLayer as EdgeLayerHandle);
+      }
+    });
+    return layers;
   }
 
   drawDebugLine(p1: {x:number,y:number,z:number}, p2: {x:number,y:number,z:number}, color: number = 0xffa500) {

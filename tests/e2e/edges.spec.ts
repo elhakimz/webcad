@@ -54,4 +54,56 @@ test.describe('fat edge layer', () => {
     expect(after.resolution[0]).toBeGreaterThan(0);
     expect(after.resolution).not.toEqual(before.resolution);
   });
+
+  test('selecting an edge marks exactly that edge, and clearing removes the mark', async ({ page }) => {
+    const cad = await CadBridge.boot(page, '/?edges=fat');
+    await cad.setView('orthogonal');
+    await cad.runOk('BOX', '-50,-50', '50,50', '100');
+    const solid = await cad.onlySolid();
+    const edges = await cad.getEdges(solid.id);
+    expect(edges.length).toBeGreaterThanOrEqual(12);
+
+    await cad.selectEdge(solid.id, edges[3].id);
+    let info = await cad.getEdgeOutlineInfo(solid.id);
+    expect(info.selectedEdge, 'the selected edge must reach the outline layer').toBe(3);
+
+    await cad.clearSelection();
+    info = await cad.getEdgeOutlineInfo(solid.id);
+    expect(info.selectedEdge).toBeNull();
+  });
+
+  test('a curved edge keeps its whole polyline selected', async ({ page }) => {
+    const cad = await CadBridge.boot(page, '/?edges=fat');
+    await cad.setView('orthogonal');
+    await cad.runOk('CYLINDER', '0,0', '30', '80');
+    const solid = await cad.onlySolid();
+    const edges = await cad.getEdges(solid.id);
+    const closed = edges.find(
+      (e) => Math.hypot(e.start[0] - e.end[0], e.start[1] - e.end[1], e.start[2] - e.end[2]) < 1e-3,
+    );
+    expect(closed, 'a cylinder has at least one closed circular edge').toBeTruthy();
+
+    await cad.selectEdge(solid.id, closed!.id);
+
+    const info = await cad.getEdgeOutlineInfo(solid.id);
+    expect(info.selectedEdge).toBe(Number(closed!.id.slice(1)));
+    // A circle is tessellated, so the selection must cover many segments.
+    expect(info.selectedSegmentCount).toBeGreaterThan(1);
+  });
+
+  test('a new solid after a delete gets its own live layer', async ({ page }) => {
+    const cad = await CadBridge.boot(page, '/?edges=fat');
+    await cad.setView('orthogonal');
+    await cad.runOk('BOX', '-50,-50', '50,50', '100');
+    const first = await cad.onlySolid();
+
+    await cad.selectObject(first.id);
+    await cad.runOk('ERASE', '');
+    await cad.runOk('BOX', '10,10', '60,60', '50');
+    const second = await cad.onlySolid();
+
+    const info = await cad.getEdgeOutlineInfo(second.id);
+    expect(info.present).toBe(true);
+    expect(info.edgeCount).toBeGreaterThanOrEqual(12);
+  });
 });

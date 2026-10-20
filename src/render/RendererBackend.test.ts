@@ -1,5 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { chooseRenderer, requestedRendererKind, isWebGPUAvailable } from './RendererBackend';
+import {
+  chooseRenderer,
+  createRenderer,
+  requestedRendererKind,
+  isWebGPUAvailable,
+  type RendererBackend,
+} from './RendererBackend';
 
 /**
  * Backend selection (WEBCAD-162).
@@ -81,14 +87,14 @@ describe('chooseRenderer fallback', () => {
     expect(sel.reason).toContain('device lost');
   });
 
-  it('still falls back with an adapter present, because the renderer is not wired up yet', async () => {
+  it('selects WebGPU when an adapter is available', async () => {
     withGpu({ requestAdapter: async () => ({}) });
 
     const sel = await chooseRenderer('webgpu');
-    expect(sel.kind).toBe('webgl');
-    expect(sel.fellBack).toBe(true);
-    // Named so the reason points at what actually has to land first.
-    expect(sel.reason).toMatch(/WEBCAD-169/);
+    expect(sel.kind).toBe('webgpu');
+    expect(sel.requested).toBe('webgpu');
+    expect(sel.fellBack).toBe(false);
+    expect(sel.reason).toMatch(/adapter is available/i);
   });
 
   it('never reports fellBack for a plain WebGL request', async () => {
@@ -96,5 +102,69 @@ describe('chooseRenderer fallback', () => {
     const sel = await chooseRenderer('webgl');
     expect(sel.fellBack).toBe(false);
     expect(sel.reason).toBe('WebGL requested');
+  });
+});
+
+describe('createRenderer', () => {
+  const originalNavigator = globalThis.navigator;
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: originalNavigator,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  const fakeBackend = (): RendererBackend => ({
+    domElement: {} as HTMLCanvasElement,
+    shadowMap: { enabled: false, type: 0 },
+    info: { render: { calls: 0, triangles: 0 } },
+    setPixelRatio() {},
+    getPixelRatio() { return 1; },
+    setSize() {},
+    render() {},
+    dispose() {},
+  });
+
+  const canvas = {} as HTMLCanvasElement;
+
+  it('keeps a successfully initialised WebGPU backend', async () => {
+    withGpu({ requestAdapter: async () => ({}) });
+    const backend = fakeBackend();
+
+    const sel = await createRenderer(canvas, 'webgpu', {
+      webgpu: async () => backend,
+      webgl: () => { throw new Error('WebGL must not be built'); },
+    });
+
+    expect(sel.renderer).toBe(backend);
+    expect(sel.kind).toBe('webgpu');
+    expect(sel.fellBack).toBe(false);
+  });
+
+  it('falls back to WebGL and carries the init error in the reason', async () => {
+    withGpu({ requestAdapter: async () => ({}) });
+    const backend = fakeBackend();
+
+    const sel = await createRenderer(canvas, 'webgpu', {
+      webgpu: async () => { throw new Error('no device'); },
+      webgl: () => backend,
+    });
+
+    expect(sel.renderer).toBe(backend);
+    expect(sel.kind).toBe('webgl');
+    expect(sel.requested).toBe('webgpu');
+    expect(sel.fellBack).toBe(true);
+    expect(sel.reason).toContain('no device');
+  });
+
+  it('names both failures when even the WebGL fallback cannot start', async () => {
+    withGpu({ requestAdapter: async () => ({}) });
+
+    await expect(createRenderer(canvas, 'webgpu', {
+      webgpu: async () => { throw new Error('no device'); },
+      webgl: () => { throw new Error('no context'); },
+    })).rejects.toThrow(/no device[\s\S]*no context/);
   });
 });

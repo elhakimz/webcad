@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { createScreenSpacePoint } from "./PointMarker";
 
 export class GridRenderer {
   private gridGroup: THREE.Group = new THREE.Group();
@@ -16,10 +17,10 @@ export class GridRenderer {
     const hex = 0x888888;
     const origin = new THREE.Vector3(0, 0, 0);
     
-    // Dot at origin
-    const dotGeo = new THREE.BufferGeometry().setFromPoints([origin]);
-    const dotMat = new THREE.PointsMaterial({ color: hex, size: 6, sizeAttenuation: false });
-    const dot = new THREE.Points(dotGeo, dotMat);
+    // Dot at origin. Sprite + PointsNodeMaterial is the backend-neutral way to
+    // draw a sized point; WebGPU ignores PointsMaterial sizes above one pixel.
+    const dot = createScreenSpacePoint({ color: hex, size: 6 });
+    dot.position.copy(origin);
     this.axesGroup.add(dot);
 
     // Arrows

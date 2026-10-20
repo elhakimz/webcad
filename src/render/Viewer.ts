@@ -30,10 +30,18 @@ import { SnapPoint } from "../core/engine/SnapEngine"
 import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview } from "../core/commands/types"
 import { GridRenderer } from "./GridRenderer"
 import { CursorRenderer } from "./CursorRenderer"
-import { RendererBackend, RendererSelection, createWebGLRenderer, requestedRendererKind } from "./RendererBackend"
+import {
+  DEVICE_LOST_EVENT,
+  RendererBackend,
+  RendererSelection,
+  createWebGLRenderer,
+  requestedRendererKind,
+  type DeviceLostInfo,
+} from "./RendererBackend"
 import { buildEdgeSegments, segmentsFromPositions, type EdgeSegments } from "./EdgeGeometry"
 import { createEdgeLayer, type EdgeLayerHandle, type EdgeOutlineInfo } from "./EdgeLayer"
 import { createClosedLine } from "./ClosedLine"
+import { createScreenSpacePoint } from "./PointMarker"
 import { createZebraMaterial, enableNodeMaterials } from "./ZebraMaterial"
 import type { MeshBasicNodeMaterial } from "three/webgpu"
 import { NotificationManager } from "../ui/NotificationManager"
@@ -59,23 +67,40 @@ export class Viewer {
     return this._rendererInfo;
   }
 
-  /**
-   * Refine the recorded reason once the async capability probe lands (WEBCAD-162).
-   *
-   * The probe deliberately does not gate first paint, so the viewer is already drawing
-   * by the time it resolves. `kind` is fixed at construction and cannot change here —
-   * this only replaces "not probed yet" with the adapter's actual answer.
-   */
-  setRendererChoice(choice: Omit<RendererSelection, 'renderer'>): void {
-    if (choice.kind !== this._rendererInfo.kind) {
-      console.warn(
-        `[renderer] probe chose ${choice.kind} but ${this._rendererInfo.kind} is already running; ` +
-          `keeping the running backend`,
-      );
-      return;
-    }
-    this._rendererInfo = choice;
+  private _deviceLost = false;
+
+  /** True once WebGPU has reported a lost device; the viewport has stopped drawing. */
+  get deviceLost(): boolean {
+    return this._deviceLost;
   }
+
+  private readonly handleDeviceLost = (event: Event) => {
+    this.markDeviceLost((event as CustomEvent<DeviceLostInfo>).detail);
+  };
+
+  /**
+   * Degrade visibly instead of freezing silently (WEBCAD-169).
+   *
+   * A canvas cannot switch from a WebGPU context to WebGL in place, and a reload
+   * could race the debounced autosave, so the only safe automatic response is to
+   * stop drawing and tell the user how to recover.
+   */
+  private markDeviceLost(info: DeviceLostInfo): void {
+    if (this._deviceLost) return;
+    this._deviceLost = true;
+    const detail = info.reason ? `${info.message} (${info.reason})` : info.message;
+    this._rendererInfo = {
+      ...this._rendererInfo,
+      reason: `WebGPU device lost: ${detail}`,
+    };
+    console.error(`[renderer] WebGPU device lost: ${detail}`);
+    NotificationManager.getInstance().show(
+      'WebGPU device lost. Rendering stopped; reload with ?renderer=webgl to continue.',
+      'error',
+      0,
+    );
+  }
+
   canvas: HTMLCanvasElement
   font: InstanceType<typeof Font> | null = null
   public directionalLight: THREE.DirectionalLight | null = null;
@@ -137,7 +162,11 @@ export class Viewer {
   private modellingBg: THREE.Texture;
   private scriptingBg: THREE.Texture;
   private pointTexture: THREE.Texture | null = null;
-  private pointMaterial: THREE.PointsMaterial | null = null;
+  private dprQuery: MediaQueryList | null = null;
+  private readonly handleDprChange = () => {
+    this.watchDpr();
+    this.resize();
+  };
 
   private getPointTexture(): THREE.Texture {
     if (this.pointTexture) return this.pointTexture;
@@ -166,7 +195,8 @@ export class Viewer {
    *   initialised asynchronously, so the renderer has to be constructed and awaited
    *   *before* the viewer exists — passing a ready backend in is what makes "is the
    *   device ready?" unrepresentable rather than a flag the frame loop has to check.
-   *   Omitted, this builds WebGL synchronously, which is what the boot path does today.
+   *   Omitted, this builds WebGL synchronously, which is what the manual audit
+   *   harness still does.
    */
   constructor(canvas:HTMLCanvasElement, selection?: RendererSelection){
     this.canvas = canvas
@@ -183,7 +213,7 @@ export class Viewer {
           fellBack: requested !== 'webgl',
           reason: requested === 'webgl'
             ? 'WebGL, constructed synchronously at boot'
-            : 'WebGPU requested, but only the WebGL backend is built today (WEBCAD-169)',
+            : 'WebGPU requested, but the viewer was constructed without a WebGPU backend',
         }
     this.scene = new THREE.Scene()
     
@@ -228,6 +258,7 @@ export class Viewer {
     this.cursorRenderer = new CursorRenderer(this.scene, this.camera);
 
     this.renderer = selection?.renderer ?? createWebGLRenderer(canvas)
+    window.addEventListener(DEVICE_LOST_EVENT, this.handleDeviceLost)
 
     if (this.renderer instanceof THREE.WebGLRenderer) {
       try {
@@ -239,6 +270,7 @@ export class Viewer {
     }
 
     this.resize();
+    this.watchDpr();
     this.camera.position.set(0, 0, 500);
     this.camera.lookAt(0, 0, 0); 
 
@@ -730,6 +762,7 @@ export class Viewer {
   }
 
   resize() {
+    if (this._deviceLost) return;
     const parent = this.canvas.parentElement;
     if (!parent) return;
 
@@ -737,6 +770,10 @@ export class Viewer {
     const w = rect.width;
     const h = rect.height;
 
+    // Match the display density, but cap it: a 4x phone would otherwise pay
+    // sixteen times the fill cost for a viewport that is mostly thin lines.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (this.renderer.getPixelRatio() !== dpr) this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h);
     
     this.camera.left = -w / 2;
@@ -754,6 +791,22 @@ export class Viewer {
     });
     
     this.scheduleRender();
+  }
+
+  /**
+   * Re-arm the DPR media query after a change (WEBCAD-169).
+   *
+   * `matchMedia('(resolution: Ndppx)')` only fires when the ratio leaves N, so
+   * the listener has to be replaced after every change. Browser zoom and moving
+   * between monitors both take this path; window resize alone does not catch
+   * zoom on all engines.
+   */
+  private watchDpr() {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    this.dprQuery?.removeEventListener('change', this.handleDprChange);
+    const dpr = window.devicePixelRatio || 1;
+    this.dprQuery = window.matchMedia(`(resolution: ${dpr}dppx)`);
+    this.dprQuery.addEventListener('change', this.handleDprChange);
   }
 
   public addTemporaryMesh(geometry: THREE.BufferGeometry, color: number = 0x888888) {
@@ -912,19 +965,15 @@ export class Viewer {
       const mat = new THREE.LineBasicMaterial({ color });
       obj = new THREE.Line(geo, mat);
     } else if (entity instanceof Point) {
-      const geo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(entity.x, entity.y, entity.elevation || 0)
-      ]);
-      const color = 0x00ffff; // Cyan as requested
-      const mat = new THREE.PointsMaterial({ 
-        color, 
-        size: 12, 
-        sizeAttenuation: false,
+      const marker = createScreenSpacePoint({
+        color: 0x00ffff,
+        size: 12,
         map: this.getPointTexture(),
         transparent: true,
-        alphaTest: 0.5
+        alphaTest: 0.5,
       });
-      obj = new THREE.Points(geo, mat);
+      marker.position.set(entity.x, entity.y, entity.elevation || 0);
+      obj = marker;
     } else if (entity instanceof Dimension) {
       const color = this.resolveColor(entity.properties?.color, previewColor);
       obj = this.createDimensionObject(entity, units, color);
@@ -1140,18 +1189,25 @@ export class Viewer {
   setPreview(entity: PreviewObject | null, units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 }) {
     if (this.previewObject) {
       this.previewObject.parent?.remove(this.previewObject);
-      if (this.previewObject instanceof THREE.Line || this.previewObject instanceof THREE.LineLoop || this.previewObject instanceof THREE.Points || this.previewObject instanceof THREE.Group || this.previewObject instanceof THREE.Mesh) {
-        this.previewObject.traverse((obj) => {
-          if (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points || obj instanceof THREE.Mesh) {
-            obj.geometry.dispose();
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach(m => m.dispose());
-            } else {
-              obj.material.dispose();
-            }
+      this.previewObject.traverse((obj) => {
+        if (obj instanceof THREE.Sprite) {
+          // The point texture is shared by every marker; disposing it here
+          // would blank the remaining points. The geometry is per-marker.
+          obj.geometry.dispose();
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(m => m.dispose());
+          } else {
+            obj.material.dispose();
           }
-        });
-      }
+        } else if (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points || obj instanceof THREE.Mesh) {
+          obj.geometry.dispose();
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(m => m.dispose());
+          } else {
+            obj.material.dispose();
+          }
+        }
+      });
       this.previewObject = null;
     }
 
@@ -1776,19 +1832,14 @@ export class Viewer {
     const group = new THREE.Group();
     
     // 1. The X mark (Cyan, fixed screen size)
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([x, y, elevation + thickness]), 3));
-    
-    const mat = new THREE.PointsMaterial({
-      color: 0x00ffff, // Cyan as requested
+    const pointMark = createScreenSpacePoint({
+      color: 0x00ffff,
       size: 12,
-      sizeAttenuation: false,
       map: this.getPointTexture(),
       transparent: true,
-      alphaTest: 0.5
+      alphaTest: 0.5,
     });
-    
-    const pointMark = new THREE.Points(geo, mat);
+    pointMark.position.set(x, y, elevation + thickness);
     group.add(pointMark);
     
     // 2. The stem (if thickness)
@@ -3717,7 +3768,13 @@ export class Viewer {
         if (child instanceof THREE.Mesh) {
           this.selectableMeshes = this.selectableMeshes.filter(m => m !== child);
         }
-        if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
+        if (child instanceof THREE.Sprite) {
+          child.geometry.dispose();
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          // The point texture is shared by every marker; only the material and
+          // the per-marker geometry are owned by this object.
+          materials.forEach(m => m.dispose());
+        } else if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
           child.geometry.dispose();
           const materials = Array.isArray(child.material) ? child.material : [child.material];
           materials.forEach(m => {
@@ -3742,7 +3799,11 @@ export class Viewer {
     for (const obj of toRemove) {
       obj.parent?.remove(obj);
       obj.traverse((child) => {
-        if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
+        if (child instanceof THREE.Sprite) {
+          child.geometry.dispose();
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach(m => m.dispose());
+        } else if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
           child.geometry.dispose();
           const materials = Array.isArray(child.material) ? child.material : [child.material];
           materials.forEach(m => {
@@ -4449,6 +4510,7 @@ export class Viewer {
   }
 
   scheduleRender() {
+    if (this._deviceLost) return;
     if (!this.renderRequested) {
       this.renderRequested = true;
       requestAnimationFrame(() => {
@@ -4487,6 +4549,7 @@ export class Viewer {
    * entry point to sit behind.
    */
   private renderNow(){
+    if (this._deviceLost) return;
     this.onBeforeRender();
     this.gridRenderer.updateAxesScale(1 / this.camera.zoom);
     this.renderer.render(this.scene, this.camera);

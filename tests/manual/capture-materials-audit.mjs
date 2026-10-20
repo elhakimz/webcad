@@ -1,7 +1,9 @@
 import { chromium } from 'playwright'
 import fs from 'node:fs'
 
-const CASES = [
+const CASES = process.env.AUDIT_CASES
+  ? process.env.AUDIT_CASES.split(',').map((name) => name.trim()).filter(Boolean)
+  : [
   'grid',
   'snap-endpoint',
   'snap-midpoint',
@@ -17,7 +19,7 @@ const CASES = [
   'note-dashed',
 ]
 
-const OUT = 'docs/verification/materials-audit'
+const OUT = process.env.AUDIT_OUT ?? 'docs/verification/materials-audit'
 fs.mkdirSync(OUT, { recursive: true })
 
 const browser = await chromium.launch({

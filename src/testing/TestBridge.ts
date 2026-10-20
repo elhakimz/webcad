@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { App } from "../app";
 import type { ShadingMode, Viewer } from "../render/Viewer";
 import type { EdgeOutlineInfo } from "../render/EdgeLayer";
+import type { RendererBackend } from "../render/RendererBackend";
 
 export type { ShadingMode } from "../render/Viewer";
 export type { EdgeOutlineInfo } from "../render/EdgeLayer";
@@ -59,6 +60,8 @@ export interface RendererInfo {
   /** True when the requested backend could not be honoured — the assertion that matters. */
   fellBack: boolean;
   reason: string;
+  /** True after WebGPU reports a lost device; the viewport has stopped drawing. */
+  deviceLost: boolean;
 }
 
 export interface CameraState {
@@ -452,7 +455,31 @@ export class TestBridge {
    * so `fellBack` is the assertion that matters, not `kind` alone.
    */
   getRendererInfo(): RendererInfo {
-    return { ...this.viewer.rendererInfo };
+    return { ...this.viewer.rendererInfo, deviceLost: this.viewer.deviceLost };
+  }
+
+  /**
+   * Destroy the live WebGPU device, exercising the browser's real `device.lost`
+   * path (WEBCAD-169). Returns false on WebGL or before the device exists.
+   */
+  destroyRendererDevice(): boolean {
+    const renderer = this.viewer.renderer as RendererBackend & {
+      backend?: { device?: { destroy(): void } | null };
+    };
+    const device = renderer.backend?.device;
+    if (!device) return false;
+    device.destroy();
+    return true;
+  }
+
+  /** Queue one frame. Used to prove the idle watcher survives a stopped rAF. */
+  requestRender(): void {
+    this.viewer.requestRender();
+  }
+
+  /** Draw statistics from the last completed frame. */
+  getDrawStats(): { calls: number; triangles: number } {
+    return { ...this.viewer.renderer.info.render };
   }
 
   /** The current shading mode, and a way to pin it without a command string. */

@@ -116,6 +116,15 @@ export class CadBridge {
   getRendererInfo = () =>
     this.call<RendererInfo>('getRendererInfo');
 
+  /** Destroy the live WebGPU device, exercising the real device-loss callback. */
+  destroyRendererDevice = () => this.call<boolean>('destroyRendererDevice');
+
+  /** Queue one frame; used with a stopped rAF to test the idle age cap. */
+  requestRender = () => this.call<void>('requestRender');
+
+  /** Draw statistics from the last completed frame. */
+  getDrawStats = () => this.call<{ calls: number; triangles: number }>('getDrawStats');
+
   getShadingMode = () => this.call<ShadingMode>('getShadingMode');
   setShadingMode = (mode: ShadingMode) => this.call<ShadingMode>('setShadingMode', mode);
   getSolidMaterialInfo = (objectId: string) =>
@@ -134,6 +143,7 @@ export class CadBridge {
     const info = await this.getRendererInfo();
     expect(info.fellBack, `renderer fell back from ${info.requested}: ${info.reason}`).toBe(false);
     expect(info.kind, `expected the ${kind} backend, got ${info.kind}: ${info.reason}`).toBe(kind);
+    expect(info.deviceLost, `the ${kind} device is lost: ${info.reason}`).toBe(false);
     return info;
   }
 

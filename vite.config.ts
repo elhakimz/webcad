@@ -3,6 +3,9 @@ import { defineConfig, Plugin } from 'vite'
 import topLevelAwait from "vite-plugin-top-level-await";
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const fileStoragePlugin = (): Plugin => ({
   name: 'file-storage-api',
@@ -91,6 +94,11 @@ export default defineConfig({
     esbuildOptions: {
       target: 'esnext'
     }
+  },
+  resolve: {
+    alias: {
+      "@bufbuild/protobuf": path.resolve(__dirname, "src/compat/protobuf-v1-compat.ts"),
+    },
   },
   server: {
     port: 5173,

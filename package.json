@@ -12,6 +12,7 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:ui": "playwright test",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run buf:lint && npm run buf:breaking",
     "buf:lint": "buf lint proto/",
     "buf:breaking": "buf breaking --against '.git#branch=main' proto/",
     "buf:generate": "buf generate proto/"
@@ -34,6 +35,7 @@
     "jspdf": "^4.2.1",
     "opencascade.js": "^1.1.4",
     "rxdb": "^17.2.0",
+    "rxjs": "^7.8.2",
     "svg2pdf.js": "^2.7.0",
     "three": "^0.185.1",
     "uuid": "^14.0.0"

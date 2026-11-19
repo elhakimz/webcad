@@ -96,12 +96,24 @@ export default defineConfig({
     }
   },
   resolve: {
-    alias: {
-      "@bufbuild/protobuf": path.resolve(__dirname, "src/compat/protobuf-v1-compat.ts"),
-      "@bufbuild/protobuf/wire": path.resolve(__dirname, "node_modules/@bufbuild/protobuf/wire"),
-      "@bufbuild/protobuf/wkt": path.resolve(__dirname, "node_modules/@bufbuild/protobuf/wkt"),
-      "@bufbuild/protobuf/codegenv2": path.resolve(__dirname, "node_modules/@bufbuild/protobuf/codegenv2"),
-    },
+    alias: [
+      {
+        find: /^@bufbuild\/protobuf\/wire$/,
+        replacement: path.resolve(__dirname, "src/compat/protobuf-v1-compat-wire.ts"),
+      },
+      {
+        find: /^@bufbuild\/protobuf\/wkt$/,
+        replacement: path.resolve(__dirname, "src/compat/protobuf-v1-compat-wkt.ts"),
+      },
+      {
+        find: /^@bufbuild\/protobuf\/codegenv2$/,
+        replacement: path.resolve(__dirname, "src/compat/protobuf-v1-compat-codegenv2.ts"),
+      },
+      {
+        find: /^@bufbuild\/protobuf$/,
+        replacement: path.resolve(__dirname, "src/compat/protobuf-v1-compat.ts"),
+      },
+    ],
   },
   server: {
     port: 5173,

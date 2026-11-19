@@ -25,6 +25,48 @@ export const MethodKind = {
   BidiStreaming: 3,
 };
 
+// --- v1.x proto3 compat object ---
+// Must be declared before Message class (Message.static runtime references it)
+export const proto3 = {
+  util: {
+    setEnumType(type: any, typeName: string, values: { no: number; name: string }[]): void {
+      // v2.x doesn't need enum registration; store for getEnumType lookup
+      type._v1_typeName = typeName;
+      type._v1_values = values;
+    },
+    initPartial(data: Record<string, unknown> | undefined, instance: any): void {
+      if (data) {
+        Object.assign(instance, data);
+      }
+    },
+    newFieldList(fn: () => any[]): any[] {
+      // Defer fn() evaluation to avoid temporal dead zone errors when
+      // generated protobuf code references message classes defined later
+      // in the same file (e.g. OpenSessionRequest.fields references ServerLimits
+      // which is declared after it).
+      let result: any[] | null = null;
+      const lazy: any[] = [];
+      return new Proxy(lazy, {
+        get(_target, prop: string | symbol) {
+          if (result === null) result = fn();
+          return (result as any)[prop];
+        },
+        set(_target, prop: string | symbol, value: any) {
+          if (result === null) result = fn();
+          (result as any)[prop] = value;
+          return true;
+        },
+      }) as any[];
+    },
+    equals(messageType: any, a: any, b: any): boolean {
+      return v2.equals(a, b);
+    }
+  },
+  getEnumType(type: any): any {
+    return type;
+  }
+};
+
 // --- v1.x Message base class ---
 // Provides instance methods (toBinary, fromBinary, toJson, fromJson, fromJsonString)
 // using v2.x top-level functions, driven by the static `fields` and `runtime` properties
@@ -98,30 +140,5 @@ export class Message<T extends Message<T>> {
     return v2.create(this as any, data);
   }
 }
-
-// --- v1.x proto3 compat object ---
-export const proto3 = {
-  util: {
-    setEnumType(type: any, typeName: string, values: { no: number; name: string }[]): void {
-      // v2.x doesn't need enum registration; store for getEnumType lookup
-      type._v1_typeName = typeName;
-      type._v1_values = values;
-    },
-    initPartial(data: Record<string, unknown> | undefined, instance: any): void {
-      if (data) {
-        Object.assign(instance, data);
-      }
-    },
-    newFieldList(fn: () => any[]): any[] {
-      return fn();
-    },
-    equals(messageType: any, a: any, b: any): boolean {
-      return v2.equals(a, b);
-    }
-  },
-  getEnumType(type: any): any {
-    return type;
-  }
-};
 
 export type { Message as MessageType };

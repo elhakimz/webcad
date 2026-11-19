@@ -1,6 +1,12 @@
 // Shim for @bufbuild/protobuf/wkt (v1.x subpath) on top of v2.x.
-// Provides MethodOptions_IdempotencyLevel and other well-known type
-// descriptors used by @connectrpc/connect.
+// Provides MethodOptions_IdempotencyLevel and well-known type descriptors
+// used by @connectrpc/connect.
+//
+// file_google_protobuf_any is re-exported from v2.x because @connectrpc/connect's
+// status_pb.js passes it to fileDesc() at module load, which accesses .proto on it.
+// anyPack is a no-op stub — only used for gRPC status trailers (server-side).
+
+import { file_google_protobuf_any as v2_file_google_protobuf_any } from "../../node_modules/@bufbuild/protobuf/dist/esm/wkt/google/protobuf/any_pb.js";
 
 export enum MethodOptions_IdempotencyLevel {
   IDEMPOTENCY_LEVEL_UNKNOWN = 0,
@@ -8,12 +14,8 @@ export enum MethodOptions_IdempotencyLevel {
   IDEMPOTENT = 2,
 }
 
-// file_google_protobuf_any — FileDescriptorProto for google/protobuf/any.proto.
-// Not needed at runtime; empty stub suffices.
-export const file_google_protobuf_any: any = undefined;
+export const file_google_protobuf_any = v2_file_google_protobuf_any;
 
-// anyPack — function for packing messages into google.protobuf.Any.
-// Not needed at runtime; no-op stub.
 export function anyPack(): any {
   return undefined;
 }

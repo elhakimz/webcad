@@ -107,7 +107,7 @@ export default defineConfig({
       },
       {
         find: /^@bufbuild\/protobuf\/codegenv2$/,
-        replacement: path.resolve(__dirname, "src/compat/protobuf-v1-compat-codegenv2.ts"),
+        replacement: path.resolve(__dirname, "node_modules/@bufbuild/protobuf/dist/esm/codegenv2/index.js"),
       },
       {
         find: /^@bufbuild\/protobuf$/,

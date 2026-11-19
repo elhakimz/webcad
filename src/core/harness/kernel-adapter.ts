@@ -37,7 +37,9 @@ export interface Script {
 
 export interface KernelAdapter {
   name: string;
+  init?(): Promise<void>;
   execute(script: Script): Promise<KernelResult[]>;
+  cleanup?(): Promise<void>;
 }
 
 export const DEFAULT_TOLERANCES: ScriptTolerances = {

@@ -79,12 +79,12 @@ export class HistoryManager {
     })
   }
 
-  undo(
+  async undo(
     getEntity: (id: string) => Entity | undefined,
     removeEntity: (id: string) => void,
     addEntity: (entity: Entity) => void,
-    onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => void,
-    onSolidBRepRestore?: (id: string, brep: Uint8Array) => void,
+    onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => Promise<void>,
+    onSolidBRepRestore?: (id: string, brep: Uint8Array) => Promise<void>,
     onConstraintsRestore?: (constraints: any[]) => void
   ) {
     const transaction = this.undoStack.pop()
@@ -132,12 +132,12 @@ export class HistoryManager {
             const dz = posBefore.z - posAfter.z;
 
             if (dx !== 0 || dy !== 0 || dz !== 0) {
-              onSolidTransform(entity.id, dx, dy, dz);
+              await onSolidTransform(entity.id, dx, dy, dz);
             }
           }
 
           if (onSolidBRepRestore && record.entity instanceof Solid3D && record.entity.brepSnapshot) {
-            onSolidBRepRestore(record.entityId, record.entity.brepSnapshot);
+            await onSolidBRepRestore(record.entityId, record.entity.brepSnapshot);
           }
           
           removeEntity(record.entityId)
@@ -152,12 +152,12 @@ export class HistoryManager {
     }
   }
 
-  redo(
+  async redo(
     getEntity: (id: string) => Entity | undefined,
     removeEntity: (id: string) => void,
     addEntity: (entity: Entity) => void,
-    onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => void,
-    onSolidBRepRestore?: (id: string, brep: Uint8Array) => void,
+    onSolidTransform?: (id: string, dx: number, dy: number, dz: number) => Promise<void>,
+    onSolidBRepRestore?: (id: string, brep: Uint8Array) => Promise<void>,
     onConstraintsRestore?: (constraints: any[]) => void
   ) {
     const transaction = this.redoStack.pop()
@@ -203,12 +203,12 @@ export class HistoryManager {
                 const dz = posBefore.z - posAfter.z;
 
                 if (dx !== 0 || dy !== 0 || dz !== 0) {
-                  onSolidTransform(entity.id, dx, dy, dz);
+                  await onSolidTransform(entity.id, dx, dy, dz);
                 }
               }
 
               if (onSolidBRepRestore && record.entity instanceof Solid3D && record.entity.brepSnapshot) {
-                onSolidBRepRestore(record.entityId, record.entity.brepSnapshot);
+                await onSolidBRepRestore(record.entityId, record.entity.brepSnapshot);
               }
               
               removeEntity(record.entityId)

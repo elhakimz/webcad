@@ -165,28 +165,25 @@ export class Document implements IDocument {
    * worker's shape cache: it still holds the post-operation shape, so the next
    * boolean/fillet would be computed against geometry the user already undid.
    */
-  private restoreSolidBRep = (id: string, brep: Uint8Array): void => {
+  private restoreSolidBRep = async (id: string, brep: Uint8Array): Promise<void> => {
     const deflection = 0.1 / (this.facetres || 5.0);
-    // The history callback is synchronous; the worker round-trip is not. Nothing
-    // downstream depends on its result, so let it settle on its own and make sure
-    // a failure surfaces rather than becoming an unhandled rejection.
-    Promise.resolve(OpenCascadeService.getInstance().importBRep(id, brep, deflection)).catch(
-      (err) => {
-        console.error(
-          `[Document] failed to restore B-rep for ${id}; the OCC worker may be out of sync:`,
-          err
-        );
-      }
-    );
+    try {
+      await OpenCascadeService.getInstance().importBRep(id, brep, deflection);
+    } catch (err) {
+      console.error(
+        `[Document] failed to restore B-rep for ${id}; the OCC worker may be out of sync:`,
+        err
+      );
+    }
   }
 
-  undo() {
+  async undo() {
     return this.history.undo(
       (id) => this.getEntity(id),
       (id) => this.removeEntity(id),
       (entity) => this.addEntity(entity),
-      (id, dx, dy, dz) => {
-        OpenCascadeService.getInstance().transformShape(id, dx, dy, dz);
+      async (id, dx, dy, dz) => {
+        await OpenCascadeService.getInstance().transformShape(id, dx, dy, dz);
       },
       this.restoreSolidBRep,
       (constraints) => {
@@ -195,13 +192,13 @@ export class Document implements IDocument {
     )
   }
 
-  redo() {
+  async redo() {
     return this.history.redo(
       (id) => this.getEntity(id),
       (id) => this.removeEntity(id),
       (entity) => this.addEntity(entity),
-      (id, dx, dy, dz) => {
-        OpenCascadeService.getInstance().transformShape(id, dx, dy, dz);
+      async (id, dx, dy, dz) => {
+        await OpenCascadeService.getInstance().transformShape(id, dx, dy, dz);
       },
       this.restoreSolidBRep,
       (constraints) => {

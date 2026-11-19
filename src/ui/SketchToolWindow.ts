@@ -39,8 +39,8 @@ export class SketchToolWindow {
 
     // Also refresh on undo/redo to keep constraints list sync'd
     const originalUndo = this.app.doc.undo.bind(this.app.doc);
-    this.app.doc.undo = () => {
-      originalUndo();
+    this.app.doc.undo = async () => {
+      await originalUndo();
       this.app.viewer.updateConstraints(this.app.doc);
       // Re-render entities after undo
       this.app.doc.entities.forEach(ent => {
@@ -59,8 +59,8 @@ export class SketchToolWindow {
     };
 
     const originalRedo = this.app.doc.redo.bind(this.app.doc);
-    this.app.doc.redo = () => {
-      originalRedo();
+    this.app.doc.redo = async () => {
+      await originalRedo();
       this.app.viewer.updateConstraints(this.app.doc);
       // Re-render entities after redo
       this.app.doc.entities.forEach(ent => {

@@ -17,8 +17,13 @@ export * from "../../node_modules/@bufbuild/protobuf";
 // --- v1.x protoInt64 (v2.x exports it natively) ---
 export { protoInt64 } from "../../node_modules/@bufbuild/protobuf";
 
-// --- v1.x MethodKind (v2.x exports it natively) ---
-export { MethodKind } from "../../node_modules/@bufbuild/protobuf";
+// --- v1.x MethodKind (NOT exported by v2.x; must be provided here) ---
+export const MethodKind = {
+  Unary: 0,
+  ServerStreaming: 1,
+  ClientStreaming: 2,
+  BidiStreaming: 3,
+};
 
 // --- v1.x Message base class ---
 // Provides instance methods (toBinary, fromBinary, toJson, fromJson, fromJsonString)
@@ -44,8 +49,30 @@ export class Message<T extends Message<T>> {
     return v2.toJson(this as any);
   }
 
-  static fromBinary<U extends Message<U>>(this: new (...args: any[]) => U, bytes: Uint8Array): U {
-    return v2.fromBinary(this as any, bytes);
+  fromBinary(bytes: Uint8Array): this {
+    v2.fromBinary(this as any, bytes);
+    return this;
+  }
+
+  fromJson(json: string): this {
+    const result = v2.fromJson(this.constructor as any, json);
+    Object.assign(this, result);
+    return this;
+  }
+
+  fromJsonString(jsonString: string): this {
+    const result = v2.fromJsonString(this.constructor as any, jsonString);
+    Object.assign(this, result);
+    return this;
+  }
+
+  // --- static methods (re-exported overrides of v2.x) ---
+
+  static fromBinary<U extends Message<U>>(
+    this: new (...args: any[]) => U,
+    bytes: Uint8Array
+  ): U {
+    return v2.fromBinary(new this() as any, bytes);
   }
 
   static fromJson<U extends Message<U>>(this: new (...args: any[]) => U, json: string): U {

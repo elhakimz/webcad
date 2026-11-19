@@ -5,6 +5,11 @@ import { sessionManager } from './session-manager.js';
 import { dedupeCache } from './dedupe.js';
 import { ordererRegistry } from './ordering.js';
 import type { DescService, DescMethod } from '@bufbuild/protobuf';
+import { CommandRegistry } from './command-registry.js';
+import { BoxCommand } from './commands/box.js';
+
+export const commandRegistry = new CommandRegistry();
+commandRegistry.register(BoxCommand);
 
 /**
  * Convert a v1.x connect-es generated service object to a DescService-compatible

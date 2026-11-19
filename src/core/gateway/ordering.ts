@@ -68,6 +68,7 @@ export class SessionOrderer {
     while (this.buffer.has(this.expectedSeq)) {
       const entry = this.buffer.get(this.expectedSeq)!;
       this.buffer.delete(this.expectedSeq);
+      entry.resolve(entry); // release the buffered command so its caller can proceed
       this.expectedSeq++;
     }
     if (this.buffer.size === 0) {

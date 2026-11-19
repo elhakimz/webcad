@@ -86,7 +86,26 @@ npm run typecheck
 
 # Linting
 npm run lint
+
+# Proto lint / breaking / codegen
+npm run buf:lint
+npm run buf:breaking
+npm run buf:generate
 ```
+
+### Deployment (remote engine)
+
+```bash
+# Start all services (nginx + gateway + kernel + vite)
+docker-compose up
+
+# Dev: run nginx in front of Vite and gateway (HTTP/2 termination)
+docker-compose up nginx gateway vite
+```
+
+See `nginx.conf` for proxy settings (proxy_buffering off, long read timeout for streams, CORS).
+
+## 📍 Roadmap Priorities
 
 End-to-end tests drive the app through an in-app **test bridge** (`window.__webcadTest`)
 rather than by clicking pixels, so a test can ask "is the front face selected?" or
@@ -98,11 +117,31 @@ without that flag never construct it. See [`tests/e2e/README.md`](tests/e2e/READ
 
 -   **`src/core/engine/handlers/`**: Strategy-based action handlers (Layer, Transform, View, IO, System).
 -   **`src/core/engine/`**: Command management, drafting state, math utilities, and snapping logic.
--   **`src/core/io/`**: **DXF Exporter/Importer** and the OpenCascade service, which talks to the OCCT kernel in a Web Worker.
+-   **`src/core/io/`**: **DXF Exporter/Importer** and the OpenCascade service, which talks to the OCCT kernel either in a local Web Worker (WASM) or over gRPC/Connect to a remote kernel.
+-   **`src/core/gateway/`**: Connect server + gRPC client for the remote engine kernel (session management, ordering, dedupe, auth).
 -   **`src/core/model/`**: CAD entity definitions and the central `Document` store with centralized ID generation.
 -   **`src/render/`**: The `Viewer` (scene graph, picking, entity rendering), the grid/cursor/gizmo renderers, and the `RendererBackend` seam that decides and owns the renderer.
 -   **`src/ui/`**: Toolbars, tool windows, ribbon, command line, and the SCAD editor.
 -   **`src/testing/`**: The test bridge. Zero-cost in production — it is never constructed unless enabled.
+
+## 🔌 Transport: Local WASM vs Remote gRPC/Connect
+
+WebCAD supports two engine transport modes, selected via config:
+
+| Mode | Config | Description |
+|------|--------|-------------|
+| **Local WASM** (default) | `gatewayUrl` empty | OCCT runs in a Web Worker via `postMessage` (OpenCascade.js) |
+| **Remote gRPC/Connect** | `gatewayUrl` set | OCCT runs server-side; browser talks Connect to a gateway, gateway talks gRPC to the kernel |
+
+### Remote transport details
+
+- **Browser → Gateway**: Connect protocol (unary + server-streaming only), proxied by nginx with HTTP/2 termination
+- **Gateway → Kernel**: native gRPC (HTTP/2 over Unix domain socket or mTLS TCP)
+- **WebSocket removed**: The `ws` dependency and WebSocket frame codec are gone; only mesh/edge-line packing helpers remain (now inside protobuf `bytes` fields)
+- **Ordering**: commands are applied per-session in `client_seq` order; `request_id` dedupe prevents double execution
+- **Large payloads**: results over 4 MiB are streamed via `StreamResult`; uploads over 4 MiB use chunked `UploadChunk`
+
+## 🛠️ Installation & Usage
 
 ## 📍 Roadmap Priorities
 -   [x] **Plotting:** Added `PLOT` command with support for SVG and high-quality vector PDF export (using text outlining via `opentype.js`).

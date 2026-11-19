@@ -1,0 +1,98 @@
+# WebCAD Engine Container (WC-EC) — docker-compose
+# Services: gateway (Connect + gRPC), kernel (OCCT), nginx (HTTP/2 termination)
+#
+# See WC-EC-36 for infra decisions.
+
+services:
+  # ------------------------------------------------------------------
+  # nginx — HTTP/2 TLS termination, Connect proxy, CORS
+  # ------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - gateway
+      - vite
+    networks:
+      - webcad
+
+  # ------------------------------------------------------------------
+  # vite — Vite dev server (static assets, HMR, engine proxy in dev)
+  # ------------------------------------------------------------------
+  vite:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - VITE_GATEWAY_URL=https://localhost/webcad.engine.v1.EngineGatewayService
+      - NODE_ENV=development
+    networks:
+      - webcad
+
+  # ------------------------------------------------------------------
+  # gateway — Connect server (browser-facing) + gRPC client (kernel-facing)
+  # ------------------------------------------------------------------
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - GATEWAY_PORT=8080
+      - KERNEL_SOCKET=/var/run/webcad/kernel.sock
+      - KERNEL_TLS=mTLS
+      - MAX_MESSAGE_SIZE=16777216      # 16 MiB hard cap
+      - INLINE_REQUEST_LIMIT=4194304   # 4 MiB
+      - INLINE_RESPONSE_LIMIT=4194304  # 4 MiB
+      - CHUNK_SIZE_LIMIT=1048576       # 1 MiB
+      - PER_SESSION_BLOB_QUOTA=67108864 # 64 MiB
+      - RESULT_ID_TTL=300              # 5 minutes
+      - UPLOAD_TTL=900                 # 15 minutes
+      - REORDER_BUFFER_TIMEOUT=5       # 5 seconds (proposed default)
+      - REORDER_BUFFER_SIZE=1024       # events (proposed default)
+      - DEDUPE_TTL=600                 # 10 minutes (proposed default)
+      - DEDUPE_CAP=10000               # entries (proposed default)
+      - JWT_SECRET=changeme-in-prod
+      - JWT_ISSUER=webcad-gateway
+    volumes:
+      - ./certs:/etc/webcad/certs:ro
+      - webcad-kernel-socket:/var/run/webcad
+    depends_on:
+      - kernel
+    networks:
+      - webcad
+
+  # ------------------------------------------------------------------
+  # kernel — OCCT geometry kernel (gRPC server)
+  # ------------------------------------------------------------------
+  kernel:
+    build:
+      context: .
+      dockerfile: Dockerfile.kernel
+    environment:
+      - KERNEL_PORT=50051
+      - KERNEL_SOCKET=/var/run/webcad/kernel.sock
+      - OCCT_VERSION=7.8.0
+      - KERNEL_LOG_LEVEL=info
+    volumes:
+      - webcad-kernel-socket:/var/run/webcad
+    networks:
+      - webcad
+
+volumes:
+  webcad-kernel-socket:
+
+networks:
+  webcad:
+    driver: bridge

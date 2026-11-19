@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package webcad.engine.v1;
+
+option go_package = "github.com/elhakimz/webcad/proto/webcad/engine/v1";
+option java_multiple_files = true;
+option java_package = "com.webcad.engine.v1";
+
+// Common message types shared between EngineGateway and Kernel services.
+
+// Command header carried on every sequenced RPC.
+message CommandHeader {
+  string session_id = 1;          // Client-generated UUID v4 session identifier
+  string request_id = 2;          // Client-generated UUID v4 request identifier (dedupe key)
+  uint64 client_seq = 3;          // Per-session monotonic sequence, starts at 1
+  string document_id = 4;         // Optional, reserved for future multi-document sessions
+}
+
+// Result header returned on every ExecuteResponse.
+message ResultHeader {
+  string request_id = 1;          // Echoes the request_id from the command
+  uint64 event_id = 2;            // Monotonic per-session event ID (from Subscribe stream)
+}
+
+// Reference to B-rep data; data is opt-in (include_brep flag on request controls inclusion).
+message BrepReference {
+  enum Format {
+    FORMAT_UNSPECIFIED = 0;
+    FORMAT_BINARY = 1;            // Native OCCT B-rep binary
+    FORMAT_TEXT = 2;              // Native OCCT B-rep text
+    FORMAT_STEP = 3;              // STEP-encoded legacy snapshot from browser worker
+  }
+  Format format = 1;
+  string sha256 = 2;              // SHA-256 revision hash of the B-rep bytes
+  bytes data = 3;                 // Opt-in B-rep payload (only when include_brep=true)
+}
+
+// Generalised reference to any large uploaded field (B-rep, polyhedron points, etc.).
+message BlobRef {
+  string upload_id = 1;           // Chunked upload identifier
+  string sha256 = 2;              // SHA-256 of the complete blob
+  uint64 size = 3;                // Total blob size in bytes
+  string session_id = 4;          // Session the blob is bound to
+}
+
+// Mesh data packed into bytes fields.
+// Layout documentation:
+//   positions: float32 LE, xyz triplets [x1,y1,z1, x2,y2,z2, ...]
+//   indices:   uint32 LE, triangle indices [i1,i2,i3, i4,i5,i6, ...]
+//   face_mapping: int32 LE, per-triangle face index
+//   edge_offsets: uint32 LE, offsets into edge_lines array
+//   edge_lines: packed float32 LE, [x1,y1,x2,y2, ...] edge segments
+message MeshData {
+  bytes positions = 1;            // float32 LE, xyz triplets
+  bytes indices = 2;              // uint32 LE, triangle indices
+  bytes face_mapping = 3;         // int32 LE, per-triangle face index
+  bytes edge_offsets = 4;         // uint32 LE, offsets into edge_lines array
+  bytes edge_lines = 5;           // packed float32 LE, edge segments
+}
+
+// Result chunk for streaming large outputs (> inline limit).
+message ResultChunk {
+  string result_id = 1;           // References the large result
+  uint32 chunk_index = 2;         // Sequential chunk index
+  bytes data = 3;                 // Chunk payload (<= 1 MiB each)
+  string sha256 = 4;              // SHA-256 of the complete streamed result
+  bool final = 5;                 // True on the last chunk
+}
+
+// Request for a streamed result chunk.
+message ResultChunkRequest {
+  string result_id = 1;
+  uint32 chunk_index = 2;         // If unset, server streams from the beginning
+}
+
+// In-band execution failure (kernel-side problems, not transport errors).
+message ExecuteFailure {
+  string operation = 1;           // Name of the failing operation
+  uint32 code = 2;                // execution_failure_code enum value
+  string message = 3;             // Human-readable error message
+  string details = 4;             // Structured details (optional)
+}
+
+enum ExecutionFailureCode {
+  EXECUTION_FAILURE_CODE_UNSPECIFIED = 0;  // Unexpected kernel failure
+  EXECUTION_FAILURE_CODE_MISSING_ENTITY = 1;             // Entity not found / not cached
+  EXECUTION_FAILURE_CODE_INVALID_PARAMETER = 2;          // Bad argument values
+  EXECUTION_FAILURE_CODE_INVALID_PROFILE = 3;            // Failed wire or face creation
+  EXECUTION_FAILURE_CODE_UNSUPPORTED = 4;                // Non-planar face, non-uniform scale, unsupported loft
+  EXECUTION_FAILURE_CODE_OPERATION_FAILED = 5;           // Extrude, sweep, loft, shell failure
+  EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY = 6;             // Resulting shape is empty/null
+  EXECUTION_FAILURE_CODE_IMPORT_FAILED = 7;              // B-rep import failed
+  EXECUTION_FAILURE_CODE_EXPORT_FAILED = 8;              // B-rep export failed
+}

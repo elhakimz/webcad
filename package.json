@@ -11,7 +11,10 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
-    "test:ui": "playwright test"
+    "test:ui": "playwright test",
+    "buf:lint": "buf lint proto/",
+    "buf:breaking": "buf breaking --against '.git#branch=main' proto/",
+    "buf:generate": "buf generate proto/"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",
@@ -30,6 +33,9 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "@bufbuild/buf": "^1.75.0",
+    "@bufbuild/protoc-gen-es": "^1.10.1",
+    "@connectrpc/protoc-gen-connect-es": "^1.7.0",
     "@playwright/test": "^1.59.1",
     "@types/node": "^25.6.0",
     "@types/three": "^0.185.0",

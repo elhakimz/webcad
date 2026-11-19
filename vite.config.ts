@@ -98,6 +98,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@bufbuild/protobuf": path.resolve(__dirname, "src/compat/protobuf-v1-compat.ts"),
+      "@bufbuild/protobuf/wire": path.resolve(__dirname, "node_modules/@bufbuild/protobuf/wire"),
+      "@bufbuild/protobuf/wkt": path.resolve(__dirname, "node_modules/@bufbuild/protobuf/wkt"),
+      "@bufbuild/protobuf/codegenv2": path.resolve(__dirname, "node_modules/@bufbuild/protobuf/codegenv2"),
     },
   },
   server: {

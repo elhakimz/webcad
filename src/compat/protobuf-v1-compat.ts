@@ -5,16 +5,26 @@
 //
 // This shim re-exports all v2.x exports and adds the v1.x compat layer so
 // generated code keeps working without regeneration.
+//
+// NOTE: v2.x is imported via a relative path to node_modules to avoid the
+// Vite alias (@bufbuild/protobuf -> this shim) causing a circular import.
 
-import * as v2 from "@bufbuild/protobuf";
+import * as v2 from "../../node_modules/@bufbuild/protobuf";
 
-// --- Re-export everything from v2.x (includes DescService, DescMethod types, etc.) ---
-export * from "@bufbuild/protobuf";
+// --- Re-export everything from v2.x ---
+export * from "../../node_modules/@bufbuild/protobuf";
+
+// --- v1.x protoInt64 (v2.x exports it natively) ---
+export { protoInt64 } from "../../node_modules/@bufbuild/protobuf";
+
+// --- v1.x MethodKind (v2.x exports it natively) ---
+export { MethodKind } from "../../node_modules/@bufbuild/protobuf";
 
 // --- v1.x Message base class ---
 // Provides instance methods (toBinary, fromBinary, toJson, fromJson, fromJsonString)
 // using v2.x top-level functions, driven by the static `fields` and `runtime` properties
 // that generated code sets on each message class.
+// This overrides any v2.x export of the same name.
 export class Message<T extends Message<T>> {
   static readonly runtime: typeof proto3 = proto3;
   static readonly typeName = "";

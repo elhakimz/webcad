@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head><title>OCC Worker Host</title></head>
+  <body>
+    <script type="module">
+      const worker = new Worker(new URL('../../src/core/io/OCCWorker.ts', import.meta.url), { type: 'module' });
+      const pending = new Map();
+
+      worker.onmessage = (e) => {
+        const { id, type, success, payload, error } = e.data || {};
+        if (type === 'log' || type === 'error') return;
+        const resolver = pending.get(id);
+        if (resolver) {
+          pending.delete(id);
+          resolver({ id, type, success, payload, error });
+        }
+      };
+
+      window.__sendToWorker = (msg) => {
+        return new Promise((resolve) => {
+          const id = msg.id ?? Date.now();
+          pending.set(id, resolve);
+          worker.postMessage(msg);
+        });
+      };
+
+      window.__workerReady = true;
+    </script>
+  </body>
+</html>

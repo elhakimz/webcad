@@ -1,4 +1,6 @@
-export class OCCWorkerClient {
+import { OCCTransport } from './OCCTransport';
+
+export class OCCWorkerClient implements OCCTransport {
   private worker: Worker;
   private messageId = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

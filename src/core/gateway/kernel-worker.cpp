@@ -8,6 +8,9 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include <sstream>
+#include <cstdlib>
+#include <cctype>
 
 // Generated C++ protobuf/gRPC stubs from engine.proto (protoc --cpp_out / grpc_cpp_plugin)
 #include "webcad/engine/v1/engine.grpc.pb.h"
@@ -17,10 +20,42 @@
 // Standard_Exception.hxx does not exist; Standard_Failure is the base exception class.
 #include <opencascade/Standard_Failure.hxx>
 #include <opencascade/BRepPrimAPI_MakeBox.hxx>
+#include <opencascade/BRepPrimAPI_MakeCylinder.hxx>
+#include <opencascade/BRepPrimAPI_MakeSphere.hxx>
+#include <opencascade/BRepPrimAPI_MakeCone.hxx>
+#include <opencascade/BRepPrimAPI_MakeTorus.hxx>
+#include <opencascade/BRepPrimAPI_MakeWedge.hxx>
+#include <opencascade/BRepPrimAPI_MakePrism.hxx>
+#include <opencascade/BRepPrimAPI_MakeRevol.hxx>
+#include <opencascade/BRepAlgoAPI_Fuse.hxx>
+#include <opencascade/BRepAlgoAPI_Cut.hxx>
+#include <opencascade/BRepAlgoAPI_Common.hxx>
+#include <opencascade/BRepFilletAPI_MakeFillet.hxx>
+#include <opencascade/BRepFilletAPI_MakeChamfer.hxx>
+#include <opencascade/BRepOffsetAPI_DraftAngle.hxx>
+#include <opencascade/BRepBuilderAPI_MakeWire.hxx>
+#include <opencascade/BRepBuilderAPI_MakeEdge.hxx>
+#include <opencascade/BRepBuilderAPI_MakeFace.hxx>
+#include <opencascade/BRepBuilderAPI_MakeShell.hxx>
+#include <opencascade/BRepBuilderAPI_Sewing.hxx>
+#include <opencascade/BRepAdaptor_Surface.hxx>
+#include <opencascade/Geom_Surface.hxx>
+#include <opencascade/Geom_Plane.hxx>
+#include <opencascade/Geom_CylindricalSurface.hxx>
+#include <opencascade/Geom_ConicalSurface.hxx>
+#include <opencascade/Geom_SphericalSurface.hxx>
+#include <opencascade/Geom_ToroidalSurface.hxx>
+#include <opencascade/Geom_BezierSurface.hxx>
+#include <opencascade/Geom_BSplineSurface.hxx>
+#include <opencascade/TopExp_Explorer.hxx>
+#include <opencascade/TopAbs_ShapeEnum.hxx>
+#include <opencascade/BRepGProp.hxx>
+#include <opencascade/GProp_GProps.hxx>
 #include <opencascade/BRepMesh_IncrementalMesh.hxx>
-#include <opencascade/TopoDS_Shape.hxx>
-#include <opencascade/gp_Pnt.hxx>
 #include <opencascade/BinTools.hxx>
+#include <opencascade/STEPControl_Writer.hxx>
+#include <opencascade/Interface_Static.hxx>
+#include <opencascade/IFSelect.hxx>
 #include <cstdio>
 #include <unistd.h>
 #include <fstream>
@@ -37,6 +72,9 @@ using webcad::engine::v1::ExecuteFailure;
 using webcad::engine::v1::ExecutionFailureCode;
 using webcad::engine::v1::ExecuteSuccess;
 using webcad::engine::v1::BoxResult;
+using webcad::engine::v1::ImportBRepOp;
+using webcad::engine::v1::ExportBRepOp;
+using webcad::engine::v1::StepExportOp;
 using webcad::engine::v1::KernelService;
 using webcad::engine::v1::MeshData;
 using webcad::engine::v1::BrepReference;
@@ -56,6 +94,356 @@ using webcad::engine::v1::HealthResponse;
 // not a Standard_Transient subclass, so opencascade::handle<> does not apply).
 static std::unordered_map<std::string, TopoDS_Shape> g_shapeCache;
 
+// ---------------------------------------------------------------------------
+// Minimal JSON utilities for CLI mode (no external JSON dependency)
+// ---------------------------------------------------------------------------
+
+// Extract a string value for a key from a JSON object line.
+// Returns true if found, sets out to the unescaped string value.
+static bool JsonGetString(const std::string& json, const std::string& key,
+                          std::string* out) {
+  std::string search = "\"" + key + "\"";
+  size_t pos = json.find(search);
+  if (pos == std::string::npos) return false;
+  size_t colon = json.find(':', pos + search.size());
+  if (colon == std::string::npos) return false;
+  size_t valStart = json.find('"', colon + 1);
+  if (valStart == std::string::npos) return false;
+  size_t valEnd = json.find('"', valStart + 1);
+  if (valEnd == std::string::npos) return false;
+  *out = json.substr(valStart + 1, valEnd - valStart - 1);
+  return true;
+}
+
+// Extract a double value for a key from a JSON object line.
+static bool JsonGetDouble(const std::string& json, const std::string& key,
+                          double* out) {
+  std::string search = "\"" + key + "\"";
+  size_t pos = json.find(search);
+  if (pos == std::string::npos) return false;
+  size_t colon = json.find(':', pos + search.size());
+  if (colon == std::string::npos) return false;
+  size_t valStart = colon + 1;
+  while (valStart < json.size() && (json[valStart] == ' ' || json[valStart] == '\t'))
+    ++valStart;
+  size_t valEnd = valStart;
+  while (valEnd < json.size() &&
+         (isdigit(static_cast<unsigned char>(json[valEnd])) ||
+          json[valEnd] == '.' || json[valEnd] == '-' ||
+          json[valEnd] == 'e' || json[valEnd] == 'E' ||
+          json[valEnd] == '+'))
+    ++valEnd;
+  if (valEnd == valStart) return false;
+  *out = std::atof(json.substr(valStart, valEnd - valStart).c_str());
+  return true;
+}
+
+// Extract an int value for a key from a JSON object line.
+static bool JsonGetInt(const std::string& json, const std::string& key,
+                       int* out) {
+  double d;
+  if (!JsonGetDouble(json, key, &d)) return false;
+  *out = static_cast<int>(d);
+  return true;
+}
+
+// Check if a key exists in JSON.
+static bool JsonHasKey(const std::string& json, const std::string& key) {
+  return json.find("\"" + key + "\"") != std::string::npos;
+}
+
+// Escape a string for JSON output.
+static std::string JsonEscape(const std::string& s) {
+  std::string out;
+  out.reserve(s.size() + 2);
+  for (char c : s) {
+    switch (c) {
+      case '"':  out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:   out += c; break;
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// OCCT operation functions (shared by gRPC handlers and CLI mode)
+// ---------------------------------------------------------------------------
+
+struct OpResult {
+  bool ok = false;
+  uint32_t code = 0;   // ExecutionFailureCode
+  std::string message;
+  std::string shapeId;
+  std::string format;  // "BINARY" or "STEP"
+  std::string data;    // raw bytes for brep/step export
+};
+
+static OpResult OpCreateBox(double x, double y, double z, double dx, double dy,
+                            double dz, double deflection,
+                            const std::string& entityId) {
+  OpResult r;
+  BRepPrimAPI_MakeBox box(dx, dy, dz);
+  box.Build();
+  if (!box.IsDone()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "BRepPrimAPI_MakeBox failed: IsDone=0 dx=" + std::to_string(dx) + " dy=" + std::to_string(dy) + " dz=" + std::to_string(dz);
+    return r;
+  }
+  TopoDS_Shape shape = box.Shape();
+  if (shape.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY);
+    r.message = "Resulting shape is null";
+    return r;
+  }
+  BRepMesh_IncrementalMesh mesh(shape, deflection);
+  if (!mesh.IsDone()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "BRepMesh_IncrementalMesh failed";
+    return r;
+  }
+  std::string shapeId = entityId.empty() ? "shape_" + std::to_string(g_shapeCache.size()) : entityId;
+  g_shapeCache[shapeId] = shape;
+  r.ok = true;
+  r.shapeId = shapeId;
+  return r;
+}
+
+static OpResult OpImportBRep(const std::string& brepData, const std::string& entityId) {
+  OpResult r;
+  if (brepData.empty()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_IMPORT_FAILED);
+    r.message = "empty B-rep";
+    return r;
+  }
+  constexpr std::size_t kMaxBrepBytes = 64 * 1024 * 1024;
+  if (brepData.size() > kMaxBrepBytes) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_IMPORT_FAILED);
+    r.message = "B-rep too large";
+    return r;
+  }
+  if (static_cast<unsigned char>(brepData.back()) != 0x1a) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_IMPORT_FAILED);
+    r.message = "truncated B-rep";
+    return r;
+  }
+  char tmpPath[] = "/tmp/webcad_brep_XXXXXX";
+  int fd = mkstemp(tmpPath);
+  if (fd < 0) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_IMPORT_FAILED);
+    r.message = "Failed to write temp B-rep file";
+    return r;
+  }
+  std::ofstream out(tmpPath, std::ios::binary);
+  out.write(brepData.data(), static_cast<std::streamsize>(brepData.size()));
+  out.close();
+  close(fd);
+
+  TopoDS_Shape shape;
+  try {
+    BinTools::Read(shape, tmpPath);
+  } catch (const Standard_Failure& e) {
+    std::remove(tmpPath);
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_IMPORT_FAILED);
+    r.message = "OCCT BinTools::Read failed: " + std::string(e.GetMessageString());
+    return r;
+  }
+  std::remove(tmpPath);
+
+  if (shape.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY);
+    r.message = "Imported B-rep shape is null";
+    return r;
+  }
+  std::string shapeId = entityId.empty() ? "shape_" + std::to_string(g_shapeCache.size()) : entityId;
+  g_shapeCache[shapeId] = shape;
+  r.ok = true;
+  r.shapeId = shapeId;
+  return r;
+}
+
+static OpResult OpExportBRep(const std::string& entityId) {
+  OpResult r;
+  auto it = g_shapeCache.find(entityId);
+  if (it == g_shapeCache.end()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
+    r.message = "Shape not found in cache: " + entityId;
+    return r;
+  }
+  char tmpPath[] = "/tmp/webcad_brep_export_XXXXXX";
+  int fd = mkstemp(tmpPath);
+  if (fd < 0) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_EXPORT_FAILED);
+    r.message = "Failed to create temp export file";
+    return r;
+  }
+  close(fd);
+  try {
+    BinTools::Write(it->second, tmpPath);
+  } catch (const Standard_Failure& e) {
+    std::remove(tmpPath);
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_EXPORT_FAILED);
+    r.message = "OCCT BinTools::Write failed: " + std::string(e.GetMessageString());
+    return r;
+  }
+  std::ifstream in(tmpPath, std::ios::binary | std::ios::ate);
+  std::vector<unsigned char> buf;
+  if (in) {
+    auto size = in.tellg();
+    buf.resize(static_cast<size_t>(size));
+    in.seekg(0, std::ios::beg);
+    in.read(reinterpret_cast<char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
+  }
+  std::remove(tmpPath);
+  if (buf.empty()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_EXPORT_FAILED);
+    r.message = "Exported B-rep is empty";
+    return r;
+  }
+  r.ok = true;
+  r.shapeId = entityId;
+  r.format = "BINARY";
+  r.data.assign(buf.begin(), buf.end());
+  return r;
+}
+
+static OpResult OpStepExport(const std::string& entityId) {
+  OpResult r;
+  auto it = g_shapeCache.find(entityId);
+  if (it == g_shapeCache.end()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
+    r.message = "Shape not found in cache: " + entityId;
+    return r;
+  }
+  Interface_Static::SetCVal("write.step.schema", "AP214");
+  STEPControl_Writer writer;
+  IFSelect_ReturnStatus status = writer.Transfer(it->second, STEPControl_AsIs);
+  if (status != IFSelect_RetDone) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_EXPORT_FAILED);
+    r.message = "OCCT STEPControl_Writer::Transfer failed";
+    return r;
+  }
+  char tmpPath[] = "/tmp/webcad_step_export_XXXXXX";
+  int fd = mkstemp(tmpPath);
+  if (fd < 0) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_EXPORT_FAILED);
+    r.message = "Failed to create temp export file";
+    return r;
+  }
+  close(fd);
+  try {
+    writer.Write(tmpPath);
+  } catch (const Standard_Failure& e) {
+    std::remove(tmpPath);
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_EXPORT_FAILED);
+    r.message = "OCCT STEPControl_Writer::Write failed: " + std::string(e.GetMessageString());
+    return r;
+  }
+  std::ifstream in(tmpPath, std::ios::binary | std::ios::ate);
+  std::vector<unsigned char> buf;
+  if (in) {
+    auto size = in.tellg();
+    buf.resize(static_cast<size_t>(size));
+    in.seekg(0, std::ios::beg);
+    in.read(reinterpret_cast<char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
+  }
+  std::remove(tmpPath);
+  if (buf.empty()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_EXPORT_FAILED);
+    r.message = "Exported STEP file is empty";
+    return r;
+  }
+  r.ok = true;
+  r.shapeId = entityId;
+  r.format = "STEP";
+  r.data.assign(buf.begin(), buf.end());
+  return r;
+}
+
+// CLI mode: read JSON commands from stdin, write JSON responses to stdout.
+// Each line is one command: {"op": "create_box", ...}
+// Response: {"ok": true, "shape_id": "..."} or {"ok": false, "code": N, "message": "..."}
+static void RunCliMode() {
+  std::string line;
+  while (std::getline(std::cin, line)) {
+    if (line.empty()) continue;
+    std::string op;
+    if (!JsonGetString(line, "op", &op)) {
+      std::cout << "{\"ok\": false, \"code\": 3, \"message\": \"Missing 'op' field\"}\n";
+      std::cout.flush();
+      continue;
+    }
+
+    if (op == "create_box") {
+      double x = 0, y = 0, z = 0, dx = 0, dy = 0, dz = 0, deflection = 0.1;
+      std::string entityId;
+      JsonGetDouble(line, "x", &x);
+      JsonGetDouble(line, "y", &y);
+      JsonGetDouble(line, "z", &z);
+      JsonGetDouble(line, "dx", &dx);
+      JsonGetDouble(line, "dy", &dy);
+      JsonGetDouble(line, "dz", &dz);
+      JsonGetDouble(line, "deflection", &deflection);
+      JsonGetString(line, "entity_id", &entityId);
+      auto r = OpCreateBox(x, y, z, dx, dy, dz, deflection, entityId);
+      if (r.ok) {
+        std::cout << "{\"ok\": true, \"shape_id\": \"" << JsonEscape(r.shapeId)
+                  << "\", \"op\": \"create_box\"}\n";
+      } else {
+        std::cout << "{\"ok\": false, \"code\": " << r.code
+                  << ", \"message\": \"" << JsonEscape(r.message) << "\", \"op\": \"create_box\"}\n";
+      }
+    } else if (op == "import_brep") {
+      std::string brepData, entityId;
+      JsonGetString(line, "brep_bytes", &brepData);
+      JsonGetString(line, "entity_id", &entityId);
+      auto r = OpImportBRep(brepData, entityId);
+      if (r.ok) {
+        std::cout << "{\"ok\": true, \"shape_id\": \"" << JsonEscape(r.shapeId)
+                  << "\", \"op\": \"import_brep\"}\n";
+      } else {
+        std::cout << "{\"ok\": false, \"code\": " << r.code
+                  << ", \"message\": \"" << JsonEscape(r.message) << "\", \"op\": \"import_brep\"}\n";
+      }
+    } else if (op == "export_brep") {
+      std::string entityId;
+      JsonGetString(line, "entity_id", &entityId);
+      auto r = OpExportBRep(entityId);
+      if (r.ok) {
+        std::cout << "{\"ok\": true, \"shape_id\": \"" << JsonEscape(r.shapeId)
+                  << "\", \"format\": \"" << r.format
+                  << "\", \"data_len\": " << r.data.size()
+                  << ", \"op\": \"export_brep\"}\n";
+      } else {
+        std::cout << "{\"ok\": false, \"code\": " << r.code
+                  << ", \"message\": \"" << JsonEscape(r.message) << "\", \"op\": \"export_brep\"}\n";
+      }
+    } else if (op == "step_export") {
+      std::string entityId;
+      JsonGetString(line, "entity_id", &entityId);
+      auto r = OpStepExport(entityId);
+      if (r.ok) {
+        std::cout << "{\"ok\": true, \"shape_id\": \"" << JsonEscape(r.shapeId)
+                  << "\", \"format\": \"" << r.format
+                  << "\", \"data_len\": " << r.data.size()
+                  << ", \"op\": \"step_export\"}\n";
+      } else {
+        std::cout << "{\"ok\": false, \"code\": " << r.code
+                  << ", \"message\": \"" << JsonEscape(r.message) << "\", \"op\": \"step_export\"}\n";
+      }
+    } else if (op == "health") {
+      std::cout << "{\"ok\": true, \"op\": \"health\", \"status\": \"serving\"}\n";
+    } else {
+      std::cout << "{\"ok\": false, \"code\": 3, \"message\": \"Unknown operation: \"}"
+                << JsonEscape(op) << "\", \"op\": \"" << JsonEscape(op) << "\"}\n";
+    }
+    std::cout.flush();
+  }
+}
+
 class KernelServiceImpl final : public KernelService::Service {
  public:
   Status Execute(ServerContext* /*context*/, const ExecuteRequest* request,
@@ -66,10 +454,12 @@ class KernelServiceImpl final : public KernelService::Service {
       switch (request->op_case()) {
         case ExecuteRequest::kCreateBox:
           return HandleCreateBox(request, response);
-        case ExecuteRequest::kImportBRep:
+        case ExecuteRequest::kImportBrep:
           return HandleImportBRep(request, response);
-        case ExecuteRequest::kExportBRep:
+        case ExecuteRequest::kExportBrep:
           return HandleExportBRep(request, response);
+        case ExecuteRequest::kStepExport:
+          return HandleStepExport(request, response);
         default:
           return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER,
                             "Unknown or missing operation");
@@ -120,37 +510,16 @@ class KernelServiceImpl final : public KernelService::Service {
     double x = op.x(), y = op.y(), z = op.z();
     double dx = op.dx(), dy = op.dy(), dz = op.dz();
 
-    BRepPrimAPI_MakeBox box(gp_Pnt(x, y, z), dx, dy, dz);
-    if (!box.IsDone()) {
-      return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED,
-                        "BRepPrimAPI_MakeBox failed");
+    auto r = OpCreateBox(x, y, z, dx, dy, dz, op.deflection(), op.entity_id());
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
     }
-
-    TopoDS_Shape shape = box.Shape();
-    if (shape.IsNull()) {
-      return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY,
-                        "Resulting shape is null");
-    }
-
-    // Mesh the shape
-    BRepMesh_IncrementalMesh mesh(shape, op.deflection());
-    if (!mesh.IsDone()) {
-      return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED,
-                        "BRepMesh_IncrementalMesh failed");
-    }
-
-    // Store in per-session cache (TopoDS_Shape stored by value)
-    std::string shapeId = op.entity_id();
-    if (shapeId.empty()) {
-      shapeId = "shape_" + std::to_string(g_shapeCache.size());
-    }
-    g_shapeCache[shapeId] = shape;
 
     // Build ExecuteSuccess -> BoxResult response
     auto* success = response->mutable_success();
-    success->set_shape_id(shapeId);
+    success->set_shape_id(r.shapeId);
     auto* boxResult = success->mutable_box();
-    boxResult->set_shape_id(shapeId);
+    boxResult->set_shape_id(r.shapeId);
 
     // Optional MeshData (populated later from triangulation)
     if (request->include_brep()) {
@@ -170,50 +539,6 @@ class KernelServiceImpl final : public KernelService::Service {
     return Status::OK;  // gRPC OK with in-band failure code
   }
 
-  // B-rep pre-validation: size and truncation checks before OCCT reader.
-  static bool ValidateBRepBytes(const std::string& data, std::string* outReason) {
-    if (data.empty()) {
-      if (outReason) *outReason = "empty B-rep";
-      return false;
-    }
-    constexpr std::size_t kMaxBrepBytes = 64 * 1024 * 1024;  // 64 MiB
-    if (data.size() > kMaxBrepBytes) {
-      if (outReason) *outReason = "B-rep too large";
-      return false;
-    }
-    // B-rep binary ends with section terminator 0x1a
-    if (static_cast<unsigned char>(data.back()) != 0x1a) {
-      if (outReason) *outReason = "truncated B-rep";
-      return false;
-    }
-    return true;
-  }
-
-  // Write bytes to a temp file, return the file path.
-  static std::string WriteTempFile(const std::string& data) {
-    char tmpPath[] = "/tmp/webcad_brep_XXXXXX";
-    int fd = mkstemp(tmpPath);
-    if (fd < 0) return "";
-    std::ofstream out(tmpPath, std::ios::binary);
-    out.write(data.data(), static_cast<std::streamsize>(data.size()));
-    out.close();
-    close(fd);
-    return tmpPath;
-  }
-
-  // Read a file into a byte vector.
-  static std::vector<unsigned char> ReadFileBytes(const std::string& path) {
-    std::ifstream in(path, std::ios::binary | std::ios::ate);
-    std::vector<unsigned char> buf;
-    if (in) {
-      auto size = in.tellg();
-      buf.resize(static_cast<size_t>(size));
-      in.seekg(0, std::ios::beg);
-      in.read(reinterpret_cast<char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
-    }
-    return buf;
-  }
-
   Status HandleImportBRep(const ExecuteRequest* request, ExecuteResponse* response) {
     const auto& op = request->import_brep();
     std::string entityId = op.entity_id();
@@ -231,43 +556,13 @@ class KernelServiceImpl final : public KernelService::Service {
                         "No B-rep source provided");
     }
 
-    // Pre-validation before OCCT reader
-    std::string rejectReason;
-    if (!ValidateBRepBytes(brepData, &rejectReason)) {
-      return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_IMPORT_FAILED,
-                        rejectReason);
+    auto r = OpImportBRep(brepData, entityId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
     }
-
-    // Write to temp file and read with OCCT BinTools
-    std::string tmpPath = WriteTempFile(brepData);
-    if (tmpPath.empty()) {
-      return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_IMPORT_FAILED,
-                        "Failed to write temp B-rep file");
-    }
-
-    TopoDS_Shape shape;
-    try {
-      BinTools::Read(tmpPath.c_str(), shape);
-    } catch (const Standard_Failure& e) {
-      std::remove(tmpPath.c_str());
-      return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_IMPORT_FAILED,
-                        std::string("OCCT BinTools::Read failed: ") + e.GetMessageString());
-    }
-    std::remove(tmpPath.c_str());
-
-    if (shape.IsNull()) {
-      return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY,
-                        "Imported B-rep shape is null");
-    }
-
-    // Store in per-session cache
-    if (entityId.empty()) {
-      entityId = "shape_" + std::to_string(g_shapeCache.size());
-    }
-    g_shapeCache[entityId] = shape;
 
     auto* success = response->mutable_success();
-    success->set_shape_id(entityId);
+    success->set_shape_id(r.shapeId);
     auto* brepRef = response->mutable_brep_ref();
     brepRef->set_format(webcad::engine::v1::BrepReference::FORMAT_BINARY);
 
@@ -278,52 +573,61 @@ class KernelServiceImpl final : public KernelService::Service {
     const auto& op = request->export_brep();
     const std::string& entityId = op.entity_id();
 
-    auto it = g_shapeCache.find(entityId);
-    if (it == g_shapeCache.end()) {
-      return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY,
-                        "Shape not found in cache: " + entityId);
-    }
-
-    // Write shape to temp file with OCCT BinTools
-    std::string tmpPath = "/tmp/webcad_brep_export_XXXXXX";
-    int fd = mkstemp(tmpPath.data());
-    if (fd < 0) {
-      return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_EXPORT_FAILED,
-                        "Failed to create temp export file");
-    }
-    close(fd);
-
-    try {
-      BinTools::Write(it->second, tmpPath.c_str());
-    } catch (const Standard_Failure& e) {
-      std::remove(tmpPath.c_str());
-      return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_EXPORT_FAILED,
-                        std::string("OCCT BinTools::Write failed: ") + e.GetMessageString());
-    }
-
-    // Read back the exported bytes
-    auto buf = ReadFileBytes(tmpPath);
-    std::remove(tmpPath.c_str());
-
-    if (buf.empty()) {
-      return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_EXPORT_FAILED,
-                        "Exported B-rep is empty");
+    auto r = OpExportBRep(entityId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
     }
 
     auto* success = response->mutable_success();
     success->set_shape_id(entityId);
     auto* brepRef = response->mutable_brep_ref();
     brepRef->set_format(webcad::engine::v1::BrepReference::FORMAT_BINARY);
-    brepRef->set_data(buf.data(), buf.size());
+    brepRef->set_data(r.data.data(), r.data.size());
+
+    return Status::OK;
+  }
+
+  Status HandleStepExport(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->step_export();
+    const std::string& entityId = op.entity_id();
+
+    auto r = OpStepExport(entityId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(entityId);
+    auto* brepRef = response->mutable_brep_ref();
+    brepRef->set_format(webcad::engine::v1::BrepReference::FORMAT_STEP);
+    brepRef->set_data(r.data.data(), r.data.size());
 
     return Status::OK;
   }
 };
 
 int main(int argc, char** argv) {
+  bool cliMode = false;
   std::string server_address("unix:///tmp/webcad-kernel.sock");
-  if (argc > 1) {
-    server_address = std::string("unix://") + argv[1];
+
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--cli") {
+      cliMode = true;
+    } else if (arg.rfind("unix://", 0) == 0) {
+      server_address = arg;
+    } else if (arg == "--help" || arg == "-h") {
+      std::cout << "Usage: kernel-worker [--cli] [unix:///path/to/socket]\n";
+      std::cout << "  --cli   Run in JSON-over-stdio CLI mode (no gRPC)\n";
+      return 0;
+    }
+  }
+
+  if (cliMode) {
+    // JSON-over-stdio CLI mode: read commands from stdin, write responses to stdout.
+    // Used for development, debugging, and parity testing without the gateway/gRPC stack.
+    RunCliMode();
+    return 0;
   }
 
   KernelServiceImpl service;

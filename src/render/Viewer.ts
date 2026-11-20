@@ -1,5 +1,4 @@
 import * as THREE from "three"
-import { OutlineEffect } from 'three/examples/jsm/effects/OutlineEffect.js'
 import { Font } from 'three/examples/jsm/loaders/FontLoader.js'
 import { TTFLoader } from 'three/examples/jsm/loaders/TTFLoader.js'
 import { Entity } from "../core/model/Entity"
@@ -31,8 +30,24 @@ import { SnapPoint } from "../core/engine/SnapEngine"
 import { PreviewObject, ZoomWindowPreview, SelectionBoxPreview, XMarkerPreview, PLinePointsPreview, RotationPreview, PolylinePreview, SolidPointsPreview, SplinePreview } from "../core/commands/types"
 import { GridRenderer } from "./GridRenderer"
 import { CursorRenderer } from "./CursorRenderer"
-import { RendererBackend, RendererSelection, createWebGLRenderer, requestedRendererKind } from "./RendererBackend"
+import {
+  DEVICE_LOST_EVENT,
+  RendererBackend,
+  RendererSelection,
+  createWebGLRenderer,
+  requestedRendererKind,
+  type DeviceLostInfo,
+} from "./RendererBackend"
+import { buildEdgeSegments, segmentsFromPositions, type EdgeSegments } from "./EdgeGeometry"
+import { createEdgeLayer, type EdgeLayerHandle, type EdgeOutlineInfo } from "./EdgeLayer"
+import { createClosedLine } from "./ClosedLine"
+import { createScreenSpacePoint } from "./PointMarker"
+import { createZebraMaterial, enableNodeMaterials } from "./ZebraMaterial"
+import type { MeshBasicNodeMaterial } from "three/webgpu"
+import { NotificationManager } from "../ui/NotificationManager"
 import {getPointCoords} from "../core/engine/SketchSolver";
+
+export type ShadingMode = 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' | 'ZEBRA'
 
 export class Viewer {
   scene: THREE.Scene
@@ -52,24 +67,40 @@ export class Viewer {
     return this._rendererInfo;
   }
 
-  /**
-   * Refine the recorded reason once the async capability probe lands (WEBCAD-162).
-   *
-   * The probe deliberately does not gate first paint, so the viewer is already drawing
-   * by the time it resolves. `kind` is fixed at construction and cannot change here —
-   * this only replaces "not probed yet" with the adapter's actual answer.
-   */
-  setRendererChoice(choice: Omit<RendererSelection, 'renderer'>): void {
-    if (choice.kind !== this._rendererInfo.kind) {
-      console.warn(
-        `[renderer] probe chose ${choice.kind} but ${this._rendererInfo.kind} is already running; ` +
-          `keeping the running backend`,
-      );
-      return;
-    }
-    this._rendererInfo = choice;
+  private _deviceLost = false;
+
+  /** True once WebGPU has reported a lost device; the viewport has stopped drawing. */
+  get deviceLost(): boolean {
+    return this._deviceLost;
   }
-  effect!: any
+
+  private readonly handleDeviceLost = (event: Event) => {
+    this.markDeviceLost((event as CustomEvent<DeviceLostInfo>).detail);
+  };
+
+  /**
+   * Degrade visibly instead of freezing silently (WEBCAD-169).
+   *
+   * A canvas cannot switch from a WebGPU context to WebGL in place, and a reload
+   * could race the debounced autosave, so the only safe automatic response is to
+   * stop drawing and tell the user how to recover.
+   */
+  private markDeviceLost(info: DeviceLostInfo): void {
+    if (this._deviceLost) return;
+    this._deviceLost = true;
+    const detail = info.reason ? `${info.message} (${info.reason})` : info.message;
+    this._rendererInfo = {
+      ...this._rendererInfo,
+      reason: `WebGPU device lost: ${detail}`,
+    };
+    console.error(`[renderer] WebGPU device lost: ${detail}`);
+    NotificationManager.getInstance().show(
+      'WebGPU device lost. Rendering stopped; reload with ?renderer=webgl to continue.',
+      'error',
+      0,
+    );
+  }
+
   canvas: HTMLCanvasElement
   font: InstanceType<typeof Font> | null = null
   public directionalLight: THREE.DirectionalLight | null = null;
@@ -92,41 +123,10 @@ export class Viewer {
   private textQueue: Text[] = []
   private noteQueue: Note[] = []
   private selectionBox: THREE.Line | null = null
-  private shadingMode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' | 'ZEBRA' = 'SHADED';
+  private shadingMode: ShadingMode = 'SHADED';
 
-  private zebraMaterial: THREE.ShaderMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-      frequency: { value: 30.0 }
-    },
-    vertexShader: `
-      varying vec3 vNormal;
-      varying vec3 vViewPosition;
-      void main() {
-        vNormal = normalize(normalMatrix * normal);
-        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-        vViewPosition = -mvPosition.xyz;
-        gl_Position = projectionMatrix * mvPosition;
-      }
-    `,
-    fragmentShader: `
-      varying vec3 vNormal;
-      varying vec3 vViewPosition;
-      uniform float frequency;
-      void main() {
-        vec3 normal = normalize(vNormal);
-        vec3 viewDir = normalize(vViewPosition);
-        vec3 reflectDir = reflect(-viewDir, normal);
-        
-        // Compute procedural stripes based on reflection vector
-        // Using both x and y for more natural diagnostic flow over curved surfaces
-        float val = sin((reflectDir.y + reflectDir.x * 0.3) * frequency);
-        float stripe = step(0.0, val);
-        
-        gl_FragColor = vec4(vec3(stripe), 1.0);
-      }
-    `,
-    side: THREE.DoubleSide
-  });
+  private readonly zebraMaterial: MeshBasicNodeMaterial = createZebraMaterial()
+  private nodeMaterialsReady = true
   public target: THREE.Vector3 = new THREE.Vector3(0, 0, 0);
   /** True when camera is locked to a flat orthographic view (TOP/FRONT/LEFT/RIGHT/BOTTOM/BACK). */
   public isPlainView = true;
@@ -162,7 +162,11 @@ export class Viewer {
   private modellingBg: THREE.Texture;
   private scriptingBg: THREE.Texture;
   private pointTexture: THREE.Texture | null = null;
-  private pointMaterial: THREE.PointsMaterial | null = null;
+  private dprQuery: MediaQueryList | null = null;
+  private readonly handleDprChange = () => {
+    this.watchDpr();
+    this.resize();
+  };
 
   private getPointTexture(): THREE.Texture {
     if (this.pointTexture) return this.pointTexture;
@@ -191,7 +195,8 @@ export class Viewer {
    *   initialised asynchronously, so the renderer has to be constructed and awaited
    *   *before* the viewer exists — passing a ready backend in is what makes "is the
    *   device ready?" unrepresentable rather than a flag the frame loop has to check.
-   *   Omitted, this builds WebGL synchronously, which is what the boot path does today.
+   *   Omitted, this builds WebGL synchronously, which is what the manual audit
+   *   harness still does.
    */
   constructor(canvas:HTMLCanvasElement, selection?: RendererSelection){
     this.canvas = canvas
@@ -208,7 +213,7 @@ export class Viewer {
           fellBack: requested !== 'webgl',
           reason: requested === 'webgl'
             ? 'WebGL, constructed synchronously at boot'
-            : 'WebGPU requested, but only the WebGL backend is built today (WEBCAD-169)',
+            : 'WebGPU requested, but the viewer was constructed without a WebGPU backend',
         }
     this.scene = new THREE.Scene()
     
@@ -253,21 +258,19 @@ export class Viewer {
     this.cursorRenderer = new CursorRenderer(this.scene, this.camera);
 
     this.renderer = selection?.renderer ?? createWebGLRenderer(canvas)
+    window.addEventListener(DEVICE_LOST_EVENT, this.handleDeviceLost)
 
-    // OutlineEffect is a WebGL-only addon: it wraps a WebGLRenderer and patches its
-    // material cache. It draws every SHADED and ZEBRA frame, so it is a hard blocker
-    // for the WebGPU swap and is tracked separately (WEBCAD-174). The cast is the one
-    // place the seam is deliberately broken, and it is why `effect` stays `any`.
-    this.effect = new OutlineEffect(this.renderer as unknown as THREE.WebGLRenderer, {
-      defaultThickness: 0.002,
-      defaultColor: [0, 0, 0],
-      defaultAlpha: 0.8,
-      defaultKeepAlive: true
-    });
-    
+    if (this.renderer instanceof THREE.WebGLRenderer) {
+      try {
+        enableNodeMaterials(this.renderer)
+      } catch (error) {
+        this.nodeMaterialsReady = false
+        console.error('[zebra] node materials unavailable', error)
+      }
+    }
 
-    
     this.resize();
+    this.watchDpr();
     this.camera.position.set(0, 0, 500);
     this.camera.lookAt(0, 0, 0); 
 
@@ -561,17 +564,31 @@ export class Viewer {
     this.scheduleRender();
   }
 
-  setShadingMode(mode: 'WIREFRAME' | 'SHADED' | 'PHONG' | 'BLINN' | 'ZEBRA') {
+  setShadingMode(mode: ShadingMode) {
     this.shadingMode = mode;
+    if (mode === 'ZEBRA' && !this.nodeMaterialsReady) {
+      NotificationManager.getInstance().show(
+        'Zebra shading unavailable: node materials failed to initialize',
+        'error',
+      )
+    }
     this.scene.traverse((obj) => {
+      if (obj.userData.type === 'EdgeOutline') {
+        obj.visible = (mode === 'SHADED' || mode === 'ZEBRA');
+        return;
+      }
       if (obj instanceof THREE.Mesh && 
           obj.userData.type !== 'Text' && 
           obj.userData.type !== 'Edge' && 
           obj.userData.type !== 'Silhouette' &&
           obj.userData.handle === undefined) {
-        const material = obj.material as any;
+        const material = (Array.isArray(obj.material) ? obj.material[0] : obj.material) as
+          THREE.Material & { color?: THREE.Color };
         let color = 0xebf2ff;
-        if (material.color) {
+        if (material === this.zebraMaterial && obj.userData.originalColor !== undefined) {
+          // MeshBasicNodeMaterial has a default-white .color; the old ShaderMaterial did not.
+          color = obj.userData.originalColor;
+        } else if (material.color) {
           color = material.color.getHex();
         } else if (obj.userData.originalColor !== undefined) {
           color = obj.userData.originalColor;
@@ -589,6 +606,71 @@ export class Viewer {
     });
     
     this.scheduleRender();
+  }
+
+  getShadingMode(): ShadingMode {
+    return this.shadingMode;
+  }
+
+  /**
+   * Rendering counterpart to `rendererInfo` (WEBCAD-174): lets a test prove the
+   * layer exists and that a shading-mode switch did not replace its material.
+   */
+  getEdgeOutlineInfo(entityId: string): EdgeOutlineInfo {
+    const matches: THREE.Object3D[] = [];
+    this.scene.traverse((obj) => {
+      if (obj.userData?.type === 'EdgeOutline' && obj.userData.entityId === entityId) {
+        matches.push(obj);
+      }
+    });
+
+    const object = matches[0];
+    if (!object) {
+      return {
+        present: false,
+        visible: false,
+        materialType: 'none',
+        linewidth: 0,
+        edgeCount: 0,
+        segmentCount: 0,
+        selectedEdge: null,
+        selectedSegmentCount: 0,
+        resolution: [0, 0],
+      };
+    }
+
+    const layer = object.userData.edgeLayer as EdgeLayerHandle;
+    return { present: true, visible: object.visible, ...layer.getInfo() };
+  }
+
+  /**
+   * Material diagnostics for the zebra port (WEBCAD-166): lets a test prove the
+   * node material is active and that leaving ZEBRA restored the original colour.
+   */
+  getSolidMaterialInfo(entityId: string): { materialType: string; color: number | null } {
+    let solid: THREE.Mesh | null = null;
+    this.scene.traverse((obj) => {
+      if (
+        solid === null &&
+        obj instanceof THREE.Mesh &&
+        obj.userData?.type === 'Solid3D' &&
+        obj.userData?.entityId === entityId
+      ) {
+        solid = obj;
+      }
+    });
+
+    if (solid === null) {
+      return { materialType: 'none', color: null };
+    }
+
+    const mesh = solid as THREE.Mesh;
+    const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    const color =
+      'color' in material && material.color instanceof THREE.Color
+        ? material.color.getHex()
+        : null;
+    return { materialType: material.type, color };
   }
 
   getMeshMaterial(color: number): THREE.Material {
@@ -680,6 +762,7 @@ export class Viewer {
   }
 
   resize() {
+    if (this._deviceLost) return;
     const parent = this.canvas.parentElement;
     if (!parent) return;
 
@@ -687,6 +770,10 @@ export class Viewer {
     const w = rect.width;
     const h = rect.height;
 
+    // Match the display density, but cap it: a 4x phone would otherwise pay
+    // sixteen times the fill cost for a viewport that is mostly thin lines.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (this.renderer.getPixelRatio() !== dpr) this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h);
     
     this.camera.left = -w / 2;
@@ -696,16 +783,30 @@ export class Viewer {
     
     this.camera.updateProjectionMatrix();
     
-    // Update resolution for all LineMaterials
+    // Fat edge lines need the drawing-buffer size; WebGL stores it as a
+    // uniform, WebGPU's layer reads it from the renderer viewport (no-op).
     this.scene.traverse(obj => {
-      const anyObj = obj as any;
-      if (anyObj.material && anyObj.material.isLineMaterial) {
-        // No-op for now as we are moving away from Line2, 
-        // but keeping the loop if we have other line materials
-      }
+      const edgeLayer = obj.userData?.edgeLayer as EdgeLayerHandle | undefined;
+      if (edgeLayer) edgeLayer.setResolution(this.canvas.width, this.canvas.height);
     });
     
     this.scheduleRender();
+  }
+
+  /**
+   * Re-arm the DPR media query after a change (WEBCAD-169).
+   *
+   * `matchMedia('(resolution: Ndppx)')` only fires when the ratio leaves N, so
+   * the listener has to be replaced after every change. Browser zoom and moving
+   * between monitors both take this path; window resize alone does not catch
+   * zoom on all engines.
+   */
+  private watchDpr() {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    this.dprQuery?.removeEventListener('change', this.handleDprChange);
+    const dpr = window.devicePixelRatio || 1;
+    this.dprQuery = window.matchMedia(`(resolution: ${dpr}dppx)`);
+    this.dprQuery.addEventListener('change', this.handleDprChange);
   }
 
   public addTemporaryMesh(geometry: THREE.BufferGeometry, color: number = 0x888888) {
@@ -852,10 +953,9 @@ export class Viewer {
       const z = entity.elevation || 0;
       const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, 0, 2 * Math.PI, false, 0);
       const points = curve.getPoints(50);
-      const geo = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, z)));
       const color = this.resolveColor(entity.properties?.color, previewColor);
       const mat = new THREE.LineBasicMaterial({ color });
-      obj = new THREE.LineLoop(geo, mat);
+      obj = createClosedLine(points.map(p => new THREE.Vector3(p.x, p.y, z)), mat);
     } else if (entity instanceof Arc) {
       const z = entity.elevation || 0;
       const curve = new THREE.EllipseCurve(entity.cx, entity.cy, entity.r, entity.r, entity.startAngle, entity.endAngle, !entity.ccw, 0);
@@ -865,19 +965,15 @@ export class Viewer {
       const mat = new THREE.LineBasicMaterial({ color });
       obj = new THREE.Line(geo, mat);
     } else if (entity instanceof Point) {
-      const geo = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(entity.x, entity.y, entity.elevation || 0)
-      ]);
-      const color = 0x00ffff; // Cyan as requested
-      const mat = new THREE.PointsMaterial({ 
-        color, 
-        size: 12, 
-        sizeAttenuation: false,
+      const marker = createScreenSpacePoint({
+        color: 0x00ffff,
+        size: 12,
         map: this.getPointTexture(),
         transparent: true,
-        alphaTest: 0.5
+        alphaTest: 0.5,
       });
-      obj = new THREE.Points(geo, mat);
+      marker.position.set(entity.x, entity.y, entity.elevation || 0);
+      obj = marker;
     } else if (entity instanceof Dimension) {
       const color = this.resolveColor(entity.properties?.color, previewColor);
       obj = this.createDimensionObject(entity, units, color);
@@ -1093,18 +1189,25 @@ export class Viewer {
   setPreview(entity: PreviewObject | null, units: UnitsConfig = { type: 'decimal', precision: 4, scale: 1.0 }) {
     if (this.previewObject) {
       this.previewObject.parent?.remove(this.previewObject);
-      if (this.previewObject instanceof THREE.Line || this.previewObject instanceof THREE.LineLoop || this.previewObject instanceof THREE.Points || this.previewObject instanceof THREE.Group || this.previewObject instanceof THREE.Mesh) {
-        this.previewObject.traverse((obj) => {
-          if (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points || obj instanceof THREE.Mesh) {
-            obj.geometry.dispose();
-            if (Array.isArray(obj.material)) {
-              obj.material.forEach(m => m.dispose());
-            } else {
-              obj.material.dispose();
-            }
+      this.previewObject.traverse((obj) => {
+        if (obj instanceof THREE.Sprite) {
+          // The point texture is shared by every marker; disposing it here
+          // would blank the remaining points. The geometry is per-marker.
+          obj.geometry.dispose();
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(m => m.dispose());
+          } else {
+            obj.material.dispose();
           }
-        });
-      }
+        } else if (obj instanceof THREE.Line || obj instanceof THREE.LineLoop || obj instanceof THREE.Points || obj instanceof THREE.Mesh) {
+          obj.geometry.dispose();
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(m => m.dispose());
+          } else {
+            obj.material.dispose();
+          }
+        }
+      });
       this.previewObject = null;
     }
 
@@ -1729,19 +1832,14 @@ export class Viewer {
     const group = new THREE.Group();
     
     // 1. The X mark (Cyan, fixed screen size)
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([x, y, elevation + thickness]), 3));
-    
-    const mat = new THREE.PointsMaterial({
-      color: 0x00ffff, // Cyan as requested
+    const pointMark = createScreenSpacePoint({
+      color: 0x00ffff,
       size: 12,
-      sizeAttenuation: false,
       map: this.getPointTexture(),
       transparent: true,
-      alphaTest: 0.5
+      alphaTest: 0.5,
     });
-    
-    const pointMark = new THREE.Points(geo, mat);
+    pointMark.position.set(x, y, elevation + thickness);
     group.add(pointMark);
     
     // 2. The stem (if thickness)
@@ -2145,13 +2243,66 @@ export class Viewer {
         const line = new THREE.LineSegments(edgesGeo, lineMatBasic);
         line.userData = { isEdge: true, type: 'Profile', entityId: entity.id };
         group.add(line);
+
+        // The fallback used to be thin-line-only, so it lost its edges entirely
+        // when the old outline pass was removed. Same display layer, no edge
+        // ranges: these lines have no `edgeIndex`, so nothing can be selected
+        // on them.
+        const fallback = this.createEdgeOutlineFromSegments(
+          segmentsFromPositions(edgesGeo.attributes.position.array),
+          entity.id,
+        );
+        if (fallback) group.add(fallback);
       }
     }
     
+    const outline = this.createEdgeOutline(entity, center);
+    if (outline) group.add(outline);
+
     group.userData = { type: 'Solid3D' };
     group.position.copy(center);
     
     return group;
+  }
+
+  /**
+   * Fat-line edges (WEBCAD-174): one LineSegments2 per solid, display only.
+   *
+   * The thin per-edge THREE.Line objects created above remain the raycast
+   * targets; this layer exists so the edges stay visible with weight at any
+   * zoom, which is the affordance chamfer/fillet/trim depend on.
+   */
+  private createEdgeOutline(entity: Solid3D, center: THREE.Vector3): THREE.Object3D | null {
+    return this.createEdgeOutlineFromSegments(
+      buildEdgeSegments(entity.edgeLines ?? [], center),
+      entity.id,
+    );
+  }
+
+  /** Shared by the BRep path and the `EdgesGeometry` fallback. */
+  private createEdgeOutlineFromSegments(
+    segments: EdgeSegments,
+    entityId: string,
+  ): THREE.Object3D | null {
+    if (segments.segmentCount === 0) return null;
+
+    const edgeLayer = createEdgeLayer(this._rendererInfo.kind, segments, { linewidth: 2 });
+    const object = edgeLayer.object;
+
+    object.userData = {
+      type: 'EdgeOutline',
+      isEdge: false,        // keeps it out of the thin-line registries
+      entityId,
+      edgeLayer,
+    };
+    // Display only: picking must stay on the thin lines that carry edgeIndex.
+    object.raycast = () => {};
+    object.renderOrder = 1;
+    object.visible = this.shadingMode === 'SHADED' || this.shadingMode === 'ZEBRA';
+
+    // Drawing-buffer pixels, not CSS pixels: that is what LineMaterial needs.
+    edgeLayer.setResolution(this.canvas.width || 1, this.canvas.height || 1);
+    return object;
   }
   highlightFace(entityId: string, faceIndex: number | null) {
     const obj = this.scene.getObjectByName(entityId);
@@ -2215,15 +2366,28 @@ export class Viewer {
   }
 
   highlightEdge(entityId: string, edgeIndex: number | null) {
-    // Find all edge lines belonging to this entity
+    // One pass collects both renderings of the same selection: the thin lines
+    // that are pick targets, and the fat layer that draws the colour.
     const entityEdgeLines: THREE.Object3D[] = [];
+    const edgeLayers: EdgeLayerHandle[] = [];
     this.scene.traverse(obj => {
+      if (obj.userData?.type === 'EdgeOutline' && obj.userData.entityId === entityId) {
+        edgeLayers.push(obj.userData.edgeLayer as EdgeLayerHandle);
+        return;
+      }
       if (obj.userData.entityId === entityId && obj.userData.edgeIndex !== undefined) {
         entityEdgeLines.push(obj);
       }
     });
 
-    if (entityEdgeLines.length === 0) return;
+    // Runs before the early return: the layer is the visible cue and must stay
+    // in sync even for an entity whose thin lines are missing.
+    edgeLayers.forEach(layer => layer.setSelected(edgeIndex));
+
+    if (entityEdgeLines.length === 0) {
+      if (edgeLayers.length > 0) this.scheduleRender();
+      return;
+    }
 
     // Reset all edges to dark gray (invisible by default)
     entityEdgeLines.forEach(line => {
@@ -2613,6 +2777,14 @@ export class Viewer {
                 this.edgeLines.push(line);
                 line.visible = (this.shadingMode === 'SHADED');
             });
+
+            // Outlines are display-only and are not in `edgeLines`, so remap their
+            // entityId to the Insert here; otherwise they would never highlight.
+            const outline = obj.children.find(child => child.userData?.type === 'EdgeOutline');
+            if (outline) {
+                outline.userData.entityId = entity.id;
+                outline.visible = (this.shadingMode === 'SHADED' || this.shadingMode === 'ZEBRA');
+            }
         }
 
         if (obj) group.add(obj);
@@ -2718,8 +2890,8 @@ export class Viewer {
 
       // Add wireframe caps
       const topPts = points.map(p => new THREE.Vector3(p.x, p.y, elevation + thickness));
-      group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, elevation))), material));
-      group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(topPts), material));
+      group.add(createClosedLine(points.map(p => new THREE.Vector3(p.x, p.y, elevation)), material));
+      group.add(createClosedLine(topPts, material));
 
       return group;
     }
@@ -2733,7 +2905,7 @@ export class Viewer {
         });
         return group;
     } else {
-        return new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts3d), material);
+        return createClosedLine(pts3d, material);
     }
   }
 
@@ -2958,8 +3130,8 @@ export class Viewer {
       const topPts = points.map(p => new THREE.Vector3(p.x, p.y, elevation + thickness));
       
       if (isFullEllipse) {
-        group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(bottomPts), mat));
-        group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(topPts), mat));
+        group.add(createClosedLine(bottomPts, mat));
+        group.add(createClosedLine(topPts, mat));
       } else {
         group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(bottomPts), mat));
         group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(topPts), mat));
@@ -2970,11 +3142,11 @@ export class Viewer {
       return group;
     }
     
-    const geo = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, p.y, elevation)));
+    const pts3d = points.map(p => new THREE.Vector3(p.x, p.y, elevation));
     if (isFullEllipse) {
-      return new THREE.LineLoop(geo, mat);
+      return createClosedLine(pts3d, mat);
     }
-    return new THREE.Line(geo, mat);
+    return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts3d), mat);
   }
 
   private createDimensionObject(entity: Dimension, units: UnitsConfig, colorIndex: number): THREE.Object3D {
@@ -3596,7 +3768,13 @@ export class Viewer {
         if (child instanceof THREE.Mesh) {
           this.selectableMeshes = this.selectableMeshes.filter(m => m !== child);
         }
-        if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
+        if (child instanceof THREE.Sprite) {
+          child.geometry.dispose();
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          // The point texture is shared by every marker; only the material and
+          // the per-marker geometry are owned by this object.
+          materials.forEach(m => m.dispose());
+        } else if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
           child.geometry.dispose();
           const materials = Array.isArray(child.material) ? child.material : [child.material];
           materials.forEach(m => {
@@ -3621,7 +3799,11 @@ export class Viewer {
     for (const obj of toRemove) {
       obj.parent?.remove(obj);
       obj.traverse((child) => {
-        if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
+        if (child instanceof THREE.Sprite) {
+          child.geometry.dispose();
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach(m => m.dispose());
+        } else if (child instanceof THREE.Mesh || child instanceof THREE.Line || child instanceof THREE.LineLoop || child instanceof THREE.Points) {
           child.geometry.dispose();
           const materials = Array.isArray(child.material) ? child.material : [child.material];
           materials.forEach(m => {
@@ -3681,6 +3863,10 @@ export class Viewer {
 
   updateLayerVisibility(layerMap: Map<string, { isVisible: boolean, isFrozen: boolean }>) {
     this.scene.traverse((obj) => {
+      // Edge outlines are display-only: their visibility is owned by the
+      // shading mode, not by a layer. They carry no `userData.layer`, so the
+      // default below would otherwise pop them back on in PHONG/WIREFRAME.
+      if (obj.userData?.type === 'EdgeOutline') return;
       if (obj instanceof THREE.Mesh || obj instanceof THREE.Line || 
           obj instanceof THREE.LineLoop || obj instanceof THREE.Points) {
         const layerName = (obj.userData as { layer?: string }).layer || "0";
@@ -3821,6 +4007,9 @@ export class Viewer {
 
     const objectsToProcess: THREE.Object3D[] = [];
     this.scene.traverse((obj) => {
+      // The fat edge layer is a Mesh with a name of its own; highlighting must
+      // go through `highlightEdge`, not through a material recolour.
+      if (obj.userData?.type === 'EdgeOutline') return;
       if (obj.name && obj.name !== "PREVIEW" && !obj.name.startsWith("CURSOR")) {
         objectsToProcess.push(obj);
       }
@@ -4290,6 +4479,7 @@ export class Viewer {
       ];
       const sepGeo = new THREE.BufferGeometry().setFromPoints(sepPoints);
       const sepLine = new THREE.Line(sepGeo, mat);
+      sepLine.computeLineDistances();
       group.add(sepLine);
 
       // Place text
@@ -4320,6 +4510,7 @@ export class Viewer {
   }
 
   scheduleRender() {
+    if (this._deviceLost) return;
     if (!this.renderRequested) {
       this.renderRequested = true;
       requestAnimationFrame(() => {
@@ -4358,13 +4549,10 @@ export class Viewer {
    * entry point to sit behind.
    */
   private renderNow(){
+    if (this._deviceLost) return;
     this.onBeforeRender();
     this.gridRenderer.updateAxesScale(1 / this.camera.zoom);
-    if (this.shadingMode === 'SHADED' || this.shadingMode === 'ZEBRA') {
-      this.effect.render(this.scene, this.camera);
-    } else {
-      this.renderer.render(this.scene, this.camera);
-    }
+    this.renderer.render(this.scene, this.camera);
   }
 
   /**
@@ -4434,6 +4622,7 @@ export class Viewer {
       const originalColor = this.getEntityLayerColor(entityId);
       obj.traverse(child => {
         if (
+          child.userData?.type !== 'EdgeOutline' &&
           (child instanceof THREE.Line || child instanceof THREE.LineSegments || child instanceof THREE.Mesh) &&
           child.material && (child.material as any).color
         ) {
@@ -4446,6 +4635,7 @@ export class Viewer {
 
     obj.traverse(child => {
       if (
+        child.userData?.type !== 'EdgeOutline' &&
         (child instanceof THREE.Line || child instanceof THREE.LineSegments || child instanceof THREE.Mesh) &&
         child.material && (child.material as any).color
       ) {

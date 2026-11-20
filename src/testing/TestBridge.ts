@@ -1,6 +1,11 @@
 import * as THREE from "three";
 import type { App } from "../app";
-import type { Viewer } from "../render/Viewer";
+import type { ShadingMode, Viewer } from "../render/Viewer";
+import type { EdgeOutlineInfo } from "../render/EdgeLayer";
+import type { RendererBackend } from "../render/RendererBackend";
+
+export type { ShadingMode } from "../render/Viewer";
+export type { EdgeOutlineInfo } from "../render/EdgeLayer";
 import type { Entity } from "../core/model/Entity";
 import { Solid3D } from "../core/model/Solid3D";
 import { Arc } from "../core/model/Arc";
@@ -55,6 +60,8 @@ export interface RendererInfo {
   /** True when the requested backend could not be honoured — the assertion that matters. */
   fellBack: boolean;
   reason: string;
+  /** True after WebGPU reports a lost device; the viewport has stopped drawing. */
+  deviceLost: boolean;
 }
 
 export interface CameraState {
@@ -448,7 +455,55 @@ export class TestBridge {
    * so `fellBack` is the assertion that matters, not `kind` alone.
    */
   getRendererInfo(): RendererInfo {
-    return { ...this.viewer.rendererInfo };
+    return { ...this.viewer.rendererInfo, deviceLost: this.viewer.deviceLost };
+  }
+
+  /**
+   * Destroy the live WebGPU device, exercising the browser's real `device.lost`
+   * path (WEBCAD-169). Returns false on WebGL or before the device exists.
+   */
+  destroyRendererDevice(): boolean {
+    const renderer = this.viewer.renderer as RendererBackend & {
+      backend?: { device?: { destroy(): void } | null };
+    };
+    const device = renderer.backend?.device;
+    if (!device) return false;
+    device.destroy();
+    return true;
+  }
+
+  /** Queue one frame. Used to prove the idle watcher survives a stopped rAF. */
+  requestRender(): void {
+    this.viewer.requestRender();
+  }
+
+  /** Draw statistics from the last completed frame. */
+  getDrawStats(): { calls: number; triangles: number } {
+    return { ...this.viewer.renderer.info.render };
+  }
+
+  /** The current shading mode, and a way to pin it without a command string. */
+  getShadingMode(): ShadingMode {
+    return this.viewer.getShadingMode();
+  }
+
+  setShadingMode(mode: ShadingMode): ShadingMode {
+    if (!['WIREFRAME', 'SHADED', 'PHONG', 'BLINN', 'ZEBRA'].includes(mode)) {
+      throw new TestBridgeError('bad-argument', `unknown shading mode "${mode}"`);
+    }
+    this.viewer.setShadingMode(mode);
+    return this.viewer.getShadingMode();
+  }
+
+  /** Solid material diagnostics (WEBCAD-166). Never mutates the scene. */
+  getSolidMaterialInfo(objectId: string): { materialType: string; color: number | null } {
+    return this.viewer.getSolidMaterialInfo(objectId);
+  }
+
+  /** Fat-line outline diagnostics (WEBCAD-174). Never mutates the scene. */
+  getEdgeOutlineInfo(objectId: string): EdgeOutlineInfo {
+    this.solid(objectId);
+    return this.viewer.getEdgeOutlineInfo(objectId);
   }
 
   // ---------------------------------------------------------------- Epic 3: scene graph

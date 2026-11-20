@@ -195,51 +195,21 @@ function createNullPI(oc: any): any {
 }
 
 function makeBooleanBuilder(oc: any, operation: string, shapeA: any, shapeB: any): any {
-  const nullPI = createNullPI(oc);
-
-  const ctorMap: Record<string, string[]> = {
-    fuse:   ['BRepAlgoAPI_Fuse_3',   'BRepAlgoAPI_Fuse_4',   'BRepAlgoAPI_Fuse_2'],
-    cut:    ['BRepAlgoAPI_Cut_3',    'BRepAlgoAPI_Cut_4',    'BRepAlgoAPI_Cut_2'],
-    common: ['BRepAlgoAPI_Common_3', 'BRepAlgoAPI_Common_4', 'BRepAlgoAPI_Common_2'],
-  };
-
-  for (const ctorName of (ctorMap[operation] ?? [])) {
-    const Ctor = oc[ctorName];
-    if (typeof Ctor !== 'function') continue;
-    
-    // Try with null progress handle first (handles _3 = (S1, S2, PI) case)
-    if (nullPI) {
-      try {
-        const builder = new Ctor(shapeA, shapeB, nullPI);
-        nullPI.delete();
-        return builder;
-      } catch (_) {}
-    }
-    
-    // Try without progress (handles _4 = (S1, S2) case)
-    try {
-      const builder = new Ctor(shapeA, shapeB);
-      if (nullPI) nullPI.delete();
-      return builder;
-    } catch (_) {}
-  }
-
   const defaultCtors: Record<string, string> = {
     fuse:   'BRepAlgoAPI_Fuse_1',
     cut:    'BRepAlgoAPI_Cut_1',
     common: 'BRepAlgoAPI_Common_1',
   };
+
   const DefaultCtor = oc[defaultCtors[operation]];
-  if (DefaultCtor) {
-    const builder = new DefaultCtor();
-    if (typeof builder.SetShape1 === 'function') builder.SetShape1(shapeA);
-    if (typeof builder.SetShape2 === 'function') builder.SetShape2(shapeB);
-    if (nullPI) nullPI.delete();
-    return builder;
+  if (!DefaultCtor) {
+    throw new Error(`No default constructor found for BRepAlgoAPI ${operation}`);
   }
 
-  if (nullPI) nullPI.delete();
-  throw new Error(`No working constructor found for BRepAlgoAPI ${operation}`);
+  const builder = new DefaultCtor();
+  if (typeof builder.SetShape1 === 'function') builder.SetShape1(shapeA);
+  if (typeof builder.SetShape2 === 'function') builder.SetShape2(shapeB);
+  return builder;
 }
 
 function buildBooleanOp(oc: any, builder: any): void {

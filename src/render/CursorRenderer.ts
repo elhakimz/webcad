@@ -1,5 +1,6 @@
 import * as THREE from "three"
 import { SnapPoint, SnapType } from "../core/engine/SnapEngine"
+import { createClosedLine } from "./ClosedLine"
 
 export class CursorRenderer {
   private scene: THREE.Scene;
@@ -173,8 +174,7 @@ export class CursorRenderer {
         case SnapType.CENTER:
           const curve = new THREE.EllipseCurve(0, 0, size, size, 0, 2 * Math.PI, false, 0);
           const points = curve.getPoints(16);
-          geo = new THREE.BufferGeometry().setFromPoints(points);
-          mesh = new THREE.LineLoop(geo, mat);
+          mesh = createClosedLine(points.map(p => new THREE.Vector3(p.x, p.y, 0)), mat);
           break;
         case SnapType.INTERSECTION:
           geo = new THREE.BufferGeometry().setFromPoints([

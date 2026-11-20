@@ -46,7 +46,7 @@ export class SystemHandler implements ActionHandler {
 
     if (action.action === 'undo') {
       if (doc.canUndo()) {
-        doc.undo();
+        await doc.undo();
         context.syncFromDocument(); 
         return "Undo performed.";
       }
@@ -55,7 +55,7 @@ export class SystemHandler implements ActionHandler {
 
     if (action.action === 'redo') {
       if (doc.canRedo()) {
-        doc.redo();
+        await doc.redo();
         context.syncFromDocument(); 
         return "Redo performed.";
       }

@@ -5,7 +5,7 @@ import * as THREE from "three"
  *
  * `Viewer` used to declare its renderer as the concrete `THREE.WebGLRenderer`, so
  * swapping the backend meant touching every consumer. This is the surface the
- * application actually uses — five members, deliberately no more. Both
+ * application actually uses — small, deliberately no more. Both
  * `WebGLRenderer` and `WebGPURenderer` satisfy it structurally, so no adapter class
  * is needed; the point is to stop the concrete type leaking, not to wrap it.
  *
@@ -16,12 +16,32 @@ export interface RendererBackend {
   /** The canvas being drawn into. Prefer `viewer.canvas` — this exists because three owns it. */
   readonly domElement: HTMLCanvasElement;
   shadowMap: { enabled: boolean; type: THREE.ShadowMapType };
+  /** Draw statistics for the last frame. Both backends populate this. */
+  readonly info: {
+    render: { calls: number; triangles: number };
+  };
   setSize(width: number, height: number, updateStyle?: boolean): void;
+  /**
+   * Retina/zoom support (WEBCAD-169). Both backends implement this; the viewer
+   * caps the value so a 4x display cannot quadruple the fill cost.
+   */
+  setPixelRatio(value: number): void;
+  getPixelRatio(): number;
   render(scene: THREE.Object3D, camera: THREE.Camera): void;
   dispose(): void;
 }
 
+/** The subset of three's `DeviceLostInfo` the app acts on. */
+export interface DeviceLostInfo {
+  api: string;
+  message: string;
+  reason: string | null;
+}
+
 export type RendererKind = 'webgl' | 'webgpu';
+
+/** Fired by the WebGPU factory when the device is lost; `detail` is `DeviceLostInfo`. */
+export const DEVICE_LOST_EVENT = 'webcad:device-lost';
 
 /** What `createRenderer` settled on, and why. Surfaced to the test bridge by WEBCAD-170. */
 export interface RendererSelection {
@@ -76,10 +96,9 @@ export function createWebGLRenderer(canvas: HTMLCanvasElement): THREE.WebGLRende
  * Split from `createRenderer` so the decision is testable: constructing a real
  * `WebGLRenderer` needs a GPU context, which node does not have.
  *
- * The WebGPU branch is not wired up yet and says so instead of pretending: three r160
- * has no first-class `three/webgpu` entry point, and `OutlineEffect` — which draws
- * every shaded frame — is WebGL-only. Both are gated on WEBCAD-164. Until then this
- * chooses WebGL with a stated reason, which is the same shape the real fallback takes.
+ * WEBCAD-169 wires the WebGPU branch. Adapter success is still only a decision;
+ * `createRenderer()` is what actually constructs and initialises the backend, and
+ * it reports a real fallback if that fails.
  */
 export async function chooseRenderer(
   requested: RendererKind = requestedRendererKind(),
@@ -107,18 +126,65 @@ export async function chooseRenderer(
     return webgl(`WebGPU requested but adapter acquisition failed: ${message}`);
   }
 
-  return webgl(
-    'WebGPU adapter is available, but the renderer is not wired up yet — blocked on the ' +
-      'three.js upgrade (WEBCAD-164) and the OutlineEffect replacement (WEBCAD-174)',
-  );
+  return {
+    kind: 'webgpu',
+    requested,
+    fellBack: false,
+    reason: 'WebGPU adapter is available',
+  };
 }
+
+/**
+ * Substitution seam for unit tests. Production uses the real builders below; a
+ * fake lets node exercise the fallback decision without a GPU context.
+ */
+export interface RendererBuilders {
+  webgl?: (canvas: HTMLCanvasElement) => RendererBackend;
+  webgpu?: (canvas: HTMLCanvasElement) => Promise<RendererBackend>;
+}
+
+const defaultBuilders: Required<RendererBuilders> = {
+  webgl: createWebGLRenderer,
+  async webgpu(canvas) {
+    const { createWebGPURenderer } = await import("./WebGPURendererFactory");
+    return createWebGPURenderer(canvas);
+  },
+};
 
 /** Decide, then build. The result is handed to the `Viewer` constructor ready to draw. */
 export async function createRenderer(
   canvas: HTMLCanvasElement,
   requested: RendererKind = requestedRendererKind(),
+  builders: RendererBuilders = {},
 ): Promise<RendererSelection> {
+  const buildWebGL = builders.webgl ?? defaultBuilders.webgl;
   const choice = await chooseRenderer(requested);
-  // Only one branch today; `choice.kind` is what selects it once WEBCAD-169 lands.
-  return { ...choice, renderer: createWebGLRenderer(canvas) };
+
+  if (choice.kind === 'webgl') {
+    return { ...choice, renderer: buildWebGL(canvas) };
+  }
+
+  const buildWebGPU = builders.webgpu ?? defaultBuilders.webgpu;
+  try {
+    return { ...choice, renderer: await buildWebGPU(canvas) };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[renderer] WebGPU initialisation failed; falling back to WebGL', err);
+
+    try {
+      return {
+        renderer: buildWebGL(canvas),
+        kind: 'webgl',
+        requested,
+        fellBack: true,
+        reason: `WebGPU requested but initialisation failed: ${message}; using WebGL`,
+      };
+    } catch (fallbackErr) {
+      const fallbackMessage =
+        fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+      throw new Error(
+        `WebGPU initialisation failed: ${message}; WebGL fallback also failed: ${fallbackMessage}`,
+      );
+    }
+  }
 }

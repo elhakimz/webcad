@@ -5,6 +5,7 @@ import type {
   CommandResult,
   DraftingSettings,
   EdgeInfo,
+  EdgeOutlineInfo,
   FaceInfo,
   ObjectDetail,
   ObjectSummary,
@@ -13,6 +14,7 @@ import type {
   ScreenPoint,
   SelectMode,
   SelectionState,
+  ShadingMode,
   SnapState,
   ValidityReport,
   Vec3,
@@ -114,6 +116,21 @@ export class CadBridge {
   getRendererInfo = () =>
     this.call<RendererInfo>('getRendererInfo');
 
+  /** Destroy the live WebGPU device, exercising the real device-loss callback. */
+  destroyRendererDevice = () => this.call<boolean>('destroyRendererDevice');
+
+  /** Queue one frame; used with a stopped rAF to test the idle age cap. */
+  requestRender = () => this.call<void>('requestRender');
+
+  /** Draw statistics from the last completed frame. */
+  getDrawStats = () => this.call<{ calls: number; triangles: number }>('getDrawStats');
+
+  getShadingMode = () => this.call<ShadingMode>('getShadingMode');
+  setShadingMode = (mode: ShadingMode) => this.call<ShadingMode>('setShadingMode', mode);
+  getSolidMaterialInfo = (objectId: string) =>
+    this.call<{ materialType: string; color: number | null }>('getSolidMaterialInfo', objectId);
+  getEdgeOutlineInfo = (objectId: string) => this.call<EdgeOutlineInfo>('getEdgeOutlineInfo', objectId);
+
   /**
    * Assert the viewport is on the expected backend.
    *
@@ -126,6 +143,7 @@ export class CadBridge {
     const info = await this.getRendererInfo();
     expect(info.fellBack, `renderer fell back from ${info.requested}: ${info.reason}`).toBe(false);
     expect(info.kind, `expected the ${kind} backend, got ${info.kind}: ${info.reason}`).toBe(kind);
+    expect(info.deviceLost, `the ${kind} device is lost: ${info.reason}`).toBe(false);
     return info;
   }
 

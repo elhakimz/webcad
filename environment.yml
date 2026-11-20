@@ -1,0 +1,22 @@
+name: webcad-kernel
+channels:
+  - conda-forge
+dependencies:
+  # Build toolchain
+  - cmake>=3.22
+  - ninja
+  - gcc
+  - gxx
+  - ccache
+  # OCCT 7.9.3 headless kernel (novtk = no VTK/TBB/Draw — matches headless kernel needs)
+  - occt=7.9.3=novtk_*
+  # Protobuf + gRPC C++ runtime (must match protoc plugin versions exactly)
+  - protobuf-cpp
+  - grpc-cpp
+  - abseil-cpp
+  # Fast linkers (mold preferred, lld fallback)
+  - mold
+  - lld
+  # Protobuf compiler + gRPC plugin for codegen
+  - protobuf-cpp-dev
+  - grpc-cpp-dev

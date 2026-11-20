@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { OCCWorkerClient } from "./OCCWorkerClient";
+import { OCCTransport } from "./OCCTransport";
+import { RemoteGrpcTransport } from "./RemoteGrpcTransport";
 
 export type Vec3Like = { x: number; y: number; z: number } | [number, number, number];
 
@@ -7,9 +9,17 @@ function toVec3(v: Vec3Like): { x: number; y: number; z: number } {
   return Array.isArray(v) ? { x: v[0], y: v[1], z: v[2] } : v;
 }
 
+export interface OpenCascadeConfig {
+  transport?: 'local' | 'grpc';
+  gatewayUrl?: string;
+  sessionId?: string;
+  includeBrep?: boolean;
+  timeoutMs?: number;
+}
+
 export class OpenCascadeService {
   private static instance: OpenCascadeService;
-  private workerClient: OCCWorkerClient | null = null;
+  private transport: OCCTransport | null = null;
   private loading: Promise<void> | null = null;
   private errorCallback: ((msg: string) => void) | null = null;
 
@@ -31,17 +41,28 @@ export class OpenCascadeService {
     return OpenCascadeService.instance;
   }
 
-  async init(): Promise<void> {
-    if (this.workerClient) return;
+  async init(config: OpenCascadeConfig = {}): Promise<void> {
+    if (this.transport) return;
     if (this.loading) return this.loading;
+
+    const useGrpc = config.transport === 'grpc' || !!config.gatewayUrl;
 
     this.loading = (async () => {
       try {
-        this.workerClient = new OCCWorkerClient();
-        await this.workerClient.init();
-        console.log("OpenCascade Worker initialized successfully");
+        if (useGrpc) {
+          this.transport = new RemoteGrpcTransport({
+            gatewayUrl: config.gatewayUrl!,
+            sessionId: config.sessionId,
+            includeBrep: config.includeBrep,
+            timeoutMs: config.timeoutMs,
+          });
+        } else {
+          this.transport = new OCCWorkerClient();
+        }
+        await this.transport.init();
+        console.log(`OpenCascade transport initialized (${useGrpc ? 'grpc' : 'local worker'})`);
       } catch (error) {
-        this.reportError(`Failed to initialize OpenCascade Worker: ${error instanceof Error ? error.message : String(error)}`);
+        this.reportError(`Failed to initialize OpenCascade transport: ${error instanceof Error ? error.message : String(error)}`);
         throw error;
       }
     })();
@@ -50,18 +71,18 @@ export class OpenCascadeService {
   }
 
   get client() {
-    if (!this.workerClient) throw new Error("OpenCascade not initialized. Call init() first.");
-    return this.workerClient;
+    if (!this.transport) throw new Error("OpenCascade not initialized. Call init() first.");
+    return this.transport;
   }
 
-  /** True once the worker has finished booting. Read-only probe — unlike `client`, never throws. */
+  /** True once the transport has finished booting. Read-only probe — unlike `client`, never throws. */
   get isInitialized(): boolean {
-    return this.workerClient !== null;
+    return this.transport !== null;
   }
 
   /** Kernel requests still in flight. 0 means the kernel is idle. */
   get pendingCount(): number {
-    return this.workerClient ? this.workerClient.pendingCount : 0;
+    return this.transport ? this.transport.pendingCount : 0;
   }
 
   async clearCache(): Promise<{ success: boolean }> {
@@ -264,7 +285,7 @@ export class OpenCascadeService {
   }
 
   async importBRep(entityId: string, brepBytes: Uint8Array, deflection?: number): Promise<any> {
-    return await this.workerClient!.importBRep(entityId, brepBytes, deflection);
+    return await this.client.importBRep(entityId, brepBytes, deflection);
   }
 
   async filletSolid(entityId: string, edgeIndex: number, radius: number, deflection: number = 0.1, visualP1?: any, visualP2?: any): Promise<THREE.BufferGeometry> {
@@ -307,7 +328,7 @@ export class OpenCascadeService {
   }
 
   async rehydrate(doc: any): Promise<void> {
-    if (!this.workerClient) return;
+    if (!this.transport) return;
     
     console.log("[OCC] Re-hydrating worker with current solids...");
     const entities = doc.getEntities ? doc.getEntities() : (doc.entities ? Array.from(doc.entities.values()) : []);
@@ -317,7 +338,7 @@ export class OpenCascadeService {
         if (solid.brepSnapshot) {
           try {
             const deflection = 0.1 / (doc.facetres || 5.0);
-            const data = await this.workerClient.importBRep(solid.id, solid.brepSnapshot, deflection);
+            const data = await this.transport.importBRep(solid.id, solid.brepSnapshot, deflection);
             if (data && data.positions) {
                 solid.positions = data.positions;
                 solid.indices = data.indices;

@@ -25,13 +25,17 @@ export class NotificationManager {
       toast.classList.add('toast-show');
     }, 10);
     
-    // Auto remove
-    setTimeout(() => {
-      toast.classList.remove('toast-show');
-      toast.classList.add('toast-fade-out');
+    // Auto remove. A non-positive duration means "stay until replaced" — used
+    // by the device-loss notice, which must not disappear while the viewport is
+    // still stopped.
+    if (duration > 0) {
       setTimeout(() => {
-        toast.remove();
-      }, 300); // Wait for transition
-    }, duration);
+        toast.classList.remove('toast-show');
+        toast.classList.add('toast-fade-out');
+        setTimeout(() => {
+          toast.remove();
+        }, 300); // Wait for transition
+      }, duration);
+    }
   }
 }

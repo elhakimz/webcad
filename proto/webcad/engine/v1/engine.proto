@@ -1,0 +1,388 @@
+syntax = "proto3";
+
+package webcad.engine.v1;
+
+import "webcad/engine/v1/common.proto";
+
+option go_package = "github.com/elhakimz/webcad/proto/webcad/engine/v1";
+option java_multiple_files = true;
+option java_package = "com.webcad.engine.v1";
+
+// =========================================================================
+// EngineGateway — browser-facing service (unary + server-streaming only)
+// =========================================================================
+
+service EngineGatewayService {
+  // Open a new session. Session ID is client-generated (UUID v4) so that
+  // sticky routing on x-session-id works for OpenSession itself.
+  rpc OpenSession(OpenSessionRequest) returns (OpenSessionResponse);
+
+  // Execute a single operation. Carries client_seq for per-session ordering.
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+
+  // Restore many entities (rehydration). Carries client_seq.
+  rpc Restore(RestoreRequest) returns (RestoreResponse);
+
+  // Subscribe to session events (progress, kernel_status, heartbeat).
+  rpc Subscribe(SubscribeRequest) returns (stream SessionEvent);
+
+  // Upload a chunk of a large blob (<= 1 MiB per call).
+  rpc UploadChunk(UploadChunkRequest) returns (UploadChunkResponse);
+
+  // Cancel a running command.
+  rpc Cancel(CancelRequest) returns (CancelResponse);
+
+  // Close a session and release all resources.
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+
+  // Stream a large result (> inline limit) in chunks.
+  rpc StreamResult(StreamResultRequest) returns (stream ResultChunk);
+}
+
+// =========================================================================
+// Kernel — gateway-facing service (unary + server-streaming only)
+// =========================================================================
+
+service KernelService {
+  // Execute a single operation on the kernel.
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+
+  // Execute with progress streaming (progress messages then final result).
+  rpc ExecuteWithProgress(ExecuteRequest) returns (stream ExecuteProgress);
+
+  // Restore many entities on the kernel.
+  rpc Restore(RestoreRequest) returns (RestoreResponse);
+
+  // Upload a large blob from gateway to kernel (> 4 MiB). Client streaming.
+  rpc PutBlob(stream PutBlobRequest) returns (PutBlobResponse);
+
+  // Stream a large result (> 16 MiB) from kernel to gateway.
+  rpc StreamResult(stream ResultChunkRequest) returns (stream ResultChunk);
+
+  // Health check (also serves grpc.health.v1).
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// =========================================================================
+// EngineGateway request/response messages
+// =========================================================================
+
+message OpenSessionRequest {
+  CommandHeader header = 1;
+  string client_version = 2;
+  bool include_brep = 3;          // Default: true while client is authoritative
+}
+
+message OpenSessionResponse {
+  string protocol_version = 1;
+  string minimum_client_version = 2;
+  ServerLimits server_limits = 3;
+  uint32 heartbeat_interval = 4;  // Seconds, proposed default 15
+  string kernel_version = 5;
+  string occt_version = 6;
+  repeated string supported_operations = 7;
+}
+
+message ServerLimits {
+  uint64 max_message_size = 1;    // 16 MiB hard cap
+  uint64 inline_request_limit = 2; // 4 MiB
+  uint64 inline_response_limit = 3; // 4 MiB
+  uint64 chunk_size_limit = 4;    // 1 MiB
+  uint64 per_session_blob_quota = 5; // 64 MiB
+}
+
+message ExecuteRequest {
+  CommandHeader header = 1;
+  bool include_brep = 2;          // Default per stage: true (client authoritative), false (server authoritative)
+  oneof op {
+    InitOp init = 3;
+    ClearCacheOp clear_cache = 4;
+    ReleaseShapesOp release_shapes = 5;
+    CheckValidityOp check_validity = 6;
+    ExportBRepOp export_brep = 7;
+    ImportBRepOp import_brep = 8;
+    ExtractFaceProfileOp extract_face_profile = 9;
+    CreateBoxOp create_box = 10;
+    CreateCylinderOp create_cylinder = 11;
+    CreateFrustumOp create_frustum = 12;
+    CreateSphereOp create_sphere = 13;
+    CreateConeOp create_cone = 14;
+    CreateTorusOp create_torus = 15;
+    CreateWedgeOp create_wedge = 16;
+    CreatePyramidOp create_pyramid = 17;
+    CreatePolyhedronOp create_polyhedron = 18;
+    CreateConvexHullOp create_convex_hull = 19;
+    CreateExtrudeOp create_extrude = 20;
+    CreateRevolveOp create_revolve = 21;
+    CreateCompoundOp create_compound = 22;
+    CreateSweepOp create_sweep = 23;
+    CreateLoftOp create_loft = 24;
+    CreateBooleanOp create_boolean = 25;
+    MultMatrixShapeOp mult_matrix_shape = 26;
+    TransformShapeOp transform_shape = 27;
+    RotateShapeOp rotate_shape = 28;
+    MirrorShapeOp mirror_shape = 29;
+    ScaleShapeOp scale_shape = 30;
+    FilletSolidOp fillet_solid = 31;
+    ChamferSolidOp chamfer_solid = 32;
+    FilletSolidFaceOp fillet_solid_face = 33;
+    ChamferSolidFaceOp chamfer_solid_face = 34;
+    MakeThickSolidOp make_thick_solid = 35;
+    DraftSolidFacesOp draft_solid_faces = 36;
+  }
+}
+
+// Operation payload messages — fields taken exactly from OCCWorker.ts handlers.
+message InitOp { }
+message ClearCacheOp { }
+message ReleaseShapesOp { repeated string entity_ids = 1; }
+message CheckValidityOp { string entity_id = 1; }
+message ExportBRepOp { string entity_id = 1; }
+message ImportBRepOp {
+  string entity_id = 1;
+  oneof brep_source {
+    bytes brep_bytes = 2;
+    BlobRef brep_ref = 3;
+  }
+  double deflection = 4;
+}
+message ExtractFaceProfileOp { string entity_id = 1; int32 face_index = 2; double deflection = 3; }
+message CreateBoxOp { double x = 1; double y = 2; double z = 3; double dx = 4; double dy = 5; double dz = 6; double deflection = 7; string entity_id = 8; }
+message CreateCylinderOp { double x = 1; double y = 2; double z = 3; double r = 4; double h = 5; double deflection = 6; string entity_id = 7; }
+message CreateFrustumOp { double x = 1; double y = 2; double z = 3; double r1 = 4; double r2 = 5; double h = 6; double deflection = 7; string entity_id = 8; }
+message CreateSphereOp { double x = 1; double y = 2; double z = 3; double r = 4; double deflection = 5; string entity_id = 6; }
+message CreateConeOp { double x = 1; double y = 2; double z = 3; double r = 4; double h = 5; double deflection = 6; string entity_id = 7; }
+message CreateTorusOp { double x = 1; double y = 2; double z = 3; double r1 = 4; double r2 = 5; double deflection = 6; string entity_id = 7; }
+message CreateWedgeOp { double x1 = 1; double y1 = 2; double z1 = 3; double x2 = 4; double y2 = 5; double height = 6; double ltx = 7; double deflection = 8; string entity_id = 9; }
+message CreatePyramidOp { double x = 1; double y = 2; double z = 3; int32 sides = 4; double radius = 5; double h = 6; double deflection = 7; string entity_id = 8; }
+message CreatePolyhedronOp {
+  // Large field: use oneof for inline or BlobRef
+  repeated Point3D points_inline = 1;
+  BlobRef points_ref = 2;
+  double deflection = 3;
+  string entity_id = 4;
+}
+message Point3D { double x = 1; double y = 2; double z = 3; }
+message CreateConvexHullOp {
+  repeated string shape_ids = 1;
+  repeated Point3D points_inline = 2;
+  BlobRef points_ref = 3;
+  double deflection = 4;
+  string entity_id = 5;
+}
+message CreateExtrudeOp {
+  repeated Point3D points = 1;
+  double height = 2;
+  double thickness = 3;
+  double deflection = 4;
+  bool is_closed = 5;
+  string entity_id = 6;
+  repeated double vector = 7;
+}
+message CreateRevolveOp {
+  repeated Point3D points = 1;
+  Point3D axis_point = 2;
+  Point3D axis_dir = 3;
+  double angle = 4;
+  double thickness = 5;
+  double deflection = 6;
+  bool is_closed = 7;
+  string entity_id = 8;
+}
+message CreateCompoundOp { repeated string children_ids = 1; string entity_id = 2; double deflection = 3; }
+message CreateSweepOp {
+  repeated Point3D profile_points = 1;
+  repeated Point3D spine_points = 2;
+  bool is_solid = 3;
+  double deflection = 4;
+  string entity_id = 5;
+  int32 profile_count = 6;
+  string corner_mode = 7;
+  bool is_ellipse = 8;
+}
+message CreateLoftOp {
+  repeated LoftProfile profiles = 1;
+  bool is_solid = 2;
+  bool is_ruled = 3;
+  double deflection = 4;
+  string entity_id = 5;
+}
+message LoftProfile { string id = 1; repeated Point3D points = 2; bool closed = 3; }
+message CreateBooleanOp {
+  string operation = 1;           // "fuse" | "cut" | "common"
+  string id_a = 2;
+  string id_b = 3;
+  string entity_id = 4;
+  double deflection = 5;
+  Point3D rot_a = 6;
+  Point3D rot_b = 7;
+  Point3D center_a = 8;
+  Point3D center_b = 9;
+}
+message MultMatrixShapeOp { string entity_id = 1; repeated double m = 2; string target_entity_id = 3; double deflection = 4; }
+message TransformShapeOp { string entity_id = 1; double dx = 2; double dy = 3; double dz = 4; string target_entity_id = 5; double deflection = 6; }
+message RotateShapeOp { string entity_id = 1; double rx = 2; double ry = 3; double rz = 4; double cx = 5; double cy = 6; double cz = 7; string target_entity_id = 8; double deflection = 9; }
+message MirrorShapeOp { string entity_id = 1; Point3D p1 = 2; Point3D p2 = 3; string target_entity_id = 4; double deflection = 5; Point3D normal = 6; }
+message ScaleShapeOp { string entity_id = 1; double factor = 2; double cx = 3; double cy = 4; double cz = 5; string target_entity_id = 6; double deflection = 7; double factor_x = 8; double factor_y = 9; double factor_z = 10; }
+message FilletSolidOp { string entity_id = 1; int32 edge_index = 2; double radius = 3; double deflection = 4; Point3D visual_p1 = 5; Point3D visual_p2 = 6; }
+message ChamferSolidOp { string entity_id = 1; int32 edge_index = 2; double radius = 3; double deflection = 4; Point3D visual_p1 = 5; Point3D visual_p2 = 6; }
+message FilletSolidFaceOp { string entity_id = 1; int32 face_index = 2; double radius = 3; }
+message ChamferSolidFaceOp { string entity_id = 1; int32 face_index = 2; double radius = 3; }
+message MakeThickSolidOp { string entity_id = 1; repeated int32 face_indices = 2; double thickness = 3; bool remove_faces = 4; }
+message DraftSolidFacesOp { string entity_id = 1; repeated int32 face_indices = 2; int32 neutral_face_index = 3; double angle_rad = 4; }
+
+message ExecuteResponse {
+  ResultHeader header = 1;
+  oneof result {
+    ExecuteSuccess success = 2;
+    ExecuteFailure failure = 3;
+  }
+  MeshData mesh = 4;
+  BrepReference brep_ref = 5;
+}
+
+message ExecuteSuccess {
+  string shape_id = 1;
+  oneof op_result {
+    BoxResult box = 2;
+    CylinderResult cylinder = 3;
+    FrustumResult frustum = 4;
+    SphereResult sphere = 5;
+    ConeResult cone = 6;
+    TorusResult torus = 7;
+    WedgeResult wedge = 8;
+    PyramidResult pyramid = 9;
+    PolyhedronResult polyhedron = 10;
+    ConvexHullResult convex_hull = 11;
+    ExtrudeResult extrude = 12;
+    RevolveResult revolve = 13;
+    CompoundResult compound = 14;
+    SweepResult sweep = 15;
+    LoftResult loft = 16;
+    BooleanResult boolean = 17;
+    MultMatrixShapeResult mult_matrix_shape = 18;
+    TransformShapeResult transform_shape = 19;
+    RotateShapeResult rotate_shape = 20;
+    MirrorShapeResult mirror_shape = 21;
+    ScaleShapeResult scale_shape = 22;
+    FilletSolidResult fillet_solid = 23;
+    ChamferSolidResult chamfer_solid = 24;
+    FilletSolidFaceResult fillet_solid_face = 25;
+    ChamferSolidFaceResult chamfer_solid_face = 26;
+    MakeThickSolidResult make_thick_solid = 27;
+    DraftSolidFacesResult draft_solid_faces = 28;
+    GenericShapeResult generic = 29;
+  }
+}
+
+message BoxResult { string shape_id = 1; }
+message CylinderResult { string shape_id = 1; }
+message FrustumResult { string shape_id = 1; }
+message SphereResult { string shape_id = 1; }
+message ConeResult { string shape_id = 1; }
+message TorusResult { string shape_id = 1; }
+message WedgeResult { string shape_id = 1; }
+message PyramidResult { string shape_id = 1; }
+message PolyhedronResult { string shape_id = 1; }
+message ConvexHullResult { string shape_id = 1; }
+message ExtrudeResult { string shape_id = 1; }
+message RevolveResult { string shape_id = 1; }
+message CompoundResult { string shape_id = 1; }
+message SweepResult { string shape_id = 1; }
+message LoftResult { string shape_id = 1; }
+message BooleanResult { string shape_id = 1; }
+message MultMatrixShapeResult { string shape_id = 1; }
+message TransformShapeResult { string shape_id = 1; }
+message RotateShapeResult { string shape_id = 1; }
+message MirrorShapeResult { string shape_id = 1; }
+message ScaleShapeResult { string shape_id = 1; }
+message FilletSolidResult { string shape_id = 1; }
+message ChamferSolidResult { string shape_id = 1; }
+message FilletSolidFaceResult { string shape_id = 1; }
+message ChamferSolidFaceResult { string shape_id = 1; }
+message MakeThickSolidResult { string shape_id = 1; }
+message DraftSolidFacesResult { string shape_id = 1; }
+message GenericShapeResult { string shape_id = 1; }
+
+message RestoreRequest {
+  CommandHeader header = 1;
+  bool include_brep = 2;
+  repeated RestoreItem items = 3;  // Max 128 items, max 64 MiB total per request
+}
+message RestoreItem {
+  string entity_id = 1;
+  oneof source {
+    BrepReference brep_ref = 2;
+    string upload_id = 3;
+  }
+}
+message RestoreResponse { ResultHeader header = 1; repeated string restored_entity_ids = 2; }
+
+message SubscribeRequest {
+  CommandHeader header = 1;
+  uint64 last_event_id = 2;       // Resume from this event ID (0 = start from beginning)
+}
+message SessionEvent {
+  uint64 event_id = 1;            // Monotonic per-session event ID
+  oneof payload {
+    ProgressEvent progress = 2;
+    KernelStatusEvent kernel_status = 3;
+    HeartbeatEvent heartbeat = 4;
+    NeedsRehydrateEvent needs_rehydrate = 5;
+  }
+}
+message ProgressEvent { string operation = 1; uint32 percent = 2; string message = 3; }
+message KernelStatusEvent { KernelStatus status = 1; }
+enum KernelStatus {
+  KERNEL_STATUS_UNSPECIFIED = 0;
+  KERNEL_STATUS_CONNECTED = 1;
+  KERNEL_STATUS_RESTARTING = 2;
+  KERNEL_STATUS_REHYDRATING = 3;
+}
+message HeartbeatEvent { uint64 timestamp = 1; }
+message NeedsRehydrateEvent { string reason = 1; }
+
+message UploadChunkRequest {
+  CommandHeader header = 1;
+  string upload_id = 2;
+  uint32 chunk_index = 3;
+  bytes data = 4;                 // <= 1 MiB
+  string sha256 = 5;              // SHA-256 of the complete blob (for verification)
+}
+message UploadChunkResponse { string upload_id = 1; uint32 total_chunks = 2; }
+
+message CancelRequest { CommandHeader header = 1; string request_id = 2; }
+message CancelResponse { bool cancelled = 1; }
+
+message CloseSessionRequest { CommandHeader header = 1; }
+message CloseSessionResponse { bool closed = 1; }
+
+message StreamResultRequest { string result_id = 1; }
+
+// =========================================================================
+// Kernel request/response messages
+// =========================================================================
+
+message ExecuteProgress {
+  string request_id = 1;
+  uint32 percent = 2;
+  string message = 3;
+}
+
+message PutBlobRequest {
+  string upload_id = 1;
+  bytes data = 2;                 // <= 1 MiB per chunk
+  bool final = 3;
+}
+message PutBlobResponse { string upload_id = 1; uint64 total_size = 2; }
+
+message HealthRequest { string service = 1; }
+message HealthResponse {
+  enum ServingStatus {
+    SERVING_STATUS_UNSPECIFIED = 0;
+    SERVING_STATUS_SERVING = 1;
+    SERVING_STATUS_NOT_SERVING = 2;
+    SERVING_STATUS_SERVICE_UNKNOWN = 3;
+  }
+  ServingStatus status = 1;
+}

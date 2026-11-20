@@ -17,7 +17,7 @@
 | Shadows | enabled, `PCFSoftShadowMap` | `RendererBackend.ts` (`createWebGLRenderer`) |
 | Colour management | `outputColorSpace = SRGBColorSpace`; **tone mapping deliberately off** | `RendererBackend.ts` |
 | Lighting | single `DirectionalLight`, **no IBL/environment** | `Viewer.ts:43` |
-| Edges | `EdgesGeometry` + `LineSegments`, plus `OutlineEffect` on shaded frames | `Viewer.ts` |
+| Edges | per-solid `LineSegments2` fat-line layer; thin invisible `Line` objects stay the pick targets | `EdgeLayer.ts`, `Viewer.ts` |
 | Post-processing | **none** (no `EffectComposer`) | — |
 | Selection | raycaster pick, **no hover pre-highlight** | `Viewer.ts` |
 | WebGPU | **not wired up.** POC and TSL material deleted; probe and reporting in place | `RendererBackend.ts` |
@@ -26,10 +26,8 @@
 
 ### What blocks the swap
 
-Both found by doing the work, not by planning it:
+Found by doing the work, not by planning it:
 
-- **`OutlineEffect` is WebGL-only** and draws every SHADED and ZEBRA frame. It wraps a
-  `WebGLRenderer` and cannot be pointed at a `WebGPURenderer` (Plane #174).
 - **A canvas can only ever hold one context type.** Once `getContext('webgl2')` has run,
   `getContext('webgpu')` returns null — so a renderer cannot be swapped in after boot,
   and the async decision has to move ahead of `new Viewer()` in `main.ts` (Plane #169).
@@ -124,9 +122,15 @@ it twice — wasteful.
 
 - Async bootstrap: `await renderer.init()` (WebGPU is async, unlike WebGL).
 - **Detect `navigator.gpu`; fall back to WebGL** automatically. Keep both paths.
-- Port the **3 custom shaders** (only hits are in `Viewer.ts`) to TSL; stock
-  materials (44 `LineBasicMaterial`, 18 `MeshBasicMaterial`, etc.) auto-convert.
-- Re-validate Phase 0–3 features under WebGPU.
+- Zebra is already a TSL node material (`src/render/ZebraMaterial.ts`, #166) and runs
+  on the classic renderer through `WebGLNodesHandler`. Dropping that handler and
+  rendering it natively is the only zebra work left here; no custom
+  `ShaderMaterial` remains in `Viewer.ts`. Stock materials (44
+  `LineBasicMaterial`, 18 `MeshBasicMaterial`, etc.) auto-convert.
+- Re-validate Phase 0-3 features under WebGPU.
+- Stock materials audited on both backends (#167): `LineLoop` replaced with closed
+  lines, note separator dash distances completed. WebGPU `EdgeLayer` remains part of
+  the swap (#169).
 - Real upside is **compute shaders** (next phase), not raw FPS on static scenes.
 
 **Outcome:** future-proof renderer, fallback intact. **Risk:** medium.

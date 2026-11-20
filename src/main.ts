@@ -1,4 +1,3 @@
-import * as THREE from "three"
 import { Viewer } from "./render/Viewer"
 import { App } from "./app"
 import { Entity } from "./core/model/Entity"
@@ -32,22 +31,17 @@ import { BlockToolWindow } from "./ui/BlockToolWindow"
 import { GeneratorToolWindow } from "./ui/GeneratorToolWindow"
 import { SketchToolWindow } from "./ui/SketchToolWindow"
 import { installTestBridge } from "./testing/TestBridge"
-import { chooseRenderer } from "./render/RendererBackend"
+import { createRenderer } from "./render/RendererBackend"
 
 // 1. Core Setup
+// The backend has to be chosen and initialised before the viewer exists: a canvas
+// cannot switch context type after one is created (WEBCAD-169). WebGL remains the
+// default; `?renderer=webgpu` opts into the async WebGPU initialisation and falls
+// back to WebGL, with a reason, if the device cannot be brought up.
 const canvas = document.getElementById("c") as HTMLCanvasElement
-const viewer = new Viewer(canvas)
-
-// Capability probe (WEBCAD-162). Deliberately not awaited: WebGPU adapter acquisition
-// is async, and blocking module evaluation on it would delay first paint on every
-// browser — including the ones that will never get past the probe. The viewer records
-// the honest answer synchronously and this only refines the reason.
-chooseRenderer()
-  .then((choice) => {
-    viewer.setRendererChoice(choice)
-    console.info(`[renderer] ${choice.kind} — ${choice.reason}`)
-  })
-  .catch((err) => console.warn('[renderer] capability probe failed', err))
+const selection = await createRenderer(canvas)
+console.info(`[renderer] ${selection.kind} — ${selection.reason}`)
+const viewer = new Viewer(canvas, selection)
 
 const app = new App(viewer)
 ;(window as any).app = app

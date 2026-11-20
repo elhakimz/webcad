@@ -10,6 +10,10 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <fstream>
+#include <filesystem>
+#include <map>
+#include <cctype>
 
 #include "webcad/engine/v1/common.pb.h"
 
@@ -302,6 +306,514 @@ TEST(CodecTest, ExecuteFailureZeroCode) {
   EXPECT_EQ(output.code(), 0u);
   EXPECT_TRUE(output.message().empty());
   EXPECT_TRUE(output.details().empty());
+}
+
+// ============================================================================
+// Minimal JSON parser for golden file (shared with TS via tests/golden/messages.json)
+// ============================================================================
+
+#include <fstream>
+#include <filesystem>
+
+struct Json {
+  enum Type { Null, Bool, Number, String, Array, Object };
+  Type type = Null;
+  bool b = false;
+  double n = 0;
+  std::string s;
+  std::vector<Json> a;
+  std::map<std::string, Json> o;
+
+  bool isObject() const { return type == Object; }
+  bool isArray() const { return type == Array; }
+  bool isString() const { return type == String; }
+  bool isNumber() const { return type == Number; }
+  bool isBool() const { return type == Bool; }
+  bool has(const std::string& key) const { return o.count(key) > 0; }
+  const Json& at(const std::string& key) const { return o.at(key); }
+  double num(const std::string& key, double def = 0) const {
+    auto it = o.find(key); return it != o.end() && it->second.isNumber() ? it->second.n : def;
+  }
+  int i64(const std::string& key, int def = 0) const {
+    auto it = o.find(key); return it != o.end() && it->second.isNumber() ? (int)it->second.n : def;
+  }
+  bool fl(const std::string& key, bool def = false) const {
+    auto it = o.find(key); return it != o.end() && it->second.isBool() ? it->second.b : def;
+  }
+  std::string str(const std::string& key, const std::string& def = "") const {
+    auto it = o.find(key); return it != o.end() && it->second.isString() ? it->second.s : def;
+  }
+};
+
+class JsonParser {
+  const std::string& s_;
+  size_t i_ = 0;
+  void skipWs() { while (i_ < s_.size() && std::isspace((unsigned char)s_[i_])) ++i_; }
+  std::string parseString() {
+    ++i_; // consume opening quote
+    std::string out;
+    while (i_ < s_.size()) {
+      char c = s_[i_++];
+      if (c == '"') break;
+      if (c == '\\' && i_ < s_.size()) {
+        char e = s_[i_++];
+        switch (e) {
+          case '"': out.push_back('"'); break;
+          case '\\': out.push_back('\\'); break;
+          case '/': out.push_back('/'); break;
+          case 'b': out.push_back('\b'); break;
+          case 'f': out.push_back('\f'); break;
+          case 'n': out.push_back('\n'); break;
+          case 'r': out.push_back('\r'); break;
+          case 't': out.push_back('\t'); break;
+          case 'u': i_ += 4; out.push_back('?'); break;
+          default: out.push_back(e); break;
+        }
+      } else {
+        out.push_back(c);
+      }
+    }
+    return out;
+  }
+  double parseNumber() {
+    size_t start = i_;
+    while (i_ < s_.size() && (std::isdigit((unsigned char)s_[i_]) || s_[i_] == '.' ||
+                              s_[i_] == '-' || s_[i_] == '+' || s_[i_] == 'e' || s_[i_] == 'E')) ++i_;
+    return std::stod(s_.substr(start, i_ - start));
+  }
+  Json parseValue() {
+    skipWs();
+    if (i_ >= s_.size()) return Json{};
+    char c = s_[i_];
+    if (c == '{') {
+      ++i_; Json j; j.type = Json::Object;
+      if (s_[i_] == '}') { ++i_; return j; }
+      while (true) {
+        skipWs();
+        std::string key = parseString();
+        skipWs();
+        if (s_[i_] == ':') ++i_;
+        j.o[key] = parseValue();
+        skipWs();
+        if (s_[i_] == ',') { ++i_; continue; }
+        if (s_[i_] == '}') { ++i_; break; }
+      }
+      return j;
+    }
+    if (c == '[') {
+      ++i_; Json j; j.type = Json::Array;
+      if (s_[i_] == ']') { ++i_; return j; }
+      while (true) {
+        j.a.push_back(parseValue());
+        skipWs();
+        if (s_[i_] == ',') { ++i_; continue; }
+        if (s_[i_] == ']') { ++i_; break; }
+      }
+      return j;
+    }
+    if (c == '"') { Json j; j.type = Json::String; j.s = parseString(); return j; }
+    if (s_.compare(i_, 4, "true") == 0) { i_ += 4; Json j; j.type = Json::Bool; j.b = true; return j; }
+    if (s_.compare(i_, 5, "false") == 0) { i_ += 5; Json j; j.type = Json::Bool; j.b = false; return j; }
+    if (s_.compare(i_, 4, "null") == 0) { i_ += 4; return Json{}; }
+    Json j; j.type = Json::Number; j.n = parseNumber(); return j;
+  }
+public:
+  explicit JsonParser(const std::string& str) : s_(str) {}
+  Json parse() { skipWs(); return parseValue(); }
+};
+
+// Base64 decode
+static std::string base64Decode(const std::string& in) {
+  static const char* b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  int T[256];
+  for (int i = 0; i < 256; i++) T[i] = -1;
+  for (int i = 0; i < 64; i++) T[(unsigned char)b64[i]] = i;
+  std::string out;
+  int val = 0, valb = -8;
+  for (unsigned char c : in) {
+    if (T[c] == -1) continue;
+    val = (val << 6) + T[c];
+    valb += 6;
+    if (valb >= 0) { out.push_back(char((val >> valb) & 0xFF)); valb -= 8; }
+  }
+  return out;
+}
+
+// Locate the golden file relative to this source file.
+static std::string goldenFilePath() {
+  std::filesystem::path p(__FILE__);
+  p = p.parent_path().parent_path(); // tests/codec_test.cpp -> project root
+  p /= "tests/golden/messages.json";
+  return p.string();
+}
+
+// ---------------------------------------------------------------------------
+// Helpers to extract typed values from a Json object
+// ---------------------------------------------------------------------------
+
+static void setPoint3D(const Json& parent, const std::string& key, webcad::engine::v1::Point3D* p) {
+  if (!parent.o.count(key)) return;
+  const Json& pt = parent.o.at(key);
+  if (pt.isObject()) {
+    p->set_x(pt.num("x", 0.0));
+    p->set_y(pt.num("y", 0.0));
+    p->set_z(pt.num("z", 0.0));
+  }
+}
+
+static void setPoint3DArray(const Json& arr, webcad::engine::v1::CreateExtrudeOp* op) {
+  for (const auto& pt : arr.a) {
+    webcad::engine::v1::Point3D* p = op->add_points();
+    p->set_x(pt.num("x", 0.0));
+    p->set_y(pt.num("y", 0.0));
+    p->set_z(pt.num("z", 0.0));
+  }
+}
+
+static void setStringArray(const Json& arr, ::google::protobuf::RepeatedPtrField<std::string>* field) {
+  for (const auto& s : arr.a) field->Add()->assign(s.s);
+}
+
+static void setDoubleArray(const Json& arr, ::google::protobuf::RepeatedField<double>* field) {
+  for (const auto& v : arr.a) field->Add(v.n);
+}
+
+// ---------------------------------------------------------------------------
+// Per-message-type golden round-trip
+// ---------------------------------------------------------------------------
+
+static void testCommandHeader(const Json& input) {
+  webcad::engine::v1::CommandHeader msg;
+  msg.set_session_id(input.str("sessionId"));
+  msg.set_request_id(input.str("requestId"));
+  msg.set_client_seq((uint64_t)input.i64("clientSeq", 0));
+  msg.set_document_id(input.str("documentId"));
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.session_id(), msg.session_id());
+  EXPECT_EQ(decoded.request_id(), msg.request_id());
+  EXPECT_EQ(decoded.client_seq(), msg.client_seq());
+  EXPECT_EQ(decoded.document_id(), msg.document_id());
+}
+
+static void testMeshData(const Json& input) {
+  webcad::engine::v1::MeshData msg;
+  if (input.has("positions")) msg.set_positions(base64Decode(input.str("positions")));
+  if (input.has("indices")) msg.set_indices(base64Decode(input.str("indices")));
+  if (input.has("faceMapping")) msg.set_face_mapping(base64Decode(input.str("faceMapping")));
+  if (input.has("edgeOffsets")) msg.set_edge_offsets(base64Decode(input.str("edgeOffsets")));
+  if (input.has("edgeLines")) msg.set_edge_lines(base64Decode(input.str("edgeLines")));
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.positions(), msg.positions());
+  EXPECT_EQ(decoded.indices(), msg.indices());
+  EXPECT_EQ(decoded.face_mapping(), msg.face_mapping());
+  EXPECT_EQ(decoded.edge_offsets(), msg.edge_offsets());
+  EXPECT_EQ(decoded.edge_lines(), msg.edge_lines());
+}
+
+static void testExecuteFailure(const Json& input) {
+  webcad::engine::v1::ExecuteFailure msg;
+  msg.set_operation(input.str("operation"));
+  msg.set_code((uint32_t)input.i64("code", 0));
+  msg.set_message(input.str("message"));
+  msg.set_details(input.str("details"));
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.operation(), msg.operation());
+  EXPECT_EQ(decoded.code(), msg.code());
+  EXPECT_EQ(decoded.message(), msg.message());
+  EXPECT_EQ(decoded.details(), msg.details());
+}
+
+static void testOpenSessionRequest(const Json& input) {
+  webcad::engine::v1::OpenSessionRequest msg;
+  if (input.has("header")) {
+    auto* h = msg.mutable_header();
+    h->set_session_id(input.at("header").str("sessionId"));
+    h->set_request_id(input.at("header").str("requestId"));
+    h->set_client_seq((uint64_t)input.at("header").i64("clientSeq", 0));
+    h->set_document_id(input.at("header").str("documentId"));
+  }
+  msg.set_client_version(input.str("clientVersion"));
+  msg.set_include_brep(input.fl("includeBrep"));
+  auto decoded = roundTrip(msg);
+  if (msg.has_header()) {
+    EXPECT_EQ(decoded.header().session_id(), msg.header().session_id());
+    EXPECT_EQ(decoded.header().client_seq(), msg.header().client_seq());
+  }
+  EXPECT_EQ(decoded.client_version(), msg.client_version());
+  EXPECT_EQ(decoded.include_brep(), msg.include_brep());
+}
+
+static void testOpenSessionResponse(const Json& input) {
+  webcad::engine::v1::OpenSessionResponse msg;
+  msg.set_protocol_version(input.str("protocolVersion"));
+  msg.set_minimum_client_version(input.str("minimumClientVersion"));
+  msg.set_heartbeat_interval((uint32_t)input.i64("heartbeatInterval", 0));
+  msg.set_kernel_version(input.str("kernelVersion"));
+  msg.set_occt_version(input.str("occtVersion"));
+  if (input.has("serverLimits")) {
+    auto* l = msg.mutable_server_limits();
+    const Json& sl = input.at("serverLimits");
+    l->set_max_message_size((uint64_t)sl.i64("maxMessageSize", 0));
+    l->set_inline_request_limit((uint64_t)sl.i64("inlineRequestLimit", 0));
+    l->set_inline_response_limit((uint64_t)sl.i64("inlineResponseLimit", 0));
+    l->set_chunk_size_limit((uint64_t)sl.i64("chunkSizeLimit", 0));
+    l->set_per_session_blob_quota((uint64_t)sl.i64("perSessionBlobQuota", 0));
+  }
+  if (input.has("supportedOperations"))
+    setStringArray(input.at("supportedOperations"), msg.mutable_supported_operations());
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.protocol_version(), msg.protocol_version());
+  EXPECT_EQ(decoded.minimum_client_version(), msg.minimum_client_version());
+  EXPECT_EQ(decoded.heartbeat_interval(), msg.heartbeat_interval());
+  EXPECT_EQ(decoded.kernel_version(), msg.kernel_version());
+  EXPECT_EQ(decoded.occt_version(), msg.occt_version());
+  EXPECT_EQ(decoded.supported_operations_size(), msg.supported_operations_size());
+  if (msg.has_server_limits()) {
+    EXPECT_EQ(decoded.server_limits().max_message_size(), msg.server_limits().max_message_size());
+    EXPECT_EQ(decoded.server_limits().per_session_blob_quota(), msg.server_limits().per_session_blob_quota());
+  }
+}
+
+static void testHealthRequest(const Json& input) {
+  webcad::engine::v1::HealthRequest msg;
+  msg.set_service(input.str("service"));
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.service(), msg.service());
+}
+
+static void testHealthResponse(const Json& input) {
+  webcad::engine::v1::HealthResponse msg;
+  msg.set_status((webcad::engine::v1::HealthResponse_ServingStatus)input.i64("status", 0));
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.status(), msg.status());
+}
+
+static void testInitOp(const Json&) {
+  webcad::engine::v1::InitOp msg;
+  auto decoded = roundTrip(msg);
+  (void)decoded;
+}
+
+static void testClearCacheOp(const Json&) {
+  webcad::engine::v1::ClearCacheOp msg;
+  auto decoded = roundTrip(msg);
+  (void)decoded;
+}
+
+static void testReleaseShapesOp(const Json& input) {
+  webcad::engine::v1::ReleaseShapesOp msg;
+  if (input.has("entityIds"))
+    setStringArray(input.at("entityIds"), msg.mutable_entity_ids());
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.entity_ids_size(), msg.entity_ids_size());
+}
+
+static void testCheckValidityOp(const Json& input) {
+  webcad::engine::v1::CheckValidityOp msg;
+  msg.set_entity_id(input.str("entityId"));
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.entity_id(), msg.entity_id());
+}
+
+static void testExportBRepOp(const Json& input) {
+  webcad::engine::v1::ExportBRepOp msg;
+  msg.set_entity_id(input.str("entityId"));
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.entity_id(), msg.entity_id());
+}
+
+static void testCreateBoxOp(const Json& input) {
+  webcad::engine::v1::CreateBoxOp msg;
+  msg.set_x(input.num("x", 0.0));
+  msg.set_y(input.num("y", 0.0));
+  msg.set_z(input.num("z", 0.0));
+  msg.set_dx(input.num("dx", 0.0));
+  msg.set_dy(input.num("dy", 0.0));
+  msg.set_dz(input.num("dz", 0.0));
+  msg.set_deflection(input.num("deflection", 0.0));
+  msg.set_entity_id(input.str("entityId"));
+  auto decoded = roundTrip(msg);
+  EXPECT_DOUBLE_EQ(decoded.x(), msg.x());
+  EXPECT_DOUBLE_EQ(decoded.dx(), msg.dx());
+  EXPECT_EQ(decoded.entity_id(), msg.entity_id());
+}
+
+static void testCreateCylinderOp(const Json& input) {
+  webcad::engine::v1::CreateCylinderOp msg;
+  msg.set_x(input.num("x", 0.0));
+  msg.set_y(input.num("y", 0.0));
+  msg.set_z(input.num("z", 0.0));
+  msg.set_r(input.num("r", 0.0));
+  msg.set_h(input.num("h", 0.0));
+  msg.set_deflection(input.num("deflection", 0.0));
+  msg.set_entity_id(input.str("entityId"));
+  auto decoded = roundTrip(msg);
+  EXPECT_DOUBLE_EQ(decoded.r(), msg.r());
+  EXPECT_DOUBLE_EQ(decoded.h(), msg.h());
+  EXPECT_EQ(decoded.entity_id(), msg.entity_id());
+}
+
+static void testCreateSphereOp(const Json& input) {
+  webcad::engine::v1::CreateSphereOp msg;
+  msg.set_x(input.num("x", 0.0));
+  msg.set_y(input.num("y", 0.0));
+  msg.set_z(input.num("z", 0.0));
+  msg.set_r(input.num("r", 0.0));
+  msg.set_deflection(input.num("deflection", 0.0));
+  msg.set_entity_id(input.str("entityId"));
+  auto decoded = roundTrip(msg);
+  EXPECT_DOUBLE_EQ(decoded.r(), msg.r());
+  EXPECT_EQ(decoded.entity_id(), msg.entity_id());
+}
+
+static void testCreateConeOp(const Json& input) {
+  webcad::engine::v1::CreateConeOp msg;
+  msg.set_x(input.num("x", 0.0));
+  msg.set_y(input.num("y", 0.0));
+  msg.set_z(input.num("z", 0.0));
+  msg.set_r(input.num("r", 0.0));
+  msg.set_h(input.num("h", 0.0));
+  msg.set_deflection(input.num("deflection", 0.0));
+  msg.set_entity_id(input.str("entityId"));
+  auto decoded = roundTrip(msg);
+  EXPECT_DOUBLE_EQ(decoded.r(), msg.r());
+  EXPECT_DOUBLE_EQ(decoded.h(), msg.h());
+  EXPECT_EQ(decoded.entity_id(), msg.entity_id());
+}
+
+static void testCreateBooleanOp(const Json& input) {
+  webcad::engine::v1::CreateBooleanOp msg;
+  msg.set_operation(input.str("operation"));
+  msg.set_id_a(input.str("idA"));
+  msg.set_id_b(input.str("idB"));
+  msg.set_entity_id(input.str("entityId"));
+  msg.set_deflection(input.num("deflection", 0.0));
+  setPoint3D(input, "rotA", msg.mutable_rot_a());
+  setPoint3D(input, "rotB", msg.mutable_rot_b());
+  setPoint3D(input, "centerA", msg.mutable_center_a());
+  setPoint3D(input, "centerB", msg.mutable_center_b());
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.operation(), msg.operation());
+  EXPECT_EQ(decoded.id_a(), msg.id_a());
+  EXPECT_EQ(decoded.id_b(), msg.id_b());
+  EXPECT_EQ(decoded.entity_id(), msg.entity_id());
+  EXPECT_DOUBLE_EQ(decoded.deflection(), msg.deflection());
+  EXPECT_DOUBLE_EQ(decoded.rot_a().x(), msg.rot_a().x());
+  EXPECT_DOUBLE_EQ(decoded.center_b().z(), msg.center_b().z());
+}
+
+static void testCreateExtrudeOp(const Json& input) {
+  webcad::engine::v1::CreateExtrudeOp msg;
+  if (input.has("points")) setPoint3DArray(input.at("points"), &msg);
+  msg.set_height(input.num("height", 0.0));
+  msg.set_thickness(input.num("thickness", 0.0));
+  msg.set_deflection(input.num("deflection", 0.0));
+  msg.set_is_closed(input.fl("isClosed"));
+  msg.set_entity_id(input.str("entityId"));
+  if (input.has("vector")) setDoubleArray(input.at("vector"), msg.mutable_vector());
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.points_size(), msg.points_size());
+  EXPECT_DOUBLE_EQ(decoded.height(), msg.height());
+  EXPECT_EQ(decoded.is_closed(), msg.is_closed());
+  EXPECT_EQ(decoded.entity_id(), msg.entity_id());
+  EXPECT_EQ(decoded.vector_size(), msg.vector_size());
+}
+
+static void testCreateRevolveOp(const Json& input) {
+  webcad::engine::v1::CreateRevolveOp msg;
+  if (input.has("points")) {
+    for (const auto& pt : input.at("points").a) {
+      webcad::engine::v1::Point3D* p = msg.add_points();
+      p->set_x(pt.num("x", 0.0));
+      p->set_y(pt.num("y", 0.0));
+      p->set_z(pt.num("z", 0.0));
+    }
+  }
+  setPoint3D(input, "axisPoint", msg.mutable_axis_point());
+  setPoint3D(input, "axisDir", msg.mutable_axis_dir());
+  msg.set_angle(input.num("angle", 0.0));
+  msg.set_thickness(input.num("thickness", 0.0));
+  msg.set_deflection(input.num("deflection", 0.0));
+  msg.set_is_closed(input.fl("isClosed"));
+  msg.set_entity_id(input.str("entityId"));
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.points_size(), msg.points_size());
+  EXPECT_DOUBLE_EQ(decoded.angle(), msg.angle());
+  EXPECT_DOUBLE_EQ(decoded.axis_point().x(), msg.axis_point().x());
+  EXPECT_EQ(decoded.entity_id(), msg.entity_id());
+}
+
+static void testMultMatrixShapeOp(const Json& input) {
+  webcad::engine::v1::MultMatrixShapeOp msg;
+  msg.set_entity_id(input.str("entityId"));
+  if (input.has("m")) setDoubleArray(input.at("m"), msg.mutable_m());
+  msg.set_target_entity_id(input.str("targetEntityId"));
+  msg.set_deflection(input.num("deflection", 0.0));
+  auto decoded = roundTrip(msg);
+  EXPECT_EQ(decoded.entity_id(), msg.entity_id());
+  EXPECT_EQ(decoded.m_size(), msg.m_size());
+  EXPECT_EQ(decoded.target_entity_id(), msg.target_entity_id());
+}
+
+static void testTransformShapeOp(const Json& input) {
+  webcad::engine::v1::TransformShapeOp msg;
+  msg.set_entity_id(input.str("entityId"));
+  msg.set_dx(input.num("dx", 0.0));
+  msg.set_dy(input.num("dy", 0.0));
+  msg.set_dz(input.num("dz", 0.0));
+  msg.set_target_entity_id(input.str("targetEntityId"));
+  msg.set_deflection(input.num("deflection", 0.0));
+  auto decoded = roundTrip(msg);
+  EXPECT_DOUBLE_EQ(decoded.dx(), msg.dx());
+  EXPECT_DOUBLE_EQ(decoded.dy(), msg.dy());
+  EXPECT_DOUBLE_EQ(decoded.dz(), msg.dz());
+  EXPECT_EQ(decoded.target_entity_id(), msg.target_entity_id());
+}
+
+// ---------------------------------------------------------------------------
+// Golden file driver: read shared JSON, run every case
+// ---------------------------------------------------------------------------
+
+TEST(CodecTest, GoldenRoundTrip) {
+  std::ifstream f(goldenFilePath(), std::ios::binary);
+  ASSERT_TRUE(f.is_open()) << "cannot open " << goldenFilePath();
+  std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+
+  JsonParser parser(content);
+  Json root = parser.parse();
+  ASSERT_TRUE(root.isArray()) << "golden root must be a JSON array";
+
+  int ran = 0;
+  for (const auto& c : root.a) {
+    std::string type = c.str("message_type");
+    std::string desc = c.str("description");
+    const Json& input = c.at("input");
+
+    if (type == "CommandHeader") testCommandHeader(input);
+    else if (type == "MeshData") testMeshData(input);
+    else if (type == "ExecuteFailure") testExecuteFailure(input);
+    else if (type == "OpenSessionRequest") testOpenSessionRequest(input);
+    else if (type == "OpenSessionResponse") testOpenSessionResponse(input);
+    else if (type == "HealthRequest") testHealthRequest(input);
+    else if (type == "HealthResponse") testHealthResponse(input);
+    else if (type == "InitOp") testInitOp(input);
+    else if (type == "ClearCacheOp") testClearCacheOp(input);
+    else if (type == "ReleaseShapesOp") testReleaseShapesOp(input);
+    else if (type == "CheckValidityOp") testCheckValidityOp(input);
+    else if (type == "ExportBRepOp") testExportBRepOp(input);
+    else if (type == "CreateBoxOp") testCreateBoxOp(input);
+    else if (type == "CreateCylinderOp") testCreateCylinderOp(input);
+    else if (type == "CreateSphereOp") testCreateSphereOp(input);
+    else if (type == "CreateConeOp") testCreateConeOp(input);
+    else if (type == "CreateBooleanOp") testCreateBooleanOp(input);
+    else if (type == "CreateExtrudeOp") testCreateExtrudeOp(input);
+    else if (type == "CreateRevolveOp") testCreateRevolveOp(input);
+    else if (type == "MultMatrixShapeOp") testMultMatrixShapeOp(input);
+    else if (type == "TransformShapeOp") testTransformShapeOp(input);
+    else FAIL() << "unknown message_type: " << type;
+    ++ran;
+  }
+  EXPECT_GT(ran, 0) << "no golden cases executed";
 }
 
 // ---------------------------------------------------------------------------

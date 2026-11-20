@@ -1,0 +1,974 @@
+{
+  "epic": {
+    "id": "WC-EC",
+    "name": "WebCad Engine Container",
+    "description": "Run the WebCad geometry kernel as native OCCT in server-side worker processes behind a Node gateway, connected to the UI over WebSocket; the OCCT WASM worker remains in the browser as offline/preview fallback. Baseline OCCT version is 7.9.3; 8.0.x is adopted only after passing the parity/regression gate. A time-boxed spike evaluates SolidCraft/solidcore (pure-Rust kernel, wasm32-capable) as a replacement or complement before the kernel skeleton is committed. Then evolve the service into an Onshape-style engine: command registry, server-owned document, feature graph, persistent topology references, versioned operation log.\n\nv5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postgres + minio + nginx; split mesh/export or collaboration services only after measured contention.\n\n**Working agreement for the coding agent** (currently nvidia/nemotron-3.5-super-vl-120b-a12b: open-weight vision-language MoE, ~12B active of ~120B total parameters, long-context, agentic focus; English-only claims): one ticket per branch/PR; each ticket carries an Agent brief with suitability A (agent-led), B (agent drafts, human decides design) or C (human-led); verify command from AGENTS.md must pass before review; stop and ask on ambiguity, protocol changes, or changes over about 15 files / 600 lines; use the snapshot tool for visual checks; the pilot ticket calibrates all of this on real tickets.",
+    "labels": [
+      "webcad",
+      "engine"
+    ],
+    "priority": "high"
+  },
+  "issues": [
+    {
+      "id": "WC-EC-01",
+      "name": "[WC-EC-01] Quick win: remove the double Build() from the WASM worker's booleans",
+      "description": "**Goal:** OCCWorker.ts makeBooleanBuilder calls the two-shape BRepAlgoAPI_* constructor (which already performs the operation) and buildBooleanOp then calls Build() again, so each boolean likely runs twice. Fixing it should roughly halve boolean time in the current browser worker.\n\n**Tasks**\n- [ ] Confirm by timing before/after (benchmark showed ~1.9x on both WASM and native)\n- [ ] Switch to default constructor + SetArguments/SetTools (or SetShape1/SetShape2) so configureBooleanOp settings (fuzzy value, parallel, check-inverted, non-destructive) apply, then a single Build()\n- [ ] Update all call sites (cut, fuse, common, section helpers)\n- [ ] Run the sketch/boolean test suite and visual check\n\n**Acceptance criteria**\n- [ ] Booleans build once\n- [ ] Boolean timing roughly halves on a repeated-cut benchmark\n- [ ] No behavior regressions in tests\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "quick-win",
+        "performance",
+        "engine",
+        "phase-0",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [],
+      "phase": "Phase 0 - Quick wins",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-02",
+      "name": "[WC-EC-02] Agent harness: AGENTS.md, one-command verify, ticket workflow",
+      "description": "**Goal:** The coding agent (nvidia/nemotron-3.5-super-vl-120b-a12b: open-weight vision-language MoE, ~12B active of ~120B total, long-context, agentic focus) works best on small, self-contained tickets with fast automated feedback. Give it the repo-side scaffolding to work reliably.\n\n**Tasks**\n- [ ] AGENTS.md at the repo root: stack overview, directory map, layer rules, build/test/lint commands, protocol spec location, how to run the parity and oracle suites, coding conventions, definition of done, forbidden actions (no protocol changes without an ADR, no committing generated files)\n- [ ] One-command verify (e.g. `npm run verify` / `make verify`): typecheck, lint, unit tests, kernel build + tests, parity subset; target a few minutes so the agent can run it often; non-zero exit on any failure\n- [ ] Ticket workflow: one ticket per branch/PR; PR template with the acceptance criteria checklist, verify output and snapshot images; stop-and-ask rules (spec ambiguity, protocol change, needs decision)\n- [ ] Size rule: if a change exceeds about 15 files or 600 lines, the agent stops and proposes a split\n- [ ] Context packs: a short per-area doc (protocol, kernel, gateway, client) the agent loads instead of reading the whole repo\n- [ ] Agent-visible failure output: tests print the failing metric and delta, not just 'failed'\n\n**Acceptance criteria**\n- [ ] A fresh agent session can build, run verify and open a PR following only AGENTS.md\n- [ ] verify fails on a deliberately broken change and passes on a clean tree\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "agent",
+        "dx",
+        "phase-0",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [],
+      "phase": "Phase 0 - Quick wins and agent enablement",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-03",
+      "name": "[WC-EC-03] Agent pilot: calibrate ticket size on three representative tickets",
+      "description": "**Goal:** No published coding-agent benchmark was found for this exact model, so measure it on this codebase before committing the plan to it.\n\n**Tasks**\n- [ ] Pick three tickets of different kinds: a small one (e.g. the quick win), a medium one (e.g. the protocol codecs or primitives port) and a harder one (e.g. fillet/chamfer port or the command registry)\n- [ ] Give each to the agent using only AGENTS.md and the ticket; record success without help, iterations, wall time, tokens and failure modes (wrong API names, build errors, over-large diffs, missed edge cases)\n- [ ] Adjust ticket granularity, context packs and AGENTS.md from the findings; re-label suitability (A/B/C) where reality differs\n- [ ] Decide which ticket classes stay agent-led and which need human drafting\n\n**Acceptance criteria**\n- [ ] Pilot report with measurements and adjustments\n- [ ] Suitability labels in the epic updated from the evidence\n\n**Depends on:** WC-EC-02\n\n**Agent brief** (suitability C - human-led: the agent only gathers evidence, runs experiments and drafts the write-up; a human decides.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.\n- Do not make the decision yourself: present options, evidence and a recommendation.",
+      "priority": "high",
+      "labels": [
+        "agent",
+        "process",
+        "phase-0",
+        "agent-c"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-02"
+      ],
+      "phase": "Phase 0 - Quick wins and agent enablement",
+      "agent_suitability": "C"
+    },
+    {
+      "id": "WC-EC-04",
+      "name": "[WC-EC-04] Headless snapshot renderer for visual verification",
+      "description": "**Goal:** The agent model accepts images, so geometry can be checked visually. Provide a deterministic command that renders a part to PNG from fixed views.\n\n**Tasks**\n- [ ] CLI: given a command script or B-rep, render iso/top/front/right PNGs with fixed camera, lighting and resolution (use mesh output from any kernel; start with the existing WASM worker)\n- [ ] Deterministic output so images can also be diffed against golden files\n- [ ] Wire into the PR template and the oracle/parity suites (attach images for failed cases)\n\n**Acceptance criteria**\n- [ ] Same input produces byte-identical PNGs across runs\n- [ ] The agent can render and inspect a part from the command line\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "agent",
+        "testing",
+        "tooling",
+        "phase-0",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [],
+      "phase": "Phase 0 - Quick wins and agent enablement",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-05",
+      "name": "[WC-EC-05] ADR: kernel strategy (native OCCT 7.9.3 baseline vs SolidCraft/solidcore vs hybrid) behind a language-neutral protocol",
+      "description": "**Goal:** Record the decision: Node gateway + native OCCT kernel worker processes; the WASM worker stays in the browser as offline/preview fallback. Baseline OCCT version is 7.9.3; 8.0.x is adopted only after it passes the parity and regression gate.\n\n**Tasks**\n- [ ] Document benchmark evidence: boolean-heavy job (30 cylinder cuts + mesh), one core, single run. Single-build: WASM-in-Node ~2.35 s vs native OCCT 8.0.1 ~0.17 s (~14x); the earlier double-Build figures (4.3 s vs 0.32 s) show the same ratio. Caveats: synthetic job, WASM build is an older OCCT, not your real models\n- [ ] Version decision with evidence: OCCT 8.0.1 is the latest stable (public sources, Oct 2026) but the materializr project runs 7.9.3 everywhere and reverted from 8.0.0 after a hang in long-rod thread generation; a pythonocc-core port failed against 8.0.1. Baseline 7.9.3, 8.0.x gated (see upgrade policy ticket)\n- [ ] Decide kernel language (C++17 direct; Python OCP only as prototyping aid) and record the outcome of the materializr evaluation spike\n- [ ] LGPL-2.1 (OCCT) review for server deployment and binary distribution; GPLv3 implications if materializr code is reused\n- [ ] Define what is authoritative: server owns B-rep; client receives meshes\n- [ ] Compare three options against the same criteria and record the outcome after the SolidCraft spike: (A) native OCCT kernel workers, (B) SolidCraft engine / solidcore (pure-Rust SMLib port, wasm32-capable, MIT OR Apache-2.0 / Apache-2.0, kernel API still 0.0.x), (C) hybrid: OCCT kernel plus SolidCraft's architecture patterns. Criteria: geometry coverage, robustness on bad input, determinism, performance, browser/server kernel parity, licensing, ecosystem and effort\n\n**Acceptance criteria**\n- [ ] ADR merged in docs\n- [ ] Open risks listed (8.0.x maturity, ecosystem bindings lag, OCCT version differences, licensing)\n- [ ] Options A/B/C compared in the ADR with the spike results attached\n\n**Agent brief** (suitability C - human-led: the agent only gathers evidence, runs experiments and drafts the write-up; a human decides.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.\n- Do not make the decision yourself: present options, evidence and a recommendation.",
+      "priority": "high",
+      "labels": [
+        "adr",
+        "architecture",
+        "phase-1",
+        "agent-c"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [],
+      "phase": "Phase 1 - Native kernel foundations",
+      "agent_suitability": "C"
+    },
+    {
+      "id": "WC-EC-06",
+      "name": "[WC-EC-06] Spike: evaluate SolidCraft engine / solidcore as backend or kernel (go/no-go)",
+      "description": "**Goal:** SolidCraft (elhakimz fork of tangency-labs/solidcraft) is a pure-Rust parametric CAD with a command registry, timeline, JSON scripts, headless CLI, MCP server and a wasm32-capable kernel (solidcore, a Rust port of NVIDIA SMLib). Decide whether it replaces, complements or is ignored by the OCCT plan. Time-boxed; run on a developer machine (large workspace).\n\n**Tasks**\n- [ ] Build solidcraft-cli headless (cargo build --release -p solidcraft-cli) and run the existing boolean benchmark (30 cylinder cuts on a plate + mesh) through its command registry (solidcraft-cli run script.json); compare time and memory against native OCCT\n- [ ] Check the wasm32 build in a browser (note the stack-size link flag the kernel README requires for wasm) and whether the same kernel can serve both browser and server\n- [ ] Inspect the control protocol and browser command API (docs/control-protocol.md, docs/browser-api.md) for carrying commands over WebSocket\n- [ ] Exercise the hardest operations: many-hole plates, fillets on boolean seams, shell, long threads, sweep/loft; log panics, hangs and mismatches\n- [ ] Check topological naming / persistent references: do downstream features survive upstream sketch edits?\n- [ ] Check STEP/IGES/glTF/STL export quality and sheet-metal/assembly features WebCad may need\n- [ ] Assess kernel maturity: solidcore 0.0.x status, open issues, differential-test coverage, release cadence\n- [ ] License review: MIT OR Apache-2.0 (app), Apache-2.0 (solidcore), separate brand license for UI kit/look/name, clean-room contribution rules and attribution\n- [ ] Decision memo with go/no-go. Proposed thresholds (adjust): covers >=90% of the operations in the OCCWorker message inventory; no panics or hangs over the reference corpus; boolean/mesh time within 2x of native OCCT; persistent references survive upstream sketch edits\n\n**Acceptance criteria**\n- [ ] Memo with measurements and decision (replace / complement / ignore)\n- [ ] If go: list of WebCad operations still missing; if no-go: the reasons and what to borrow\n\n**Depends on:** WC-EC-05\n\n**Agent brief** (suitability C - human-led: the agent only gathers evidence, runs experiments and drafts the write-up; a human decides.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.\n- Do not make the decision yourself: present options, evidence and a recommendation.",
+      "priority": "high",
+      "labels": [
+        "spike",
+        "kernel",
+        "architecture",
+        "phase-1",
+        "agent-c"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-05"
+      ],
+      "phase": "Phase 1 - Native kernel foundations",
+      "agent_suitability": "C"
+    },
+    {
+      "id": "WC-EC-07",
+      "name": "[WC-EC-07] Spike: evaluate materializr as headless kernel base + license decision",
+      "description": "**Goal:** Decide whether the native kernel reuses code from elhakimz/materializr (fork of materializr-cad/materializr: C++17, OCCT 7.9.3, history, topological naming, many modeling ops), uses it only as a reference, or is written from scratch.\n\n**Tasks**\n- [ ] Check whether core/, modeling/ and io/ build as a headless CMake target with no ImGui/SDL/GL; note plugin registrations that drag UI dependencies\n- [ ] Run its GoogleTest suite in CI; measure build time and binary size\n- [ ] Read the topological naming / face lineage code and the sketch solver; list reusable pieces\n- [ ] Assess fit: operations are document-centric interactive undo/execute, not stateless commands against a base version\n- [ ] License review: GPLv3 with additional permissions, multiple copyright holders, releases through 0.9.7.1 were MIT; hosting vs distributing implications; OCCT is LGPL-2.1\n- [ ] Decision memo: reuse / reference only / none\n\n**Acceptance criteria**\n- [ ] Memo with decision and rationale\n- [ ] If reuse: list of directories to extract and the license plan; if not: list of ideas to re-implement\n\n**Depends on:** WC-EC-05\n\n**Agent brief** (suitability C - human-led: the agent only gathers evidence, runs experiments and drafts the write-up; a human decides.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.\n- Do not make the decision yourself: present options, evidence and a recommendation.",
+      "priority": "high",
+      "labels": [
+        "spike",
+        "kernel",
+        "license",
+        "phase-1",
+        "agent-c"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-05"
+      ],
+      "phase": "Phase 1 - Native kernel foundations",
+      "agent_suitability": "C"
+    },
+    {
+      "id": "WC-EC-08",
+      "name": "[WC-EC-08] OCCT build image (7.9.3 pinned, OCCT_VERSION build arg, CI matrix with 8.0.x)",
+      "description": "**Goal:** Container image with OCCT built from the pinned tag.\n\n**Tasks**\n- [ ] Multi-stage Dockerfile: build OCCT from source at the pinned tag (default 7.9.3) with OCCT_VERSION as a build argument, Release, only required modules; runtime stage with shared libs only\n- [ ] CI matrix builds and smoke-tests both 7.9.3 and the candidate 8.0.x tag\n- [ ] Verify module/toolkit layout per version (Data Exchange modules were restructured in 8.0)\n- [ ] Enable/disable TBB per decision; record compiler flags\n- [ ] SBOM and image scan in CI\n\n**Acceptance criteria**\n- [ ] Image builds reproducibly in CI for both versions\n- [ ] Smoke test: create box, boolean, mesh, BRep round trip inside each image\n\n**Depends on:** WC-EC-05\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "infra",
+        "kernel",
+        "phase-1",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-05"
+      ],
+      "phase": "Phase 1 - Native kernel foundations",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-09",
+      "name": "[WC-EC-09] Language-neutral kernel protocol spec + codecs (TS and C++)",
+      "description": "**Goal:** Replace JS-structured-clone assumptions with a spec both gateway and kernel implement.\n\n**Tasks**\n- [ ] Frame = [u32 headerLen][header][buffers]; header (JSON, JSON-Schema defined) lists buffers name/dtype/length\n- [ ] Message catalog derived from the ~40 types in OCCWorker.ts; response always carries id, success, error\n- [ ] edgeLines packed as Float32Array + offsets (no number[][] on the wire)\n- [ ] Golden test vectors shared by TS and C++ implementations\n- [ ] Version field and capability negotiation in hello\n\n**Acceptance criteria**\n- [x] Round-trip tests pass in both languages with identical golden files\n- [x] Spec reviewed against every message type\n\n**Depends on:** WC-EC-05\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "protocol",
+        "kernel",
+        "phase-1",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-05"
+      ],
+      "phase": "Phase 1 - Native kernel foundations",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-10",
+      "name": "[WC-EC-10] Kernel worker skeleton (C++17, CMake)",
+      "description": "**Goal:** Process that reads framed requests from a Unix socket or stdio and dispatches to handlers.\n\n**Tasks**\n- [ ] Handler registry, per-process shape cache keyed by entityId (as today)\n- [ ] Map Standard_Failure / std::exception to protocol errors; never crash on bad input\n- [ ] Structured logging, debug flag for verbose logs\n- [ ] Graceful shutdown; health ping\n- [ ] Unit tests with a fake client\n\n**Acceptance criteria**\n- [x] Handles ping, createBox, release over the protocol\n- [x] Malformed frames produce errors, not crashes\n\n**Depends on:** WC-EC-06, WC-EC-07, WC-EC-08, WC-EC-09\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "phase-1",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-06",
+        "WC-EC-07",
+        "WC-EC-08",
+        "WC-EC-09"
+      ],
+      "phase": "Phase 1 - Native kernel foundations",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-11",
+      "name": "[WC-EC-11] Gateway kernel supervisor (Node): spawn, pool, framing, respawn",
+      "description": "**Goal:** Node side that owns kernel processes.\n\n**Tasks**\n- [ ] Spawn kernel processes and speak the protocol over UDS/stdio\n- [ ] Per-session (later per-document) FIFO queue preserving ordering the client relies on\n- [ ] Backpressure, health checks, kill on timeout, respawn + rehydrate\n- [ ] Process pool with warm instances (native start is far cheaper than the ~3 s WASM init)\n\n**Acceptance criteria**\n- [ ] Killing a kernel mid-operation recovers the session automatically\n- [ ] Ordering preserved under load test\n\n**Depends on:** WC-EC-10\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "server",
+        "kernel",
+        "phase-1",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-10"
+      ],
+      "phase": "Phase 1 - Native kernel foundations",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-12",
+      "name": "[WC-EC-12] Parity harness: WASM worker vs native kernel",
+      "description": "**Goal:** Use the existing WASM worker as the behavioral oracle while porting.\n\n**Tasks**\n- [ ] Operation scripts replayed against both kernels\n- [ ] Compare volume, surface area, bbox, face/edge/vertex counts, validity (BRepCheck) with tolerances\n- [ ] Known differences between OCCT versions documented, not silently ignored\n- [ ] Run in CI per ported operation group\n- [ ] Make operation scripts kernel-agnostic (JSON command lists) so the same script runs against the WASM worker, the native OCCT kernel and, if the spike says go, solidcore/SolidCraft\n\n**Acceptance criteria**\n- [ ] Harness green for each ported group\n- [ ] Report artifact lists tolerances and diffs\n\n**Depends on:** WC-EC-10\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "testing",
+        "kernel",
+        "phase-2",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-10"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-13",
+      "name": "[WC-EC-13] Reference-parts oracle suite (analytic expected values)",
+      "description": "**Goal:** Independent correctness check that does not depend on any one kernel: parts with analytically known volume, surface area, centre of mass and bounding box (SolidCraft validates 75 of 76 public reference parts this way against analytic or FreeCAD values).\n\n**Tasks**\n- [ ] Define a corpus of reference parts as JSON command scripts with expected volume/area/centre of mass/bbox (analytic where possible, otherwise computed with an independent tool such as FreeCAD)\n- [ ] Tolerances per metric; failures report the metric and delta\n- [ ] Run against every kernel (WASM worker, native OCCT, optional solidcore) in CI\n- [ ] Track known failures explicitly, not silently\n\n**Acceptance criteria**\n- [ ] Suite runs in CI for each kernel\n- [ ] Each ported operation group adds at least one reference part\n\n**Depends on:** WC-EC-12\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "testing",
+        "kernel",
+        "phase-2",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-14",
+      "name": "[WC-EC-14] Port: simple primitives (box, cylinder, frustum, sphere, cone, torus, wedge, pyramid)",
+      "description": "**Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: createBox, createCylinder, createFrustum, createSphere, createCone, createTorus, createWedge, createPyramid.\n\n**Tasks**\n- [ ] Port `createBox` (OCCWorker.ts lines 811-860)\n- [ ] Port `createCylinder` (OCCWorker.ts lines 1618-1665)\n- [ ] Port `createFrustum` (OCCWorker.ts lines 1666-1727)\n- [ ] Port `createSphere` (OCCWorker.ts lines 1728-1775)\n- [ ] Port `createCone` (OCCWorker.ts lines 1776-1823)\n- [ ] Port `createTorus` (OCCWorker.ts lines 1824-1861)\n- [ ] Port `createWedge` (OCCWorker.ts lines 1862-1982)\n- [ ] Port `createPyramid` (OCCWorker.ts lines 1983-2050)\n- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler\n- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)\n\n**Acceptance criteria**\n- [ ] Parity harness passes for every primitive\n- [ ] Each primitive has an oracle reference part with analytic volume/area\n\n**Depends on:** WC-EC-12\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 811-860 and 1618-2050.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-15",
+      "name": "[WC-EC-15] Port: polyhedron and convex hull",
+      "description": "**Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: createPolyhedron, createConvexHull.\n\n**Tasks**\n- [ ] Port `createPolyhedron` (OCCWorker.ts lines 2051-2462)\n- [ ] Port `createConvexHull` (OCCWorker.ts lines 2463-2662)\n- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler\n- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)\n- [ ] The WASM version uses a hand-written JS convex hull (face/horizon bookkeeping near the end of the file): decide whether to port it, or replace it with a library (e.g. Qhull) or OCCT facilities; record the decision\n\n**Acceptance criteria**\n- [ ] Parity harness passes (volume, area, face count within tolerance)\n- [ ] Hull handles coplanar and degenerate point sets without crashing\n\n**Depends on:** WC-EC-12\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 2051-2662 plus the hand-written JS hull helper near the end of the file.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-16",
+      "name": "[WC-EC-16] Port: transforms (matrix, translate, rotate, mirror, scale)",
+      "description": "**Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: multMatrixShape, transformShape, rotateShape, mirrorShape, scaleShape.\n\n**Tasks**\n- [ ] Port `multMatrixShape` (OCCWorker.ts lines 4053-4093)\n- [ ] Port `transformShape` (OCCWorker.ts lines 4094-4126)\n- [ ] Port `rotateShape` (OCCWorker.ts lines 4127-4151)\n- [ ] Port `mirrorShape` (OCCWorker.ts lines 4152-4243)\n- [ ] Port `scaleShape` (OCCWorker.ts lines 4244-4309)\n- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler\n- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)\n- [ ] Non-uniform scale and mirror must preserve validity (BRepCheck); use the same fallbacks as the WASM handler\n\n**Acceptance criteria**\n- [ ] Parity harness passes for each transform\n- [ ] Mirror/scale results are valid solids\n\n**Depends on:** WC-EC-12\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 4053-4309.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-17",
+      "name": "[WC-EC-17] Port: extrude, revolve, compound and face-profile extraction",
+      "description": "**Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: createExtrude, createRevolve, createCompound, extractFaceProfile.\n\n**Tasks**\n- [ ] Port `createExtrude` (OCCWorker.ts lines 2663-2864)\n- [ ] Port `createRevolve` (OCCWorker.ts lines 3732-3860)\n- [ ] Port `createCompound` (OCCWorker.ts lines 3861-3894)\n- [ ] Port `extractFaceProfile` (OCCWorker.ts lines 4384-4529)\n- [ ] Wire/face building from sketch payloads, arcs/splines/holes\n- [ ] Extrude (incl. draft/both directions), revolve\n- [ ] Validation of closed profiles with clear errors\n\n**Acceptance criteria**\n- [ ] Parity harness passes for the group\n\n**Depends on:** WC-EC-12\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 2663-2864, 3732-3894 and 4384-4529.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-18",
+      "name": "[WC-EC-18] Port: booleans (createBoolean, scad CSG temp ids)",
+      "description": "**Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: createBoolean.\n\n**Tasks**\n- [ ] Port `createBoolean` (OCCWorker.ts lines 3895-4052)\n- [ ] Implement with BRepAlgoAPI_*; evaluate SetRunParallel and fuzzy tolerance\n- [ ] Retain history (Generated/Modified/IsDeleted) for persistent ids later\n- [ ] Timing comparison vs WASM on the benchmark job\n- [ ] Use the default constructor + SetArguments/SetTools + a single Build(): the two-shape constructors already perform the operation, so a trailing Build() runs it twice (roughly 2x cost) and the setters (fuzzy value, parallel, non-destructive) never apply to the first run\n- [ ] Validation gate: reject a union smaller than its largest input, and reject any seam-merge/unify pass that changes the part's volume or validity; report a structured error instead of silently returning bad geometry\n- [ ] Support the temp ids used by the scad CsgExecutor (scad_N)\n\n**Acceptance criteria**\n- [ ] Parity passes\n- [ ] Native is measurably faster than WASM on the benchmark job\n- [ ] Operation is built exactly once (assert in test)\n- [ ] Gate rejects crafted lossy results\n\n**Depends on:** WC-EC-12\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 190-283 (boolean builder helpers) and 3895-4052.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-19",
+      "name": "[WC-EC-19] Port: fillet and chamfer (solid and face variants)",
+      "description": "**Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: filletSolid, chamferSolid, filletSolidFace, chamferSolidFace.\n\n**Tasks**\n- [ ] Port `filletSolid` (OCCWorker.ts lines 861-963)\n- [ ] Port `chamferSolid` (OCCWorker.ts lines 964-1094)\n- [ ] Port `filletSolidFace` (OCCWorker.ts lines 1095-1165)\n- [ ] Port `chamferSolidFace` (OCCWorker.ts lines 1415-1489)\n- [ ] Port with the same inputs first (indices), keep behavior identical\n- [ ] Expose history so persistent refs can replace indices later (see engine core)\n- [ ] Error reporting for failed fillets (which edge)\n- [ ] Time-boxed probe before the real blend: fillet/chamfer builds cannot be interrupted once started, so probe the radius under a time limit and bound the whole retry ladder\n- [ ] Study cut-based chamfer fallback (sweep the blend cross-section and subtract) for edges the native builder refuses\n- [ ] Refuse sizes that do not fit with a structured error and hint, instead of returning valid-looking junk\n\n**Acceptance criteria**\n- [ ] Parity harness passes\n- [ ] Failure cases return structured errors\n- [ ] Infeasible radius returns within the time limit, never hangs the worker\n\n**Depends on:** WC-EC-12\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 861-1165 and 1415-1489.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-20",
+      "name": "[WC-EC-20] Port: shell (makeThickSolid) and draft",
+      "description": "**Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: makeThickSolid, draftSolidFaces.\n\n**Tasks**\n- [ ] Port `makeThickSolid` (OCCWorker.ts lines 1166-1414)\n- [ ] Port `draftSolidFaces` (OCCWorker.ts lines 1490-1617)\n- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler\n- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)\n- [ ] Shell with several openings or none; report faces that cannot be hollowed instead of returning a sealed hollow silently\n- [ ] Draft on several faces about a neutral plane; structured errors when the draft is infeasible\n\n**Acceptance criteria**\n- [ ] Parity harness passes\n- [ ] Failure cases return structured errors\n\n**Depends on:** WC-EC-12\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 1166-1414 and 1490-1617.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-21",
+      "name": "[WC-EC-21] Port: sweep",
+      "description": "**Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: createSweep.\n\n**Tasks**\n- [ ] Port `createSweep` (OCCWorker.ts lines 2865-3542)\n- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler\n- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)\n- [ ] The handler has multiple fallback sweep builders; port the primary path first, then each fallback behind a test case that triggers it\n- [ ] Inventory which fallbacks the oracle corpus actually exercises\n\n**Acceptance criteria**\n- [ ] Parity harness passes for the primary path\n- [ ] Fallback paths covered by explicit test cases or documented as dropped\n\n**Depends on:** WC-EC-12\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 2865-3542 (about 680 lines with several fallbacks: split into sub-tasks by fallback path).\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-22",
+      "name": "[WC-EC-22] Port: loft",
+      "description": "**Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: createLoft.\n\n**Tasks**\n- [ ] Port `createLoft` (OCCWorker.ts lines 3543-3731)\n- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler\n- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)\n- [ ] Match ruled/smooth options and section ordering rules of the WASM handler\n\n**Acceptance criteria**\n- [ ] Parity harness passes for ruled and smooth lofts\n\n**Depends on:** WC-EC-12\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 3543-3731.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-23",
+      "name": "[WC-EC-23] Port: tessellation to binary buffers",
+      "description": "**Goal:** positions, indices, faceMapping, edge polylines from BRepMesh_IncrementalMesh.\n\n**Tasks**\n- [ ] Deflection/angle parameters matching current visual quality\n- [ ] faceMapping (triangle -> face index) and edge lines as packed buffers\n- [ ] Parallel meshing (OSD_ThreadPool/BRepMesh parallel flag) measured on a multi-core host\n- [ ] Evaluate OCCT's Delabella mesher for faces with many curved inner wires (hole patterns, SVG/text outlines); reference case: a 400-hole plate took ~1.1 s with the default mesher vs ~84 ms with Delabella\n- [ ] Track faces that cannot be triangulated and skip re-meshing them on every rebuild\n- [ ] Mesh independent bodies on a worker pool across cores\n\n**Acceptance criteria**\n- [ ] Mesh stats match WASM within tolerance\n- [ ] Payload smaller than JSON equivalent (measure)\n- [ ] Many-hole plate meshes in a fraction of a second\n- [ ] Un-triangulable faces do not cause repeated re-meshing\n\n**Depends on:** WC-EC-09, WC-EC-12\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "performance",
+        "phase-2",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-09",
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-24",
+      "name": "[WC-EC-24] B-rep import/export and cross-version compatibility",
+      "description": "**Goal:** importBRep/exportBRep with native BinTools plus text BRep fallback.\n\n**Tasks**\n- [ ] Test B-rep produced by the browser WASM worker (older OCCT, text BRep path because BinTools is absent there) imported by OCCT 8.0.1\n- [ ] Test 8.0.1 export imported by the WASM worker if the local fallback is kept\n- [ ] Content hash of B-rep for caching and revisions\n- [ ] Fuzz-test the importer (untrusted input)\n- [ ] Pre-validate BREP input before it reaches the OCCT reader: truncation, absurd section/shape counts, size limits; malformed BREP files can crash or hang the reader\n\n**Acceptance criteria**\n- [ ] Cross-version round trips pass or incompatibilities are documented with a migration path\n- [ ] Truncated and oversized-count BREP files are rejected quickly without touching the reader\n\n**Depends on:** WC-EC-10\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "persistence",
+        "phase-2",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-10"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-25",
+      "name": "[WC-EC-25] Server-side STEP / STL / glTF export",
+      "description": "**Goal:** Exports run in the kernel (later a separate mesh worker if they block geometry ops).\n\n**Tasks**\n- [ ] Use the OCCT 8 data-exchange modules (verify names/layout in 8.0 docs)\n- [ ] Stream results to MinIO, return a link\n\n**Acceptance criteria**\n- [ ] Exports of a sample assembly open correctly in a third-party viewer\n\n**Depends on:** WC-EC-23\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "kernel",
+        "export",
+        "phase-2",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-23"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-26",
+      "name": "[WC-EC-26] Extract OCCTransport interface; keep WASM worker as local fallback",
+      "description": "**Goal:** Seam between UI and kernel.\n\n**Tasks**\n- [ ] Derive OCCTransport from OCCWorkerClient public methods (send, pendingCount, init)\n- [ ] LocalWorkerTransport = today's OCCWorkerClient\n- [ ] OpenCascadeService selects transport from config\n\n**Acceptance criteria**\n- [ ] No behavior change in local mode\n- [ ] TestBridge idle detection (pendingCount) still works\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "refactor",
+        "transport",
+        "phase-3",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [],
+      "phase": "Phase 3 - Gateway and client integration",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-27",
+      "name": "[WC-EC-27] Gateway: WebSocket server, auth hello, sessions",
+      "description": "**Goal:** ws server mapping sessions to kernel processes via the supervisor.\n\n**Tasks**\n- [ ] hello {sessionId, projectId, token}\n- [ ] Session registry; isolation of entityIds between sessions\n- [ ] Forward binary frames to/from the kernel unchanged where possible (zero-copy Buffers)\n\n**Acceptance criteria**\n- [ ] Two sessions cannot see each other's shapes\n\n**Depends on:** WC-EC-09, WC-EC-11\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "server",
+        "transport",
+        "phase-3",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-09",
+        "WC-EC-11"
+      ],
+      "phase": "Phase 3 - Gateway and client integration",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-28",
+      "name": "[WC-EC-28] RemoteWsTransport (client)",
+      "description": "**Goal:** Client transport implementing OCCTransport over WebSocket.\n\n**Tasks**\n- [ ] Request/response by id, timeout, heartbeat\n- [ ] Reconnect with backoff; connection state events; UI status: connected / reconnecting / rehydrating\n- [ ] Surface failures of previously fire-and-forget calls (restoreSolidBRep, undo transformShape)\n\n**Acceptance criteria**\n- [ ] Kill gateway mid-session: UI recovers\n- [ ] No silent failures on formerly fire-and-forget calls\n\n**Depends on:** WC-EC-26, WC-EC-27\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "client",
+        "transport",
+        "phase-3",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-26",
+        "WC-EC-27"
+      ],
+      "phase": "Phase 3 - Gateway and client integration",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-29",
+      "name": "[WC-EC-29] Vite dev proxy and local/remote switch",
+      "description": "**Goal:** Same-origin WS in dev (COOP/COEP enabled).\n\n**Tasks**\n- [ ] server.proxy /occ with ws: true\n- [ ] VITE_OCC_URL; empty = local WASM worker\n\n**Acceptance criteria**\n- [ ] npm run dev works in both modes without COEP errors\n\n**Depends on:** WC-EC-28\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "dx",
+        "config",
+        "phase-3",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-28"
+      ],
+      "phase": "Phase 3 - Gateway and client integration",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-30",
+      "name": "[WC-EC-30] Session resume, rehydrate and restoreMany",
+      "description": "**Goal:** Recover kernel state after disconnect or kernel crash.\n\n**Tasks**\n- [ ] Grace period keeping the kernel alive after disconnect\n- [ ] hello with sessionId resumes; otherwise needsRehydrate\n- [ ] restoreMany re-imports all solids in one round trip (reuse brepSnapshot/PersistenceService)\n\n**Acceptance criteria**\n- [ ] Reconnect within grace: nothing re-imported\n- [ ] After kernel crash: all solids restored; test with 50+ solids\n\n**Depends on:** WC-EC-24, WC-EC-28\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "resilience",
+        "protocol",
+        "phase-3",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-24",
+        "WC-EC-28"
+      ],
+      "phase": "Phase 3 - Gateway and client integration",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-31",
+      "name": "[WC-EC-31] Cancellation, per-operation timeouts, progress events",
+      "description": "**Goal:** A native kernel process can simply be killed and respawned.\n\n**Tasks**\n- [ ] Server-side timeout per operation type (replace fixed 120 s client timeout)\n- [ ] cancel {id}: kill process, respawn, rehydrate\n- [ ] progress {id, pct} messages for long operations; gate log frames behind debug flag\n- [ ] Use time-limit probes (see fillet/chamfer ticket) so uninterruptible blends are bounded before process-kill is needed\n\n**Acceptance criteria**\n- [ ] Runaway op is killed and the session recovers automatically\n\n**Depends on:** WC-EC-30\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "resilience",
+        "protocol",
+        "phase-3",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-30"
+      ],
+      "phase": "Phase 3 - Gateway and client integration",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-32",
+      "name": "[WC-EC-32] Input validation, frame limits and quotas",
+      "description": "**Goal:** Worker currently trusts payloads (e.g. points: any[]).\n\n**Tasks**\n- [ ] Schema validation for every message type at the gateway\n- [ ] Max frame size; ops/sec rate limits; per-session shape and memory caps\n- [ ] Malformed payload returns an error without killing the session\n\n**Acceptance criteria**\n- [ ] Negative/fuzz tests pass\n\n**Depends on:** WC-EC-09, WC-EC-27\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "security",
+        "phase-3",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-09",
+        "WC-EC-27"
+      ],
+      "phase": "Phase 3 - Gateway and client integration",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-33",
+      "name": "[WC-EC-33] Benchmark on real models: native vs WASM, thread scaling",
+      "description": "**Goal:** The first benchmark was synthetic and ran on one core.\n\n**Tasks**\n- [ ] Collect representative models and operation scripts from real projects\n- [ ] Measure p50/p95 per operation, memory per document, throughput per core\n- [ ] Measure parallel booleans/meshing on a multi-core host and the effect of OCCT's parallel flags\n- [ ] Define capacity targets (documents per core/host)\n- [ ] Re-run the boolean benchmark with single-build constructions on both kernels (the first measurement double-built on both sides) and on real models; include a many-hole plate\n- [ ] If the spike result is go, add solidcraft-cli (solidcore) as a third contender in the same benchmark\n\n**Acceptance criteria**\n- [ ] Report with targets; hosting size recommendation\n- [ ] Ratio native vs WASM reported for real models, single-build\n\n**Depends on:** WC-EC-18, WC-EC-23\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "performance",
+        "testing",
+        "phase-4",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-18",
+        "WC-EC-23"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-34",
+      "name": "[WC-EC-34] Kernel process pool, affinity, idle eviction, cgroup limits",
+      "description": "**Goal:** Bound CPU and memory per kernel process.\n\n**Tasks**\n- [ ] Warm pool; assign by session now, by document later\n- [ ] Idle TTL eviction; release shapes on disconnect\n- [ ] cgroup/container memory and CPU limits; OOM handling\n\n**Acceptance criteria**\n- [ ] Soak test keeps memory bounded\n\n**Depends on:** WC-EC-11\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "infra",
+        "performance",
+        "phase-4",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-11"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-35",
+      "name": "[WC-EC-35] Crash isolation, diagnostics and sanitizer CI",
+      "description": "**Goal:** Native crashes must never take down other users.\n\n**Tasks**\n- [ ] Core dump/crash report capture with operation context\n- [ ] ASan/UBSan CI builds running the parity suite\n- [ ] Fuzz B-rep/sketch payload parsers\n- [ ] Automatic respawn tested with injected crashes\n\n**Acceptance criteria**\n- [ ] Injected segfault affects only one session and recovers\n\n**Depends on:** WC-EC-10\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "quality",
+        "phase-4",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-10"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-36",
+      "name": "[WC-EC-36] Dockerfile and docker-compose (app, kernel, postgres, minio, nginx)",
+      "description": "**Goal:** Stage-1 deployment: monolith app + native kernel workers.\n\n**Tasks**\n- [ ] App container (Node gateway) and kernel image from the pinned OCCT build\n- [ ] compose with healthchecks, volumes, env config\n- [ ] nginx with WebSocket upgrade, timeouts, COOP/COEP headers\n\n**Acceptance criteria**\n- [ ] docker compose up gives a working UI + native engine\n- [ ] WS survives nginx idle timeouts via heartbeat\n\n**Depends on:** WC-EC-08, WC-EC-27\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "infra",
+        "docker",
+        "phase-4",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-08",
+        "WC-EC-27"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-37",
+      "name": "[WC-EC-37] Auth, origin check and sandboxing",
+      "description": "**Goal:** Uploaded B-rep is untrusted input to a native parser.\n\n**Tasks**\n- [ ] Short-lived token on WS upgrade; Origin check\n- [ ] Kernel runs non-root, read-only FS, seccomp/no network, CPU/memory limits\n- [ ] Per-user quotas\n- [ ] Kernel only receives untrusted B-rep after the pre-validation step (see B-rep import ticket)\n\n**Acceptance criteria**\n- [ ] Unauthenticated upgrade rejected\n- [ ] Crafted B-rep cannot affect other sessions or the host\n\n**Depends on:** WC-EC-36\n\n**Agent brief** (suitability C - human-led: the agent only gathers evidence, runs experiments and drafts the write-up; a human decides.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.\n- Do not make the decision yourself: present options, evidence and a recommendation.",
+      "priority": "high",
+      "labels": [
+        "security",
+        "infra",
+        "phase-4",
+        "agent-c"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-36"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations",
+      "agent_suitability": "C"
+    },
+    {
+      "id": "WC-EC-38",
+      "name": "[WC-EC-38] Observability: metrics and structured logs",
+      "description": "**Goal:** Detect contention before splitting services.\n\n**Tasks**\n- [ ] Metrics: queue depth, op latency by type, kernel RSS, sessions, respawn count\n- [ ] Structured logs with sessionId/documentId\n- [ ] Dashboards and alerts\n\n**Acceptance criteria**\n- [ ] Clear signal for when export/meshing blocks geometry ops\n\n**Depends on:** WC-EC-36\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "infra",
+        "observability",
+        "phase-4",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-36"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-39",
+      "name": "[WC-EC-39] Production file API (replace Vite dev middleware)",
+      "description": "**Goal:** /api/files exists only as a Vite dev plugin.\n\n**Tasks**\n- [ ] Move list/read/write/absolute-path endpoints into the app server\n- [ ] Path traversal protection (dev plugin joins user paths unchecked)\n- [ ] Storage on MinIO or volume\n\n**Acceptance criteria**\n- [ ] Existing file features work; traversal tests pass\n\n**Depends on:** WC-EC-36\n\n**Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "backend",
+        "infra",
+        "phase-4",
+        "agent-a"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-36"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations",
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-EC-40",
+      "name": "[WC-EC-40] OCCT upgrade policy and regression corpus (7.9.3 baseline, 8.0.x gate)",
+      "description": "**Goal:** Adopt 8.0.x only when it passes the same gates as the baseline.\n\n**Tasks**\n- [ ] Pin exact tag; track 8.0.x patch releases and migration notes\n- [ ] Regression corpus (models + expected metrics) gating every upgrade\n- [ ] Document how persisted B-rep/revisions behave across upgrades\n- [ ] 8.0.x gate must include long-rod thread generation (materializr reverted from 8.0.0 after a hang) and every parity/regression case\n- [ ] Re-check the bindings/ecosystem situation (a pythonocc-core port failed against 8.0.1) before relying on third-party wrappers\n\n**Acceptance criteria**\n- [ ] Upgrade checklist and CI gate in place\n- [ ] 8.0.x promotion decision recorded with the gate results\n\n**Depends on:** WC-EC-12\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "kernel",
+        "process",
+        "phase-4",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-41",
+      "name": "[WC-EC-41] Spike: shape history API for persistent references",
+      "description": "**Goal:** Verify BRepBuilderAPI_MakeShape::Generated/Modified/IsDeleted and BRepTools_History in OCCT 8.0.1 for each operation (the WASM build exposed the API, but behavior was not tested).\n\n**Tasks**\n- [ ] Test extrude, fillet, chamfer, boolean, shell natively: which source faces map to which result faces\n- [ ] Document operations without usable history\n- [ ] Compare results with materializr's face-lineage approach (topological naming 1.4.0, face lineage through boolean splits 1.5.0)\n\n**Acceptance criteria**\n- [ ] Table of operations vs history quality\n- [ ] Go/no-go for history-based propagation\n\n**Depends on:** WC-EC-10\n\n**Agent brief** (suitability C - human-led: the agent only gathers evidence, runs experiments and drafts the write-up; a human decides.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.\n- Do not make the decision yourself: present options, evidence and a recommendation.",
+      "priority": "high",
+      "labels": [
+        "spike",
+        "topology",
+        "phase-5",
+        "agent-c"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-10"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "C"
+    },
+    {
+      "id": "WC-EC-42",
+      "name": "[WC-EC-42] Persistent face/edge ids",
+      "description": "**Goal:** Stable ids that survive upstream edits.\n\n**Tasks**\n- [ ] Assign ids at creation (creating feature id + role, e.g. sidewall of sketch entity E2, cap-start)\n- [ ] Propagate through ops using history; split faces get child ids; deleted become unresolved\n- [ ] Store id table per feature step\n- [ ] Read how materializr passes face identity from push/pull to downstream fillets/chamfers and how boolean-seam edges follow upstream sketch edits; adopt or adapt the design (license permitting)\n\n**Acceptance criteria**\n- [ ] Edit upstream sketch dimension: downstream fillet still targets same face\n- [ ] Ids deterministic across rebuilds\n\n**Depends on:** WC-EC-41\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "topology",
+        "engine",
+        "phase-5",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-41"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-43",
+      "name": "[WC-EC-43] Replace index references; geometric-signature fallback",
+      "description": "**Goal:** FeatureNode currently stores edgeIndex / faceIndices; topologicalReference (GeometricSignature) is declared but unused.\n\n**Tasks**\n- [ ] Migrate Fillet, Chamfer, Shell, Draft features to persistent refs\n- [ ] Fallback matching by centroid/normal/area/faceType with scoring\n- [ ] Per-feature status: ok / reference repaired / reference lost with UI to re-pick\n- [ ] Migration for existing documents\n\n**Acceptance criteria**\n- [ ] Lost reference yields visible error, never a silent wrong target\n- [ ] Existing documents open and migrate\n\n**Depends on:** WC-EC-42\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "topology",
+        "engine",
+        "phase-5",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-42"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-44",
+      "name": "[WC-EC-44] Document-level feature graph and partial rebuild",
+      "description": "**Goal:** Today Solid3DReevaluator replays per solid from the primitive each time.\n\n**Tasks**\n- [ ] Document-wide dependency DAG (sketch -> extrude -> fillet ...)\n- [ ] Dirty propagation; rebuild from first dirty feature\n- [ ] Per-feature status and suppression; rollback bar\n\n**Acceptance criteria**\n- [ ] Editing a late feature does not recompute earlier ones (measure)\n- [ ] Cycles rejected\n\n**Depends on:** WC-EC-42\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "engine",
+        "architecture",
+        "phase-5",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-42"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-45",
+      "name": "[WC-EC-45] Per-step shape cache keyed by feature-chain hash",
+      "description": "**Goal:** Rebuild results are cacheable and always rebuildable from the definition.\n\n**Tasks**\n- [ ] Cache key = hash(feature chain up to step + params)\n- [ ] In-memory LRU, then MinIO (B-rep content hashes from the native kernel)\n- [ ] Invalidate correctly on edits\n\n**Acceptance criteria**\n- [ ] Repeated open of same version skips rebuild\n- [ ] Cache hit rate metric\n\n**Depends on:** WC-EC-44\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "engine",
+        "performance",
+        "phase-5",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-44"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-46",
+      "name": "[WC-EC-46] Command registry and enforced layering for the engine core",
+      "description": "**Goal:** Adopt the pattern SolidCraft uses: every operation is a command in one registry, and the same commands are reachable from UI, WebSocket, headless CLI/scripts and tests; layers are enforced by tooling.\n\n**Tasks**\n- [ ] Command registry: id, parameter schema, validation, undo/inverse, result shape; no operation reachable except through the registry\n- [ ] One session object per document; transports (WebSocket, CLI, test harness) only call the registry\n- [ ] JSON script runner: a script is a list of commands, used for headless tests, benchmarks and the parity harness\n- [ ] Define layers (geometry/kernel, feature timeline and parameters, I/O, engine/registry, transports/UI) and enforce dependency direction in CI (dependency-cruiser/eslint boundaries for TS, CMake target checks or equivalent for the kernel)\n- [ ] Document the layer rules and the check in the repo\n\n**Acceptance criteria**\n- [ ] All existing operations callable only via the registry\n- [ ] CI fails when a lower layer imports an upper one\n- [ ] A recorded JSON script reproduces a document headlessly\n\n**Depends on:** WC-EC-44\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "engine",
+        "architecture",
+        "phase-5",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-44"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-47",
+      "name": "[WC-EC-47] Command API (AddFeature / EditFeature / Suppress / Reorder)",
+      "description": "**Goal:** Client sends commands against a base version instead of imperative kernel calls.\n\n**Tasks**\n- [ ] Command schema incl. featureId, inputs, params, refs, baseVersion\n- [ ] Server validates, applies, rebuilds, returns version + per-feature status + meshes\n- [ ] Reject stale baseVersion with a clear conflict response\n\n**Acceptance criteria**\n- [ ] Client UI can create and edit features through commands only\n- [ ] Kernel calls no longer made directly by UI\n\n**Depends on:** WC-EC-27, WC-EC-44, WC-EC-46\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "engine",
+        "protocol",
+        "phase-5",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-27",
+        "WC-EC-44",
+        "WC-EC-46"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-48",
+      "name": "[WC-EC-48] Operation log and microversions in Postgres",
+      "description": "**Goal:** Definition stored as immutable versions {parent, author, change}; regeneration results are derived.\n\n**Tasks**\n- [ ] Append-only log table; periodic snapshots\n- [ ] Changes keyed by feature id so they can apply to a different parent version\n- [ ] Named versions and branches (later)\n\n**Acceptance criteria**\n- [ ] Any version reproducible by replay\n- [ ] Snapshot restore equals replay result\n\n**Depends on:** WC-EC-47\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "backend",
+        "versioning",
+        "phase-5",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-47"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-49",
+      "name": "[WC-EC-49] Document actor: serial queue, worker affinity, viewer broadcast",
+      "description": "**Goal:** One serial queue per document; workers keyed by document, not connection.\n\n**Tasks**\n- [ ] Document actor owning queue and worker\n- [ ] Multiple clients share one kernel\n- [ ] Broadcast new versions to viewers\n- [ ] Single-writer lock in stage 1\n\n**Acceptance criteria**\n- [ ] Second client sees edits live\n- [ ] Concurrent edit attempt by non-holder is rejected cleanly\n\n**Depends on:** WC-EC-47\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "engine",
+        "collab",
+        "phase-5",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-47"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-50",
+      "name": "[WC-EC-50] Server-side sketch re-solve",
+      "description": "**Goal:** Sketch definition (entities + constraints) stored in the document; server re-solves authoritatively; client keeps its own solver for interactive drag.\n\n**Tasks**\n- [ ] Verify solver runs in Node (SketchModel/System/Solver have no DOM/three refs; check constraints/ and GCSBridge.ts)\n- [ ] Run SketchModel.deserialize + System.solve in rebuild\n- [ ] Return solved result to client when it disagrees\n- [ ] Evaluate reusing a C++ sketch constraint solver (materializr has one) vs running the existing TypeScript solver in Node; decide and record\n- [ ] Also evaluate SolidCraft's sketch crate (own constraint solver, Rust) as a third option next to the TypeScript solver and the materializr C++ solver\n\n**Acceptance criteria**\n- [ ] Server rebuild without a browser reproduces client sketches\n- [ ] Disagreement path tested\n\n**Depends on:** WC-EC-44\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "engine",
+        "sketch",
+        "phase-5",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-44"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-51",
+      "name": "[WC-EC-51] Per-user undo/redo as inverse changes",
+      "description": "**Goal:** Undo must work with multiple editors: inverse of my last change, not rollback to previous version.\n\n**Tasks**\n- [ ] Inverse change generation per command type\n- [ ] Undo/redo stacks per user per document\n\n**Acceptance criteria**\n- [ ] Two users editing: undo only reverts own change\n\n**Depends on:** WC-EC-47\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "engine",
+        "versioning",
+        "phase-5",
+        "agent-b"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-47"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-EC-52",
+      "name": "[WC-EC-52] Concurrent writers with rebase (stage 2)",
+      "description": "**Goal:** Replace single-writer lock with changes that rebase onto newer versions.\n\n**Tasks**\n- [ ] Rebase rules per command type\n- [ ] Conflict surfacing in UI\n\n**Acceptance criteria**\n- [ ] Two users edit different features simultaneously without loss\n\n**Depends on:** WC-EC-48, WC-EC-49\n\n**Agent brief** (suitability C - human-led: the agent only gathers evidence, runs experiments and drafts the write-up; a human decides.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.\n- Do not make the decision yourself: present options, evidence and a recommendation.",
+      "priority": "low",
+      "labels": [
+        "collab",
+        "versioning",
+        "phase-5",
+        "agent-c"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-48",
+        "WC-EC-49"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "C"
+    },
+    {
+      "id": "WC-EC-53",
+      "name": "[WC-EC-53] Assembly model (backlog)",
+      "description": "**Goal:** Assemblies referencing Part Studios as stable version snapshots.\n\n**Tasks**\n- [ ] Design only: references, mates, versioned part references\n\n**Acceptance criteria**\n- [ ] Design note reviewed\n\n**Depends on:** WC-EC-47\n\n**Agent brief** (suitability C - human-led: the agent only gathers evidence, runs experiments and drafts the write-up; a human decides.)\n- Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).\n- Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.\n- Do not make the decision yourself: present options, evidence and a recommendation.",
+      "priority": "low",
+      "labels": [
+        "engine",
+        "assembly",
+        "phase-5",
+        "agent-c"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-47"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core",
+      "agent_suitability": "C"
+    }
+  ]
+}

@@ -789,6 +789,9 @@
 
 - `CMakeLists.txt` — Kernel C++ build: OCCT 7.9.3 toolkits, protobuf, gRPC; kernel_worker target (~1300 tok)
 - `Dockerfile.kernel` — Multi-stage OCCT 7.9.3 build image + kernel worker; `OCCT_VERSION` build arg (~1300 tok)
+- `Dockerfile.kernel.conda` — Conda-forge based kernel image using prebuilt OCCT 7.9.3 novtk via micromamba; faster cold build (~2-3 min vs 15-20 min from source) and smaller image (~0.5-0.7 GB vs ~1.2 GB) (~700 tok)
+- `environment.yml` — Conda-forge environment spec: OCCT 7.9.3 novtk, protobuf-cpp, grpc-cpp, abseil-cpp, cmake, ninja, ccache, mold, lld (~100 tok)
+- `environment.lock.yml` — conda-lock pinned build strings for reproducible builds (~300 tok)
 - `assets/fonts/FONT-CREDITS.md` — Font license & attribution for browser-served fonts from public/fonts/; materializr fonts NOT bundled (~900 tok)
 
 ## src/

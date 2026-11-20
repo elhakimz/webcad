@@ -141,6 +141,14 @@ WebCAD supports two engine transport modes, selected via config:
 - **Ordering**: commands are applied per-session in `client_seq` order; `request_id` dedupe prevents double execution
 - **Large payloads**: results over 4 MiB are streamed via `StreamResult`; uploads over 4 MiB use chunked `UploadChunk`
 
+### Native OCCT kernel (kernel-worker)
+
+The native C++ kernel (`src/core/gateway/kernel-worker.cpp`) wraps OCCT 7.9.3 behind a gRPC `Kernel.Execute` service over a Unix domain socket.
+
+**OCCT 7.9.3 note:** `BRepPrimAPI_MakeBox`'s constructor does **not** call `Build()` internally. You must call `box.Build()` explicitly after construction before `IsDone()` returns `true`. This applies to all `BRepPrimAPI_*` primitives in OCCT 7.9.3.
+
+See `docs/superpowers/specs/` for kernel build-speed design, dependency triage, and binary OCCT evaluation specs.
+
 ## 🛠️ Installation & Usage
 
 ## 📍 Roadmap Priorities

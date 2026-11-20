@@ -231,3 +231,35 @@ target_link_libraries(codec_test PRIVATE
 # Enable testing so `ctest` can discover codec_test
 include(CTest)
 add_test(NAME codec_test COMMAND codec_test WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+# =====================================================================
+# kernel_worker_test target — unit tests for kernel worker ops
+# =====================================================================
+add_executable(kernel_worker_test
+  tests/kernel_worker_test.cpp
+  ${PROTO_SRCS}
+  ${PROTO_HDRS}
+)
+
+target_include_directories(kernel_worker_test PRIVATE
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${GTEST_INCLUDE_DIR}
+  /usr/local/include
+  ${OCCT_INCLUDE_DIR}
+  ${GRPCPP_INCLUDE_DIR}
+  ${GRPC_INCLUDE_DIR}
+)
+
+target_link_libraries(kernel_worker_test PRIVATE
+  ${TKERNEL_LIB} ${TKMATH_LIB} ${TKBREP_LIB}
+  ${TKGEOMBASE_LIB} ${TKGEOMALGO_LIB} ${TKTOPALGO_LIB}
+  ${TKPRIM_LIB} ${TKBOOL_LIB} ${TKBO_LIB}
+  ${TKFILLET_LIB} ${TKOFFSET_LIB} ${TKSHEALING_LIB}
+  ${TKMESH_LIB} ${TKBIN_LIB} ${TKDESTEP_LIB} ${TKDEIGES_LIB} ${TKXSBASE_LIB}
+  ${GTEST_LIB}
+  ${GTEST_MAIN_LIB}
+  ${PROTO_LIB}
+  ${GRPCPP_LIBRARY} ${GRPC_LIBRARY}
+)
+
+add_test(NAME kernel_worker_test COMMAND kernel_worker_test WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})

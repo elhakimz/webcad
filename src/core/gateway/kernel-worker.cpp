@@ -11,6 +11,35 @@
 #include <sstream>
 #include <cstdlib>
 #include <cctype>
+#include <ctime>
+#include <csignal>
+#include <atomic>
+#include <thread>
+#include <chrono>
+
+// Structured logging: timestamped lines to stderr.
+// Use LOG(INFO) / LOG(ERROR) / LOG(WARN) / LOG(DEBUG) with stream syntax.
+// Controlled by WEBCAD_KERNEL_LOG_LEVEL env var (default: INFO).
+enum LogLevel { kLogDebug, kLogInfo, kLogWarn, kLogError };
+static LogLevel g_logLevel = kLogInfo;
+static std::atomic<bool> g_shutdownRequested{false};
+
+static const char* LevelName(LogLevel l) {
+  switch (l) {
+    case kLogDebug: return "DEBUG";
+    case kLogInfo:  return "INFO";
+    case kLogWarn:  return "WARN";
+    case kLogError: return "ERROR";
+    default:        return "UNKNOWN";
+  }
+}
+
+#define LOG(level) \
+  if (level < g_logLevel) ; \
+  else std::cerr << "[" << LevelName(static_cast<LogLevel>(level)) \
+                 << "] " << __FILE__ << ":" << __LINE__ << " "
+
+static bool ShouldLog(LogLevel level) { return level >= g_logLevel; }
 
 // Generated C++ protobuf/gRPC stubs from engine.proto (protoc --cpp_out / grpc_cpp_plugin)
 #include "webcad/engine/v1/engine.grpc.pb.h"
@@ -93,6 +122,17 @@ using webcad::engine::v1::HealthResponse;
 // TopoDS_Shape is stored by value (it is a lightweight handle-like OCCT class,
 // not a Standard_Transient subclass, so opencascade::handle<> does not apply).
 static std::unordered_map<std::string, TopoDS_Shape> g_shapeCache;
+
+static void InitLogLevel() {
+  const char* env = std::getenv("WEBCAD_KERNEL_LOG_LEVEL");
+  if (env) {
+    std::string s(env);
+    if (s == "DEBUG") g_logLevel = kLogDebug;
+    else if (s == "WARN") g_logLevel = kLogWarn;
+    else if (s == "ERROR") g_logLevel = kLogError;
+    else g_logLevel = kLogInfo;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Minimal JSON utilities for CLI mode (no external JSON dependency)
@@ -363,6 +403,30 @@ static OpResult OpStepExport(const std::string& entityId) {
   return r;
 }
 
+static OpResult OpReleaseShapes(const std::vector<std::string>& entityIds) {
+  OpResult r;
+  r.ok = true;
+  int released = 0;
+  int notFound = 0;
+  for (const auto& id : entityIds) {
+    auto it = g_shapeCache.find(id);
+    if (it == g_shapeCache.end()) {
+      notFound++;
+      continue;
+    }
+    g_shapeCache.erase(it);
+    released++;
+  }
+  if (notFound > 0) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
+    r.message = "Released " + std::to_string(released) + " shape(s); "
+                + std::to_string(notFound) + " not found";
+  } else {
+    r.message = "Released " + std::to_string(released) + " shape(s)";
+  }
+  return r;
+}
+
 // CLI mode: read JSON commands from stdin, write JSON responses to stdout.
 // Each line is one command: {"op": "create_box", ...}
 // Response: {"ok": true, "shape_id": "..."} or {"ok": false, "code": N, "message": "..."}
@@ -434,6 +498,27 @@ static void RunCliMode() {
         std::cout << "{\"ok\": false, \"code\": " << r.code
                   << ", \"message\": \"" << JsonEscape(r.message) << "\", \"op\": \"step_export\"}\n";
       }
+    } else if (op == "release_shapes") {
+      // Parse JSON array of entity_ids: ["shape_1", "shape_2"]
+      std::vector<std::string> ids;
+      size_t pos = 0;
+      while (pos < line.size()) {
+        pos = line.find('"', pos);
+        if (pos == std::string::npos) break;
+        ++pos;
+        size_t end = line.find('"', pos);
+        if (end == std::string::npos) break;
+        ids.push_back(line.substr(pos, end - pos));
+        pos = end + 1;
+      }
+      auto r = OpReleaseShapes(ids);
+      if (r.ok) {
+        std::cout << "{\"ok\": true, \"message\": \"" << JsonEscape(r.message)
+                  << "\", \"op\": \"release_shapes\"}\n";
+      } else {
+        std::cout << "{\"ok\": false, \"code\": " << r.code
+                  << ", \"message\": \"" << JsonEscape(r.message) << "\", \"op\": \"release_shapes\"}\n";
+      }
     } else if (op == "health") {
       std::cout << "{\"ok\": true, \"op\": \"health\", \"status\": \"serving\"}\n";
     } else {
@@ -460,6 +545,8 @@ class KernelServiceImpl final : public KernelService::Service {
           return HandleExportBRep(request, response);
         case ExecuteRequest::kStepExport:
           return HandleStepExport(request, response);
+        case ExecuteRequest::kReleaseShapes:
+          return HandleReleaseShapes(request, response);
         default:
           return SetFailure(response, ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER,
                             "Unknown or missing operation");
@@ -604,8 +691,29 @@ class KernelServiceImpl final : public KernelService::Service {
 
     return Status::OK;
   }
+
+  Status HandleReleaseShapes(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->release_shapes();
+    std::vector<std::string> entityIds;
+    entityIds.reserve(op.entity_ids_size());
+    for (int i = 0; i < op.entity_ids_size(); ++i) {
+      entityIds.push_back(op.entity_ids(i));
+    }
+
+    auto r = OpReleaseShapes(entityIds);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id("");
+    LOG(kLogInfo) << "release_shapes: " << r.message << std::endl;
+
+    return Status::OK;
+  }
 };
 
+#ifndef SKIP_MAIN
 int main(int argc, char** argv) {
   bool cliMode = false;
   std::string server_address("unix:///tmp/webcad-kernel.sock");
@@ -623,12 +731,15 @@ int main(int argc, char** argv) {
     }
   }
 
-  if (cliMode) {
-    // JSON-over-stdio CLI mode: read commands from stdin, write responses to stdout.
-    // Used for development, debugging, and parity testing without the gateway/gRPC stack.
-    RunCliMode();
-    return 0;
-  }
+    InitLogLevel();
+    LOG(kLogInfo) << "Kernel worker starting" << std::endl;
+
+    if (cliMode) {
+      // JSON-over-stdio CLI mode: read commands from stdin, write responses to stdout.
+      // Used for development, debugging, and parity testing without the gateway/gRPC stack.
+      RunCliMode();
+      return 0;
+    }
 
   KernelServiceImpl service;
 
@@ -639,6 +750,19 @@ int main(int argc, char** argv) {
   std::unique_ptr<Server> server(builder.BuildAndStart());
   std::cout << "[Kernel] Listening on " << server_address << std::endl;
 
-  server->Wait();
+  // Graceful shutdown on SIGINT/SIGTERM
+  std::signal(SIGINT, [](int) { g_shutdownRequested.store(true); });
+  std::signal(SIGTERM, [](int) { g_shutdownRequested.store(true); });
+
+  // Blocking wait in a thread; main thread polls shutdown flag.
+  std::thread waitThread([&]() { server->Wait(); });
+  while (!g_shutdownRequested.load()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  LOG(kLogInfo) << "Shutdown requested, stopping gRPC server..." << std::endl;
+  server->Shutdown();
+  waitThread.join();
+  LOG(kLogInfo) << "gRPC server stopped gracefully" << std::endl;
   return 0;
 }
+#endif  // SKIP_MAIN

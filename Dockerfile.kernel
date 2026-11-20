@@ -1,0 +1,42 @@
+ARG OCCT_VERSION=V7_9_3
+
+# Stage 1: Build dependencies
+FROM ubuntu:22.04 AS deps
+ARG OCCT_VERSION
+RUN apt-get update && apt-get install -y \
+  build-essential cmake git freeglut3-dev libx11-dev \
+  libxext-dev libxft-dev libxmu-dev libxpm-dev libxrandr-dev \
+  libglew-dev libfreetype6-dev libfontconfig1-dev \
+  libglu1-mesa-dev libxcursor-dev libxi-dev libxt-dev \
+  protobuf-compiler libprotobuf-dev libgrpc-dev libgrpc++-dev protobuf-compiler-grpc \
+  && rm -rf /var/lib/apt/lists/*
+
+# Stage 2: Build OCCT 7.9.3
+FROM deps AS occt
+ARG OCCT_VERSION
+WORKDIR /occt
+RUN git config --global http.sslVerify false && \
+  git clone --branch V7_9_3 --depth 1 https://github.com/Open-Cascade-SAS/OCCT.git /occt-src \
+  && mkdir build && cd build \
+  && cmake /occt-src -DCMAKE_BUILD_TYPE=Release -DBUILD_MODULE_ApplicationFramework=ON \
+    -DBUILD_MODULE_DataExchange=ON -DBUILD_MODULE_FoundationClasses=ON \
+    -DBUILD_MODULE_ModelingAlgorithms=ON -DBUILD_MODULE_ModelingData=ON \
+    -DBUILD_MODULE_Presentation=OFF -DBUILD_MODULE_Visualization=OFF \
+    -DBUILD_MODULE_ViewerFramework=OFF -DBUILD_MODULE_Draw=OFF \
+  && make -j$(nproc) && make install \
+  && echo "/usr/local/lib" > /etc/ld.so.conf.d/occt.conf && ldconfig \
+  # Remove OCCT source and build artifacts to reduce image size \
+  && rm -rf /occt-src /occt/build
+
+# Stage 3: Kernel worker
+FROM occt AS kernel
+WORKDIR /kernel
+COPY CMakeLists.txt ./
+COPY proto/ ./proto/
+COPY src/core/gateway/ ./src/core/gateway/
+RUN find /usr/local/include -name "TKernel.hxx" -o -name "Standard_Failure.hxx" -o -name "Standard_Exception.hxx" -o -name "TopoDS_Shape.hxx" -o -name "gp_Pnt.hxx" -o -name "TKBRep.hxx" -o -name "BRepPrimAPI_MakeBox.hxx" -o -name "BRepMesh_IncrementalMesh.hxx" 2>/dev/null | sort
+RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/usr/lib/x86_64-linux-gnu/cmake && cmake --build build -j$(nproc) \
+  # Move binary to workdir root and remove build artifacts to reduce image size \
+  && cp build/kernel_worker ./kernel_worker && rm -rf build
+
+CMD ["./kernel_worker"]

@@ -1,64 +1,17 @@
 import { createServer } from 'node:http';
 import { connectNodeAdapter } from '@connectrpc/connect-node';
-import { EngineGatewayService, KernelService } from '../../generated/proto/webcad/engine/v1/engine_connect.js';
+import { EngineGatewayService, KernelService } from '../../generated/proto/webcad/engine/v1/engine_pb.js';
 import { sessionManager } from './session-manager.js';
 import { dedupeCache } from './dedupe.js';
 import { ordererRegistry } from './ordering.js';
-import type { DescService, DescMethod } from '@bufbuild/protobuf';
 import { CommandRegistry } from './command-registry.js';
 import { BoxCommand } from './commands/box.js';
 
 export const commandRegistry = new CommandRegistry();
 commandRegistry.register(BoxCommand);
 
-/**
- * Convert a v1.x connect-es generated service object to a DescService-compatible
- * shape for @connectrpc/connect v2.x router.service().
- * The v1.x codegen produces `methods` as a keyed object without `localName`;
- * DescService requires `methods` as an array with `localName` on each entry.
- */
-function toDescService(svc: {
-  typeName: string;
-  methods: Record<string, { name: string; I: unknown; O: unknown; kind: unknown }>;
-}): DescService {
-  const entries = Object.entries(svc.methods);
-
-  const methodsArray: DescMethod[] = entries.map(([localName, m]) => ({
-    kind: "rpc",
-    name: m.name,
-    localName,
-    parent: undefined as unknown as DescService,
-    methodKind: (m.kind as any) === 1 ? "unary" : "server_streaming",
-    input: m.I as any,
-    output: m.O as any,
-    idempotency: 0,
-    deprecated: false,
-    proto: undefined as any,
-    toString: () => localName,
-  })) as DescMethod[];
-
-  const service: DescService = {
-    kind: "service",
-    typeName: svc.typeName,
-    name: svc.typeName.split(".").pop() ?? svc.typeName,
-    file: undefined as any,
-    methods: methodsArray,
-    method: Object.fromEntries(methodsArray.map(m => [m.localName, m])),
-    deprecated: false,
-    proto: undefined as any,
-    toString: () => svc.typeName,
-  };
-
-  // parent is readonly on DescMethod, so set it via Object.defineProperty
-  for (const m of methodsArray) {
-    Object.defineProperty(m, 'parent', { value: service, configurable: true });
-  }
-
-  return service;
-}
-
-const EngineGatewayServiceDesc = toDescService(EngineGatewayService as any);
-const KernelServiceDesc = toDescService(KernelService as any);
+const EngineGatewayServiceDesc = EngineGatewayService;
+const KernelServiceDesc = KernelService;
 
 export interface GatewayConfig {
   port?: number;

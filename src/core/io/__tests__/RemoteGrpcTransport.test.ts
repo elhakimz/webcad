@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('@bufbuild/protobuf', () => {
   const fieldList: any[] = [];
   return {
+    create: vi.fn((schema: any, data: any) => ({ ...data })),
     Message: class {
       static runtime: any;
       static typeName: string;
@@ -48,24 +49,52 @@ vi.mock('../../generated/proto/webcad/engine/v1/common_pb.js', () => {
   } as const;
   return {
     ExecutionFailureCode,
-    CommandHeader: class {},
+    CommandHeaderSchema: {},
     MeshData: class {},
     BrepReference: class {},
   };
 });
 
 vi.mock('../../generated/proto/webcad/engine/v1/engine_pb.js', () => ({
-  InitOp: class {}, ClearCacheOp: class {}, ReleaseShapesOp: class {}, CheckValidityOp: class {},
-  ExportBRepOp: class {}, ImportBRepOp: class {}, ExtractFaceProfileOp: class {}, CreateBoxOp: class {},
-  CreateCylinderOp: class {}, CreateSphereOp: class {}, CreateConeOp: class {}, CreateFrustumOp: class {},
-  CreateTorusOp: class {}, CreateWedgeOp: class {}, CreatePyramidOp: class {}, CreatePolyhedronOp: class {},
-  CreateConvexHullOp: class {}, CreateExtrudeOp: class {}, CreateRevolveOp: class {}, CreateCompoundOp: class {},
-  CreateSweepOp: class {}, CreateLoftOp: class {}, CreateBooleanOp: class {}, MultMatrixShapeOp: class {},
-  TransformShapeOp: class {}, RotateShapeOp: class {}, MirrorShapeOp: class {}, ScaleShapeOp: class {},
-  FilletSolidOp: class {}, ChamferSolidOp: class {}, FilletSolidFaceOp: class {}, ChamferSolidFaceOp: class {},
-  MakeThickSolidOp: class {}, DraftSolidFacesOp: class {},
+  EngineGatewayService: {},
+  OpenSessionRequestSchema: {},
+  CloseSessionRequestSchema: {},
+  ExecuteRequestSchema: {},
   ExecuteResponse: class {},
+  SubscribeRequestSchema: {},
   SessionEvent: class {},
+  ReleaseShapesOpSchema: {},
+  CheckValidityOpSchema: {},
+  ExportBRepOpSchema: {},
+  ImportBRepOpSchema: {},
+  ExtractFaceProfileOpSchema: {},
+  CreateBoxOpSchema: {},
+  CreateCylinderOpSchema: {},
+  CreateSphereOpSchema: {},
+  CreateConeOpSchema: {},
+  CreateFrustumOpSchema: {},
+  CreateTorusOpSchema: {},
+  CreateWedgeOpSchema: {},
+  CreatePyramidOpSchema: {},
+  CreatePolyhedronOpSchema: {},
+  CreateConvexHullOpSchema: {},
+  CreateExtrudeOpSchema: {},
+  CreateRevolveOpSchema: {},
+  CreateCompoundOpSchema: {},
+  CreateSweepOpSchema: {},
+  CreateLoftOpSchema: {},
+  CreateBooleanOpSchema: {},
+  MultMatrixShapeOpSchema: {},
+  TransformShapeOpSchema: {},
+  RotateShapeOpSchema: {},
+  MirrorShapeOpSchema: {},
+  ScaleShapeOpSchema: {},
+  FilletSolidOpSchema: {},
+  ChamferSolidOpSchema: {},
+  FilletSolidFaceOpSchema: {},
+  ChamferSolidFaceOpSchema: {},
+  MakeThickSolidOpSchema: {},
+  DraftSolidFacesOpSchema: {},
 }));
 
 vi.mock('@connectrpc/connect-web', () => ({

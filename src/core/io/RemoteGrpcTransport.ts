@@ -3,8 +3,6 @@ import { createClient } from '@connectrpc/connect';
 import { createConnectTransport } from '@connectrpc/connect-web';
 import {
   EngineGatewayService,
-} from '../../generated/proto/webcad/engine/v1/engine_connect.js';
-import {
   OpenSessionRequest,
   ExecuteRequest,
   ExecuteResponse,
@@ -46,8 +44,6 @@ import {
   DraftSolidFacesOp,
 } from '../../generated/proto/webcad/engine/v1/engine_pb.js';
 import { CommandHeader, MeshData, BrepReference, ExecutionFailureCode } from '../../generated/proto/webcad/engine/v1/common_pb.js';
-
-const EngineGatewayServiceDesc = EngineGatewayService as any;
 
 export interface RemoteGrpcTransportConfig {
   gatewayUrl: string;
@@ -146,7 +142,7 @@ export class RemoteGrpcTransport implements OCCTransport {
     const transport = createConnectTransport({
       baseUrl: this.config.gatewayUrl,
     });
-    this.client = createClient(EngineGatewayServiceDesc, transport);
+    this.client = createClient(EngineGatewayService, transport);
 
     const request: OpenSessionRequest = {
       header: {

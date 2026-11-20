@@ -68,10 +68,6 @@ vi.mock('../../generated/proto/webcad/engine/v1/engine_pb.js', () => ({
   SessionEvent: class {},
 }));
 
-vi.mock('../../generated/proto/webcad/engine/v1/engine_connect.js', () => ({
-  EngineGatewayService: { typeName: 'webcad.engine.v1.EngineGatewayService', methods: {} },
-}));
-
 vi.mock('@connectrpc/connect-web', () => ({
   createConnectTransport: vi.fn(() => ({})),
 }));

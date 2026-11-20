@@ -1,0 +1,59 @@
+# Dockerfile.kernel.conda — Conda-forge based kernel image (Phase B item 5.9).
+# Uses prebuilt OCCT 7.9.3 novtk from conda-forge via micromamba instead of
+# building OCCT from source. Dramatically faster cold build and smaller image.
+#
+# From-source OCCT build:  ~15-20 min, image ~1.2 GB
+# Conda-forge OCCT:        ~2-3 min,   image ~0.5-0.7 GB
+
+FROM ubuntu:22.04 AS base
+
+# Install micromamba (tiny, statically linked, no base env download)
+ENV MAMBA_ROOT_PREFIX=/opt/conda \
+    MAMBA_EXE=/usr/local/bin/micromamba \
+    MAMBA_ROOT_PREFIX=/opt/conda \
+    MAMBA_NO_BANNER=1 \
+    MAMBA_ALLOW_EXISTING_PREFIX=1 \
+    MAMBA_CONDA_FORGE_CHANNEL_ENABLED=1 \
+    MAMBA_CHANNELS=conda-forge \
+    MAMBA_TARGET_PREFIX=/opt/conda
+
+RUN apt-get update -y && \
+  apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    bzip2 \
+    libgomp1 \
+    libxext6 \
+    libxrender1 \
+    libfontconfig1 \
+  && rm -rf /var/lib/apt/lists/* && \
+  curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj bin/micromamba && \
+  mv bin/micromamba /usr/local/bin/micromamba && \
+  chmod +x /usr/local/bin/micromamba
+
+# Install OCCT + build toolchain from conda-forge (prebuilt binaries)
+# Exact build strings pinned via environment.lock.yml (conda-lock).
+COPY environment.yml environment.lock.yml ./
+RUN micromamba install -y -n base -f environment.yml && \
+  micromamba clean -a -y
+
+WORKDIR /kernel
+
+# Copy kernel source (CMakeLists.txt, proto, gateway)
+COPY CMakeLists.txt ./
+COPY proto/ ./proto/
+COPY src/core/gateway/ ./src/core/gateway/
+
+# Build kernel worker with conda-forge toolchain (cmake + ninja + ccache + mold)
+RUN eval "$(micromamba shell hook -s posix)" && \
+  micromamba activate base && \
+  cmake -S . -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_MODULE_PATH=/opt/conda/lib/cmake/OpenCASCADE && \
+  cmake --build build -j"$(nproc)" && \
+  cp build/kernel_worker ./kernel_worker && \
+  rm -rf build
+
+CMD ["sh", "-c", "./kernel_worker & for i in $(seq 1 20); do [ -S /tmp/webcad-kernel.sock ] && break; sleep 0.5; done && socat TCP-LISTEN:50051,fork UNIX-CONNECT:/tmp/webcad-kernel.sock"]

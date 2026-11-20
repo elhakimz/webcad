@@ -3,6 +3,10 @@
 > Chronological action log. Hooks and AI append to this file automatically.
 > Old sessions are consolidated by the daemon weekly.
 
+| HH:MM | description | file(s) | outcome | ~tokens |
+| 2026-11-20 | Completed Phase B item 5.8 CI guardrails workflow and Phase B item 5.9 Binary OCCT evaluation doc | .github/workflows/kernel-build-guardrails.yml, docs/superpowers/plans/2026-11-20-binary-occt-evaluation.md | Done | ~500 |
+| 2026-11-20 | Updated .wolf/anatomy.md with new plan doc entry | .wolf/anatomy.md | Done | ~50 |
+
 | 2026-11-19 | Patched gRPC/Connect transport design doc with 13 final items (PutBlob client streaming, result_id release semantics, WC-EC-33 ref, include_brep moved to requests, Restore repeated items, cancel-by-state, nginx-for-dev, document_id, OpenSession ALREADY_EXISTS, interim O13/O14, missing tests, resolution table rows) | docs/superpowers/specs/2026-10-21-grpc-connect-transport-design.md | Complete | ~4000 |
 
 | 00:50 | Project health check (build/typecheck/tests) | src/** | build OK; 128 src tsc errors (112 app/16 test); 311/312 tests pass, 1 fail + jsdom missing | ~8k |
@@ -269,6 +273,9 @@
 | â€” | Closed #20 and #138 in Plane | Plane | Both Done (converged on the same defect) | ~2k |
 
 **Fix detail:** `HistoryManager` always supported `onSolidBRepRestore` (`:87`, invoked `:139-140` undo / `:210-211` redo) but `Document.undo()`/`redo()` passed `undefined`, making it dead code. Callback now calls `OpenCascadeService.importBRep(id, brep, 0.1/facetres)` â€” same call the existing `rehydrate()` uses â€” fire-and-forget with `.catch()` since the history callback is sync.
+
+| 13:53 | Completed WC-EC tickets 05/08/24/25 in Plane (Done state) and epic doc | docs/epics/WEBCAD-EPIC-EC-v5.md, Plane API | All 4 tickets updated to Done | ~3k |
+| 13:53 | Chunk 4 STEP export complete: ADR-002, StepExportOp proto field 37, HandleStepExport in kernel-worker.cpp, validateStep + step-export.test.ts | docs/adr/002-step-export-ap214.md, proto/engine.proto, kernel-worker.cpp, brep-validation.ts, step-export.test.ts | All pass; not yet committed | ~3k |
 
 **Deliberately did NOT re-tessellate:** the restored entity is a clone of the pre-op solid and already carries its old `positions`/`indices`, so visuals were never wrong â€” only the kernel cache was. Keeps the change minimal and avoids a redundant re-mesh per undo.
 
@@ -584,3 +591,26 @@ Dev servers stopped (5173, 4173). Uncommitted: .wolf/, .claude/, CLAUDE.md, plan
 | 10:52 | Addressed WC-EC-05 open questions Q1/Q4; fixed Document.test.ts redo B-rep restore race (un-awaited async undo/redo); all 477 unit tests pass; updated ADR spec Sections 12-13 and plan open questions table | src/core/model/Document.test.ts, docs/superpowers/specs/2026-11-20-kernel-strategy-adr-design.md, docs/superpowers/plans/2026-11-20-wc-ec-05-kernel-skeleton.md | ~200 |
 
 | 13:37 | Created assets/fonts/FONT-CREDITS.md (font license/attribution doc for public/fonts/); added anatomy.md entry; Chunk 1 of kernel-dependency-implementation-plan.md started | assets/fonts/FONT-CREDITS.md, .wolf/anatomy.md | Chunk 1 complete | ~800 |
+
+| 14:15 | Implemented ImportBRep and ExportBRep in kernel-worker.cpp via OCCT BinTools (Add ImportBRepOp/ExportBRepOp switch cases, 64 MiB size + 0x1a terminator pre-validation, temp file write/read, BrepReference FORMAT_BINARY response; BrepRef import rejected with INVALID_PARAMETER; removed unused kMaxBrepBytes const; added unistd.h) | src/core/gateway/kernel-worker.cpp | Committed as 7c0c72b | ~3k |
+
+| 14:30 | Created tests/unit/kernel/brep-export.test.ts — 5 tests for validateBRep export scenarios (empty, oversized, truncated, valid at terminator, valid at 64MiB limit); all pass | tests/unit/kernel/brep-export.test.ts | Committed as 2bb7ba1 | ~1k |
+
+| 13:43 | Created tests/unit/kernel/brep-export.test.ts with 5 validateBRep export edge-case tests; all pass | tests/unit/kernel/brep-export.test.ts | done | ~50 |
+ 
+ |   1 3 : 4 9   |   I m p l e m e n t e d   H a n d l e S t e p E x p o r t   i n   k e r n e l - w o r k e r . c p p   ( S T E P C o n t r o l _ W r i t e r   A P 2 1 4 ,   S T E P   e x p o r t   o n e o f   f i e l d   3 7 ) ,   a d d e d   v a l i d a t e S t e p   t o   b r e p - v a l i d a t i o n . t s ,   c r e a t e d   s t e p - e x p o r t . t e s t . t s   ( 5   t e s t s ) ;   a l l   t e s t s / t y p e c h e c k / l i n t   p a s s   |   s r c / c o r e / g a t e w a y / k e r n e l - w o r k e r . c p p ,   p r o t o / w e b c a d / e n g i n e / v 1 / e n g i n e . p r o t o ,   s r c / c o r e / i o / b r e p - v a l i d a t i o n . t s ,   t e s t s / u n i t / k e r n e l / s t e p - e x p o r t . t e s t . t s   |   d o n e   |   ~ 5 k   |  
+ | 15:52 | Completed Phase A kernel build speed spec; removed tmp_test_*.cpp debug files; removed debug cerr from kernel-worker.cpp | docs/superpowers/specs/2026-11-20-kernel-build-speed-design.md, src/core/gateway/kernel-worker.cpp | Done | ~500 |
+
+| 16:03 | Added JSON-over-stdio CLI mode to kernel-worker.cpp (--cli flag), refactored 4 handlers (createBox, importBrep, exportBrep, stepExport) to use shared OpResult functions, added OCCT primitive headers (cylinder, sphere, cone, torus, wedge, pyramid, prism, revol, fillet, chamfer, thicksolid, draftangle, wire, edge, face, shell, sewing, adaptor_surface, geom_*, TopExp_Explorer, TopAbs_ShapeEnum, BRepGProp, GProp_GProps) | src/core/gateway/kernel-worker.cpp | Done | ~5k |
+
+| 16:05 | Created handler scaffolding template plan for Phase B item 5.5 (oneof dispatch, payload decoding, OCCT-only handlers, error-handling checklist, 4 existing handlers as examples, step-by-step port guide) | docs/superpowers/plans/2026-11-20-handler-scaffolding-template.md | done | ~2k |
+
+| 16:07 | Created Phase B item 5.6 port workflow plan | docs/superpowers/plans/2026-11-20-port-workflow.md | Written port workflow doc: Python OCP prototype workflow, oracle = parity harness on real C++ kernel, ~15 files/600 lines PR budget, proto op → Python OCP → OpXxx → HandleXxx → switch case → CLI branch → unit tests → parity script → PR, create_cylinder end-to-end example, parity harness runbook; references kernel-worker.cpp, tests/unit/kernel/, engine.proto; 363 lines | done | ~4k |
+
+| 16:13 | Created .devcontainer/devcontainer.json — VS Code/Codespaces dev container config for kernel dev (ubuntu-22.04 base, C++ toolchain, protobuf/gRPC headers, postCreateCommand) | .devcontainer/devcontainer.json | Done | ~300 |
+| 16:13 | Created .devcontainer/post-create.sh — post-create setup: build essentials + kernel deps, best-effort mold install, lld fallback | .devcontainer/post-create.sh | Done | ~200 |
+| 16:13 | Created scripts/verify-kernel.sh — one-command kernel verify: cmake configure/build, ctest, CLI parity subset, pass/fail + timing | scripts/verify-kernel.sh | Done | ~300 |
+| 16:13 | Created docs/superpowers/plans/2026-11-20-dev-environment.md — devcontainer, verify script, sanitizers (asan/ubsan), gdb/lldb debugging docs | docs/superpowers/plans/2026-11-20-dev-environment.md | Done | ~400 |
+| 16:13 | Updated .wolf/anatomy.md with entries for all four new files | .wolf/anatomy.md | Done | ~100 |
+
+| 16:14 | Created CI guardrails workflow for Phase B item 5.8 (kernel build speed): cold build time, stripped binary size, optional Docker image size vs spec section 6 thresholds; ccache save/restore, GITHUB_STEP_SUMMARY pass/fail table, upload-artifact timing results | .github/workflows/kernel-build-guardrails.yml | Done | ~1k |

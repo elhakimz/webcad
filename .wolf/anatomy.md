@@ -71,6 +71,20 @@
 
 - `openwolf.md` (~313 tok)
 
+## .github/workflows/
+
+- `buf.yml` — CI: buf lint + breaking change check on proto/ (~600 tok)
+- `kernel-build-guardrails.yml` — CI guardrails for Phase B kernel build speed item 5.8: cold kernel build time (configure + Ninja), stripped binary size, optional Docker image size vs spec section 6 thresholds (900 s / 100 MB / 1500 MB); ccache cache save/restore, $GITHUB_STEP_SUMMARY pass/fail table, upload-artifact timing results (~2k tok)
+
+## .devcontainer/
+
+- `devcontainer.json` — VS Code / GitHub Codespaces dev container config: ubuntu-22.04 base, C++ toolchain (gcc/g++, cmake, ninja-build, ccache, lld, gdb, lldb), protobuf/gRPC dev headers, postCreateCommand runs post-create.sh (~800 tok)
+- `post-create.sh` — Post-create setup script: installs build essentials + kernel dependencies, best-effort mold install, lld fallback (~1.4k tok)
+
+## scripts/
+
+- `verify-kernel.sh` — One-command kernel verify: cmake configure (Ninja), build kernel_worker, ctest if available, parity subset via kernel-worker --cli, pass/fail + timing report (~2k tok)
+
 ## docs/3d/
 
 - `3d solid snapping, data and type of snap.md` — of: canConnect (~1176 tok)
@@ -756,6 +770,10 @@
 - `2026-11-19-parity-harness.md` — Implementation plan for WC-EC-12 parity harness: WASM worker vs native OCCT kernel comparison with tolerances (~14k tok)
 - `2026-11-20-wc-ec-05-kernel-skeleton.md` — Implementation plan for WC-EC-05 kernel skeleton: native OCCT 7.9.3 kernel worker behind gRPC/UDS, gateway supervisor with process pool, crash recovery (REHYDRATING → Restore → replay), transport integration, E2E verification (~19k tok)
 - `2026-11-20-kernel-dependency-implementation-plan.md` — Implementation plan for dependency triage work: font credits, OCCT image size optimization, B-rep TKBin import/export, STEP/STL export, OCCT license doc, unverified item verification (~15k tok)
+- `2026-11-20-handler-scaffolding-template.md` — Phase B item 5.5 handler scaffolding template: concrete C++ handler pattern (oneof dispatch, payload decoding, OCCT-logic-only OpXxx + HandleXxx, in-band ExecutionFailureCode), per-handler checklist (inputs validated, entityId cache store/release, failure codes, unit tests, parity script), the 4 existing handlers as examples, step-by-step add-a-handler guide (~5k tok)
+- `2026-11-20-port-workflow.md` — Phase B item 5.6 port workflow: Python OCP prototype workflow, parity-harness-as-oracle rule, ~15 files / ~600 lines PR budget, step-by-step port sequence (proto op → Python OCP → OpXxx → HandleXxx → switch case → CLI branch → unit tests → parity script → PR), create_cylinder porting example, harness runbook for Python vs C++ results (~6k tok)
+- `2026-11-20-dev-environment.md` — Dev environment setup for Phase B item 5.7: .devcontainer configuration, verify-kernel.sh usage, sanitizer (asan/ubsan) builds, gdb/lldb debugging (~6k tok)
+- `2026-11-20-binary-occt-evaluation.md` — Phase B item 5.9 Binary OCCT evaluation: conda-forge occt 7.9.3 novtk via micromamba (proposed primary), vcpkg (no OCCT package), Debian/Ubuntu (max 7.6.3, not 7.9.3), from-source occt-base Docker as documented fallback (~11k tok)
 
 ## docs/superpowers/specs/
 
@@ -872,3 +890,9 @@
 - `uat.spec.ts` — UAT — Undo/Redo restores solid B-rep to the geometry kernel (WEBCAD-20 / 138). (~1916 tok)
 - `ui.spec.ts` — App shell + command-line behaviour. (~1672 tok)
 - `visual.spec.ts` — Canvas visual regression (WEBCAD-154) — the fallback, not the primary check. (~603 tok)
+ 
+ # #   t e s t s / u n i t / k e r n e l /  
+ -    r e p - e x p o r t . t e s t . t s      5   t e s t s   f o r   v a l i d a t e B R e p   e x p o r t   s c e n a r i o s   ( e m p t y ,   o v e r s i z e d ,   t r u n c a t e d ,   v a l i d   a t   t e r m i n a t o r ,   v a l i d   a t   6 4 M i B   l i m i t ) ;   a l l   p a s s   ( ~ 4 0 0   t o k )  
+ -    r e p - i m p o r t . t e s t . t s      5   t e s t s   f o r   v a l i d a t e B R e p   i m p o r t   s c e n a r i o s ;   a l l   p a s s   ( ~ 4 0 0   t o k )  
+ -   s t e p - e x p o r t . t e s t . t s      5   t e s t s   f o r   v a l i d a t e S t e p   e x p o r t   s c e n a r i o s   ( e m p t y ,   o v e r s i z e d ,   t r u n c a t e d   S T E P   e n d   m a r k e r ,   v a l i d   t e r m i n a t o r ,   v a l i d   a t   6 4 M i B   l i m i t ) ;   a l l   p a s s   ( ~ 4 0 0   t o k )  
+ 

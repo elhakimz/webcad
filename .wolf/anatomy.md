@@ -40,6 +40,8 @@
 
 ## ./
 
+- `CMakeLists.txt` — Kernel C++ build configuration: OCCT 7.9.3 toolkits, protobuf, gRPC, platform-specific flags (~1300 tok)
+- `Dockerfile.kernel` — Multi-stage Docker build: Ubuntu 22.04 + OCCT 7.9.3 + kernel worker, OCCT_VERSION build arg (~1300 tok)
 - `.gitignore` — Git ignore rules (~47 tok)
 - `AGENTS.md` — AGENTS.md - WebCAD Developer Guide (~346 tok)
 - `CLAUDE.md` — OpenWolf (~57 tok)
@@ -56,6 +58,9 @@
 - `vite.config.ts` — Vite build configuration (~1001 tok)
 - `vitest.config.ts` — Vitest test configuration (~55 tok)
 
+## ./src/core/gateway/
+
+- `kernel-worker.cpp` — OCCT 7.9.3 kernel worker implementing KernelService (Execute over gRPC/UDS), shape cache, CreateBox/ImportBRep handlers (~1300 tok)
 ## .claude/
 
 - `launch.json` (~52 tok)
@@ -749,12 +754,24 @@
 ## docs/superpowers/plans/
 - `2026-11-19-grpc-connect-transport.md` — Implementation plan for gRPC/Connect transport replacement across three PRs (~13k tok)
 - `2026-11-19-parity-harness.md` — Implementation plan for WC-EC-12 parity harness: WASM worker vs native OCCT kernel comparison with tolerances (~14k tok)
+- `2026-11-20-wc-ec-05-kernel-skeleton.md` — Implementation plan for WC-EC-05 kernel skeleton: native OCCT 7.9.3 kernel worker behind gRPC/UDS, gateway supervisor with process pool, crash recovery (REHYDRATING → Restore → replay), transport integration, E2E verification (~19k tok)
+- `2026-11-20-kernel-dependency-implementation-plan.md` — Implementation plan for dependency triage work: font credits, OCCT image size optimization, B-rep TKBin import/export, STEP/STL export, OCCT license doc, unverified item verification (~15k tok)
 
 ## docs/superpowers/specs/
 
 - `2026-10-21-grpc-connect-transport-design.md` — Replacing WebSocket transport with gRPC (kernel link) and Connect (browser link) (~4600 tok)
 - `2026-11-19-grpc-connect-transport.md` — Implementation plan for gRPC/Connect transport replacement across three PRs (~13k tok)
 - `2026-11-19-parity-harness-design.md` — Parity harness: WASM worker vs native OCCT kernel comparison with tolerances (~4000 tok)
+- `2026-11-20-vitest-protobuf-alias-fix-design.md` — Vitest protobuf alias fix design spec (SUPERSEDED by regenerate-protobuf-es-v2-design.md): add resolve.alias to vitest.config.ts via shared vite.aliases.ts module (~4000 tok)
+- `2026-11-20-regenerate-protobuf-es-v2-design.md` — Regenerate protobuf with protoc-gen-es v2 design spec: replace v1 generated code, delete compat shims, remove aliases (~4300 tok)
+- `2026-11-20-kernel-strategy-adr-design.md
+- `2026-11-20-kernel-dependency-triage-spec.md` — Dependency triage & reuse plan for native OCCT kernel using materializr as reference: adopt OCCT in kernel, zlib in gateway (Node built-in), skip ImGui/SDL3/GLEW/pfd/libcurl/GLM, keep nanosvg/fonts in browser; OCCT build flags, export analysis, LGPL license text (~27k tok)` — WC-EC-05 ADR: native OCCT 7.9.3 kernel workers behind gRPC/UDS, WASM fallback kept, SolidCraft waiver recorded (~9000 tok)
+
+## Root
+
+- `CMakeLists.txt` — Kernel C++ build: OCCT 7.9.3 toolkits, protobuf, gRPC; kernel_worker target (~1300 tok)
+- `Dockerfile.kernel` — Multi-stage OCCT 7.9.3 build image + kernel worker; `OCCT_VERSION` build arg (~1300 tok)
+- `assets/fonts/FONT-CREDITS.md` — Font license & attribution for browser-served fonts from public/fonts/; materializr fonts NOT bundled (~900 tok)
 
 ## src/
 
@@ -765,10 +782,7 @@
 
 ## src/compat/
 
-- `protobuf-v1-compat.ts` — Compatibility shim providing @bufbuild/protobuf v1.x API (Message, proto3.util.*) on top of v2.x, so protoc-gen-es v1.x generated code works (~500 tok)
-- `protobuf-v1-compat-wire.ts` — Shim for @bufbuild/protobuf/writ subpath (base64Encode/base64Decode) (~200 tok)
-- `protobuf-v1-compat-wkt.ts` — Shim for @bufbuild/protobuf/wkt subpath (MethodOptions_IdempotencyLevel, file_google_protobuf_any, anyPack) (~250 tok)
-- `protobuf-v1-compat-codegenv2.ts` — Shim for @bufbuild/protobuf/codegenv2 subpath (fileDesc, messageDesc stubs) (~150 tok)
+- (deleted) protobuf-v1-compat shims removed after protobuf v2 migration — all generated code now uses protoc-gen-es v2 output directly (~0 tok)
 
 ## src/core/engine/handlers/
 
@@ -778,17 +792,21 @@
 
 - `OCCWorkerClient.ts` — Requests sent to the worker that have not yet resolved. Used by the test bridge's idle signal. (~3762 tok)
 - `OpenCascadeService.ts` — True once the worker has finished booting. Read-only probe — unlike `client`, never throws. (~4538 tok)
+- `RemoteGrpcTransport.ts` — gRPC transport over Connect; v2 create(Schema, data) API with generated message Schemas (~600 tok)
+- `KernelGrpcTransport.ts` — Stub transport routing OCC operations to native OCCT kernel via gRPC/UDS through KernelSupervisor; methods throw "not yet implemented" pending Chunk 6 wiring (~2560 tok)
 
 ## src/core/gateway/
 
 - `auth.ts` — JWT authenticator with iss/aud claims for Authorization header validation (~230 tok)
 - `command-registry.ts` — CommandRegistry: register/get/list/validate commands + CommandImplementation interface (~330 tok)
 - `command-registry.test.ts` — 9 unit tests for CommandRegistry (~240 tok)
-- `connect-server.ts` — Connect server handler for EngineGatewayService; uses createConnectRouter with toDescService wrapper (~860 tok)
+- `connect-server.ts` — Connect server handler for EngineGatewayService; uses createConnectRouter with v2 GenService from engine_pb.ts (~860 tok)
 - `commands/box.ts` — BoxCommand: create_box pilot command server implementation (~600 tok)
 - `commands/box.test.ts` — 5 unit tests for BoxCommand (~320 tok)
 - `dedupe.ts` — Dedupe cache: request_id → status + result reference, TTL, size cap (~290 tok)
 - `kernel-client.ts` — gRPC client for KernelService (gateway→kernel) (~290 tok)
+- `kernel-supervisor.ts` — Node kernel process supervisor: spawn/pool/respawn/crash recovery, one kernel per session, spare pool, health check (~8300 tok)
+- `kernel-worker.cpp` — C++ gRPC server skeleton: Kernel.Execute with OCCT 7.9.3, BRepPrimAPI_MakeBox, BRepMesh_IncrementalMesh, B-rep pre-validation, in-band ExecuteFailure codes (~7500 tok)
 - `mock-kernel.ts` — Mock gRPC kernel server implementing KernelService for testing (~240 tok)
 - `ordering.ts` — Per-session reorder buffer (client_seq), cancel queued semantics (~380 tok)
 - `session-manager.ts` — Session lifecycle management with OpenSession/CloseSession (~380 tok)
@@ -819,6 +837,11 @@
 
 - `TestBridge.ts` — In-app test bridge (WEBCAD-156). (~11189 tok)
 
+## src/generated/
+
+- `proto/webcad/engine/v1/common_pb.ts` — Regenerated with protoc-gen-es v2; message Schema constants (CommandHeaderSchema, etc.) (~600 tok)
+- `proto/webcad/engine/v1/engine_pb.ts` — Regenerated with protoc-gen-es v2; message Schemas + GenService for EngineGatewayService (~600 tok)
+
 ## src/ui/
 
 - `FileToolWindow.ts` — Exports FileToolWindow (~3421 tok)
@@ -841,6 +864,7 @@
 - `grip_edit.spec.ts` — Selection, modify commands, grip editing and undo. (~1458 tok)
 - `helpers.ts` — Shared helpers for the WebCAD e2e suite. (~2900 tok)
 - `README.md` — Project documentation (~1927 tok)
+- `kernel-roundtrip.spec.ts` — E2E test stub for kernel round-trip via Connect, crash recovery (skipped until native OCCT kernel binary built) (~600 tok)
 - `renderer.spec.ts` — Which backend is actually drawing (WEBCAD-170). (~534 tok)
 - `selection.spec.ts` — Selection through the test bridge (WEBCAD-150), plus the one case that has to go (~1308 tok)
 - `snap.spec.ts` — Object snap and the drafting aids (WEBCAD-153). (~747 tok)

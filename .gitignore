@@ -17,3 +17,6 @@ files/
 
 # Plane.so API token — never commit
 plane-secret-key.csv
+
+# OpenWolf context data — do not commit
+.wolf/

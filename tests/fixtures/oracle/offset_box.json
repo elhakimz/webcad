@@ -1,0 +1,30 @@
+{
+  "id": "offset_box",
+  "name": "Offset Box (10x10x10 at 5,10,15)",
+  "description": "Axis-aligned box offset from origin",
+  "script": {
+    "name": "create_box_10x10x10_offset",
+    "tolerances": { "volume": 1e-4, "surface": 1e-4, "bbox": 1e-3, "counts": 0 },
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 5, "y": 10, "z": 15,
+          "dx": 10, "dy": 10, "dz": 10,
+          "deflection": 0.1,
+          "entity_id": "box_target"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 1000.0,
+    "surfaceArea": 600.0,
+    "bbox": { "min": [5.0, 10.0, 15.0], "max": [15.0, 20.0, 25.0] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": { "volume": 1e-4, "surface": 1e-4, "bbox": 1e-3, "counts": 0 }
+}

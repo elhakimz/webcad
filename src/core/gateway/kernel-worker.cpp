@@ -77,6 +77,8 @@ static bool ShouldLog(LogLevel level) { return level >= g_logLevel; }
 #include <opencascade/Geom_BezierSurface.hxx>
 #include <opencascade/Geom_BSplineSurface.hxx>
 #include <opencascade/TopExp_Explorer.hxx>
+#include <opencascade/TopExp.hxx>
+#include <opencascade/TopTools_IndexedMapOfShape.hxx>
 #include <opencascade/TopAbs_ShapeEnum.hxx>
 #include <opencascade/BRepGProp.hxx>
 #include <opencascade/GProp_GProps.hxx>
@@ -465,14 +467,14 @@ static void ComputeShapeMetrics(const TopoDS_Shape& shape,
   }
 
   // 4. Topology counts
-  uint32_t faces = 0, edges = 0, vertices = 0;
-  for (TopExp_Explorer exp(shape, TopAbs_FACE); exp.More(); exp.Next()) faces++;
-  for (TopExp_Explorer exp(shape, TopAbs_EDGE); exp.More(); exp.Next()) edges++;
-  for (TopExp_Explorer exp(shape, TopAbs_VERTEX); exp.More(); exp.Next()) vertices++;
+  TopTools_IndexedMapOfShape fMap, eMap, vMap;
+  TopExp::MapShapes(shape, TopAbs_FACE, fMap);
+  TopExp::MapShapes(shape, TopAbs_EDGE, eMap);
+  TopExp::MapShapes(shape, TopAbs_VERTEX, vMap);
 
-  metrics->set_face_count(faces);
-  metrics->set_edge_count(edges);
-  metrics->set_vertex_count(vertices);
+  metrics->set_face_count(static_cast<uint32_t>(fMap.Extent()));
+  metrics->set_edge_count(static_cast<uint32_t>(eMap.Extent()));
+  metrics->set_vertex_count(static_cast<uint32_t>(vMap.Extent()));
 
   // 5. Validity
   BRepCheck_Analyzer analyzer(shape);

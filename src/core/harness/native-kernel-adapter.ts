@@ -3,7 +3,8 @@ import protoLoader from '@grpc/proto-loader';
 import * as path from 'node:path';
 import { KernelAdapter, Script, KernelResult, KernelMetric } from './kernel-adapter';
 
-const PROTO_PATH = path.resolve(process.cwd(), 'proto/webcad/engine/v1/engine.proto');
+const PROTO_ROOT = path.resolve(process.cwd(), 'proto');
+const PROTO_PATH = path.resolve(PROTO_ROOT, 'webcad/engine/v1/engine.proto');
 
 export class NativeKernelAdapter implements KernelAdapter {
   readonly name = 'native';
@@ -21,6 +22,7 @@ export class NativeKernelAdapter implements KernelAdapter {
       enums: String,
       defaults: true,
       oneofs: true,
+      includeDirs: [PROTO_ROOT],
     });
 
     const grpcObject = (grpc as unknown as { loadPackageDefinition: (def: any) => any }).loadPackageDefinition(packageDefinition);

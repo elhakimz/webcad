@@ -1,0 +1,30 @@
+{
+  "id": "rectangular_box",
+  "name": "Rectangular Box (10x20x30)",
+  "description": "Axis-aligned box at origin",
+  "script": {
+    "name": "create_box_10x20x30",
+    "tolerances": { "volume": 1e-4, "surface": 1e-4, "bbox": 1e-3, "counts": 0 },
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 10, "dy": 20, "dz": 30,
+          "deflection": 0.1,
+          "entity_id": "box_target"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 6000.0,
+    "surfaceArea": 2200.0,
+    "bbox": { "min": [0.0, 0.0, 0.0], "max": [10.0, 20.0, 30.0] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": { "volume": 1e-4, "surface": 1e-4, "bbox": 1e-3, "counts": 0 }
+}

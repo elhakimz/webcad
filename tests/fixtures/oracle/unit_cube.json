@@ -1,0 +1,30 @@
+{
+  "id": "unit_cube",
+  "name": "Unit Cube (1x1x1)",
+  "description": "Axis-aligned unit cube at origin",
+  "script": {
+    "name": "create_box_1x1x1",
+    "tolerances": { "volume": 1e-4, "surface": 1e-4, "bbox": 1e-3, "counts": 0 },
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 1, "dy": 1, "dz": 1,
+          "deflection": 0.1,
+          "entity_id": "box_target"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 1.0,
+    "surfaceArea": 6.0,
+    "bbox": { "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 1.0] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": { "volume": 1e-4, "surface": 1e-4, "bbox": 1e-3, "counts": 0 }
+}

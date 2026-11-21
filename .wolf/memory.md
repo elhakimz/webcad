@@ -60,6 +60,12 @@
 | 02:02 | Created plans/rendering_roadmap.md | â€” | ~1929 |
 | 03:00 | Wrote rendering roadmap (AA/IBL/GTAO vs WebGPU) | plans/rendering_roadmap.md | 6-phase plan sequencing visual wins against three upgrade + WebGPU | ~7k |
 
+## Session: 2026-11-21
+
+| Time | Action | File(s) | Outcome | ~Tokens |
+|------|--------|---------|---------|--------|
+|  | Created WC-EC-23 tessellation implementation plan | docs/superpowers/plans/2026-11-21-wc-ec-23-tessellation-implementation-plan.md | Plan saved, ready for execution | ~2k |
+
 ## Session: 2026-06-21 02:15
 
 | Time | Action | File(s) | Outcome | ~Tokens |
@@ -651,3 +657,10 @@ Dev servers stopped (5173, 4173). Uncommitted: .wolf/, .claude/, CLAUDE.md, plan
 | 16:10 | WC-EC-17 implementation complete and verified (46/46 tests, buf lint pass); push to origin/dev blocked by GitHub 403 credentials | kernel-worker.cpp, engine.proto, native-kernel-adapter.ts, test fixtures | complete | ~1500 |
 
 | 16:11 | Push succeeded, branch up to date with origin/dev; 46/46 tests pass, zero failures, buf lint passes | all WC-EC-17 files | complete | ~100 |
+|   1 6 : 3 5   |   W C - E C - 1 8   b o o l e a n s   c o m p l e t e :   f i x e d   O C C T   s e t t e r   A P I   ( S e t R u n P a r a l l e l / S e t C h e c k I n v e r t e d / S e t N o n D e s t r u c t i v e )   a n d   c o r r e c t e d   b o o l e a n _ f u s e / c u t   f i x t u r e   s u r f a c e A r e a + c o u n t s   t o   m a t c h   O C C T   o u t p u t ;   4 6 / 4 6   o r a c l e + h a r n e s s   t e s t s   p a s s ;   c o m m i t   9 a 6 3 1 0 f   o n   d e v   ( p u s h   b l o c k e d   b y   4 0 3   c r e d e n t i a l )   |   k e r n e l - w o r k e r . c p p ,   b o o l e a n _ f u s e / c u t . j s o n ,   W E B C A D - E P I C - E C - v 5 . m d   |   c o m p l e t e   |   ~ 4 0 0   |  
+ |   1 6 : 3 8   |   I n s t a l l e d   c p p - m e m o r y - l e a k - p r e v e n t i o n   s k i l l   f r o m   a t t a c h m e n t   t o   C : \ U s e r s \ H P \ . a g e n t s \ s k i l l s \ c p p - m e m o r y - l e a k - p r e v e n t i o n \   ( S K I L L . m d   +   r e f e r e n c e s / s c r i p t s / s r c / t e s t s / a s a n _ c h e c k . s h )   |   c p p - m e m o r y - l e a k - p r e v e n t i o n   s k i l l   |   c o m p l e t e   |   ~ 1 5 0   |  
+ 
+| 16:40 | Applied cpp-memory-leak-prevention skill review to kernel-worker.cpp OpCreateBoolean: verified no naked new/delete, all OCCT builders stack-allocated RAII, TopoDS_Shape ref-counted handles, try/catch(Standard_Failure) exception safety, builder→Shape→cache in single statement. Code is memory-safe; no changes needed. | kernel-worker.cpp | complete | ~200 |
+
+ |   1 6 : 4 5   |   W C - E C - 2 3   t e s s e l l a t i o n   t o   b i n a r y   b u f f e r s   c o m p l e t e :   P o p u l a t e M e s h D a t a   h e l p e r   i n   k e r n e l - w o r k e r . c p p   w i t h   R A I I / H a n d l e / s t d : : v e c t o r   m e m o r y   s a f e t y ,   w i r e d   i n t o   a l l   ~ 2 5 +   h a n d l e r s   g a t e d   b y   i n c l u d e _ b r e p ;   N a t i v e K e r n e l A d a p t e r   i n c l u d e _ b r e p   p a r a m   +   M e s h D a t a   p a r s i n g ;   K e r n e l R e s u l t . M e s h D a t a   i n t e r f a c e ;   2   T S   i n t e g r a t i o n   t e s t s ;   e p i c   m a r k e d   c o m p l e t e .   C + +   c o m p i l a t i o n   b l o c k e d   ( O C C T   L i n u x - o n l y   o n   W i n d o w s   d e v   m a c h i n e ) ;   T S   v e r i f y   c l e a n   e x c e p t   2   p r e - e x i s t i n g   t y p e c h e c k   e r r o r s .   |   k e r n e l - w o r k e r . c p p ,   n a t i v e - k e r n e l - a d a p t e r . t s ,   k e r n e l - a d a p t e r . t s ,   n a t i v e - o r a c l e . i n t e g r a t i o n . t e s t . t s ,   W E B C A D - E P I C - E C - v 5 . m d ,   a n a t o m y . m d   |   c o m p l e t e   |   ~ 5 0 0   |  
+ 

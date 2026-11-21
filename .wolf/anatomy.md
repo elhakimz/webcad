@@ -61,6 +61,15 @@
 ## ./src/core/gateway/
 
 - `kernel-worker.cpp` — OCCT 7.9.3 kernel worker implementing KernelService (Execute over gRPC/UDS), shape cache, CreateBox/ImportBRep handlers (~1300 tok)
+
+## ./src/core/harness/
+
+- `native-kernel-adapter.ts` — TypeScript client harness: reads include_brep param from step params, parses MeshData byte fields into typed arrays (~1300 tok)
+- `kernel-adapter.ts` — Shared interfaces: MeshData interface (positions, indices, faceMapping, edgeOffsets, edgeLines), optional mesh?: MeshData on KernelResult (~500 tok)
+
+## ./tests/oracle/
+
+- `native-oracle.integration.test.ts` — Integration tests against native kernel: create_box with/without include_brep MeshData tests (~800 tok)
 ## .claude/
 
 - `launch.json` (~52 tok)
@@ -896,6 +905,10 @@
 - `uat.spec.ts` — UAT — Undo/Redo restores solid B-rep to the geometry kernel (WEBCAD-20 / 138). (~1916 tok)
 - `ui.spec.ts` — App shell + command-line behaviour. (~1672 tok)
 - `visual.spec.ts` — Canvas visual regression (WEBCAD-154) — the fallback, not the primary check. (~603 tok)
+
+## docs/superpowers/plans/
+
+- `2026-11-21-wc-ec-23-tessellation-implementation-plan.md` — WC-EC-23 tessellation implementation plan: PopulateMeshData helper in kernel-worker.cpp, mesh call sites in all ~25 HandleCreate handlers, NativeKernelAdapter includeBrep option, C++ MeshDataFromBox unit test, TS mesh integration tests | ~24k
  
  # #   t e s t s / u n i t / k e r n e l /  
  -    r e p - e x p o r t . t e s t . t s      5   t e s t s   f o r   v a l i d a t e B R e p   e x p o r t   s c e n a r i o s   ( e m p t y ,   o v e r s i z e d ,   t r u n c a t e d ,   v a l i d   a t   t e r m i n a t o r ,   v a l i d   a t   6 4 M i B   l i m i t ) ;   a l l   p a s s   ( ~ 4 0 0   t o k )  

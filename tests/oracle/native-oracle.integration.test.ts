@@ -74,4 +74,77 @@ describe('Native kernel oracle integration (localhost:50051)', () => {
     expect(Math.abs(xs[1] - xs[0])).toBeCloseTo(2, 4);
     expect(Math.abs(ys[1] - ys[0])).toBeCloseTo(2, 4);
   }, 60000);
+
+  it('create_box with include_brep returns MeshData', async () => {
+    await adapter.init();
+    const results = await adapter.execute({
+      name: 'mesh_box_test',
+      tolerances: { volume: 1e-4, surface: 1e-4, bbox: 1e-3, counts: 0 },
+      steps: [
+        {
+          name: 'create_box',
+          parameters: {
+            x: 0, y: 0, z: 0,
+            dx: 2, dy: 2, dz: 2,
+            deflection: 0.1,
+            entity_id: 'mesh_box',
+            include_brep: true,
+          },
+        },
+      ],
+    });
+
+    const result = results[0];
+    expect(result.success).toBe(true);
+    expect(result.mesh).toBeDefined();
+    const mesh = result.mesh!;
+
+    // positions: xyz triplets (float32)
+    expect(mesh.positions.length).toBeGreaterThan(0);
+    expect(mesh.positions.length % 3).toBe(0);
+
+    // indices: triangle indices (uint32)
+    expect(mesh.indices.length).toBeGreaterThan(0);
+    expect(mesh.indices.length % 3).toBe(0);
+
+    // face_mapping: one int32 per triangle
+    expect(mesh.faceMapping.length).toBe(mesh.indices.length / 3);
+
+    // edge_offsets: N+1 entries for N edges
+    expect(mesh.edgeOffsets.length).toBeGreaterThan(0);
+    expect(mesh.edgeOffsets[0]).toBe(0);
+
+    // edge_lines: packed [x1,y1,z1,x2,y2,z2,...]
+    expect(mesh.edgeLines.length).toBeGreaterThan(0);
+    expect(mesh.edgeLines.length % 3).toBe(0);
+
+    // Cube with deflection 0.1 should produce a reasonable number of vertices/faces
+    // A 2x2x2 box face is 2x2, meshed at 0.1 deflection => ~20x20 grid per face
+    // At minimum we expect multiple triangles
+    expect(mesh.indices.length).toBeGreaterThanOrEqual(12); // at least 2 triangles per face * 6 faces
+  }, 60000);
+
+  it('create_box without include_brep returns no MeshData', async () => {
+    await adapter.init();
+    const results = await adapter.execute({
+      name: 'no_mesh_box_test',
+      tolerances: { volume: 1e-4, surface: 1e-4, bbox: 1e-3, counts: 0 },
+      steps: [
+        {
+          name: 'create_box',
+          parameters: {
+            x: 0, y: 0, z: 0,
+            dx: 2, dy: 2, dz: 2,
+            deflection: 0.1,
+            entity_id: 'no_mesh_box',
+            // include_brep not set -> defaults to false
+          },
+        },
+      ],
+    });
+
+    const result = results[0];
+    expect(result.success).toBe(true);
+    expect(result.mesh).toBeUndefined();
+  }, 60000);
 });

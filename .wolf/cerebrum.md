@@ -89,6 +89,8 @@
 - [2026-07-27] **The bridge refuses rather than guessing.** `selectVertex`, `setProjection('perspective')` and edge-on `screenToWorld` throw `code: 'unsupported'` with an explanation instead of returning a plausible wrong answer, so a test failure names a real app limitation instead of silently asserting fiction.
 - [2026-07-26] Backlog item #135 (Maker.js migration) was written up as **decide-before-doing** rather than a build task — a broad swap of all 2D drawing routines with no demonstrated benefit over working code. It may legitimately close as "won't do".
 
+- [2026-11-21] **WC-EC-23 tessellation architecture:** Option B — static `PopulateMeshData` helper in `kernel-worker.cpp` called from every `HandleCreate*` handler after `ComputeShapeMetrics`, gated by `request->include_brep()`. Chosen over per-handler duplication (too much code), a separate mesh service file (premature file bloat), or proto changes (`MeshData` already exists — no changes needed).
+
 - [2026-11-20] **Phase B kernel build speed (items 5.8, 5.9):**
   - CI guardrails workflow `.github/workflows/kernel-build-guardrails.yml` — fails when cold build >900s, binary >100MB, Docker image >1500MB; ccache cache save/restore; $GITHUB_STEP_SUMMARY pass/fail table; timing results uploaded as artifact.
   - Binary OCCT evaluation `docs/superpowers/plans/2026-11-20-binary-occt-evaluation.md` — conda-forge occt 7.9.3 novtk via micromamba (proposed primary); vcpkg has NO OCCT package — not viable; Debian/Ubuntu max 7.6.3 — not 7.9.3 — not viable; from-source occt-base Docker as documented fallback. conda-forge can supply full stack: occt + protobuf-cpp + grpc-cpp + abseil-cpp + cmake + ninja + gcc + gxx. conda-lock available for exact build string pinning.
@@ -176,6 +178,19 @@ ew message construction or 	oBinary/romBinary calls in source code. Test file R
 
 - [2026-11-20] **WC-EC-06 SolidCraft evaluation — go/no-go:** Ignore (stay with OCCT only). Rationale: ADR already decided OCCT 7.9.3 as sole kernel; SolidCraft kernel mid-migration (truck→SMLib branch, not in releases), 0.x pre-1.0, known regression rig failures/hangs, Rust toolchain mismatch with WebCad's Node/C++ stack, and protocol constraint ("do not change protocol"). Borrow patterns only (command registry, oracle, regression rig, browser command API) — no code changes.
 
+## Key Learnings (2026-11-21 WC-EC-23 Tessellation)
+
+- **`MeshData` proto already exists** in `common.proto` (lines 46-75): `bytes positions=1`, `bytes indices=2`, `bytes face_mapping=3`, `bytes edge_offsets=4`, `bytes edge_lines=5`. `ExecuteResponse.mesh = 4` already exists in `engine.proto` — **no proto changes needed**.
+- **`PopulateMeshData` helper pattern:** Static function in `kernel-worker.cpp` that triangulates via `BRepMesh_IncrementalMesh(shape, deflection, Standard_False, 0.5, Standard_False)`, iterates faces with `TopExp_Explorer`, extracts node/triangle data via `BRep_Tool::Triangulation`/`Poly_Triangle::Get(n1,n2,n3)` (1-based indices), extracts edge lines via `BRep_Tool::Polygon3D` (with `BRepAdaptor_Curve` fallback sampling 10 points), and serializes typed arrays to protobuf `bytes` fields via `set_positions()`/`set_indices()` etc. using raw `reinterpret_cast<const char*>`.
+- **`edge_offsets` layout:** cumulative **float count** (not vertex count), N+1 entries for N edges, `offsets[0]=0`, `offsets[N]=totalFloats`, empty edges produce equal consecutive offsets (`offsets[k+1]=offsets[k]`).
+- **Edge lines use 3D triplets** `[x1,y1,z1,x2,y2,z2,...]` packed as float32 LE, not 2D pairs.
+- **OCCT `Poly_Triangle::Get(n1,n2,n3)`** — not `Value(1)`. Triangle indices are 1-based, subtract 1 to convert to 0-based buffer indices.
+- **Triangulation reuse:** Check `BRep_Tool::Triangulation()` for null before calling `BRepMesh_IncrementalMesh` to avoid redundant meshing when shape already triangulated.
+- **Determinism:** `BRepMesh_IncrementalMesh` with fixed deflection is deterministic; face iteration via `TopExp_Explorer` is deterministic; no random jitter — byte-identical output for same shape + same deflection.
+- **`NativeKernelAdapter.ts` hardcodes `include_brep: false`** — needs `includeBrep` option in `executeStep`/`execute` for mesh integration testing.
+- **Pre-existing tsc errors** (2: codec.test.ts, KernelGrpcTransport.ts) — unrelated to WC-EC-23 work.
+- **PowerShell:** No `&&` operator; use `;` with `if ($LASTEXITCODE -ne 0)`.
+
 ## Key Learnings (2026-11-20 WC-EC-09 Chunk 2)
 
 - @bufbuild/protobuf v2 uses standalone 	oBinary(schema, msg) and romBinary(schema, bytes) functions � NOT msg.toBinary() method calls
@@ -202,8 +217,17 @@ ew message construction or 	oBinary/romBinary calls in source code. Test file R
 ## Key Learnings (2026-11-21 WC-EC-12 Shape Metrics Parity)
 
 - buf generate unavailable in this environment (missing protoc-gen-grpc plugin); generated TS stubs hand-edited not required since harness uses protoLoader dynamic loading at runtime
-- ShapeMetrics attached to ExecuteResponse (field 6), not inside ExecuteSuccess � response.mutable_metrics() returns ShapeMetrics* in C++
+- ShapeMetrics attached to ExecuteResponse (field 6), not inside ExecuteSuccess � response.mutable_metrics() returns ShapeMetrics* in C++
 - BoundingBox3D uses inline double fields (min_x/y/z, max_x/y/z) instead of Point3D reference to avoid circular proto import (common.proto imported by engine.proto, Point3D defined in engine.proto)
+
+## Key Learnings (2026-11-21 WC-EC-18 Booleans + C++ Memory Safety Review)
+
+- OCCT 7.9.3 `BRepAlgoAPI_Fuse/Cut/Common` builders use setter-style API: `SetRunParallel(bool)`, `SetCheckInverted(bool)`, `SetNonDestructive(bool)`. Getter-style `RunParallel(false)` etc. do not exist and fail to compile.
+- `OpCreateBoolean` (kernel-worker.cpp ~lines 724-810) is memory-safe per cpp-memory-leak-prevention skill: no naked new/delete, all OCCT builders stack-allocated (RAII), `TopoDS_Shape` is ref-counted handle, `try/catch(Standard_Failure)` wraps OCCT calls, builder→Shape→cache in single statement (`return OpCreateAndCache(builder.Shape(), deflection, entityId)`).
+- Boolean face/edge/vertex counts are OCCT 7.9.3 implementation-dependent (splitting at intersection curves); not a single "correct" value — fixtures must match actual deterministic output. `surfaceArea`/`volume` are geometric invariants and must match analytic values.
+- `g_shapeCache` is `std::unordered_map<std::string, TopoDS_Shape>` — TopoDS_Shape handles are ref-counted, no leaks from cache insertion/overwrite.
+- Push to origin/dev returns 403 for user `abilidad` on elhakimz/webcad — credential/access issue, not a code problem. Commit `9a6310f` stays local until access resolved.
+- Pre-existing tsc errors (2: codec.test.ts, KernelGrpcTransport.ts) are unrelated to WC-EC-18; lint (0 errors) and buf lint pass.
 - Native adapter parseExecuteResponse reads response.metrics (any type) and maps snake_case proto fields to camelCase KernelMetric fields
 - Pre-existing typecheck errors (codec.test.ts x2, KernelGrpcTransport.ts x1) are unrelated and block 
 pm run verify; lint/test/buf:lint all pass

@@ -113,6 +113,7 @@ static bool ShouldLog(LogLevel level) { return level >= g_logLevel; }
 #include <opencascade/gp_Ax1.hxx>
 #include <opencascade/gp_Ax2.hxx>
 #include <opencascade/BRepBuilderAPI_GTransform.hxx>
+#include <opencascade/TColgp_Array1OfPnt.hxx>
 #include <cmath>
 #include <cstdio>
 #include <unistd.h>
@@ -1746,6 +1747,174 @@ static void ComputeShapeMetrics(const TopoDS_Shape& shape,
   metrics->set_is_valid(analyzer.IsValid());
 }
 
+// ---------------------------------------------------------------------------
+// PopulateMeshData — extract tessellation from a TopoDS_Shape into MeshData protobuf.
+// Layout matches MeshData proto: positions=float32 LE xyz triplets,
+// indices=uint32 LE triangle indices, face_mapping=int32 LE per-triangle face index,
+// edge_offsets=uint32 LE cumulative float count per edge (N+1 entries for N edges,
+// offsets[0]=0, empty edges produce equal consecutive offsets),
+// edge_lines=packed float32 LE [x1,y1,z1,x2,y2,z2,...] per edge segment.
+// Deterministic: same shape + same deflection → byte-identical output.
+// Memory safety: uses Handle<> (OCCT ref-counted), std::vector (RAII),
+// null-handle checks, and Standard_Failure catch — no manual new/delete.
+static void PopulateMeshData(const TopoDS_Shape& shape, double deflection,
+                              webcad::engine::v1::MeshData* meshData) {
+  if (!meshData || shape.IsNull()) {
+    return;
+  }
+
+  // ---- Triangulation reuse check ----
+  bool needsMesh = false;
+  TopExp_Explorer checkExp(shape, TopAbs_FACE);
+  while (checkExp.More()) {
+    TopLoc_Location loc;
+    if (BRep_Tool::Triangulation(TopoDS::Face(checkExp.Current()), loc).IsNull()) {
+      needsMesh = true;
+      break;
+    }
+    checkExp.Next();
+  }
+
+  if (needsMesh) {
+    BRepMesh_IncrementalMesh mesher(shape, deflection, Standard_False, 0.5, Standard_False);
+    if (!mesher.IsDone()) {
+      LOG(kLogWarn) << "PopulateMeshData: BRepMesh_IncrementalMesh not done for deflection="
+                    << deflection << "\n";
+      return; // Leave meshData empty
+    }
+  }
+
+  // ---- First pass: count nodes and triangles ----
+  size_t totalNodes = 0;
+  size_t totalTriangles = 0;
+  TopExp_Explorer countExp(shape, TopAbs_FACE);
+  while (countExp.More()) {
+    TopLoc_Location loc;
+    const Handle(Poly_Triangulation) tri =
+        BRep_Tool::Triangulation(TopoDS::Face(countExp.Current()), loc);
+    if (!tri.IsNull()) {
+      totalNodes += tri->NbNodes();
+      totalTriangles += tri->NbTriangles();
+    }
+    countExp.Next();
+  }
+
+  // Pre-allocate output buffers
+  std::vector<float> posBuf;       // xyz triplets
+  std::vector<uint32_t> idxBuf;    // triangle indices
+  std::vector<int32_t> fmBuf;      // per-triangle face index
+  std::vector<float> elBuf;        // packed edge line floats
+  std::vector<uint32_t> eoBuf;     // cumulative float count per edge (N+1 entries)
+  posBuf.reserve(totalNodes * 3);
+  idxBuf.reserve(totalTriangles * 3);
+  fmBuf.reserve(totalTriangles);
+
+  size_t vertexOffset = 0;
+  int32_t faceCounter = 0;
+
+  // ---- Second pass: extract face geometry ----
+  TopExp_Explorer faceExp(shape, TopAbs_FACE);
+  while (faceExp.More()) {
+    TopoDS_Face face = TopoDS::Face(faceExp.Current());
+    TopLoc_Location location;
+    const Handle(Poly_Triangulation) tri =
+        BRep_Tool::Triangulation(face, location);
+    if (tri.IsNull()) {
+      faceExp.Next();
+      continue;
+    }
+
+    const gp_Trsf& trsf = location.Transformation();
+    const Poly_Triangulation& triRef = *tri;
+
+    // Extract nodes
+    const Standard_Integer nbNodes = triRef.NbNodes();
+    for (Standard_Integer i = 1; i <= nbNodes; ++i) {
+      gp_Pnt pnt = triRef.Node(i);
+      pnt.Transform(trsf);
+      posBuf.push_back(static_cast<float>(pnt.X()));
+      posBuf.push_back(static_cast<float>(pnt.Y()));
+      posBuf.push_back(static_cast<float>(pnt.Z()));
+    }
+
+    // Extract triangles
+    const Standard_Integer nbTriangles = triRef.NbTriangles();
+    const TopAbs_Orientation orientation = face.Orientation();
+    for (Standard_Integer i = 1; i <= nbTriangles; ++i) {
+      Standard_Integer n1, n2, n3;
+      triRef.Triangle(i).Get(n1, n2, n3);
+      if (orientation != TopAbs_FORWARD) {
+        std::swap(n2, n3);
+      }
+      idxBuf.push_back(static_cast<uint32_t>(n1 - 1 + vertexOffset));
+      idxBuf.push_back(static_cast<uint32_t>(n2 - 1 + vertexOffset));
+      idxBuf.push_back(static_cast<uint32_t>(n3 - 1 + vertexOffset));
+      fmBuf.push_back(faceCounter);
+    }
+
+    vertexOffset += nbNodes;
+    ++faceCounter;
+    faceExp.Next();
+  }
+
+  // ---- Third pass: extract edge lines ----
+  eoBuf.push_back(0); // offsets[0] = 0
+  TopExp_Explorer edgeExp(shape, TopAbs_EDGE);
+  while (edgeExp.More()) {
+    TopoDS_Edge edge = TopoDS::Edge(edgeExp.Current());
+    TopLoc_Location loc;
+    const Handle(Poly_Polygon3D) poly = BRep_Tool::Polygon3D(edge, loc);
+    size_t edgeFloatCount = 0;
+
+    if (!poly.IsNull()) {
+      const Poly_Polygon3D& polyRef = *poly;
+      const TColgp_Array1OfPnt& nodes = polyRef.Nodes();
+      for (Standard_Integer j = nodes.Lower(); j <= nodes.Upper(); ++j) {
+        gp_Pnt pnt = nodes(j);
+        pnt.Transform(loc.Transformation());
+        elBuf.push_back(static_cast<float>(pnt.X()));
+        elBuf.push_back(static_cast<float>(pnt.Y()));
+        elBuf.push_back(static_cast<float>(pnt.Z()));
+        edgeFloatCount += 3;
+      }
+    } else {
+      // Fallback: BRepAdaptor_Curve sampling (10 points)
+      try {
+        BRepAdaptor_Curve adaptor(edge);
+        const Standard_Real first = adaptor.FirstParameter();
+        const Standard_Real last = adaptor.LastParameter();
+        for (int j = 0; j <= 10; ++j) {
+          const Standard_Real u = first + (last - first) * (j / 10.0);
+          gp_Pnt pnt;
+          adaptor.D0(u, pnt);
+          pnt.Transform(loc.Transformation());
+          elBuf.push_back(static_cast<float>(pnt.X()));
+          elBuf.push_back(static_cast<float>(pnt.Y()));
+          elBuf.push_back(static_cast<float>(pnt.Z()));
+          edgeFloatCount += 3;
+        }
+      } catch (const Standard_Failure&) {
+        // Empty edge — push nothing, offset stays same
+      }
+    }
+
+    eoBuf.push_back(eoBuf.back() + static_cast<uint32_t>(edgeFloatCount));
+    edgeExp.Next();
+  }
+
+  // ---- Serialize to protobuf bytes ----
+  meshData->set_positions(reinterpret_cast<const char*>(posBuf.data()),
+                          posBuf.size() * sizeof(float));
+  meshData->set_indices(reinterpret_cast<const char*>(idxBuf.data()),
+                        idxBuf.size() * sizeof(uint32_t));
+  meshData->set_face_mapping(reinterpret_cast<const char*>(fmBuf.data()),
+                             fmBuf.size() * sizeof(int32_t));
+  meshData->set_edge_offsets(reinterpret_cast<const char*>(eoBuf.data()),
+                             eoBuf.size() * sizeof(uint32_t));
+  meshData->set_edge_lines(reinterpret_cast<const char*>(elBuf.data()),
+                           elBuf.size() * sizeof(float));
+}
+
 // CLI mode: read JSON commands from stdin, write JSON responses to stdout.
 // Each line is one command: {"op": "create_box", ...}
 // Response: {"ok": true, "shape_id": "..."} or {"ok": false, "code": N, "message": "..."}
@@ -2029,10 +2198,13 @@ class KernelServiceImpl final : public KernelService::Service {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
     }
 
-    // Optional MeshData (populated later from triangulation)
+    // MeshData — opt-in tessellation output
     if (request->include_brep()) {
-      auto* meshData = response->mutable_mesh();
-      // TODO: populate MeshData positions/indices from shape triangulation
+      auto it = g_shapeCache.find(r.shapeId);
+      if (it != g_shapeCache.end()) {
+        double deflection = op.deflection() > 0.0 ? op.deflection() : 0.1;
+        PopulateMeshData(it->second, deflection, response->mutable_mesh());
+      }
     }
 
     return Status::OK;  // gRPC OK; business failures carried in-band via ExecuteFailure
@@ -2058,6 +2230,12 @@ class KernelServiceImpl final : public KernelService::Service {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
     }
 
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double deflection = op.deflection() > 0.0 ? op.deflection() : 0.1;
+      PopulateMeshData(it->second, deflection, response->mutable_mesh());
+    }
+
     return Status::OK;
   }
 
@@ -2079,6 +2257,12 @@ class KernelServiceImpl final : public KernelService::Service {
     auto it = g_shapeCache.find(result.shapeId);
     if (it != g_shapeCache.end()) {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double deflection = op.deflection() > 0.0 ? op.deflection() : 0.1;
+      PopulateMeshData(it->second, deflection, response->mutable_mesh());
     }
 
     return Status::OK;
@@ -2104,6 +2288,12 @@ class KernelServiceImpl final : public KernelService::Service {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
     }
 
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double deflection = op.deflection() > 0.0 ? op.deflection() : 0.1;
+      PopulateMeshData(it->second, deflection, response->mutable_mesh());
+    }
+
     return Status::OK;
   }
 
@@ -2127,6 +2317,12 @@ class KernelServiceImpl final : public KernelService::Service {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
     }
 
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double deflection = op.deflection() > 0.0 ? op.deflection() : 0.1;
+      PopulateMeshData(it->second, deflection, response->mutable_mesh());
+    }
+
     return Status::OK;
   }
 
@@ -2148,6 +2344,12 @@ class KernelServiceImpl final : public KernelService::Service {
     auto it = g_shapeCache.find(r.shapeId);
     if (it != g_shapeCache.end()) {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double deflection = op.deflection() > 0.0 ? op.deflection() : 0.1;
+      PopulateMeshData(it->second, deflection, response->mutable_mesh());
     }
 
     return Status::OK;
@@ -2174,6 +2376,12 @@ class KernelServiceImpl final : public KernelService::Service {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
     }
 
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double deflection = op.deflection() > 0.0 ? op.deflection() : 0.1;
+      PopulateMeshData(it->second, deflection, response->mutable_mesh());
+    }
+
     return Status::OK;
   }
 
@@ -2196,6 +2404,12 @@ class KernelServiceImpl final : public KernelService::Service {
     auto it = g_shapeCache.find(r.shapeId);
     if (it != g_shapeCache.end()) {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double deflection = op.deflection() > 0.0 ? op.deflection() : 0.1;
+      PopulateMeshData(it->second, deflection, response->mutable_mesh());
     }
 
     return Status::OK;
@@ -2239,6 +2453,12 @@ class KernelServiceImpl final : public KernelService::Service {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
     }
 
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
+    }
+
     return Status::OK;
   }
 
@@ -2266,6 +2486,12 @@ class KernelServiceImpl final : public KernelService::Service {
     auto it = g_shapeCache.find(r.shapeId);
     if (it != g_shapeCache.end()) {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
     }
 
     return Status::OK;
@@ -2303,6 +2529,12 @@ class KernelServiceImpl final : public KernelService::Service {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
     }
 
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
+    }
+
     return Status::OK;
   }
 
@@ -2338,6 +2570,12 @@ class KernelServiceImpl final : public KernelService::Service {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
     }
 
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
+    }
+
     return Status::OK;
   }
 
@@ -2365,6 +2603,12 @@ class KernelServiceImpl final : public KernelService::Service {
     auto it = g_shapeCache.find(r.shapeId);
     if (it != g_shapeCache.end()) {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
     }
 
     return Status::OK;
@@ -2453,6 +2697,12 @@ class KernelServiceImpl final : public KernelService::Service {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
     }
 
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
+    }
+
     return Status::OK;
   }
 
@@ -2479,6 +2729,12 @@ class KernelServiceImpl final : public KernelService::Service {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
     }
 
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
+    }
+
     return Status::OK;
   }
 
@@ -2503,6 +2759,12 @@ class KernelServiceImpl final : public KernelService::Service {
     auto it = g_shapeCache.find(r.shapeId);
     if (it != g_shapeCache.end()) {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
     }
 
     return Status::OK;
@@ -2538,6 +2800,12 @@ class KernelServiceImpl final : public KernelService::Service {
     auto it = g_shapeCache.find(r.shapeId);
     if (it != g_shapeCache.end()) {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
     }
 
     return Status::OK;

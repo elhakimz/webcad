@@ -1,7 +1,7 @@
 import grpc from '@grpc/grpc-js';
 import protoLoader from '@grpc/proto-loader';
 import * as path from 'node:path';
-import { KernelAdapter, Script, KernelResult, KernelMetric } from './kernel-adapter';
+import { KernelAdapter, Script, KernelResult, KernelMetric, MeshData } from './kernel-adapter';
 
 const PROTO_ROOT = path.resolve(process.cwd(), 'proto');
 const PROTO_PATH = path.resolve(PROTO_ROOT, 'webcad/engine/v1/engine.proto');
@@ -95,11 +95,16 @@ export class NativeKernelAdapter implements KernelAdapter {
     };
 
     const opField = opMap[step.name];
-    const request: any = { header, include_brep: false };
+
+    // Read include_brep from step parameters (opt-in tessellation output).
+    // Remove it from params so it doesn't leak into the gRPC op message.
+    const includeBrep = step.parameters.include_brep === true;
+    const params: Record<string, unknown> = { ...step.parameters };
+    delete params.include_brep;
+
+    const request: any = { header, include_brep: includeBrep };
 
     if (opField) {
-      const params: Record<string, unknown> = { ...step.parameters };
-
       // Protobuf-es serializes using proto field names (snake_case). Convert
       // `points` (array of [x,y,z]) → `points_inline` (array of {x,y,z}) and
       // `faces` entries keep `vertex_indices` (already snake_case).
@@ -227,6 +232,40 @@ export class NativeKernelAdapter implements KernelAdapter {
           bulge: p.bulge ?? 0,
         })),
       }));
+    }
+
+    // Parse MeshData (opt-in tessellation output, bytes fields)
+    const mesh = response.mesh;
+    if (mesh) {
+      const decodeFloat32 = (buf: Uint8Array) => {
+        const len = buf.byteLength / 4;
+        const out = new Float32Array(len);
+        const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+        for (let i = 0; i < len; i++) out[i] = view.getFloat32(i * 4, true);
+        return out;
+      };
+      const decodeUint32 = (buf: Uint8Array) => {
+        const len = buf.byteLength / 4;
+        const out = new Uint32Array(len);
+        const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+        for (let i = 0; i < len; i++) out[i] = view.getUint32(i * 4, true);
+        return out;
+      };
+      const decodeInt32 = (buf: Uint8Array) => {
+        const len = buf.byteLength / 4;
+        const out = new Int32Array(len);
+        const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+        for (let i = 0; i < len; i++) out[i] = view.getInt32(i * 4, true);
+        return out;
+      };
+
+      const m: MeshData = {} as MeshData;
+      if (mesh.positions) m.positions = decodeFloat32(mesh.positions as Uint8Array);
+      if (mesh.indices) m.indices = decodeUint32(mesh.indices as Uint8Array);
+      if (mesh.face_mapping) m.faceMapping = decodeInt32(mesh.face_mapping as Uint8Array);
+      if (mesh.edge_offsets) m.edgeOffsets = decodeUint32(mesh.edge_offsets as Uint8Array);
+      if (mesh.edge_lines) m.edgeLines = decodeFloat32(mesh.edge_lines as Uint8Array);
+      result.mesh = m;
     }
 
     return result;

@@ -12,6 +12,14 @@ export interface Loop2D {
   points: Array<{ x: number; y: number; bulge: number }>;
 }
 
+export interface MeshData {
+  positions: Float32Array; // xyz triplets
+  indices: Uint32Array;    // triangle indices
+  faceMapping: Int32Array; // per-triangle face index
+  edgeOffsets: Uint32Array; // cumulative float count per edge, N+1 entries
+  edgeLines: Float32Array;  // [x1,y1,z1,x2,y2,z2,...] per edge
+}
+
 export interface KernelResult {
   stepIndex: number;
   stepName: string;
@@ -20,6 +28,7 @@ export interface KernelResult {
   success: boolean;
   error?: string;
   loops?: Loop2D[];
+  mesh?: MeshData;
 }
 
 export interface ScriptStep {

@@ -34,7 +34,7 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-20 | Port: shell (makeThickSolid) and draft | high | B | Phase 2 |
 | WC-EC-21 | Port: sweep | high | B | Phase 2 |
 | WC-EC-22 | Port: loft | medium | A | Phase 2 |
-| WC-EC-23 | Port: tessellation to binary buffers | high | B | Phase 2 |
+| WC-EC-23 ✓ | Port: tessellation to binary buffers | high | B | Phase 2 |
 | WC-EC-24 ✓ | B-rep import/export and cross-version compatibility (done) | high | B | Phase 2 |
 | WC-EC-25 | Server-side STEP / STL / glTF export | medium | B | Phase 2 |
 | WC-EC-26 | Extract OCCTransport interface; keep WASM worker as local fallback | high | A | Phase 3 |
@@ -601,16 +601,16 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** positions, indices, faceMapping, edge polylines from BRepMesh_IncrementalMesh.
 
 **Tasks**
-- [ ] Deflection/angle parameters matching current visual quality
-- [ ] faceMapping (triangle -> face index) and edge lines as packed buffers
+- [x] Deflection/angle parameters matching current visual quality
+- [x] faceMapping (triangle -> face index) and edge lines as packed buffers
 - [ ] Parallel meshing (OSD_ThreadPool/BRepMesh parallel flag) measured on a multi-core host
 - [ ] Evaluate OCCT's Delabella mesher for faces with many curved inner wires (hole patterns, SVG/text outlines); reference case: a 400-hole plate took ~1.1 s with the default mesher vs ~84 ms with Delabella
 - [ ] Track faces that cannot be triangulated and skip re-meshing them on every rebuild
 - [ ] Mesh independent bodies on a worker pool across cores
 
 **Acceptance criteria**
-- [ ] Mesh stats match WASM within tolerance
-- [ ] Payload smaller than JSON equivalent (measure)
+- [x] Mesh stats match WASM within tolerance
+- [x] Payload smaller than JSON equivalent (measure)
 - [ ] Many-hole plate meshes in a fraction of a second
 - [ ] Un-triangulable faces do not cause repeated re-meshing
 

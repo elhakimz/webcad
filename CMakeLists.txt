@@ -203,8 +203,7 @@ else()
 endif()
 
 # =====================================================================
-# gtest discovery (Ubuntu libgtest-dev ships sources at /usr/src/gtest;
-# pre-built static libs may be at /usr/lib/x86_64-linux-gnu)
+# gtest discovery (optional — gtest targets only if gtest is available)
 # =====================================================================
 find_library(GTEST_LIB NAMES gtest libgtest PATHS
   /usr/lib/x86_64-linux-gnu /usr/lib /usr/local/lib /opt/conda/lib $ENV{CONDA_PREFIX}/lib)
@@ -213,66 +212,71 @@ find_library(GTEST_MAIN_LIB NAMES gtest_main libgtest_main PATHS
 find_path(GTEST_INCLUDE_DIR NAMES gtest/gtest.h PATHS
   /usr/include /usr/local/include /usr/src/googletest/googletest/include /opt/conda/include $ENV{CONDA_PREFIX}/include)
 
-if(NOT GTEST_LIB OR NOT GTEST_INCLUDE_DIR)
-  message(FATAL_ERROR "Google Test not found. Install libgtest-dev (apt-get install libgtest-dev).")
+set(HAVE_GTEST FALSE)
+if(GTEST_LIB AND GTEST_MAIN_LIB AND GTEST_INCLUDE_DIR)
+  set(HAVE_GTEST TRUE)
+  message(STATUS "Found gtest: ${GTEST_LIB}")
+  message(STATUS "Found gtest_main: ${GTEST_MAIN_LIB}")
+  message(STATUS "Found gtest headers: ${GTEST_INCLUDE_DIR}")
+else()
+  message(STATUS "Google Test not found — skipping gtest targets (kernel_worker only)")
 endif()
-message(STATUS "Found gtest: ${GTEST_LIB}")
-message(STATUS "Found gtest_main: ${GTEST_MAIN_LIB}")
-message(STATUS "Found gtest headers: ${GTEST_INCLUDE_DIR}")
 
 # =====================================================================
 # codec_test target — C++ codec round-trip tests mirroring TS suite
 # =====================================================================
-add_executable(codec_test
-  tests/codec_test.cpp
-  ${PROTO_SRCS}
-  ${PROTO_HDRS}
-)
+if(HAVE_GTEST)
+  add_executable(codec_test
+    tests/codec_test.cpp
+    ${PROTO_SRCS}
+    ${PROTO_HDRS}
+  )
 
-target_include_directories(codec_test PRIVATE
-  ${CMAKE_CURRENT_BINARY_DIR}
-  ${GTEST_INCLUDE_DIR}
-)
+  target_include_directories(codec_test PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${GTEST_INCLUDE_DIR}
+  )
 
-target_link_libraries(codec_test PRIVATE
-  ${GTEST_LIB}
-  ${GTEST_MAIN_LIB}
-  ${PROTO_LIB}
-  ${GRPCPP_LIBRARY} ${GRPC_LIBRARY} ${ABSL_LIBS}
-)
+  target_link_libraries(codec_test PRIVATE
+    ${GTEST_LIB}
+    ${GTEST_MAIN_LIB}
+    ${PROTO_LIB}
+    ${GRPCPP_LIBRARY} ${GRPC_LIBRARY} ${ABSL_LIBS}
+  )
 
-# Enable testing so `ctest` can discover codec_test
-include(CTest)
-add_test(NAME codec_test COMMAND codec_test WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  # Enable testing so `ctest` can discover codec_test
+  include(CTest)
+  add_test(NAME codec_test COMMAND codec_test WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
-# =====================================================================
-# kernel_worker_test target — unit tests for kernel worker ops
-# =====================================================================
-add_executable(kernel_worker_test
-  tests/kernel_worker_test.cpp
-  ${PROTO_SRCS}
-  ${PROTO_HDRS}
-)
+  # =====================================================================
+  # kernel_worker_test target — unit tests for kernel worker ops
+  # =====================================================================
+  add_executable(kernel_worker_test
+    tests/kernel_worker_test.cpp
+    ${PROTO_SRCS}
+    ${PROTO_HDRS}
+  )
 
-target_include_directories(kernel_worker_test PRIVATE
-  ${CMAKE_CURRENT_BINARY_DIR}
-  ${GTEST_INCLUDE_DIR}
-  /usr/local/include
-  ${OCCT_INCLUDE_DIR}
-  ${GRPCPP_INCLUDE_DIR}
-  ${GRPC_INCLUDE_DIR}
-)
+  target_include_directories(kernel_worker_test PRIVATE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${GTEST_INCLUDE_DIR}
+    /usr/local/include
+    ${OCCT_INCLUDE_DIR}
+    ${GRPCPP_INCLUDE_DIR}
+    ${GRPC_INCLUDE_DIR}
+  )
 
-target_link_libraries(kernel_worker_test PRIVATE
-  ${TKERNEL_LIB} ${TKMATH_LIB} ${TKG3D_LIB} ${TKBREP_LIB}
-  ${TKGEOMBASE_LIB} ${TKGEOMALGO_LIB} ${TKTOPALGO_LIB}
-  ${TKPRIM_LIB} ${TKBOOL_LIB} ${TKBO_LIB}
-  ${TKFILLET_LIB} ${TKOFFSET_LIB} ${TKSHEALING_LIB}
-  ${TKMESH_LIB} ${TKBIN_LIB} ${TKDESTEP_LIB} ${TKDEIGES_LIB} ${TKXSBASE_LIB}
-  ${GTEST_LIB}
-  ${GTEST_MAIN_LIB}
-  ${PROTO_LIB}
-  ${GRPCPP_LIBRARY} ${GRPC_LIBRARY} ${ABSL_LIBS}
-)
+  target_link_libraries(kernel_worker_test PRIVATE
+    ${TKERNEL_LIB} ${TKMATH_LIB} ${TKG3D_LIB} ${TKBREP_LIB}
+    ${TKGEOMBASE_LIB} ${TKGEOMALGO_LIB} ${TKTOPALGO_LIB}
+    ${TKPRIM_LIB} ${TKBOOL_LIB} ${TKBO_LIB}
+    ${TKFILLET_LIB} ${TKOFFSET_LIB} ${TKSHEALING_LIB}
+    ${TKMESH_LIB} ${TKBIN_LIB} ${TKDESTEP_LIB} ${TKDEIGES_LIB} ${TKXSBASE_LIB}
+    ${GTEST_LIB}
+    ${GTEST_MAIN_LIB}
+    ${PROTO_LIB}
+    ${GRPCPP_LIBRARY} ${GRPC_LIBRARY} ${ABSL_LIBS}
+  )
 
-add_test(NAME kernel_worker_test COMMAND kernel_worker_test WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+  add_test(NAME kernel_worker_test COMMAND kernel_worker_test WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+endif()

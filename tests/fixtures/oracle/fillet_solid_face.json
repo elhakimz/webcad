@@ -1,0 +1,43 @@
+{
+  "id": "fillet_solid_face",
+  "name": "Fillet Solid Face",
+  "description": "Fillet all edges of face 0 of a 2x2x2 box with radius 0.2",
+  "script": {
+    "name": "fillet_solid_face_test",
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 2, "dy": 2, "dz": 2,
+          "deflection": 0.1,
+          "entity_id": "base_box"
+        }
+      },
+      {
+        "name": "fillet_solid_face",
+        "parameters": {
+          "entity_id": "base_box",
+          "face_index": 0,
+          "radius": 0.2,
+          "deflection": 0.1
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 7.7,
+    "surfaceArea": 24.4,
+    "bbox": { "min": [0.0, 0.0, 0.0], "max": [2.0, 2.0, 2.0] },
+    "faceCount": 10,
+    "edgeCount": 24,
+    "vertexCount": 20,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 0.05,
+    "surfaceArea": 0.05,
+    "bbox": 1e-3,
+    "counts": 10
+  }
+}

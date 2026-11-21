@@ -1,0 +1,43 @@
+{
+  "id": "make_thick_solid",
+  "name": "Make Thick Solid",
+  "description": "Thicken a 2x2x2 box by 0.1 (shell with offset faces)",
+  "script": {
+    "name": "make_thick_solid_test",
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 2, "dy": 2, "dz": 2,
+          "deflection": 0.1,
+          "entity_id": "base_box"
+        }
+      },
+      {
+        "name": "make_thick_solid",
+        "parameters": {
+          "entity_id": "base_box",
+          "face_indices": [],
+          "thickness": 0.1,
+          "remove_faces": true
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 10.648,
+    "surfaceArea": 29.04,
+    "bbox": { "min": [-0.1, -0.1, -0.1], "max": [2.1, 2.1, 2.1] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 0.1,
+    "surfaceArea": 0.1,
+    "bbox": 1e-3,
+    "counts": 10
+  }
+}

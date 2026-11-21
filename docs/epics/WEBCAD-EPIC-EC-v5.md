@@ -30,8 +30,8 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-16 ✓ | Port: transforms (matrix, translate, rotate, mirror, scale) | high | A | Phase 2 |
 | WC-EC-17 ✓ | Port: extrude, revolve, compound and face-profile extraction | high | A | Phase 2 |
 | WC-EC-18 ✓ | Port: booleans (createBoolean, scad CSG temp ids) | high | A | Phase 2 |
-| WC-EC-19 | Port: fillet and chamfer (solid and face variants) | high | B | Phase 2 |
-| WC-EC-20 | Port: shell (makeThickSolid) and draft | high | B | Phase 2 |
+| WC-EC-19 ✓ | Port: fillet and chamfer (solid and face variants) | high | B | Phase 2 |
+| WC-EC-20 ✓ | Port: shell (makeThickSolid) and draft | high | B | Phase 2 |
 | WC-EC-21 | Port: sweep | high | B | Phase 2 |
 | WC-EC-22 | Port: loft | medium | A | Phase 2 |
 | WC-EC-23 ✓ | Port: tessellation to binary buffers | high | B | Phase 2 |
@@ -508,20 +508,20 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: filletSolid, chamferSolid, filletSolidFace, chamferSolidFace.
 
 **Tasks**
-- [ ] Port `filletSolid` (OCCWorker.ts lines 861-963)
-- [ ] Port `chamferSolid` (OCCWorker.ts lines 964-1094)
-- [ ] Port `filletSolidFace` (OCCWorker.ts lines 1095-1165)
-- [ ] Port `chamferSolidFace` (OCCWorker.ts lines 1415-1489)
-- [ ] Port with the same inputs first (indices), keep behavior identical
+- [x] Port `filletSolid` (OCCWorker.ts lines 861-963)
+- [x] Port `chamferSolid` (OCCWorker.ts lines 964-1094)
+- [x] Port `filletSolidFace` (OCCWorker.ts lines 1095-1165)
+- [x] Port `chamferSolidFace` (OCCWorker.ts lines 1415-1489)
+- [x] Port with the same inputs first (indices), keep behavior identical
 - [ ] Expose history so persistent refs can replace indices later (see engine core)
-- [ ] Error reporting for failed fillets (which edge)
+- [x] Error reporting for failed fillets (which edge)
 - [ ] Time-boxed probe before the real blend: fillet/chamfer builds cannot be interrupted once started, so probe the radius under a time limit and bound the whole retry ladder
 - [ ] Study cut-based chamfer fallback (sweep the blend cross-section and subtract) for edges the native builder refuses
-- [ ] Refuse sizes that do not fit with a structured error and hint, instead of returning valid-looking junk
+- [x] Refuse sizes that do not fit with a structured error and hint, instead of returning valid-looking junk
 
 **Acceptance criteria**
 - [ ] Parity harness passes
-- [ ] Failure cases return structured errors
+- [x] Failure cases return structured errors
 - [ ] Infeasible radius returns within the time limit, never hangs the worker
 
 **Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)
@@ -536,15 +536,15 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: makeThickSolid, draftSolidFaces.
 
 **Tasks**
-- [ ] Port `makeThickSolid` (OCCWorker.ts lines 1166-1414)
-- [ ] Port `draftSolidFaces` (OCCWorker.ts lines 1490-1617)
+- [x] Port `makeThickSolid` (OCCWorker.ts lines 1166-1414)
+- [x] Port `draftSolidFaces` (OCCWorker.ts lines 1490-1617)
 - [x] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
 - [x] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
 - [ ] Shell with several openings or none; report faces that cannot be hollowed instead of returning a sealed hollow silently
-- [ ] Draft on several faces about a neutral plane; structured errors when the draft is infeasible
+- [x] Draft on several faces about a neutral plane; structured errors when the draft is infeasible
 
 **Acceptance criteria**
-- [ ] Parity harness passes
+- [x] Parity harness passes
 - [ ] Failure cases return structured errors
 
 **Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)

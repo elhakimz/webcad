@@ -86,12 +86,19 @@ export class NativeKernelAdapter implements KernelAdapter {
       create_revolve: 'create_revolve',
       create_compound: 'create_compound',
       create_boolean: 'create_boolean',
+      fillet_solid: 'fillet_solid',
+      chamfer_solid: 'chamfer_solid',
+      fillet_solid_face: 'fillet_solid_face',
+      chamfer_solid_face: 'chamfer_solid_face',
+      make_thick_solid: 'make_thick_solid',
+      draft_solid_faces: 'draft_solid_faces',
       extract_face_profile: 'extract_face_profile',
       mult_matrix_shape: 'mult_matrix_shape',
       transform_shape: 'transform_shape',
       rotate_shape: 'rotate_shape',
       mirror_shape: 'mirror_shape',
       scale_shape: 'scale_shape',
+      step_export: 'step_export',
     };
 
     const opField = opMap[step.name];
@@ -149,6 +156,14 @@ export class NativeKernelAdapter implements KernelAdapter {
         } else if (Array.isArray(params.childrenIds)) {
           params.children_ids = params.childrenIds as string[];
           delete params.childrenIds;
+        }
+      }
+
+      // Normalize `distance` → `radius` for chamfer ops (proto field is `radius`)
+      if (opField === 'chamfer_solid' || opField === 'chamfer_solid_face') {
+        if (params.distance !== undefined && params.radius === undefined) {
+          params.radius = params.distance;
+          delete params.distance;
         }
       }
 
@@ -266,6 +281,13 @@ export class NativeKernelAdapter implements KernelAdapter {
       if (mesh.edge_offsets) m.edgeOffsets = decodeUint32(mesh.edge_offsets as Uint8Array);
       if (mesh.edge_lines) m.edgeLines = decodeFloat32(mesh.edge_lines as Uint8Array);
       result.mesh = m;
+    }
+
+    if (response.brep_ref) {
+      result.brepRef = {
+        format: response.brep_ref.format,
+        data: response.brep_ref.data,
+      };
     }
 
     return result;

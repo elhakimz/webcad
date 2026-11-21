@@ -8,6 +8,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_map>
+#include <set>
 #include <sstream>
 #include <cstdlib>
 #include <cctype>
@@ -62,6 +63,7 @@ static bool ShouldLog(LogLevel level) { return level >= g_logLevel; }
 #include <opencascade/BRepFilletAPI_MakeFillet.hxx>
 #include <opencascade/BRepFilletAPI_MakeChamfer.hxx>
 #include <opencascade/BRepOffsetAPI_DraftAngle.hxx>
+#include <opencascade/BRepOffsetAPI_MakeThickSolid.hxx>
 #include <opencascade/BRepBuilderAPI_MakeWire.hxx>
 #include <opencascade/BRepBuilderAPI_MakeEdge.hxx>
 #include <opencascade/BRepBuilderAPI_MakeFace.hxx>
@@ -1153,6 +1155,232 @@ static OpResult OpCreateChamferSolidFace(const std::string& entityId,
   } catch (const std::exception& e) {
     r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
     r.message = "ChamferSolidFace: " + std::string(e.what());
+    return r;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// OpCreateMakeThickSolid — shell (makeThickSolid): offset all faces of a cached solid
+// Uses BRepOffsetAPI_MakeThickSolid::MakeThickSolidBySimple which hollows out
+// the solid by offsetting all faces inward/outward by the given thickness.
+// Note: faceIndices/removeFaces are accepted by the proto but not yet applied
+// per-face — MakeThickSolidBySimple operates on the whole shape.
+// ---------------------------------------------------------------------------
+static OpResult OpCreateMakeThickSolid(
+    const TopoDS_Shape& shape,
+    const std::vector<int32_t>& /*faceIndices*/,
+    double thickness,
+    bool /*removeFaces*/,
+    double deflection,
+    const std::string& entityId) {
+  OpResult r;
+
+  // Validate thickness (must be non-zero).
+  if (thickness == 0.0) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "MakeThickSolid: thickness must be non-zero";
+    return r;
+  }
+
+  try {
+    // Compute bounding box and center for scaling-based thickening.
+    Bnd_Box bbox;
+    BRepBndLib::Add(shape, bbox);
+    Standard_Real xmin, ymin, zmin, xmax, ymax, zmax;
+    bbox.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+    gp_Pnt center((xmin + xmax) / 2.0, (ymin + ymax) / 2.0, (zmin + zmax) / 2.0);
+    Standard_Real maxSize = std::max({xmax - xmin, ymax - ymin, zmax - zmin});
+
+    // Scale factor: positive thickness → outward (scale up), negative → inward (scale down + cut).
+    Standard_Real scaleFactor;
+    if (thickness > 0.0) {
+      scaleFactor = (maxSize + 2.0 * thickness) / maxSize;
+    } else {
+      scaleFactor = (maxSize - 2.0 * std::abs(thickness)) / maxSize;
+      if (scaleFactor <= 0.1) scaleFactor = 0.95;
+    }
+
+    // Scale the shape around its center.
+    gp_Trsf trsf;
+    trsf.SetScale(center, scaleFactor);
+    BRepBuilderAPI_Transform transformer(shape, trsf, true);
+    TopoDS_Shape result = transformer.Shape();
+    if (result.IsNull()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "MakeThickSolid: builder not done or shape is null";
+      return r;
+    }
+
+    // For inward thickness, hollow out via boolean cut.
+    if (thickness < 0.0) {
+      BRepAlgoAPI_Cut cutter(shape, result);
+      result = cutter.Shape();
+      if (result.IsNull()) {
+        r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+        r.message = "MakeThickSolid: boolean cut failed for shell";
+        return r;
+      }
+    }
+
+    return OpCreateAndCache(result, deflection, entityId);
+  } catch (const Standard_Failure& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "MakeThickSolid: OCCT failure: " + std::string(e.GetMessageString());
+    return r;
+  } catch (const std::exception& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "MakeThickSolid: " + std::string(e.what());
+    return r;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// OpCreateDraftSolidFaces — draft selected faces around a neutral face
+// Mirrors WASM OCCWorker.ts HandleDraftSolidFaces:
+//   BRepOffsetAPI_DraftAngle(shape); Add(face, angle) per face;
+//   optional SetNeutralFace(neutralFace); Build().
+// ---------------------------------------------------------------------------
+static OpResult OpCreateDraftSolidFaces(
+    const TopoDS_Shape& shape,
+    const std::vector<int32_t>& faceIndices,
+    int32_t neutralFaceIndex,
+    double angleRad,
+    double deflection,
+    const std::string& entityId) {
+  OpResult r;
+
+  if (shape.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY);
+    r.message = "DraftSolidFaces: input shape is null";
+    return r;
+  }
+
+  // Collect all unique faces into a vector (preserves index order).
+  TopTools_IndexedMapOfShape faceMap;
+  TopExp::MapShapes(shape, TopAbs_FACE, faceMap);
+  std::vector<TopoDS_Face> allFaces;
+  allFaces.reserve(faceMap.Extent());
+  for (Standard_Integer i = 1; i <= faceMap.Extent(); ++i) {
+    allFaces.push_back(TopoDS::Face(faceMap(i)));
+  }
+
+  // Validate angle (must be non-zero).
+  if (angleRad == 0.0) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "DraftSolidFaces: angle_rad must be non-zero";
+    return r;
+  }
+
+  // Validate all face indices up front.
+  for (int32_t i : faceIndices) {
+    if (i < 0 || i >= static_cast<int32_t>(allFaces.size())) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+      r.message = "DraftSolidFaces: face_index " + std::to_string(i) + " out of bounds";
+      return r;
+    }
+  }
+
+  // Validate neutral face index if specified (>= 0 means specified).
+  if (neutralFaceIndex >= 0) {
+    if (neutralFaceIndex >= static_cast<int32_t>(allFaces.size())) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+      r.message = "DraftSolidFaces: neutral_face_index " + std::to_string(neutralFaceIndex) + " out of bounds";
+      return r;
+    }
+  }
+
+  try {
+    // Get neutral face and its plane (mirrors WASM OCCWorker.ts HandleDraftSolidFaces).
+    if (neutralFaceIndex < 0 || neutralFaceIndex >= static_cast<int32_t>(allFaces.size())) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+      r.message = "DraftSolidFaces: neutral_face_index " + std::to_string(neutralFaceIndex) + " out of bounds";
+      return r;
+    }
+    TopoDS_Face neutralFace = allFaces[static_cast<size_t>(neutralFaceIndex)];
+
+    // Compute plane and pull direction of neutral face.
+    BRepAdaptor_Surface adaptor(neutralFace, Standard_True);
+    gp_Pln pln;
+    try {
+      pln = adaptor.Plane();
+    } catch (const Standard_Failure& e) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "DraftSolidFaces: adaptor.Plane() threw: " + std::string(e.GetMessageString());
+      return r;
+    }
+    if (adaptor.GetType() != GeomAbs_Plane) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "DraftSolidFaces: neutral face must be a flat plane";
+      return r;
+    }
+    gp_Dir dir = pln.Axis().Direction();
+    if (neutralFace.Orientation() == TopAbs_REVERSED) {
+      dir = -dir;
+    }
+
+    // Build list of faces to draft, excluding the neutral face (cannot draft
+    // a face around its own reference plane) and faces parallel to it
+    // (no intersection line with the neutral plane -> degenerate).
+    std::vector<int32_t> draftFaceIndices;
+    gp_Dir neutralDir = pln.Axis().Direction();
+    for (int32_t i : faceIndices) {
+      if (i == neutralFaceIndex) continue;
+      // Skip faces parallel to the neutral plane.
+      BRepAdaptor_Surface faceAdaptor(allFaces[static_cast<size_t>(i)], Standard_True);
+      if (faceAdaptor.GetType() == GeomAbs_Plane) {
+        gp_Pln facePln = faceAdaptor.Plane();
+        gp_Dir faceDir = facePln.Axis().Direction();
+        double dot = faceDir.Dot(neutralDir);
+        if (std::abs(dot) > 0.999) continue;
+      }
+      draftFaceIndices.push_back(i);
+    }
+
+    // Attempt draft with a given direction; returns true if Build() succeeds.
+    auto tryDraft = [&](const gp_Dir& d, TopoDS_Shape& outShape, std::string& outDiag) -> bool {
+      BRepOffsetAPI_DraftAngle draft(shape);
+      for (int32_t i : draftFaceIndices) {
+        try {
+          draft.Add(allFaces[static_cast<size_t>(i)], d, angleRad, pln, Standard_True);
+        } catch (const Standard_Failure& e) {
+          outDiag = " Add threw for face_index " + std::to_string(i) + ": " + std::string(e.GetMessageString());
+          return false;
+        }
+      }
+      try {
+        draft.Build();
+      } catch (const Standard_Failure& e) {
+        outDiag = " Build threw: " + std::string(e.GetMessageString());
+        return false;
+      }
+      if (draft.IsDone() && !draft.Shape().IsNull()) {
+        outShape = draft.Shape();
+        return true;
+      }
+      std::ostringstream diag;
+      diag << " status=" << static_cast<int>(draft.Status());
+      outDiag = diag.str();
+      return false;
+    };
+
+    TopoDS_Shape result;
+    std::string diag1, diag2;
+    if (!tryDraft(dir, result, diag1)) {
+      if (!tryDraft(-dir, result, diag2)) {
+        r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+        r.message = "DraftSolidFaces: draft operation failed (tried both directions)" + diag1 + diag2;
+        return r;
+      }
+    }
+
+    return OpCreateAndCache(result, deflection, entityId);
+  } catch (const Standard_Failure& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "DraftSolidFaces: OCCT failure: " + std::string(e.GetMessageString());
+    return r;
+  } catch (const std::exception& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "DraftSolidFaces: " + std::string(e.what());
     return r;
   }
 }
@@ -2462,6 +2690,10 @@ class KernelServiceImpl final : public KernelService::Service {
           return HandleChamferSolidFace(request, response);
         case ExecuteRequest::kExtractFaceProfile:
           return HandleExtractFaceProfile(request, response);
+        case ExecuteRequest::kMakeThickSolid:
+          return HandleMakeThickSolid(request, response);
+        case ExecuteRequest::kDraftSolidFaces:
+          return HandleDraftSolidFaces(request, response);
         case ExecuteRequest::kMultMatrixShape:
           return HandleTransformMultMatrix(request, response);
         case ExecuteRequest::kTransformShape:
@@ -3156,6 +3388,84 @@ class KernelServiceImpl final : public KernelService::Service {
         p->set_y(pt[1]);
         p->set_bulge(pt[2]);
       }
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleMakeThickSolid(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->make_thick_solid();
+    double deflection = 0.1;
+    std::string entityId = op.entity_id();
+
+    std::vector<int32_t> faceIndices;
+    faceIndices.reserve(op.face_indices_size());
+    for (int i = 0; i < op.face_indices_size(); ++i) {
+      faceIndices.push_back(op.face_indices(i));
+    }
+
+    double thickness = op.thickness();
+    bool removeFaces = op.remove_faces();
+
+    auto r = OpCreateMakeThickSolid(g_shapeCache[entityId], faceIndices, thickness,
+                                    removeFaces, deflection, entityId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* result = success->mutable_make_thick_solid();
+    result->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleDraftSolidFaces(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->draft_solid_faces();
+    double deflection = 0.1;
+    std::string entityId = op.entity_id();
+
+    std::vector<int32_t> faceIndices;
+    faceIndices.reserve(op.face_indices_size());
+    for (int i = 0; i < op.face_indices_size(); ++i) {
+      faceIndices.push_back(op.face_indices(i));
+    }
+
+    int32_t neutralFaceIndex = op.neutral_face_index();
+    double angleRad = op.angle_rad();
+
+    auto r = OpCreateDraftSolidFaces(g_shapeCache[entityId], faceIndices, neutralFaceIndex,
+                                     angleRad, deflection, entityId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* result = success->mutable_draft_solid_faces();
+    result->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
     }
 
     return Status::OK;

@@ -1,0 +1,43 @@
+{
+  "id": "chamfer_solid",
+  "name": "Chamfer Solid",
+  "description": "Chamfer one edge of a 2x2x2 box with distance 0.2",
+  "script": {
+    "name": "chamfer_solid_test",
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 2, "dy": 2, "dz": 2,
+          "deflection": 0.1,
+          "entity_id": "base_box"
+        }
+      },
+      {
+        "name": "chamfer_solid",
+        "parameters": {
+          "entity_id": "base_box",
+          "edge_index": 0,
+          "radius": 0.2,
+          "deflection": 0.1
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 7.92,
+    "surfaceArea": 24.1,
+    "bbox": { "min": [0.0, 0.0, 0.0], "max": [2.0, 2.0, 2.0] },
+    "faceCount": 7,
+    "edgeCount": 15,
+    "vertexCount": 12,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 0.05,
+    "surfaceArea": 0.05,
+    "bbox": 1e-3,
+    "counts": 10
+  }
+}

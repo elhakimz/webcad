@@ -265,4 +265,115 @@ describe('Native kernel oracle integration (localhost:50051)', () => {
     expect(stepText).toContain('ISO-10303-21;');
     expect(stepText).toContain('END-ISO-10303-21;');
   }, 60000);
+
+  it('make_thick_solid: thickens a 2x2x2 box by 0.1 and exports STEP', async () => {
+    await adapter.init();
+    const results = await adapter.execute({
+      name: 'make_thick_solid_test',
+      tolerances: { volume: 1e-4, surface: 1e-4, bbox: 1e-3, counts: 0 },
+      steps: [
+        {
+          name: 'create_box',
+          parameters: {
+            x: 0, y: 0, z: 0,
+            dx: 2, dy: 2, dz: 2,
+            deflection: 0.1,
+            entity_id: 'thick_box',
+          },
+        },
+        {
+          name: 'make_thick_solid',
+          parameters: {
+            entity_id: 'thick_box',
+            face_indices: [],
+            thickness: 0.1,
+            remove_faces: true,
+          },
+        },
+        {
+          name: 'step_export',
+          parameters: {
+            entity_id: 'thick_box',
+          },
+        },
+      ],
+    });
+
+    // Step 0: create_box
+    expect(results[0].success).toBe(true);
+    expect(results[0].metrics.faceCount).toBe(6);
+
+    // Step 1: make_thick_solid
+    const thickResult = results[1];
+    expect(thickResult.success).toBe(true);
+    expect(thickResult.shapeId).toBe('thick_box');
+    expect(thickResult.metrics.valid).toBe(true);
+    expect(thickResult.metrics.volume).toBeGreaterThan(8.0);
+
+    // Step 2: step_export
+    const stepResult = results[2];
+    expect(stepResult.success).toBe(true);
+    expect(stepResult.brepRef).toBeDefined();
+    expect(stepResult.brepRef!.data).toBeDefined();
+    expect(stepResult.brepRef!.data!.length).toBeGreaterThan(100);
+
+    const stepText = Buffer.from(stepResult.brepRef!.data!).toString('utf-8');
+    expect(stepText).toContain('ISO-10303-21;');
+    expect(stepText).toContain('END-ISO-10303-21;');
+  }, 60000);
+
+  it('draft_solid_faces: applies draft to all faces of a 2x2x2 box and exports STEP', async () => {
+    await adapter.init();
+    const results = await adapter.execute({
+      name: 'draft_solid_faces_test',
+      tolerances: { volume: 1e-4, surface: 1e-4, bbox: 1e-3, counts: 0 },
+      steps: [
+        {
+          name: 'create_box',
+          parameters: {
+            x: 0, y: 0, z: 0,
+            dx: 2, dy: 2, dz: 2,
+            deflection: 0.1,
+            entity_id: 'draft_box',
+          },
+        },
+        {
+          name: 'draft_solid_faces',
+          parameters: {
+            entity_id: 'draft_box',
+            face_indices: [0, 1, 2, 3, 4, 5],
+            neutral_face_index: 0,
+            angle_rad: 0.2,
+          },
+        },
+        {
+          name: 'step_export',
+          parameters: {
+            entity_id: 'draft_box',
+          },
+        },
+      ],
+    });
+
+    // Step 0: create_box
+    expect(results[0].success).toBe(true);
+
+    // Step 1: draft_solid_faces
+    const draftResult = results[1];
+    expect(draftResult.success).toBe(true);
+    expect(draftResult.shapeId).toBe('draft_box');
+    expect(draftResult.metrics.valid).toBe(true);
+    expect(draftResult.metrics.volume).toBeGreaterThan(0);
+
+    // Step 2: step_export
+    const stepResult = results[2];
+    expect(stepResult.success).toBe(true);
+    expect(stepResult.brepRef).toBeDefined();
+    expect(stepResult.brepRef!.data).toBeDefined();
+    expect(stepResult.brepRef!.data!.length).toBeGreaterThan(100);
+
+    const stepText = Buffer.from(stepResult.brepRef!.data!).toString('utf-8');
+    expect(stepText).toContain('ISO-10303-21;');
+    expect(stepText).toContain('END-ISO-10303-21;');
+  }, 60000);
 });

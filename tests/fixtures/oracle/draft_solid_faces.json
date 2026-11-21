@@ -1,0 +1,43 @@
+{
+  "id": "draft_solid_faces",
+  "name": "Draft Solid Faces",
+  "description": "Apply draft angle to faces of a 2x2x2 box",
+  "script": {
+    "name": "draft_solid_faces_test",
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 2, "dy": 2, "dz": 2,
+          "deflection": 0.1,
+          "entity_id": "base_box"
+        }
+      },
+      {
+        "name": "draft_solid_faces",
+        "parameters": {
+          "entity_id": "base_box",
+          "face_indices": [0, 1, 2, 3, 4, 5],
+          "neutral_face_index": 0,
+          "angle_rad": 0.2
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 11.682,
+    "surfaceArea": 31.536,
+    "bbox": { "min": [0.0, -0.405, -0.405], "max": [2.0, 2.405, 2.405] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 0.01,
+    "surfaceArea": 0.01,
+    "bbox": 0.01,
+    "counts": 0
+  }
+}

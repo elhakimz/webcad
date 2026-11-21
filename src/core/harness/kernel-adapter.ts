@@ -29,6 +29,7 @@ export interface KernelResult {
   error?: string;
   loops?: Loop2D[];
   mesh?: MeshData;
+  brepRef?: { format?: string; data?: Uint8Array };
 }
 
 export interface ScriptStep {

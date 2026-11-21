@@ -80,6 +80,9 @@ static bool ShouldLog(LogLevel level) { return level >= g_logLevel; }
 #include <opencascade/TopAbs_ShapeEnum.hxx>
 #include <opencascade/BRepGProp.hxx>
 #include <opencascade/GProp_GProps.hxx>
+#include <opencascade/Bnd_Box.hxx>
+#include <opencascade/BRepBndLib.hxx>
+#include <opencascade/BRepCheck_Analyzer.hxx>
 #include <opencascade/BRepMesh_IncrementalMesh.hxx>
 #include <opencascade/BinTools.hxx>
 #include <opencascade/STEPControl_Writer.hxx>
@@ -427,6 +430,55 @@ static OpResult OpReleaseShapes(const std::vector<std::string>& entityIds) {
   return r;
 }
 
+// Compute geometric + topological metrics for a CAD shape and populate a
+// ShapeMetrics protobuf message. Safe for null shapes (sets is_valid=false).
+static void ComputeShapeMetrics(const TopoDS_Shape& shape,
+                                webcad::engine::v1::ShapeMetrics* metrics) {
+  if (!metrics || shape.IsNull()) {
+    if (metrics) metrics->set_is_valid(false);
+    return;
+  }
+
+  // 1. Volume
+  GProp_GProps vProps;
+  BRepGProp::VolumeProperties(shape, vProps);
+  metrics->set_volume(vProps.Mass());
+
+  // 2. Surface area
+  GProp_GProps sProps;
+  BRepGProp::SurfaceProperties(shape, sProps);
+  metrics->set_surface_area(sProps.Mass());
+
+  // 3. Bounding box
+  Bnd_Box bndBox;
+  BRepBndLib::Add(shape, bndBox);
+  if (!bndBox.IsVoid()) {
+    double xmin, ymin, zmin, xmax, ymax, zmax;
+    bndBox.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+    auto* bbox = metrics->mutable_bbox();
+    bbox->set_min_x(xmin);
+    bbox->set_min_y(ymin);
+    bbox->set_min_z(zmin);
+    bbox->set_max_x(xmax);
+    bbox->set_max_y(ymax);
+    bbox->set_max_z(zmax);
+  }
+
+  // 4. Topology counts
+  uint32_t faces = 0, edges = 0, vertices = 0;
+  for (TopExp_Explorer exp(shape, TopAbs_FACE); exp.More(); exp.Next()) faces++;
+  for (TopExp_Explorer exp(shape, TopAbs_EDGE); exp.More(); exp.Next()) edges++;
+  for (TopExp_Explorer exp(shape, TopAbs_VERTEX); exp.More(); exp.Next()) vertices++;
+
+  metrics->set_face_count(faces);
+  metrics->set_edge_count(edges);
+  metrics->set_vertex_count(vertices);
+
+  // 5. Validity
+  BRepCheck_Analyzer analyzer(shape);
+  metrics->set_is_valid(analyzer.IsValid());
+}
+
 // CLI mode: read JSON commands from stdin, write JSON responses to stdout.
 // Each line is one command: {"op": "create_box", ...}
 // Response: {"ok": true, "shape_id": "..."} or {"ok": false, "code": N, "message": "..."}
@@ -665,6 +717,12 @@ class KernelServiceImpl final : public KernelService::Service {
     success->set_shape_id(r.shapeId);
     auto* boxResult = success->mutable_box();
     boxResult->set_shape_id(r.shapeId);
+
+    // Compute and attach shape metrics for parity harness
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
 
     // Optional MeshData (populated later from triangulation)
     if (request->include_brep()) {

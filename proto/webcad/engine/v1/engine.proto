@@ -129,6 +129,7 @@ message ExecuteRequest {
     ChamferSolidFaceOp chamfer_solid_face = 34;
     MakeThickSolidOp make_thick_solid = 35;
     DraftSolidFacesOp draft_solid_faces = 36;
+    StepExportOp step_export = 37;
   }
 }
 
@@ -230,6 +231,7 @@ message FilletSolidFaceOp { string entity_id = 1; int32 face_index = 2; double r
 message ChamferSolidFaceOp { string entity_id = 1; int32 face_index = 2; double radius = 3; }
 message MakeThickSolidOp { string entity_id = 1; repeated int32 face_indices = 2; double thickness = 3; bool remove_faces = 4; }
 message DraftSolidFacesOp { string entity_id = 1; repeated int32 face_indices = 2; int32 neutral_face_index = 3; double angle_rad = 4; }
+message StepExportOp { string entity_id = 1; }
 
 message ExecuteResponse {
   ResultHeader header = 1;
@@ -239,6 +241,7 @@ message ExecuteResponse {
   }
   MeshData mesh = 4;
   BrepReference brep_ref = 5;
+  ShapeMetrics metrics = 6;
 }
 
 message ExecuteSuccess {

@@ -123,9 +123,22 @@ export class NativeKernelAdapter implements KernelAdapter {
     const metrics: KernelMetric = {};
     const shapeId = success.shape_id;
 
-    // The native ExecuteResponse does not currently carry volume/surface area/counts.
-    // These are left undefined; the comparator handles missing metrics gracefully.
-    // Future: kernel can return metrics via GenericShapeResult or a dedicated metrics RPC.
+    // Parse ShapeMetrics from ExecuteResponse.metrics (populated by native kernel)
+    const m = response.metrics;
+    if (m) {
+      if (typeof m.volume === 'number') metrics.volume = m.volume;
+      if (typeof m.surface_area === 'number') metrics.surfaceArea = m.surface_area;
+      if (m.bbox && typeof m.bbox.min_x === 'number' && typeof m.bbox.max_x === 'number') {
+        metrics.bbox = {
+          min: [m.bbox.min_x, m.bbox.min_y, m.bbox.min_z],
+          max: [m.bbox.max_x, m.bbox.max_y, m.bbox.max_z],
+        };
+      }
+      if (typeof m.face_count === 'number') metrics.faceCount = m.face_count;
+      if (typeof m.edge_count === 'number') metrics.edgeCount = m.edge_count;
+      if (typeof m.vertex_count === 'number') metrics.vertexCount = m.vertex_count;
+      if (typeof m.is_valid === 'boolean') metrics.valid = m.is_valid;
+    }
 
     return {
       stepIndex,

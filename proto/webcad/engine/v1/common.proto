@@ -92,3 +92,25 @@ enum ExecutionFailureCode {
   EXECUTION_FAILURE_CODE_IMPORT_FAILED = 7;              // B-rep import failed
   EXECUTION_FAILURE_CODE_EXPORT_FAILED = 8;              // B-rep export failed
 }
+
+// Axis-aligned bounding box in 3D space.
+message BoundingBox3D {
+  double min_x = 1;
+  double min_y = 2;
+  double min_z = 3;
+  double max_x = 4;
+  double max_y = 5;
+  double max_z = 6;
+}
+
+// Geometric and topological metrics for a CAD shape, used by the parity harness
+// to compare WASM worker vs native OCCT kernel results.
+message ShapeMetrics {
+  double volume = 1;
+  double surface_area = 2;
+  BoundingBox3D bbox = 3;
+  uint32 face_count = 4;
+  uint32 edge_count = 5;
+  uint32 vertex_count = 6;
+  bool is_valid = 7;
+}

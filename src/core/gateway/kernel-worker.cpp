@@ -1468,8 +1468,11 @@ static OpResult OpCreateSweep(
       pipeShell.SetTransitionMode(BRepBuilderAPI_Transformed);
     }
 
-    // Frenet mode adapts orientation along curvature; good for curved spines.
-    pipeShell.SetMode(Standard_True);
+    // Discrete mode keeps profile orientation constant along each spine segment
+    // and applies corner transitions between segments — correct for polylines.
+    // Frenet mode (SetMode(true)) is undefined on straight segments and causes
+    // frame flips at corners, breaking RoundCorner at some bends.
+    pipeShell.SetDiscreteMode();
 
     // Add profile wire to pipe shell.
     pipeShell.Add(profileWire, Standard_False, Standard_False);

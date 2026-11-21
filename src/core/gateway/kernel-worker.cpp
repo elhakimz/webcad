@@ -536,6 +536,20 @@ static void EnsurePositiveVolume(TopoDS_Shape& shape) {
   }
 }
 
+static TopoDS_Shape ApplyTransform(const TopoDS_Shape& shape,
+                                   const gp_Trsf& trsf,
+                                   bool copy = true) {
+  BRepBuilderAPI_Transform transformer(shape, trsf, copy);
+  return transformer.Shape();
+}
+
+static TopoDS_Shape ApplyTransform(const TopoDS_Shape& shape,
+                                   const gp_GTrsf& gtrsf,
+                                   bool copy = true) {
+  BRepBuilderAPI_GTransform transformer(shape, gtrsf, copy);
+  return transformer.Shape();
+}
+
 // Build a polyhedron from points + face vertex-index lists.
 // Port of WASM createPolyhedron (OCCWorker.ts): MakeWire → MakeFace → Sewing → MakeSolid.
 // Points are already in world space; no translation is applied.

@@ -33,7 +33,7 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-19 ✓ | Port: fillet and chamfer (solid and face variants) | high | B | Phase 2 |
 | WC-EC-20 ✓ | Port: shell (makeThickSolid) and draft | high | B | Phase 2 |
 | WC-EC-21 ✓ | Port: sweep | high | B | Phase 2 |
-| WC-EC-22 ✓ | Port: loft | medium | A | Phase 2 |
+| WC-EC-22 ✓ | Port: loft (done) | medium | A | Phase 2 |
 | WC-EC-23 ✓ | Port: tessellation to binary buffers | high | B | Phase 2 |
 | WC-EC-24 ✓ | B-rep import/export and cross-version compatibility (done) | high | B | Phase 2 |
 | WC-EC-25 | Server-side STEP / STL / glTF export | medium | B | Phase 2 |

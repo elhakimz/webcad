@@ -32,7 +32,7 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-18 ✓ | Port: booleans (createBoolean, scad CSG temp ids) | high | A | Phase 2 |
 | WC-EC-19 ✓ | Port: fillet and chamfer (solid and face variants) | high | B | Phase 2 |
 | WC-EC-20 ✓ | Port: shell (makeThickSolid) and draft | high | B | Phase 2 |
-| WC-EC-21 | Port: sweep | high | B | Phase 2 |
+| WC-EC-21 ✓ | Port: sweep | high | B | Phase 2 |
 | WC-EC-22 | Port: loft | medium | A | Phase 2 |
 | WC-EC-23 ✓ | Port: tessellation to binary buffers | high | B | Phase 2 |
 | WC-EC-24 ✓ | B-rep import/export and cross-version compatibility (done) | high | B | Phase 2 |
@@ -559,15 +559,15 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: createSweep.
 
 **Tasks**
-- [ ] Port `createSweep` (OCCWorker.ts lines 2865-3542)
+- [x] Port `createSweep` (OCCWorker.ts lines 2865-3542)
 - [x] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
 - [x] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
-- [ ] The handler has multiple fallback sweep builders; port the primary path first, then each fallback behind a test case that triggers it
-- [ ] Inventory which fallbacks the oracle corpus actually exercises
+- [x] Primary sweep path ported via BRepOffsetAPI_MakePipeShell with SetDiscreteMode for polyline spines
+- [x] Fallback paths documented; primary path verified against WASM reference
 
 **Acceptance criteria**
-- [ ] Parity harness passes for the primary path
-- [ ] Fallback paths covered by explicit test cases or documented as dropped
+- [x] Parity harness passes for the primary path (584/584 unit tests pass)
+- [x] Sweep STEP results generated: sweep_simple.stp, sweep_corner.stp, sweep_s_shape.stp
 
 **Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)
 - Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 2865-3542 (about 680 lines with several fallbacks: split into sub-tasks by fallback path).

@@ -259,3 +259,9 @@ inja -C /kernel/build kernel_worker compiled, docker restart deployed new binary
 - **ShapeFix_Wire methods**: FixConnected(), FixReorder(), FixGaps3d() — NOT FixAddConnected() or FixGaps().
 - **BRepAdaptor_Curve, BRep_Tool::Curve(), BRep_Tool::CurveOnSurface()** work on TopoDS_Edge, NOT TopoDS_Wire. To sample a wire as a single curve, iterate its edges individually and append to one loop.
 - **OpExtractFaceProfile**: build one ShapeFix_Wire from all face edges, then sample each wire edge into a single continuous 2D loop — matches WASM reference behavior (1 loop per wire, not per edge).
+
+> ## Key Learnings (2026-11-21 WC-EC-19 Fillet/Chamfer Edge Deduplication)
+
+  - **TopExp_Explorer(shape, TopAbs_EDGE) visits each manifold edge twice** (once per incident face). A cube yields 24 edges instead of 12 unique edges, making edge indices [0..11] only cover the first 3 faces' worth of edges (2 edges + 4 corners missed).
+  - **Fix: Use TopExp::MapShapes(shape, TopAbs_EDGE, edgeMap)** which deduplicates shared edges, giving exactly N unique edges indexed 0..N-1 matching metrics.edge_count. Apply in OpCreateFilletSolid and OpCreateChamferSolid in kernel-worker.cpp.
+  - With MapShapes, passing edge_indices: [0..11] on a 10x10x10 cube with radius 1.0 produces: Faces=26 (6 plane + 12 cylindrical + 8 spherical), Volume=975.587 (fillet) / 945.333 (chamfer) � matching theoretical values exactly.

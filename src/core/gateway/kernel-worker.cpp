@@ -826,6 +826,338 @@ static OpResult OpCreateBoolean(const std::string& operation,
 }
 
 // ---------------------------------------------------------------------------
+// OpCreateFilletSolid — fillet a single edge of a cached solid
+// Mirrors WASM OCCWorker.ts HandleFilletSolid:
+//   BRepFilletAPI_MakeFillet(shape, ChFi3d_Rational); Add(radius, edge); Build();
+// ---------------------------------------------------------------------------
+static OpResult OpCreateFilletSolid(const std::string& entityId,
+                                    int32_t edgeIndex,
+                                    const std::vector<int32_t>& edgeIndices,
+                                    double radius,
+                                    double deflection) {
+  OpResult r;
+
+  auto it = g_shapeCache.find(entityId);
+  if (it == g_shapeCache.end()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
+    r.message = "FilletSolid: shape not found in cache: " + entityId;
+    return r;
+  }
+
+  const TopoDS_Shape& shape = it->second;
+  if (shape.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY);
+    r.message = "FilletSolid: shape is null";
+    return r;
+  }
+
+  if (radius <= 0.0) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "FilletSolid: radius must be > 0";
+    return r;
+  }
+
+  // Collect all unique edges into a vector (preserves index order).
+  // Use TopExp::MapShapes to deduplicate edges shared between faces,
+  // so edge index i maps to the i-th unique edge (matches metrics.edge_count).
+  TopTools_IndexedMapOfShape edgeMap;
+  TopExp::MapShapes(shape, TopAbs_EDGE, edgeMap);
+  std::vector<TopoDS_Edge> allEdges;
+  allEdges.reserve(edgeMap.Extent());
+  for (Standard_Integer i = 1; i <= edgeMap.Extent(); ++i) {
+    allEdges.push_back(TopoDS::Edge(edgeMap(i)));
+  }
+
+  // Determine which edge indices to use: edge_indices if non-empty, else edge_index.
+  std::vector<int32_t> indicesToUse = edgeIndices;
+  if (indicesToUse.empty()) {
+    indicesToUse.push_back(edgeIndex);
+  }
+
+  // Validate all indices up front.
+  for (int32_t i : indicesToUse) {
+    if (i < 0 || i >= static_cast<int32_t>(allEdges.size())) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+      r.message = "FilletSolid: edge_index " + std::to_string(i) + " out of bounds";
+      return r;
+    }
+  }
+
+  try {
+    BRepFilletAPI_MakeFillet fillet(shape, ChFi3d_Rational);
+    for (int32_t i : indicesToUse) {
+      fillet.Add(radius, allEdges[static_cast<size_t>(i)]);
+    }
+    fillet.Build();
+    if (!fillet.IsDone() || fillet.Shape().IsNull()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "FilletSolid: builder not done or shape is null";
+      return r;
+    }
+    return OpCreateAndCache(fillet.Shape(), deflection, entityId);
+  } catch (const Standard_Failure& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "FilletSolid: OCCT failure: " + std::string(e.GetMessageString());
+    return r;
+  } catch (const std::exception& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "FilletSolid: " + std::string(e.what());
+    return r;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// OpCreateChamferSolid — chamfer a single edge of a cached solid
+// Mirrors WASM OCCWorker.ts HandleChamferSolid:
+//   BRepFilletAPI_MakeChamfer(shape); Add(distance, edge); Build();
+// ---------------------------------------------------------------------------
+static OpResult OpCreateChamferSolid(const std::string& entityId,
+                                     int32_t edgeIndex,
+                                     const std::vector<int32_t>& edgeIndices,
+                                     double radius,
+                                     double deflection) {
+  OpResult r;
+
+  auto it = g_shapeCache.find(entityId);
+  if (it == g_shapeCache.end()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
+    r.message = "ChamferSolid: shape not found in cache: " + entityId;
+    return r;
+  }
+
+  const TopoDS_Shape& shape = it->second;
+  if (shape.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY);
+    r.message = "ChamferSolid: shape is null";
+    return r;
+  }
+
+  if (radius <= 0.0) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "ChamferSolid: radius must be > 0";
+    return r;
+  }
+
+  // Collect all unique edges into a vector (preserves index order).
+  // Use TopExp::MapShapes to deduplicate edges shared between faces,
+  // so edge index i maps to the i-th unique edge (matches metrics.edge_count).
+  TopTools_IndexedMapOfShape edgeMap;
+  TopExp::MapShapes(shape, TopAbs_EDGE, edgeMap);
+  std::vector<TopoDS_Edge> allEdges;
+  allEdges.reserve(edgeMap.Extent());
+  for (Standard_Integer i = 1; i <= edgeMap.Extent(); ++i) {
+    allEdges.push_back(TopoDS::Edge(edgeMap(i)));
+  }
+
+  // Determine which edge indices to use: edge_indices if non-empty, else edge_index.
+  std::vector<int32_t> indicesToUse = edgeIndices;
+  if (indicesToUse.empty()) {
+    indicesToUse.push_back(edgeIndex);
+  }
+
+  // Validate all indices up front.
+  for (int32_t i : indicesToUse) {
+    if (i < 0 || i >= static_cast<int32_t>(allEdges.size())) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+      r.message = "ChamferSolid: edge_index " + std::to_string(i) + " out of bounds";
+      return r;
+    }
+  }
+
+  try {
+    BRepFilletAPI_MakeChamfer chamfer(shape);
+    for (int32_t i : indicesToUse) {
+      chamfer.Add(radius, allEdges[static_cast<size_t>(i)]);
+    }
+    chamfer.Build();
+    if (!chamfer.IsDone() || chamfer.Shape().IsNull()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "ChamferSolid: builder not done or shape is null";
+      return r;
+    }
+    return OpCreateAndCache(chamfer.Shape(), deflection, entityId);
+  } catch (const Standard_Failure& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "ChamferSolid: OCCT failure: " + std::string(e.GetMessageString());
+    return r;
+  } catch (const std::exception& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "ChamferSolid: " + std::string(e.what());
+    return r;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// OpCreateFilletSolidFace — fillet all edges of a face of a cached solid
+// Mirrors WASM OCCWorker.ts HandleFilletSolidFace:
+//   Select face by face_index; iterate edges; Add(radius, edge) for each.
+// ---------------------------------------------------------------------------
+static OpResult OpCreateFilletSolidFace(const std::string& entityId,
+                                        int32_t faceIndex,
+                                        double radius,
+                                        double deflection) {
+  OpResult r;
+
+  auto it = g_shapeCache.find(entityId);
+  if (it == g_shapeCache.end()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
+    r.message = "FilletSolidFace: shape not found in cache: " + entityId;
+    return r;
+  }
+
+  const TopoDS_Shape& shape = it->second;
+  if (shape.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY);
+    r.message = "FilletSolidFace: shape is null";
+    return r;
+  }
+
+  if (radius <= 0.0) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "FilletSolidFace: radius must be > 0";
+    return r;
+  }
+
+  // Select the target face by faceIndex.
+  TopoDS_Face targetFace;
+  int32_t fidx = 0;
+  bool faceFound = false;
+  for (TopExp_Explorer exp(shape, TopAbs_FACE); exp.More(); exp.Next()) {
+    if (fidx == faceIndex) {
+      targetFace = TopoDS::Face(exp.Current());
+      faceFound = true;
+      break;
+    }
+    ++fidx;
+  }
+
+  if (!faceFound) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "FilletSolidFace: face_index " + std::to_string(faceIndex) + " out of bounds";
+    return r;
+  }
+
+  // Collect edges of the face.
+  std::vector<TopoDS_Edge> faceEdges;
+  for (TopExp_Explorer exp(targetFace, TopAbs_EDGE); exp.More(); exp.Next()) {
+    faceEdges.push_back(TopoDS::Edge(exp.Current()));
+  }
+
+  if (faceEdges.empty()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "FilletSolidFace: face has no edges";
+    return r;
+  }
+
+  try {
+    BRepFilletAPI_MakeFillet fillet(shape, ChFi3d_Rational);
+    for (const auto& edge : faceEdges) {
+      fillet.Add(radius, edge);
+    }
+    fillet.Build();
+    if (!fillet.IsDone() || fillet.Shape().IsNull()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "FilletSolidFace: builder not done or shape is null";
+      return r;
+    }
+    return OpCreateAndCache(fillet.Shape(), deflection, entityId);
+  } catch (const Standard_Failure& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "FilletSolidFace: OCCT failure: " + std::string(e.GetMessageString());
+    return r;
+  } catch (const std::exception& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "FilletSolidFace: " + std::string(e.what());
+    return r;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// OpCreateChamferSolidFace — chamfer all edges of a face of a cached solid
+// Mirrors WASM OCCWorker.ts HandleChamferSolidFace:
+//   Select face by face_index; iterate edges; Add(distance, edge) for each.
+// ---------------------------------------------------------------------------
+static OpResult OpCreateChamferSolidFace(const std::string& entityId,
+                                         int32_t faceIndex,
+                                         double radius,
+                                         double deflection) {
+  OpResult r;
+
+  auto it = g_shapeCache.find(entityId);
+  if (it == g_shapeCache.end()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
+    r.message = "ChamferSolidFace: shape not found in cache: " + entityId;
+    return r;
+  }
+
+  const TopoDS_Shape& shape = it->second;
+  if (shape.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY);
+    r.message = "ChamferSolidFace: shape is null";
+    return r;
+  }
+
+  if (radius <= 0.0) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "ChamferSolidFace: radius must be > 0";
+    return r;
+  }
+
+  // Select the target face by faceIndex.
+  TopoDS_Face targetFace;
+  int32_t fidx = 0;
+  bool faceFound = false;
+  for (TopExp_Explorer exp(shape, TopAbs_FACE); exp.More(); exp.Next()) {
+    if (fidx == faceIndex) {
+      targetFace = TopoDS::Face(exp.Current());
+      faceFound = true;
+      break;
+    }
+    ++fidx;
+  }
+
+  if (!faceFound) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "ChamferSolidFace: face_index " + std::to_string(faceIndex) + " out of bounds";
+    return r;
+  }
+
+  // Collect edges of the face.
+  std::vector<TopoDS_Edge> faceEdges;
+  for (TopExp_Explorer exp(targetFace, TopAbs_EDGE); exp.More(); exp.Next()) {
+    faceEdges.push_back(TopoDS::Edge(exp.Current()));
+  }
+
+  if (faceEdges.empty()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "ChamferSolidFace: face has no edges";
+    return r;
+  }
+
+  try {
+    BRepFilletAPI_MakeChamfer chamfer(shape);
+    for (const auto& edge : faceEdges) {
+      chamfer.Add(radius, edge);
+    }
+    chamfer.Build();
+    if (!chamfer.IsDone() || chamfer.Shape().IsNull()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "ChamferSolidFace: builder not done or shape is null";
+      return r;
+    }
+    return OpCreateAndCache(chamfer.Shape(), deflection, entityId);
+  } catch (const Standard_Failure& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "ChamferSolidFace: OCCT failure: " + std::string(e.GetMessageString());
+    return r;
+  } catch (const std::exception& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "ChamferSolidFace: " + std::string(e.what());
+    return r;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // OpExtractFaceProfile — extract 2D loop profile from a face
 // Returns 2D loops (not a 3D solid); tested via dedicated integration test.
 // ---------------------------------------------------------------------------
@@ -2120,6 +2452,14 @@ class KernelServiceImpl final : public KernelService::Service {
           return HandleCreateCompound(request, response);
         case ExecuteRequest::kCreateBoolean:
           return HandleCreateBoolean(request, response);
+        case ExecuteRequest::kFilletSolid:
+          return HandleFilletSolid(request, response);
+        case ExecuteRequest::kChamferSolid:
+          return HandleChamferSolid(request, response);
+        case ExecuteRequest::kFilletSolidFace:
+          return HandleFilletSolidFace(request, response);
+        case ExecuteRequest::kChamferSolidFace:
+          return HandleChamferSolidFace(request, response);
         case ExecuteRequest::kExtractFaceProfile:
           return HandleExtractFaceProfile(request, response);
         case ExecuteRequest::kMultMatrixShape:
@@ -2657,6 +2997,136 @@ class KernelServiceImpl final : public KernelService::Service {
     auto it = g_shapeCache.find(r.shapeId);
     if (it != g_shapeCache.end()) {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleFilletSolid(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->fillet_solid();
+    double deflection = op.deflection() > 0.0 ? op.deflection() : 0.1;
+    std::string entityId = op.entity_id();
+    int32_t edgeIndex = op.edge_index();
+    double radius = op.radius();
+    std::vector<int32_t> edgeIndices;
+    edgeIndices.reserve(op.edge_indices_size());
+    for (int j = 0; j < op.edge_indices_size(); ++j) {
+      edgeIndices.push_back(op.edge_indices(j));
+    }
+
+    auto r = OpCreateFilletSolid(entityId, edgeIndex, edgeIndices, radius, deflection);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* filletResult = success->mutable_fillet_solid();
+    filletResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      PopulateMeshData(it->second, deflection, response->mutable_mesh());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleChamferSolid(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->chamfer_solid();
+    double deflection = op.deflection() > 0.0 ? op.deflection() : 0.1;
+    std::string entityId = op.entity_id();
+    int32_t edgeIndex = op.edge_index();
+    double radius = op.radius();
+    std::vector<int32_t> edgeIndices;
+    edgeIndices.reserve(op.edge_indices_size());
+    for (int j = 0; j < op.edge_indices_size(); ++j) {
+      edgeIndices.push_back(op.edge_indices(j));
+    }
+
+    auto r = OpCreateChamferSolid(entityId, edgeIndex, edgeIndices, radius, deflection);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* chamferResult = success->mutable_chamfer_solid();
+    chamferResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      PopulateMeshData(it->second, deflection, response->mutable_mesh());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleFilletSolidFace(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->fillet_solid_face();
+    double deflection = 0.1;
+    std::string entityId = op.entity_id();
+    int32_t faceIndex = op.face_index();
+    double radius = op.radius();
+
+    auto r = OpCreateFilletSolidFace(entityId, faceIndex, radius, deflection);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* filletFaceResult = success->mutable_fillet_solid_face();
+    filletFaceResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      PopulateMeshData(it->second, deflection, response->mutable_mesh());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleChamferSolidFace(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->chamfer_solid_face();
+    double deflection = 0.1;
+    std::string entityId = op.entity_id();
+    int32_t faceIndex = op.face_index();
+    double radius = op.radius();
+
+    auto r = OpCreateChamferSolidFace(entityId, faceIndex, radius, deflection);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* chamferFaceResult = success->mutable_chamfer_solid_face();
+    chamferFaceResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      PopulateMeshData(it->second, deflection, response->mutable_mesh());
     }
 
     return Status::OK;

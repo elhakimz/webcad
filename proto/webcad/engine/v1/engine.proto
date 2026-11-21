@@ -230,8 +230,8 @@ message TransformShapeOp { string entity_id = 1; double dx = 2; double dy = 3; d
 message RotateShapeOp { string entity_id = 1; double rx = 2; double ry = 3; double rz = 4; double cx = 5; double cy = 6; double cz = 7; string target_entity_id = 8; double deflection = 9; }
 message MirrorShapeOp { string entity_id = 1; Point3D p1 = 2; Point3D p2 = 3; string target_entity_id = 4; double deflection = 5; Point3D normal = 6; }
 message ScaleShapeOp { string entity_id = 1; double factor = 2; double cx = 3; double cy = 4; double cz = 5; string target_entity_id = 6; double deflection = 7; double factor_x = 8; double factor_y = 9; double factor_z = 10; }
-message FilletSolidOp { string entity_id = 1; int32 edge_index = 2; double radius = 3; double deflection = 4; Point3D visual_p1 = 5; Point3D visual_p2 = 6; }
-message ChamferSolidOp { string entity_id = 1; int32 edge_index = 2; double radius = 3; double deflection = 4; Point3D visual_p1 = 5; Point3D visual_p2 = 6; }
+message FilletSolidOp { string entity_id = 1; int32 edge_index = 2; double radius = 3; double deflection = 4; Point3D visual_p1 = 5; Point3D visual_p2 = 6; repeated int32 edge_indices = 7; }
+message ChamferSolidOp { string entity_id = 1; int32 edge_index = 2; double radius = 3; double deflection = 4; Point3D visual_p1 = 5; Point3D visual_p2 = 6; repeated int32 edge_indices = 7; }
 message FilletSolidFaceOp { string entity_id = 1; int32 face_index = 2; double radius = 3; }
 message ChamferSolidFaceOp { string entity_id = 1; int32 face_index = 2; double radius = 3; }
 message MakeThickSolidOp { string entity_id = 1; repeated int32 face_indices = 2; double thickness = 3; bool remove_faces = 4; }

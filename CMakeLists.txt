@@ -185,6 +185,7 @@ if(DEFINED PROTO_INCLUDE_DIR)
 endif()
 
 target_link_libraries(kernel_worker PRIVATE
+  -Wl,--no-as-needed
   ${TKERNEL_LIB} ${TKMATH_LIB} ${TKG3D_LIB} ${TKBREP_LIB}
   ${TKGEOMBASE_LIB} ${TKGEOMALGO_LIB} ${TKTOPALGO_LIB}
   ${TKPRIM_LIB} ${TKBOOL_LIB} ${TKBO_LIB}
@@ -192,6 +193,7 @@ target_link_libraries(kernel_worker PRIVATE
   ${TKMESH_LIB} ${TKBIN_LIB} ${TKDESTEP_LIB} ${TKDEIGES_LIB} ${TKXSBASE_LIB}
   ${PROTO_LIB}
   ${GRPCPP_LIBRARY} ${GRPC_LIBRARY} ${ABSL_LIBS}
+  -Wl,--as-needed
 )
 
 # Platform-specific flags

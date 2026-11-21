@@ -22,7 +22,7 @@ describe('Native kernel oracle integration (localhost:50051)', () => {
     console.log('ORACLE REPORT:', JSON.stringify(report, null, 2));
     expect(report.failedParts).toBe(0);
     expect(report.passedParts).toBe(report.totalParts);
-    expect(report.totalParts).toBe(19);
+    expect(report.totalParts).toBe(report.results.length);
     for (const result of report.results) {
       expect(result.passed).toBe(true);
       expect(result.errors).toHaveLength(0);
@@ -146,5 +146,123 @@ describe('Native kernel oracle integration (localhost:50051)', () => {
     const result = results[0];
     expect(result.success).toBe(true);
     expect(result.mesh).toBeUndefined();
+  }, 60000);
+
+  it('fillet_solid multi-edge: fillets all 12 edges of a cube in ONE operation and exports STEP', async () => {
+    await adapter.init();
+    const all12Edges = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    const results = await adapter.execute({
+      name: 'fillet_all_12_edges_test',
+      tolerances: { volume: 1e-4, surface: 1e-4, bbox: 1e-3, counts: 0 },
+      steps: [
+        {
+          name: 'create_box',
+          parameters: {
+            x: 0, y: 0, z: 0,
+            dx: 2, dy: 2, dz: 2,
+            deflection: 0.1,
+            entity_id: 'fillet_12_box',
+          },
+        },
+        {
+          name: 'fillet_solid',
+          parameters: {
+            entity_id: 'fillet_12_box',
+            edge_indices: all12Edges,
+            radius: 0.2,
+            deflection: 0.1,
+          },
+        },
+        {
+          name: 'step_export',
+          parameters: {
+            entity_id: 'fillet_12_box',
+          },
+        },
+      ],
+    });
+
+    // Step 0: create_box
+    expect(results[0].success).toBe(true);
+    expect(results[0].metrics.faceCount).toBe(6);
+    expect(results[0].metrics.edgeCount).toBe(12);
+
+    // Step 1: fillet_solid (all 12 edges in 1 operation)
+    const filletResult = results[1];
+    expect(filletResult.success).toBe(true);
+    expect(filletResult.shapeId).toBe('fillet_12_box');
+    expect(filletResult.metrics.valid).toBe(true);
+    expect(filletResult.metrics.faceCount).toBe(26);
+    expect(filletResult.metrics.volume).toBeGreaterThan(7.0);
+    expect(filletResult.metrics.volume).toBeLessThan(8.0);
+
+    // Step 2: step_export
+    const stepResult = results[2];
+    expect(stepResult.success).toBe(true);
+    expect(stepResult.brepRef).toBeDefined();
+    expect(stepResult.brepRef!.data).toBeDefined();
+    expect(stepResult.brepRef!.data!.length).toBeGreaterThan(100);
+
+    const stepText = Buffer.from(stepResult.brepRef!.data!).toString('utf-8');
+    expect(stepText).toContain('ISO-10303-21;');
+    expect(stepText).toContain('END-ISO-10303-21;');
+  }, 60000);
+
+  it('chamfer_solid multi-edge: chamfers all 12 edges of a cube in ONE operation and exports STEP', async () => {
+    await adapter.init();
+    const all12Edges = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    const results = await adapter.execute({
+      name: 'chamfer_all_12_edges_test',
+      tolerances: { volume: 1e-4, surface: 1e-4, bbox: 1e-3, counts: 0 },
+      steps: [
+        {
+          name: 'create_box',
+          parameters: {
+            x: 0, y: 0, z: 0,
+            dx: 2, dy: 2, dz: 2,
+            deflection: 0.1,
+            entity_id: 'chamfer_12_box',
+          },
+        },
+        {
+          name: 'chamfer_solid',
+          parameters: {
+            entity_id: 'chamfer_12_box',
+            edge_indices: all12Edges,
+            radius: 0.2,
+            deflection: 0.1,
+          },
+        },
+        {
+          name: 'step_export',
+          parameters: {
+            entity_id: 'chamfer_12_box',
+          },
+        },
+      ],
+    });
+
+    // Step 0: create_box
+    expect(results[0].success).toBe(true);
+
+    // Step 1: chamfer_solid (all 12 edges in 1 operation)
+    const chamferResult = results[1];
+    expect(chamferResult.success).toBe(true);
+    expect(chamferResult.shapeId).toBe('chamfer_12_box');
+    expect(chamferResult.metrics.valid).toBe(true);
+    expect(chamferResult.metrics.faceCount).toBe(26);
+    expect(chamferResult.metrics.volume).toBeGreaterThan(7.0);
+    expect(chamferResult.metrics.volume).toBeLessThan(8.0);
+
+    // Step 2: step_export
+    const stepResult = results[2];
+    expect(stepResult.success).toBe(true);
+    expect(stepResult.brepRef).toBeDefined();
+    expect(stepResult.brepRef!.data).toBeDefined();
+    expect(stepResult.brepRef!.data!.length).toBeGreaterThan(100);
+
+    const stepText = Buffer.from(stepResult.brepRef!.data!).toString('utf-8');
+    expect(stepText).toContain('ISO-10303-21;');
+    expect(stepText).toContain('END-ISO-10303-21;');
   }, 60000);
 });

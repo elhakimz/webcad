@@ -7,17 +7,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # =====================================================================
 # Fast linker: prefer mold, fall back to lld, then system default
 # =====================================================================
-find_program(MOLD_LINKER mold)
-if(MOLD_LINKER)
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=mold")
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=mold")
-  message(STATUS "Using mold linker: ${MOLD_LINKER}")
+find_program(LLD_LINKER ld.lld)
+if(LLD_LINKER)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=lld")
+  message(STATUS "Using lld linker: ${LLD_LINKER}")
 else()
-  find_program(LLD_LINKER ld.lld)
-  if(LLD_LINKER)
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=lld")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=lld")
-    message(STATUS "Using lld linker: ${LLD_LINKER}")
+  find_program(MOLD_LINKER mold)
+  if(MOLD_LINKER)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=mold")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -fuse-ld=mold")
+    message(STATUS "Using mold linker: ${MOLD_LINKER}")
   else()
     message(STATUS "No fast linker found — using system default linker")
   endif()
@@ -27,7 +27,13 @@ endif()
 # OCCT installed to /usr/local by make install (Dockerfile.kernel stage 2).
 # find_package(OpenCASCADE) without COMPONENTS does not create per-module targets,
 # so find each shared library manually.
-set(OCCT_LIB_DIR /usr/local/lib)
+if(DEFINED ENV{CONDA_PREFIX})
+  set(OCCT_LIB_DIR $ENV{CONDA_PREFIX}/lib)
+elseif(EXISTS /opt/conda/lib)
+  set(OCCT_LIB_DIR /opt/conda/lib)
+else()
+  set(OCCT_LIB_DIR /usr/local/lib)
+endif()
 
 find_library(TKERNEL_LIB NAMES TKernel PATHS ${OCCT_LIB_DIR})
 find_library(TKMATH_LIB NAMES TKMath PATHS ${OCCT_LIB_DIR})
@@ -54,7 +60,7 @@ foreach(lib TKERNEL_LIB TKMATH_LIB TKBREP_LIB TKGEOMBASE_LIB TKGEOMALGO_LIB TKTO
   message(STATUS "Found OCCT library: ${lib} = ${${lib}}")
 endforeach()
 
-find_path(OCCT_INCLUDE_DIR NAMES TopoDS_Shape.hxx PATHS /usr/local/include /usr/local/include/opencascade)
+find_path(OCCT_INCLUDE_DIR NAMES TopoDS_Shape.hxx PATHS /usr/local/include /usr/local/include/opencascade /opt/conda/include/opencascade $ENV{CONDA_PREFIX}/include/opencascade)
 if(NOT OCCT_INCLUDE_DIR)
   message(FATAL_ERROR "OpenCASCADE headers not found in /usr/local/include")
 endif()
@@ -67,22 +73,34 @@ if(Protobuf_FOUND AND TARGET Protobuf::libprotobuf)
   set(PROTO_LIB Protobuf::libprotobuf)
   message(STATUS "Found Protobuf via config package: ${PROTO_LIB}")
 else()
-  find_library(PROTO_LIB NAMES protobuf libprotobuf PATHS /usr/lib/x86_64-linux-gnu /usr/lib)
-  find_path(PROTO_INCLUDE_DIR NAMES google/protobuf/stubs/common.h PATHS /usr/include)
+  find_library(PROTO_LIB NAMES protobuf libprotobuf PATHS /usr/lib/x86_64-linux-gnu /usr/lib /opt/conda/lib $ENV{CONDA_PREFIX}/lib)
+  find_path(PROTO_INCLUDE_DIR NAMES google/protobuf/stubs/common.h PATHS /usr/include /opt/conda/include $ENV{CONDA_PREFIX}/include)
   if(NOT PROTO_LIB)
     message(FATAL_ERROR "protobuf library not found")
   endif()
   message(STATUS "Found Protobuf via find_library: ${PROTO_LIB}")
 endif()
 
-# gRPC: no CMake config package on Ubuntu 22.04 libgrpc-dev; find libraries manually
+# gRPC: try config package, fall back to find_library
+find_package(gRPC QUIET CONFIG)
+if(gRPC_FOUND AND TARGET gRPC::grpc++)
+  set(GRPCPP_LIBRARY gRPC::grpc++)
+  set(GRPC_LIBRARY gRPC::grpc)
+  message(STATUS "Found gRPC via config package: ${GRPCPP_LIBRARY}")
+else()
+  find_library(GRPCPP_LIBRARY NAMES grpc++ PATHS /usr/lib/x86_64-linux-gnu /opt/conda/lib $ENV{CONDA_PREFIX}/lib)
+  find_library(GRPC_LIBRARY NAMES grpc PATHS /usr/lib/x86_64-linux-gnu /opt/conda/lib $ENV{CONDA_PREFIX}/lib)
+  find_path(GRPCPP_INCLUDE_DIR NAMES grpcpp/client_context.h PATHS /usr/include /opt/conda/include $ENV{CONDA_PREFIX}/include)
+  find_path(GRPC_INCLUDE_DIR NAMES grpc/support/log.h PATHS /usr/include /opt/conda/include $ENV{CONDA_PREFIX}/include)
+  if(NOT GRPCPP_LIBRARY OR NOT GRPC_LIBRARY)
+    message(FATAL_ERROR "gRPC libraries not found")
+  endif()
+  message(STATUS "Found gRPC++: ${GRPCPP_LIBRARY}")
+  message(STATUS "Found gRPC: ${GRPC_LIBRARY}")
+endif()
+
 find_program(PROTOC_EXECUTABLE protoc)
 find_program(GRPC_CPP_PLUGIN grpc_cpp_plugin)
-find_library(GRPCPP_LIBRARY NAMES grpc++ PATHS /usr/lib/x86_64-linux-gnu)
-find_library(GRPC_LIBRARY NAMES grpc PATHS /usr/lib/x86_64-linux-gnu)
-find_path(GRPCPP_INCLUDE_DIR NAMES grpcpp/client_context.h PATHS /usr/include)
-find_path(GRPC_INCLUDE_DIR NAMES grpc/support/log.h PATHS /usr/include)
-
 if(NOT PROTOC_EXECUTABLE)
   message(FATAL_ERROR "protoc not found")
 endif()
@@ -91,19 +109,13 @@ if(NOT GRPC_CPP_PLUGIN)
   message(FATAL_ERROR "grpc_cpp_plugin not found")
 endif()
 message(STATUS "Found grpc_cpp_plugin: ${GRPC_CPP_PLUGIN}")
-if(NOT GRPCPP_LIBRARY OR NOT GRPC_LIBRARY)
-  message(FATAL_ERROR "gRPC libraries not found")
+
+# Abseil (required by gRPC when built as shared libraries, e.g. conda-forge)
+find_package(absl QUIET CONFIG)
+if(absl_FOUND)
+  set(ABSL_LIBS absl::synchronization absl::time absl::strings absl::base)
+  message(STATUS "Found Abseil via config package")
 endif()
-message(STATUS "Found gRPC++: ${GRPCPP_LIBRARY}")
-message(STATUS "Found gRPC: ${GRPC_LIBRARY}")
-if(NOT GRPCPP_INCLUDE_DIR)
-  message(FATAL_ERROR "gRPC++ headers not found")
-endif()
-message(STATUS "Found gRPC++ headers: ${GRPCPP_INCLUDE_DIR}")
-if(NOT GRPC_INCLUDE_DIR)
-  message(FATAL_ERROR "gRPC headers not found")
-endif()
-message(STATUS "Found gRPC headers: ${GRPC_INCLUDE_DIR}")
 
 # Proto directory — proto_path must be proto/ root because engine.proto imports
 # "webcad/engine/v1/common.proto". Generated output lands in
@@ -178,7 +190,7 @@ target_link_libraries(kernel_worker PRIVATE
   ${TKFILLET_LIB} ${TKOFFSET_LIB} ${TKSHEALING_LIB}
   ${TKMESH_LIB} ${TKBIN_LIB} ${TKDESTEP_LIB} ${TKDEIGES_LIB} ${TKXSBASE_LIB}
   ${PROTO_LIB}
-  ${GRPCPP_LIBRARY} ${GRPC_LIBRARY}
+  ${GRPCPP_LIBRARY} ${GRPC_LIBRARY} ${ABSL_LIBS}
 )
 
 # Platform-specific flags
@@ -194,11 +206,11 @@ endif()
 # pre-built static libs may be at /usr/lib/x86_64-linux-gnu)
 # =====================================================================
 find_library(GTEST_LIB NAMES gtest libgtest PATHS
-  /usr/lib/x86_64-linux-gnu /usr/lib /usr/local/lib)
+  /usr/lib/x86_64-linux-gnu /usr/lib /usr/local/lib /opt/conda/lib $ENV{CONDA_PREFIX}/lib)
 find_library(GTEST_MAIN_LIB NAMES gtest_main libgtest_main PATHS
-  /usr/lib/x86_64-linux-gnu /usr/lib /usr/local/lib)
+  /usr/lib/x86_64-linux-gnu /usr/lib /usr/local/lib /opt/conda/lib $ENV{CONDA_PREFIX}/lib)
 find_path(GTEST_INCLUDE_DIR NAMES gtest/gtest.h PATHS
-  /usr/include /usr/local/include /usr/src/googletest/googletest/include)
+  /usr/include /usr/local/include /usr/src/googletest/googletest/include /opt/conda/include $ENV{CONDA_PREFIX}/include)
 
 if(NOT GTEST_LIB OR NOT GTEST_INCLUDE_DIR)
   message(FATAL_ERROR "Google Test not found. Install libgtest-dev (apt-get install libgtest-dev).")
@@ -225,7 +237,7 @@ target_link_libraries(codec_test PRIVATE
   ${GTEST_LIB}
   ${GTEST_MAIN_LIB}
   ${PROTO_LIB}
-  ${GRPCPP_LIBRARY} ${GRPC_LIBRARY}
+  ${GRPCPP_LIBRARY} ${GRPC_LIBRARY} ${ABSL_LIBS}
 )
 
 # Enable testing so `ctest` can discover codec_test
@@ -259,7 +271,7 @@ target_link_libraries(kernel_worker_test PRIVATE
   ${GTEST_LIB}
   ${GTEST_MAIN_LIB}
   ${PROTO_LIB}
-  ${GRPCPP_LIBRARY} ${GRPC_LIBRARY}
+  ${GRPCPP_LIBRARY} ${GRPC_LIBRARY} ${ABSL_LIBS}
 )
 
 add_test(NAME kernel_worker_test COMMAND kernel_worker_test WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})

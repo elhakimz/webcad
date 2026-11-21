@@ -11,12 +11,12 @@ dependencies:
   # OCCT 7.9.3 headless kernel (novtk = no VTK/TBB/Draw — matches headless kernel needs)
   - occt=7.9.3=novtk_*
   # Protobuf + gRPC C++ runtime (must match protoc plugin versions exactly)
-  - protobuf-cpp
+  - libprotobuf
+  - protobuf
+  - libgrpc
   - grpc-cpp
   - abseil-cpp
-  # Fast linkers (mold preferred, lld fallback)
-  - mold
+  # Fast linker (lld)
   - lld
-  # Protobuf compiler + gRPC plugin for codegen
-  - protobuf-cpp-dev
-  - grpc-cpp-dev
+  # Testing
+  - gtest

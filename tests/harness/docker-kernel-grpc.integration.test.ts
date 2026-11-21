@@ -22,7 +22,7 @@ const KERNEL_ADDRESS = process.env.KERNEL_ADDRESS || 'localhost:50051';
 
 describe('TypeScript gRPC against Docker kernel', () => {
   let client: any = null;
-  const shapeId = '';
+  let shapeId = '';
 
   beforeAll(async () => {
     client = new engineProto.KernelService(KERNEL_ADDRESS, grpc.credentials.createInsecure());
@@ -73,10 +73,10 @@ describe('TypeScript gRPC against Docker kernel', () => {
     };
     const response = await execute(request);
     console.log('create_box response:', JSON.stringify(response));
-    expect(response.result).toBe('failure');
-    expect(response.failure).toBeDefined();
-    expect(response.failure.code).toBe(5); // EXECUTION_FAILURE_CODE_OPERATION_FAILED
-    expect(response.failure.message).toContain('BRepPrimAPI_MakeBox');
+    expect(response.result).toBe('success');
+    expect(response.success).toBeDefined();
+    expect(response.success.shape_id).toBe('box_1');
+    shapeId = response.success.shape_id;
   });
 
   it('step_export returns valid STEP-214 data', async () => {
@@ -94,10 +94,13 @@ describe('TypeScript gRPC against Docker kernel', () => {
     };
     const response = await execute(request);
     console.log('step_export response:', JSON.stringify(response));
-    expect(response.result).toBe('failure');
-    expect(response.failure).toBeDefined();
-    expect(response.failure.code).toBe(1); // EXECUTION_FAILURE_CODE_MISSING_ENTITY
-    expect(response.failure.message).toContain('Shape not found in cache');
+    expect(response.result).toBe('success');
+    expect(response.success).toBeDefined();
+    expect(response.success.shape_id).toBe(shapeId);
+    expect(response.brep_ref).toBeDefined();
+    expect(response.brep_ref.format).toBe('FORMAT_STEP');
+    expect(response.brep_ref.data).toBeDefined();
+    expect(response.brep_ref.data.length).toBeGreaterThan(0);
   });
 
   it('step_export on missing entity returns failure', async () => {

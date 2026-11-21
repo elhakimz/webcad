@@ -529,6 +529,47 @@ static void RunCliMode() {
   }
 }
 
+// Stdio mode: read length-prefixed JSON commands from stdin, write length-prefixed JSON responses to stdout.
+// Framing: 4-byte big-endian uint32 length prefix + JSON body. Matches StdioKernelClient on the gateway side.
+static void RunStdioMode() {
+  while (true) {
+    // Read 4-byte length prefix
+    uint32_t length = 0;
+    if (!std::cin.read(reinterpret_cast<char*>(&length), 4)) break;
+
+    // Read JSON body
+    std::string body(length, '\0');
+    if (!std::cin.read(&body[0], static_cast<std::streamsize>(length))) break;
+
+    // Parse op from JSON body (minimal parse, same command set as CLI mode)
+    std::string op;
+    if (!JsonGetString(body, "op", &op)) {
+      std::string resp = "{\"ok\": false, \"code\": 3, \"message\": \"Missing 'op' field\"}";
+      uint32_t respLen = static_cast<uint32_t>(resp.size());
+      std::cout.write(reinterpret_cast<const char*>(&respLen), 4);
+      std::cout.write(resp.data(), respLen);
+      std::cout.flush();
+      continue;
+    }
+
+    if (op == "health") {
+      std::string resp = "{\"ok\": true, \"op\": \"health\", \"status\": \"serving\"}";
+      uint32_t respLen = static_cast<uint32_t>(resp.size());
+      std::cout.write(reinterpret_cast<const char*>(&respLen), 4);
+      std::cout.write(resp.data(), respLen);
+      std::cout.flush();
+      continue;
+    }
+
+    // Unknown op
+    std::string resp = "{\"ok\": false, \"code\": 3, \"message\": \"Unknown operation: \"}" + JsonEscape(op) + "\"}";
+    uint32_t respLen = static_cast<uint32_t>(resp.size());
+    std::cout.write(reinterpret_cast<const char*>(&respLen), 4);
+    std::cout.write(resp.data(), respLen);
+    std::cout.flush();
+  }
+}
+
 class KernelServiceImpl final : public KernelService::Service {
  public:
   Status Execute(ServerContext* /*context*/, const ExecuteRequest* request,
@@ -537,6 +578,10 @@ class KernelServiceImpl final : public KernelService::Service {
 
     try {
       switch (request->op_case()) {
+        case ExecuteRequest::kInit:
+          return HandleInit(request, response);
+        case ExecuteRequest::kClearCache:
+          return HandleClearCache(request, response);
         case ExecuteRequest::kCreateBox:
           return HandleCreateBox(request, response);
         case ExecuteRequest::kImportBrep:
@@ -592,6 +637,19 @@ class KernelServiceImpl final : public KernelService::Service {
   }
 
  private:
+  Status HandleInit(const ExecuteRequest* /*request*/, ExecuteResponse* response) {
+    auto* success = response->mutable_success();
+    success->set_shape_id("");
+    return Status::OK;
+  }
+
+  Status HandleClearCache(const ExecuteRequest* /*request*/, ExecuteResponse* response) {
+    g_shapeCache.clear();
+    auto* success = response->mutable_success();
+    success->set_shape_id("");
+    return Status::OK;
+  }
+
   Status HandleCreateBox(const ExecuteRequest* request, ExecuteResponse* response) {
     const auto& op = request->create_box();
     double x = op.x(), y = op.y(), z = op.z();
@@ -731,15 +789,26 @@ int main(int argc, char** argv) {
     }
   }
 
-    InitLogLevel();
-    LOG(kLogInfo) << "Kernel worker starting" << std::endl;
+  // KERNEL_TRANSPORT=stdio enables length-prefixed JSON over stdin/stdout
+  // (used by the gateway's StdioKernelClient).
+  const char* transportEnv = std::getenv("KERNEL_TRANSPORT");
+  bool useStdio = transportEnv && std::string(transportEnv) == "stdio";
 
-    if (cliMode) {
-      // JSON-over-stdio CLI mode: read commands from stdin, write responses to stdout.
-      // Used for development, debugging, and parity testing without the gateway/gRPC stack.
-      RunCliMode();
-      return 0;
-    }
+  InitLogLevel();
+  LOG(kLogInfo) << "Kernel worker starting" << std::endl;
+
+  if (useStdio) {
+    // Length-prefixed JSON over stdio: skip UDS/gRPC entirely.
+    RunStdioMode();
+    return 0;
+  }
+
+  if (cliMode) {
+    // JSON-over-stdio CLI mode: read commands from stdin, write responses to stdout.
+    // Used for development, debugging, and parity testing without the gateway/gRPC stack.
+    RunCliMode();
+    return 0;
+  }
 
   KernelServiceImpl service;
 

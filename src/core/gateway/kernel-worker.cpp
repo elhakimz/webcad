@@ -68,6 +68,8 @@ static bool ShouldLog(LogLevel level) { return level >= g_logLevel; }
 #include <opencascade/BRepBuilderAPI_MakeShell.hxx>
 #include <opencascade/BRepBuilderAPI_Sewing.hxx>
 #include <opencascade/BRepAdaptor_Surface.hxx>
+#include <opencascade/BRepGProp.hxx>
+#include <opencascade/BRep_Tool.hxx>
 #include <opencascade/Geom_Surface.hxx>
 #include <opencascade/Geom_Plane.hxx>
 #include <opencascade/Geom_CylindricalSurface.hxx>
@@ -98,6 +100,11 @@ static bool ShouldLog(LogLevel level) { return level >= g_logLevel; }
 #include <opencascade/STEPControl_Writer.hxx>
 #include <opencascade/Interface_Static.hxx>
 #include <opencascade/IFSelect.hxx>
+#include <opencascade/gp_GTrsf.hxx>
+#include <opencascade/gp_Dir.hxx>
+#include <opencascade/gp_Ax1.hxx>
+#include <opencascade/gp_Ax2.hxx>
+#include <opencascade/BRepBuilderAPI_GTransform.hxx>
 #include <cmath>
 #include <cstdio>
 #include <unistd.h>
@@ -115,6 +122,9 @@ using webcad::engine::v1::ExecuteFailure;
 using webcad::engine::v1::ExecutionFailureCode;
 using webcad::engine::v1::ExecuteSuccess;
 using webcad::engine::v1::BoxResult;
+using webcad::engine::v1::CreatePolyhedronOp;
+using webcad::engine::v1::CreateConvexHullOp;
+using webcad::engine::v1::PolyhedronFace;
 using webcad::engine::v1::ImportBRepOp;
 using webcad::engine::v1::ExportBRepOp;
 using webcad::engine::v1::StepExportOp;
@@ -512,6 +522,408 @@ static OpResult OpCreatePyramid(double x, double y, double z, int sides, double 
   return OpCreateAndCache(shape, deflection, entityId);
 }
 
+// Orient all faces of a sewed shell to point outward relative to the shape centroid.
+// Ensures the solid has positive volume by reversing all face orientations
+// if BRepGProp reports negative mass. In OCCT, TopoDS_Shape::Reverse() flips
+// the orientation flag which propagates to all contained sub-shapes (faces),
+// effectively flipping every face normal. This is far more reliable than
+// per-face BRepTools::ReShape replacement which doesn't propagate through solids.
+static void EnsurePositiveVolume(TopoDS_Shape& shape) {
+  GProp_GProps vProps;
+  BRepGProp::VolumeProperties(shape, vProps);
+  if (vProps.Mass() < 0.0) {
+    shape.Reverse();
+  }
+}
+
+// Build a polyhedron from points + face vertex-index lists.
+// Port of WASM createPolyhedron (OCCWorker.ts): MakeWire → MakeFace → Sewing → MakeSolid.
+// Points are already in world space; no translation is applied.
+// Sewing tolerance cascades 1e-4 → 1e-3 → 1e-2 → 1e-1 for robustness.
+static OpResult OpCreatePolyhedron(const std::vector<std::array<double, 3>>& points,
+                                   const std::vector<std::vector<int>>& faces,
+                                   double deflection,
+                                   const std::string& entityId) {
+  OpResult r;
+  if (points.empty()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "Polyhedron: points array is empty";
+    return r;
+  }
+  if (faces.empty()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "Polyhedron: faces array is empty";
+    return r;
+  }
+
+  // Build a vertex for each point.
+  std::vector<TopoDS_Vertex> vertices;
+  vertices.reserve(points.size());
+  for (const auto& p : points) {
+    BRepBuilderAPI_MakeVertex makeVertex(gp_Pnt(p[0], p[1], p[2]));
+    if (!makeVertex.IsDone()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "Polyhedron: failed to create vertex";
+      return r;
+    }
+    vertices.push_back(makeVertex.Vertex());
+  }
+
+  // Compute centroid of all points (orientation-independent reference for face normal direction).
+  double cx = 0, cy = 0, cz = 0;
+  for (const auto& p : points) {
+    cx += p[0];
+    cy += p[1];
+    cz += p[2];
+  }
+  const gp_Pnt centroid(cx / points.size(), cy / points.size(), cz / points.size());
+
+  // Helper: build an oriented face from vertex indices.
+  // The face normal is checked against the centroid direction; if it points inward,
+  // the face is rebuilt with reversed vertex order (Reverse() on a copy doesn't
+  // propagate in OCCT since orientation lives in the shape wrapper, not the TShape).
+  auto buildOrientedFace = [&](const std::vector<int>& faceIdxs) -> TopoDS_Face {
+    auto buildFaceFromOrder = [&](bool forward) -> TopoDS_Face {
+      BRepBuilderAPI_MakeWire wire;
+      if (forward) {
+        for (size_t i = 0; i < faceIdxs.size(); ++i) {
+          int idx1 = faceIdxs[i];
+          int idx2 = faceIdxs[(i + 1) % faceIdxs.size()];
+          BRepBuilderAPI_MakeEdge edge(vertices[idx1], vertices[idx2]);
+          wire.Add(edge.Edge());
+        }
+      } else {
+        for (size_t i = faceIdxs.size(); i > 0; --i) {
+          int idx1 = faceIdxs[i - 1];
+          int idx2 = faceIdxs[(i - 2 + faceIdxs.size()) % faceIdxs.size()];
+          BRepBuilderAPI_MakeEdge edge(vertices[idx1], vertices[idx2]);
+          wire.Add(edge.Edge());
+        }
+      }
+      BRepBuilderAPI_MakeFace face(wire.Wire(), false);
+      return face.Face();
+    };
+
+    TopoDS_Face f = buildFaceFromOrder(true);
+
+    // Check orientation: compute normal at face midpoint, compare to centroid direction.
+    BRepAdaptor_Surface surf(f);
+    double um = (surf.FirstUParameter() + surf.LastUParameter()) * 0.5;
+    double vm = (surf.FirstVParameter() + surf.LastVParameter()) * 0.5;
+    gp_Pnt p;
+    gp_Vec d1u, d1v;
+    surf.D1(um, vm, p, d1u, d1v);
+    gp_Vec normal = d1u.Crossed(d1v);
+    gp_Vec toCenter(p, centroid);
+
+    // If normal points toward centroid, face is inside-out → rebuild with reversed winding.
+    if (normal.Dot(toCenter) > 0.0) {
+      f = buildFaceFromOrder(false);
+    }
+    return f;
+  };
+
+  // Sewing with tolerance cascade: 1e-4 → 1e-3 → 1e-2 → 1e-1
+  double sewTols[] = {1e-4, 1e-3, 1e-2, 1e-1};
+  TopoDS_Shape sewed;
+  bool sewnOk = false;
+  for (double tol : sewTols) {
+    BRepBuilderAPI_Sewing sew(tol);
+    for (const auto& faceIdxs : faces) {
+      if (faceIdxs.size() < 3) {
+        r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+        r.message = "Polyhedron: face with < 3 vertices";
+        return r;
+      }
+      // Validate vertex indices before building.
+      bool indicesValid = true;
+      for (int idx : faceIdxs) {
+        if (idx < 0 || idx >= static_cast<int>(vertices.size())) {
+          indicesValid = false;
+          break;
+        }
+      }
+      if (!indicesValid) {
+        r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+        r.message = "Polyhedron: face vertex index out of range";
+        return r;
+      }
+      TopoDS_Face f = buildOrientedFace(faceIdxs);
+      sew.Add(f);
+    }
+    sew.Perform();
+    TopoDS_Shape candidate = sew.SewedShape();
+    if (!candidate.IsNull()) {
+      sewed = candidate;
+      sewnOk = true;
+      break;
+    }
+  }
+
+  if (!sewnOk || sewed.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "Polyhedron: sewing failed at all tolerance levels";
+    return r;
+  }
+
+  BRepBuilderAPI_MakeSolid makeSolid;
+  TopExp_Explorer exp(sewed, TopAbs_SHELL, TopAbs_SHAPE);
+  while (exp.More()) {
+    makeSolid.Add(TopoDS::Shell(exp.Current()));
+    exp.Next();
+  }
+  if (!makeSolid.IsDone()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "Polyhedron: failed to build solid from sewed shell";
+    return r;
+  }
+
+  TopoDS_Shape shape = makeSolid.Solid();
+
+  // Ensure positive volume by reversing all face orientations if needed.
+  EnsurePositiveVolume(shape);
+
+  return OpCreateAndCache(shape, deflection, entityId);
+}
+
+// Port of WASM computeConvexHull3D (OCCWorker.ts lines ~4683-4849).
+// Incremental 3D convex hull using horizon-edge insertion and interior centroid reference.
+static std::vector<std::vector<int>> computeConvexHull3D(
+    const std::vector<std::array<double, 3>>& pts) {
+  if (pts.size() < 4) {
+    return {};
+  }
+
+  // Jitter points slightly to prevent coplanar/collinear degeneracies.
+  // We use deterministic micro-jitter per point based on index.
+  std::vector<std::array<double, 3>> points = pts;
+  for (size_t i = 0; i < points.size(); ++i) {
+    double jx = std::sin(static_cast<double>(i + 1) * 1.7) * 1e-8;
+    double jy = std::sin(static_cast<double>(i + 1) * 3.1) * 1e-8;
+    double jz = std::sin(static_cast<double>(i + 1) * 5.3) * 1e-8;
+    points[i][0] += jx;
+    points[i][1] += jy;
+    points[i][2] += jz;
+  }
+
+  struct Plane3D {
+    double nx = 0.0, ny = 0.0, nz = 0.0;
+    double offset = 0.0;
+  };
+
+  auto getSignedDistance = [](const Plane3D& plane, const std::array<double, 3>& p) -> double {
+    return plane.nx * p[0] + plane.ny * p[1] + plane.nz * p[2] - plane.offset;
+  };
+
+  auto makePlane = [&](size_t idx0, size_t idx1, size_t idx2) -> Plane3D {
+    const auto& p0 = points[idx0];
+    const auto& p1 = points[idx1];
+    const auto& p2 = points[idx2];
+    double ux = p1[0] - p0[0], uy = p1[1] - p0[1], uz = p1[2] - p0[2];
+    double vx = p2[0] - p0[0], vy = p2[1] - p0[1], vz = p2[2] - p0[2];
+    double nx = uy * vz - uz * vy;
+    double ny = uz * vx - ux * vz;
+    double nz = ux * vy - uy * vx;
+    double len = std::sqrt(nx * nx + ny * ny + nz * nz);
+    if (len > 1e-15) {
+      nx /= len;
+      ny /= len;
+      nz /= len;
+    }
+    double offset = nx * p0[0] + ny * p0[1] + nz * p0[2];
+    return {nx, ny, nz, offset};
+  };
+
+  // 1. i0 = leftmost point (min x)
+  size_t i0 = 0;
+  for (size_t i = 1; i < points.size(); ++i) {
+    if (points[i][0] < points[i0][0]) i0 = i;
+  }
+
+  // 2. i1 = point farthest from i0
+  size_t i1 = 0;
+  double maxDistSq = -1.0;
+  for (size_t i = 0; i < points.size(); ++i) {
+    if (i == i0) continue;
+    double dx = points[i][0] - points[i0][0];
+    double dy = points[i][1] - points[i0][1];
+    double dz = points[i][2] - points[i0][2];
+    double dSq = dx * dx + dy * dy + dz * dz;
+    if (dSq > maxDistSq) {
+      maxDistSq = dSq;
+      i1 = i;
+    }
+  }
+
+  // 3. i2 = point farthest from line (i0, i1)
+  size_t i2 = static_cast<size_t>(-1);
+  double maxLineDistSq = -1.0;
+  const auto& p0 = points[i0];
+  const auto& p1 = points[i1];
+  double ux = p1[0] - p0[0], uy = p1[1] - p0[1], uz = p1[2] - p0[2];
+  double uLenSq = ux * ux + uy * uy + uz * uz;
+  if (uLenSq < 1e-15) return {};
+
+  for (size_t i = 0; i < points.size(); ++i) {
+    if (i == i0 || i == i1) continue;
+    double px = points[i][0] - p0[0], py = points[i][1] - p0[1], pz = points[i][2] - p0[2];
+    double t = (px * ux + py * uy + pz * uz) / uLenSq;
+    double dx = px - t * ux;
+    double dy = py - t * uy;
+    double dz = pz - t * uz;
+    double dSq = dx * dx + dy * dy + dz * dz;
+    if (dSq > maxLineDistSq) {
+      maxLineDistSq = dSq;
+      i2 = i;
+    }
+  }
+
+  // 4. i3 = point farthest from plane (i0, i1, i2)
+  size_t i3 = static_cast<size_t>(-1);
+  double maxPlaneDist = -1.0;
+  Plane3D basePlane = makePlane(i0, i1, i2);
+  for (size_t i = 0; i < points.size(); ++i) {
+    if (i == i0 || i == i1 || i == i2) continue;
+    double dist = std::abs(getSignedDistance(basePlane, points[i]));
+    if (dist > maxPlaneDist) {
+      maxPlaneDist = dist;
+      i3 = i;
+    }
+  }
+
+  if (i2 == static_cast<size_t>(-1) || i3 == static_cast<size_t>(-1) || maxPlaneDist < 1e-9) {
+    return {};  // Collinear or coplanar points
+  }
+
+  double cx = (points[i0][0] + points[i1][0] + points[i2][0] + points[i3][0]) / 4.0;
+  double cy = (points[i0][1] + points[i1][1] + points[i2][1] + points[i3][1]) / 4.0;
+  double cz = (points[i0][2] + points[i1][2] + points[i2][2] + points[i3][2]) / 4.0;
+  std::array<double, 3> center = {cx, cy, cz};
+
+  struct Face {
+    std::array<int, 3> v;
+    Plane3D plane;
+  };
+
+  auto createFace = [&](size_t v0, size_t v1, size_t v2) -> Face {
+    Plane3D plane = makePlane(v0, v1, v2);
+    if (getSignedDistance(plane, center) > 0.0) {
+      plane.nx = -plane.nx;
+      plane.ny = -plane.ny;
+      plane.nz = -plane.nz;
+      plane.offset = -plane.offset;
+      return {{static_cast<int>(v2), static_cast<int>(v1), static_cast<int>(v0)}, plane};
+    }
+    return {{static_cast<int>(v0), static_cast<int>(v1), static_cast<int>(v2)}, plane};
+  };
+
+  std::vector<Face> faces;
+  faces.push_back(createFace(i0, i1, i2));
+  faces.push_back(createFace(i0, i2, i3));
+  faces.push_back(createFace(i0, i3, i1));
+  faces.push_back(createFace(i1, i3, i2));
+
+  std::vector<bool> processed(points.size(), false);
+  processed[i0] = true;
+  processed[i1] = true;
+  processed[i2] = true;
+  processed[i3] = true;
+
+  for (size_t i = 0; i < points.size(); ++i) {
+    if (processed[i]) continue;
+    const auto& pt = points[i];
+
+    std::vector<size_t> visible;
+    for (size_t f = 0; f < faces.size(); ++f) {
+      if (getSignedDistance(faces[f].plane, pt) > 1e-9) {
+        visible.push_back(f);
+      }
+    }
+
+    if (visible.empty()) continue;
+
+    struct EdgeEntry {
+      int v1 = 0, v2 = 0;
+      int count = 0;
+    };
+    std::unordered_map<std::string, EdgeEntry> edgeCounts;
+
+    for (size_t fIdx : visible) {
+      const auto& f = faces[fIdx];
+      for (int j = 0; j < 3; ++j) {
+        int v1 = f.v[j];
+        int v2 = f.v[(j + 1) % 3];
+        std::string key = std::to_string(v1) + "-" + std::to_string(v2);
+        std::string keyRev = std::to_string(v2) + "-" + std::to_string(v1);
+        auto itRev = edgeCounts.find(keyRev);
+        if (itRev != edgeCounts.end()) {
+          itRev->second.count++;
+        } else {
+          auto itKey = edgeCounts.find(key);
+          if (itKey != edgeCounts.end()) {
+            itKey->second.count++;
+          } else {
+            edgeCounts[key] = {v1, v2, 1};
+          }
+        }
+      }
+    }
+
+    std::vector<std::pair<int, int>> horizon;
+    for (const auto& kv : edgeCounts) {
+      if (kv.second.count == 1) {
+        horizon.push_back({kv.second.v1, kv.second.v2});
+      }
+    }
+
+    std::vector<bool> isVisible(faces.size(), false);
+    for (size_t vIdx : visible) {
+      isVisible[vIdx] = true;
+    }
+
+    std::vector<Face> remainingFaces;
+    remainingFaces.reserve(faces.size() - visible.size() + horizon.size());
+    for (size_t fi = 0; fi < faces.size(); ++fi) {
+      if (!isVisible[fi]) {
+        remainingFaces.push_back(faces[fi]);
+      }
+    }
+
+    for (const auto& edge : horizon) {
+      remainingFaces.push_back(createFace(edge.first, edge.second, i));
+    }
+
+    faces = std::move(remainingFaces);
+  }
+
+  std::vector<std::vector<int>> result;
+  result.reserve(faces.size());
+  for (const auto& f : faces) {
+    result.push_back({f.v[0], f.v[1], f.v[2]});
+  }
+  return result;
+}
+
+static OpResult OpCreateConvexHull(const std::vector<std::array<double, 3>>& points,
+                                   double deflection,
+                                   const std::string& entityId) {
+  OpResult r;
+  if (points.size() < 4) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "ConvexHull: need at least 4 points";
+    return r;
+  }
+
+  auto hullFaces = computeConvexHull3D(points);
+  if (hullFaces.empty()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "ConvexHull: failed to compute hull (degenerate points)";
+    return r;
+  }
+
+  return OpCreatePolyhedron(points, hullFaces, deflection, entityId);
+}
+
 static OpResult OpImportBRep(const std::string& brepData, const std::string& entityId) {
   OpResult r;
   if (brepData.empty()) {
@@ -907,6 +1319,10 @@ class KernelServiceImpl final : public KernelService::Service {
           return HandleCreateWedge(request, response);
         case ExecuteRequest::kCreatePyramid:
           return HandleCreatePyramid(request, response);
+        case ExecuteRequest::kCreatePolyhedron:
+          return HandleCreatePolyhedron(request, response);
+        case ExecuteRequest::kCreateConvexHull:
+          return HandleCreateConvexHull(request, response);
         case ExecuteRequest::kImportBrep:
           return HandleImportBRep(request, response);
         case ExecuteRequest::kExportBrep:
@@ -1158,6 +1574,76 @@ class KernelServiceImpl final : public KernelService::Service {
     success->set_shape_id(r.shapeId);
     auto* pyrResult = success->mutable_pyramid();
     pyrResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreatePolyhedron(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_polyhedron();
+    double deflection = op.deflection();
+    std::string entityId = op.entity_id();
+
+    std::vector<std::array<double, 3>> points;
+    points.reserve(op.points_inline_size());
+    for (int i = 0; i < op.points_inline_size(); ++i) {
+      points.push_back({op.points_inline(i).x(), op.points_inline(i).y(), op.points_inline(i).z()});
+    }
+
+    std::vector<std::vector<int>> faces;
+    faces.reserve(op.faces_size());
+    for (int i = 0; i < op.faces_size(); ++i) {
+      const auto& f = op.faces(i);
+      std::vector<int> faceIdxs;
+      faceIdxs.reserve(f.vertex_indices_size());
+      for (int j = 0; j < f.vertex_indices_size(); ++j) {
+        faceIdxs.push_back(f.vertex_indices(j));
+      }
+      faces.push_back(faceIdxs);
+    }
+
+    auto r = OpCreatePolyhedron(points, faces, deflection, entityId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* polyResult = success->mutable_polyhedron();
+    polyResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreateConvexHull(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_convex_hull();
+    double deflection = op.deflection();
+    std::string entityId = op.entity_id();
+
+    std::vector<std::array<double, 3>> points;
+    points.reserve(op.points_inline_size());
+    for (int i = 0; i < op.points_inline_size(); ++i) {
+      points.push_back({op.points_inline(i).x(), op.points_inline(i).y(), op.points_inline(i).z()});
+    }
+
+    auto r = OpCreateConvexHull(points, deflection, entityId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* hullResult = success->mutable_convex_hull();
+    hullResult->set_shape_id(r.shapeId);
 
     auto it = g_shapeCache.find(r.shapeId);
     if (it != g_shapeCache.end()) {

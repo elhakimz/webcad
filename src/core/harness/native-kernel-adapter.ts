@@ -80,6 +80,7 @@ export class NativeKernelAdapter implements KernelAdapter {
       create_frustum: 'create_frustum',
       create_wedge: 'create_wedge',
       create_pyramid: 'create_pyramid',
+      create_loft: 'create_loft',
       create_polyhedron: 'create_polyhedron',
       create_convex_hull: 'create_convex_hull',
       create_extrude: 'create_extrude',

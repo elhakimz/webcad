@@ -1,4 +1,4 @@
-# Cerebrum
+﻿# Cerebrum
 
 > OpenWolf's learning memory. Updated automatically as the AI learns from interactions.
 > Do not edit manually unless correcting an error.
@@ -28,6 +28,14 @@
 - **Build vs typecheck gap:** `npm run build` (Vite/esbuild) strips types without checking, so it passes green even though `tsc --noEmit` reports ~128 errors in `src/`. There is no `typecheck` npm script. CI/build cannot be trusted to catch type errors.
 - **tsconfig has no `include`/`exclude`**, so a bare `npx tsc --noEmit` walks the whole tree including vendored reference projects. Scope to `src/` when checking types.
 - **Tests:** `npm test` = vitest (unit), `npm run test:ui` = playwright. `SvgImporter.test.ts` uses `@vitest-environment jsdom`; `jsdom` is now installed (devDep). Full suite: 320 tests across 62 files, exit 0.
+
+## Session 2026-11-21 — WC-EC-21 Sweep Port (native OCCT kernel)
+
+- **`BRepOffsetAPI_MakePipeShell`** sweep: `SetTransitionMode(BRepBuilderAPI_RoundCorner)` adds 4 extra edges at rounded bends (one per profile vertex) vs sharp miter. Account for this in oracle edgeCount expectations.
+- **`ExecuteSuccess` oneof field 15** is `SweepResult sweep` — C++ accessor is `mutable_sweep()`, NOT `mutable_create_sweep()`. The proto field name in the oneof (`sweep`) differs from the request field name (`create_sweep`).
+- **PowerShell does not support `&&`** — use `;` for command chaining. `docker exec ... bash -c '... && ...'` works because `&&` is interpreted by bash inside the container.
+- **Container binary staleness:** `docker cp` source → container path, kill process, `cmake --build`, `cp build/kernel_worker /kernel/kernel_worker`, `docker restart`. All steps required; missing any one leaves a stale binary.
+- **OCCT 7.9.x transition modes:** `BRepBuilderAPI_MiterCorner` and `BRepBuilderAPI_ExtendedIntersection` do not exist. Available: `BRepBuilderAPI_Transformed`, `BRepBuilderAPI_RightCorner`, `BRepBuilderAPI_RoundCorner`.
 - **Network is slow/flaky on this machine**, not MITM'd: `npm ping` succeeds (~70s) and the registry serves the genuine cert (Google Trust Services / npmjs.org). A one-off `UNABLE_TO_VERIFY_LEAF_SIGNATURE` from `npm install` was transient — retry with `--fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-timeout=300000` rather than disabling strict-ssl.
 - **`npm run typecheck` now exists** (added 2026-06-22) and `tsconfig.json` has `"include": ["src"]`. As of 2026-06-22 the `src/` app code is type-clean (0 non-test errors); ~15 errors remain in test files only.
 - **CommandAction type** lives in `src/core/commands/types.ts`. Many commands/handlers add new `action` discriminator strings and payload fields here — when a handler reads `action.foo` and tsc says foo doesn't exist, add the field to `CommandAction` (e.g. `projectName`, `height` were missing).
@@ -128,9 +136,9 @@
 
 ## Key Learnings (Plane API)
 
-- **Plane API responses are UTF-16LE with BOM (char 65279)** � must strip BOM and decode with `utf-8-sig` before `json.loads()`. PowerShell `curl.exe` works but `Invoke-WebRequest` is aliased to `curl` and mangles raw HTTP; use `curl.exe` or Python `urllib.request`.
+- **Plane API responses are UTF-16LE with BOM (char 65279)** � must strip BOM and decode with `utf-8-sig` before `json.loads()`. PowerShell `curl.exe` works but `Invoke-WebRequest` is aliased to `curl` and mangles raw HTTP; use `curl.exe` or Python `urllib.request`.
 - **Plane `/epics/` endpoint requires payment (error 1999).** Epics are modeled as parent issues: create the epic as a top-level issue (`parent` = null), then create child issues with `parent` set to the epic's UUID. State `backlog` = `d2595e99-1359-40f0-9efc-6f590d813476`.
-- **Plane issue creation fields:** `name` (required), `description_html` (HTML markup), `priority` (high/medium/low/none/urgent), `state` (state UUID), `parent` (optional, links to epic/module). `depends_on` is not a native Plane field � put dependency info in description or labels.
+- **Plane issue creation fields:** `name` (required), `description_html` (HTML markup), `priority` (high/medium/low/none/urgent), `state` (state UUID), `parent` (optional, links to epic/module). `depends_on` is not a native Plane field � put dependency info in description or labels.
 - **PowerShell `PID` is read-only** � never use `$PID` as a variable name; use `$ppid` or similar instead.
 
 ## Key Learnings — gRPC/Connect Transport (2026-11-19)
@@ -145,7 +153,7 @@
 - **Next steps:** Write gateway unit tests (ordering, dedupe, session manager), PR 2b real kernel server (language TBD by WC-EC-05 ADR), PR 3 client (RemoteGrpcTransport) + infra + cleanup.
 
 - **SessionOrderer.processBuffered() must call entry.resolve(entry) after deleting buffered entries**, or promises for out-of-order commands hang forever. Fixed in ordering.ts.
-- **makeCommand test helper in ordering.test.ts must not include a promise field** � OrderedCommand type doesn't have it and tsc --noEmit fails. Tests await submit()'s return promise, not cmd.promise.
+- **makeCommand test helper in ordering.test.ts must not include a promise field** � OrderedCommand type doesn't have it and tsc --noEmit fails. Tests await submit()'s return promise, not cmd.promise.
  
  # #   K e y   L e a r n i n g s   ( 2 0 2 6 - 1 1 - 1 9   g R P C / C o n n e c t   t r a n s p o r t )  
   
@@ -163,6 +171,15 @@
  - **v1 generated connect-es ServiceType objects ({ typeName, methods: Record<string, ...> }) are incompatible with @connectrpc/connect v2.x, which requires DescService (methods as array with localName, parent.typeName). Step 0 spike confirmed runtime mismatch: TypeError: Cannot read properties of undefined (reading 'toString') at create-method-url.js:31. Regeneration with protoc-gen-es v2 is the correct fix, not alias shims.
 - **3 source files import from src/generated/**: session-manager.ts (types only), connect-server.ts (uses 	oDescService() wrapper), RemoteGrpcTransport.ts (casts s any). No 
 ew message construction or 	oBinary/romBinary calls in source code. Test file RemoteGrpcTransport.test.ts mocks generated modules only.
+
+## Key Learnings (2026-11-23 WC-EC-22 Loft Design)
+
+- **`CreateLoftOp` proto already defined** (field 24): `repeated LoftProfile profiles`, `bool is_solid`, `bool is_ruled`, `double deflection`, `string entity_id`; `LoftProfile { string id, repeated Point3D points, bool closed }`; `LoftResult { string shape_id }`. **No proto changes needed.**
+- **OCCT `BRepOffsetAPI_ThruSections`** lives in `TKOffset` toolkit; constructor `(isSolid, ruled, precision)`; `AddWire()` for section wires, `AddVertex()` for point apices, `CheckCompatibility(Standard_True)`, `Build()`, `IsDone()`, `Shape()`.
+- **Single-point non-closed profile** → treat as vertex apex via `BRepBuilderAPI_MakeVertex` + `aLoft.AddVertex()`; multi-point → wire via `BRepBuilderAPI_MakeWire` + `BRepBuilderAPI_MakeEdge` per consecutive pair, close last→first if `closed`.
+- **`id` takes priority over `points`** — UI sends both fields on every profile; if `id` is non-empty, look up cached shape and ignore `points`. Only fall back to `points` when `id` is empty. Error only if neither is set.
+- **Pattern:** Follow sweep exactly (`OpCreateLoft` → `HandleCreateLoft` → switch case `kCreateLoft` → native adapter opMap entry `create_loft`).
+- **Design doc:** `docs/superpowers/specs/2026-11-23-wc-ec-22-loft-design.md`
 
 ## Key Learnings (2026-11-20 SolidCraft evaluation)
 
@@ -193,19 +210,19 @@ ew message construction or 	oBinary/romBinary calls in source code. Test file R
 
 ## Key Learnings (2026-11-20 WC-EC-09 Chunk 2)
 
-- @bufbuild/protobuf v2 uses standalone 	oBinary(schema, msg) and romBinary(schema, bytes) functions � NOT msg.toBinary() method calls
+- @bufbuild/protobuf v2 uses standalone 	oBinary(schema, msg) and romBinary(schema, bytes) functions � NOT msg.toBinary() method calls
 - DescMessage type is exported from @bufbuild/protobuf, NOT @bufbuild/protobuf/codegenv2
 - Protobuf enum values in TS are short names (e.g. ExecutionFailureCode.UNSPECIFIED), not full proto names (EXECUTION_FAILURE_CODE_UNSPECIFIED)
-- For uint32 enum field value   (UNSPECIFIED), round-trip returns   (number), not undefined � use 	oBe(0) not 	oBe(undefined) | Done | ~200 |
+- For uint32 enum field value   (UNSPECIFIED), round-trip returns   (number), not undefined � use 	oBe(0) not 	oBe(undefined) | Done | ~200 |
 
 
 ## Key Learnings (2026-11-20 WC-EC-09 Chunks 3-4 C++ codec tests)
 
-- gtest ASSERT_TRUE/ASSERT_* macros return void � cannot be used inside value-returning functions (e.g. template roundTrip<T>()); use EXPECT_* or omit assertions inside helpers
+- gtest ASSERT_TRUE/ASSERT_* macros return void � cannot be used inside value-returning functions (e.g. template roundTrip<T>()); use EXPECT_* or omit assertions inside helpers
 - C++ test target linking generated *.grpc.pb.cc files needs gRPC libraries (libgrpc++, libgrpc) in 	arget_link_libraries, not just protobuf
 - Container path mapping: host C:\Dev\webcad\ = container /kernel/; CMakeLists.txt lives at project root
 - docker cp requires destination directory to exist in container first (docker exec mkdir -p before docker cp)
-- Push to https://github.com/elhakimz/webcad.git returns 403 for user bilidade � no write access; SSH host key not configured; cannot push until access granted or alternate auth configured
+- Push to https://github.com/elhakimz/webcad.git returns 403 for user bilidade � no write access; SSH host key not configured; cannot push until access granted or alternate auth configured
 
 
 ## Key Learnings (2026-11-21 WC-EC phase 1 Docker kernel integration test)
@@ -273,3 +290,27 @@ inja -C /kernel/build kernel_worker compiled, docker restart deployed new binary
 - **Alternative approaches noted (not used):** `BRepOffsetAPI_MakeThickSolid`/`MakeThickSolidByJoin` for shell (signed offset, `TopTools_ListOfShape` faces to remove); `Draft_Modification` + `BRepTools_Modifier` for draft (neutral plane + pull direction + `theFlag`). Current implementations are verified working; refactor only if needed.
 - **Push to origin dev blocked:** 403 permission denied — manual auth/push required.
 - **Typecheck pre-existing errors:** `codec.test.ts` and `KernelGrpcTransport.ts` have ~3 errors unrelated to WC-EC-20 changes.
+
+## Key Learnings (2026-11-21 WC-EC-21 Sweep Polyline Corners)
+- **SetMode(Standard_True) = Frenet mode** is undefined on straight polyline segments; causes frame flips at corners, making SetTransitionMode(BRepBuilderAPI_RoundCorner) work at only some bends (not all).
+- **Fix: SetDiscreteMode()** keeps profile orientation constant along each spine segment and applies corner transitions between segments correctly � required for polyline spines per design spec docs/superpowers/specs/2026-10-22-wc-ec-21-sweep-design.md.
+- **Profile orientation:** Profile must be perpendicular to the spine's starting tangent. Coplanar profile+spine produces flat shell (volume=0, isValid=false).
+- **STEP results:** sweep_simple.stp (15,419 bytes), sweep_corner.stp (25,269 bytes), sweep_s_shape.stp (50,988 bytes, S-shape polyline volume=18.79, isValid=true). All in doc/results/.
+- **Typecheck pre-existing errors:** codec.test.ts and KernelGrpcTransport.ts have ~3 errors unrelated to sweep changes (0 errors in modified files).
+| kernel-worker.cpp | learnings | ~300 |
+
+## Key Learnings (2026-11-21 WC-EC-24 B-rep Import/Export + Part A create_box Diagnosis)
+
+- **Part A create_box failure â€” header/library mismatch RULED OUT:** Standalone MakeBox reproduction inside kernel:occt-7.9.3 passes (IsDone before Build=false, IsDone after Build=true, Shape is null=false, exit code 0). ldd/readelf -d confirm headers (7.9.3) match runtime libs (libTK*.so.7.9 from /usr/local/lib/, RUNPATH=/usr/local/lib). Likely causes: (a) kernel-worker binary inside image built from stale/different source than current kernel-worker.cpp, or (b) incorrect dx/dy/dz values arriving from client via proto. Next: rebuild kernel-worker from current source inside image and re-test via gRPC; add logging of dx/dy/dz values. See doc/results/kernel_create_box_findings.md for full findings.
+- **OpCreateBox call sequence is correct:** `MakeBox` → `Build()` → `IsDone()` → `Shape()`. No temporary-copy or double-Build issue. `dx`/`dy`/`dz` arrive as `double` from proto — no type truncation.
+- **No swallowed exceptions in OpCreateBox:** `BRepPrimAPI_MakeBox` does not throw on failure; it sets `IsDone()==false`. The `Execute()` catch-all maps throws to `UNSPECIFIED`, not `OPERATION_FAILED`.
+- **`init` is already a no-op handshake:** `HandleInit` sets `shape_id=""` and returns OK. Proposal: make it return kernel/OCCT version message, or mark `reserved` in proto.
+- **Unported ops list:** `createLoft` (proto field 24) is declared in `engine.proto` but has no `case` in the `Execute()` switch — falls through to `default:` → `INVALID_PARAMETER`. Proposal: return `UNSUPPORTED` (code 4) instead.
+- **WC-EC-24 design doc revised (11 requirements):** Format field replaces "BREP" magic + trailing-0x1a. Prefix per format: binary=`\nOpen CASCADE Topology V4`, text=`DBRep_DrawableShape`, step=`ISO-10303-21;`. Hash maps to `BrepReference.sha256` (field exists, no proto change). OpenSSL not linked — vendored SHA-256 or add linking. PutBlob UNIMPLEMENTED — B-reps >4 MiB blocked. See `docs/superpowers/specs/2026-11-21-wc-ec-24-brep-import-export-design.md`.
+
+## Do-Not-Repeat
+
+- [2026-11-21] Don't assume "BREP" magic / trailing 0x1a for B-rep format detection — OCCT 8.0.1 text starts with `DBRep_DrawableShape`, binary starts with `\nOpen CASCADE Topology V4`, neither starts with "BREP" nor ends with 0x1a. Use explicit `format` field + prefix verification.
+- [2026-11-21] Don't link OpenSSL without checking `CMakeLists.txt` — no OpenSSL linked (verified). Use vendored SHA-256 or add linking + licence review.
+- [2026-11-21] Don't commit generated proto files — `src/generated/` is codegen output; never edit or commit by hand.
+

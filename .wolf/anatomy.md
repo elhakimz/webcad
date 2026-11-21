@@ -60,7 +60,7 @@
 
 ## ./src/core/gateway/
 
-- `kernel-worker.cpp` — OCCT 7.9.3 kernel worker implementing KernelService (Execute over gRPC/UDS), shape cache, CreateBox/ImportBRep handlers (~1300 tok)
+- `kernel-worker.cpp` — OCCT 7.9.3 kernel worker implementing KernelService (Execute over gRPC/UDS), shape cache, CreateBox/ImportBRep handlers, OpCreateSweep/HandleCreateSweep via BRepOffsetAPI_MakePipeShell (~1300 tok)
 
 ## ./src/core/harness/
 
@@ -70,6 +70,8 @@
 ## ./tests/oracle/
 
 - `native-oracle.integration.test.ts` — Integration tests against native kernel: create_box with/without include_brep MeshData tests (~800 tok)
+- `fixtures/oracle/sweep_simple.json` — Oracle fixture: sweep square profile along straight spine, expect volume=10, edgeCount=12 (~400 tok)
+- `fixtures/oracle/sweep_corner.json` — Oracle fixture: sweep square profile along bent spine with ROUND corner, expect volume=15, edgeCount=20 (~400 tok)
 ## .claude/
 
 - `launch.json` (~52 tok)
@@ -774,6 +776,10 @@
 - `kernel_abstraction.md` — Kernel-Agnostic Geometry Service — Design Sketch (~2642 tok)
 - `rendering_roadmap.md` — Rendering Roadmap — toward an Onshape-grade viewport (~2080 tok)
 
+## doc/results/
+
+- `kernel_create_box_findings.md` — Part A findings: kernel create_box P0 failure diagnosis — header/lib mismatch hypothesis, OpCreateBox call sequence correct, no swallowed exceptions, init is no-op handshake, unported ops (createLoft) return INVALID_PARAMETER → propose UNSUPPORTED, test changes recommended (~9k)
+
 ## docs/superpowers/plans/
 - `2026-11-19-grpc-connect-transport.md` — Implementation plan for gRPC/Connect transport replacement across three PRs (~13k tok)
 - `2026-11-19-parity-harness.md` — Implementation plan for WC-EC-12 parity harness: WASM worker vs native OCCT kernel comparison with tolerances (~14k tok)
@@ -784,6 +790,7 @@
 - `2026-11-20-dev-environment.md` — Dev environment setup for Phase B item 5.7: .devcontainer configuration, verify-kernel.sh usage, sanitizer (asan/ubsan) builds, gdb/lldb debugging (~6k tok)
 - `2026-11-20-binary-occt-evaluation.md` — Phase B item 5.9 Binary OCCT evaluation: conda-forge occt 7.9.3 novtk via micromamba (proposed primary), vcpkg (no OCCT package), Debian/Ubuntu (max 7.6.3, not 7.9.3), from-source occt-base Docker as documented fallback (~11k tok)
 - `2026-11-20-wc-ec-09-kernel-protocol-codecs.md` — Implementation plan for WC-EC-09 kernel protocol codecs (TS + C++): TS codec round-trip, misaligned bytes, 256 KiB boundary tests in vitest; C++ codec round-trip, misaligned bytes, 256 KiB boundary tests in CTest (~32k tok)
+- `2026-10-22-wc-ec-21-sweep-plan.md` — WC-EC-21 sweep implementation plan: port createSweep to native OCCT kernel using BRepOffsetAPI_MakePipeShell (~20k tok)
 
 ## docs/superpowers/specs/
 
@@ -795,6 +802,9 @@
 - `2026-11-20-kernel-strategy-adr-design.md
 - `2026-11-20-kernel-dependency-triage-spec.md` — Dependency triage & reuse plan for native OCCT kernel using materializr as reference: adopt OCCT in kernel, zlib in gateway (Node built-in), skip ImGui/SDL3/GLEW/pfd/libcurl/GLM, keep nanosvg/fonts in browser; OCCT build flags, export analysis, LGPL license text (~27k tok)
 - `2026-11-20-wc-ec-09-kernel-protocol-design.md` — WC-EC-09 language-neutral kernel protocol spec: wire protocol semantics, TS/C++ codec validation, data flow, error handling, testing (~9000 tok)
+- `2026-10-22-wc-ec-21-sweep-design.md` — WC-EC-21 sweep design spec: OCCT BRepOffsetAPI_MakePipeShell sweep operation, corner modes, solid capping (~20k tok)
+- `2026-11-23-wc-ec-22-loft-design.md` — WC-EC-22 loft design spec: OCCT BRepOffsetAPI_ThruSections loft operation, wires + vertex apex, is_ruled/is_solid, id+points profile refs (~2k tok)
+- `2026-11-21-wc-ec-24-brep-import-export-design.md` — Revised WC-EC-24 B-rep import/export design: explicit format field (binary|text|step) replacing BREP magic + trailing-0x1a, prefix verification per format, kernel import supports BinTools/BRepTools/STEPControl_Reader, export text B-rep for WASM fallback, hash to BrepReference.sha256 (no proto change), OpenSSL not linked (vendored SHA-256 or add linking), ValidateBrepInput factored into pure C++ + GoogleTest, real fuzzing (libFuzzer/AFL++, ASan/UBSan), committed fixtures, size limits reconciled (64MB kernel vs 4MiB/16MiB gRPC, PutBlob UNIMPLEMENTED), specific failure reasons, Open questions + Risks sections (~10k)
 
 ## Root
 
@@ -838,7 +848,7 @@
 - `dedupe.ts` — Dedupe cache: request_id → status + result reference, TTL, size cap (~290 tok)
 - `kernel-client.ts` — gRPC client for KernelService (gateway→kernel) (~290 tok)
 - `kernel-supervisor.ts` — Node kernel process supervisor: spawn/pool/respawn/crash recovery, one kernel per session, spare pool, health check (~8300 tok)
-- `kernel-worker.cpp` — C++ gRPC server skeleton: Kernel.Execute with OCCT 7.9.3, BRepPrimAPI_MakeBox, BRepMesh_IncrementalMesh, B-rep pre-validation, in-band ExecuteFailure codes (~7500 tok)
+- `kernel-worker.cpp` — C++ gRPC server skeleton: Kernel.Execute with OCCT 7.9.3, BRepPrimAPI_MakeBox, BRepMesh_IncrementalMesh, B-rep pre-validation, in-band ExecuteFailure codes, OpCreateSweep sweep operation (~7500 tok)
 - `mock-kernel.ts` — Mock gRPC kernel server implementing KernelService for testing (~240 tok)
 - `ordering.ts` — Per-session reorder buffer (client_seq), cancel queued semantics (~380 tok)
 - `session-manager.ts` — Session lifecycle management with OpenSession/CloseSession (~380 tok)
@@ -847,7 +857,7 @@
 
 - `kernel-adapter.ts` — Core types (KernelAdapter, Script, KernelResult, ScriptTolerances, DEFAULT_TOLERANCES); foundation for all harness files (~400 tok)
 - `wasm-kernel-adapter.ts` — Playwright-based WasmKernelAdapter; dispatches ops to OCC Worker via postMessage bridge (~600 tok)
-- `native-kernel-adapter.ts` — gRPC client to KernelService.Execute using @grpc/grpc-js + @grpc/proto-loader; loads proto from proto/webcad/engine/v1/engine.proto (~700 tok)
+- `native-kernel-adapter.ts` — gRPC client to KernelService.Execute using @grpc/grpc-js + @grpc/proto-loader; loads proto from proto/webcad/engine/v1/engine.proto; opMap includes create_sweep (~700 tok)
 - `parity-harness.ts` — Orchestrator runs both adapters, compares per-step via comparator, writes JSON report via parity-report (~600 tok)
 - `script-parser.ts` — ScriptParser validation; validates JSON script format (~300 tok)
 - `metric-extractor.ts` — extractMetrics; extracts volume, surfaceArea, bbox, face/edge/vertex counts, valid from KernelResult (~300 tok)
@@ -908,6 +918,7 @@
 
 ## docs/superpowers/plans/
 
+- `2026-11-23-wc-ec-22-loft-implementation.md` — WC-EC-22 loft implementation plan: OpCreateLoft + HandleCreateLoft + switch case in kernel-worker.cpp, BRepOffsetAPI_ThruSections loft with wires + vertex apex, opMap entry in native-kernel-adapter.ts, oracle fixtures loft_simple.json + loft_apex.json | ~15k
 - `2026-11-21-wc-ec-23-tessellation-implementation-plan.md` — WC-EC-23 tessellation implementation plan: PopulateMeshData helper in kernel-worker.cpp, mesh call sites in all ~25 HandleCreate handlers, NativeKernelAdapter includeBrep option, C++ MeshDataFromBox unit test, TS mesh integration tests | ~24k
  
  # #   t e s t s / u n i t / k e r n e l /  

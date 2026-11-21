@@ -1,0 +1,63 @@
+{
+  "id": "loft_apex",
+  "name": "Loft Apex",
+  "description": "Loft 2 wire profiles + 1 vertex apex at end, expect valid solid (cone-like)",
+  "script": {
+    "name": "loft_apex_test",
+    "steps": [
+      {
+        "name": "create_loft",
+        "parameters": {
+          "profiles": [
+            {
+              "id": "",
+              "points": [
+                {"x": -10, "y": -10, "z": 0},
+                {"x": 10, "y": -10, "z": 0},
+                {"x": 10, "y": 10, "z": 0},
+                {"x": -10, "y": 10, "z": 0}
+              ],
+              "closed": true
+            },
+            {
+              "id": "",
+              "points": [
+                {"x": -5, "y": -5, "z": 20},
+                {"x": 5, "y": -5, "z": 20},
+                {"x": 5, "y": 5, "z": 20},
+                {"x": -5, "y": 5, "z": 20}
+              ],
+              "closed": true
+            },
+            {
+              "id": "",
+              "points": [
+                {"x": 0, "y": 0, "z": 40}
+              ],
+              "closed": false
+            }
+          ],
+          "is_solid": true,
+          "is_ruled": false,
+          "deflection": 0.1,
+          "entity_id": "loft_apex_result"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 5333.33,
+    "surfaceArea": 2049.24,
+    "bbox": { "min": [-10, -10, 0], "max": [10, 10, 40] },
+    "faceCount": 5,
+    "edgeCount": 12,
+    "vertexCount": 5,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 100.0,
+    "surfaceArea": 50.0,
+    "bbox": 1e-2,
+    "counts": 0
+  }
+}

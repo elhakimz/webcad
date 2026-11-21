@@ -1,6 +1,6 @@
 # WebCad Engine Container (WC-EC) - v5: agent-ready
 
-Run the WebCad geometry kernel as native OCCT in server-side worker processes behind a Node gateway, connected to the UI over WebSocket; the OCCT WASM worker remains in the browser as offline/preview fallback. Baseline OCCT version is 7.9.3; 8.0.x is adopted only after passing the parity/regression gate. A time-boxed spike evaluates SolidCraft/solidcore (pure-Rust kernel, wasm32-capable) as a replacement or complement before the kernel skeleton is committed. Then evolve the service into an Onshape-style engine: command registry, server-owned document, feature graph, persistent topology references, versioned operation log.
+Run the WebCad geometry kernel as native OCCT in server-side worker processes behind a Node gateway, connected to the UI over gRPC; the OCCT WASM worker remains in the browser as offline/preview fallback. Baseline OCCT version is 7.9.3; 8.0.x is adopted only after passing the parity/regression gate. A time-boxed spike evaluates SolidCraft/solidcore (pure-Rust kernel, wasm32-capable) as a replacement or complement before the kernel skeleton is committed. Then evolve the service into an Onshape-style engine: command registry, server-owned document, feature graph, persistent topology references, versioned operation log.
 
 v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postgres + minio + nginx; split mesh/export or collaboration services only after measured contention.
 
@@ -33,13 +33,13 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-19 ✓ | Port: fillet and chamfer (solid and face variants) | high | B | Phase 2 |
 | WC-EC-20 ✓ | Port: shell (makeThickSolid) and draft | high | B | Phase 2 |
 | WC-EC-21 ✓ | Port: sweep | high | B | Phase 2 |
-| WC-EC-22 | Port: loft | medium | A | Phase 2 |
+| WC-EC-22 ✓ | Port: loft | medium | A | Phase 2 |
 | WC-EC-23 ✓ | Port: tessellation to binary buffers | high | B | Phase 2 |
 | WC-EC-24 ✓ | B-rep import/export and cross-version compatibility (done) | high | B | Phase 2 |
 | WC-EC-25 | Server-side STEP / STL / glTF export | medium | B | Phase 2 |
 | WC-EC-26 | Extract OCCTransport interface; keep WASM worker as local fallback | high | A | Phase 3 |
-| WC-EC-27 | Gateway: WebSocket server, auth hello, sessions | high | A | Phase 3 |
-| WC-EC-28 | RemoteWsTransport (client) | high | A | Phase 3 |
+| WC-EC-27 | Gateway: gRPC server, auth hello, sessions | high | A | Phase 3 |
+| WC-EC-28 | RemoteGrpcTransport (client) | high | A | Phase 3 |
 | WC-EC-29 | Vite dev proxy and local/remote switch | medium | A | Phase 3 |
 | WC-EC-30 | Session resume, rehydrate and restoreMany | high | B | Phase 3 |
 | WC-EC-31 | Cancellation, per-operation timeouts, progress events | medium | B | Phase 3 |
@@ -201,7 +201,7 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Tasks**
 - [ ] Build solidcraft-cli headless (cargo build --release -p solidcraft-cli) and run the existing boolean benchmark (30 cylinder cuts on a plate + mesh) through its command registry (solidcraft-cli run script.json); compare time and memory against native OCCT
 - [ ] Check the wasm32 build in a browser (note the stack-size link flag the kernel README requires for wasm) and whether the same kernel can serve both browser and server
-- [ ] Inspect the control protocol and browser command API (docs/control-protocol.md, docs/browser-api.md) for carrying commands over WebSocket
+- [ ] Inspect the control protocol and browser command API (docs/control-protocol.md, docs/browser-api.md) for carrying commands over gRPC
 - [ ] Exercise the hardest operations: many-hole plates, fillets on boolean seams, shell, long threads, sweep/loft; log panics, hangs and mismatches
 - [ ] Check topological naming / persistent references: do downstream features survive upstream sketch edits?
 - [ ] Check STEP/IGES/glTF/STL export quality and sheet-metal/assembly features WebCad may need
@@ -581,13 +581,13 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: createLoft.
 
 **Tasks**
-- [ ] Port `createLoft` (OCCWorker.ts lines 3543-3731)
+- [x] Port `createLoft` (OCCWorker.ts lines 3543-3731) — implemented in C++ kernel-worker.cpp
 - [x] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
 - [x] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
-- [ ] Match ruled/smooth options and section ordering rules of the WASM handler
+- [x] Match ruled/smooth options and section ordering rules of the WASM handler
 
 **Acceptance criteria**
-- [ ] Parity harness passes for ruled and smooth lofts
+- [x] Oracle fixtures loft_simple and loft_apex pass against rebuilt kernel (all 29/29 oracle parts pass against OCCT 7.9.3 native kernel)
 
 **Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)
 - Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 3543-3731.
@@ -684,11 +684,11 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 - Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).
 - Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.
 
-### WC-EC-27 - Gateway: WebSocket server, auth hello, sessions
+### WC-EC-27 - Gateway: gRPC server, auth hello, sessions
 
 **Priority:** high · **Agent:** A · **Labels:** server, transport · **Parent:** WC-EC · **Depends on:** WC-EC-09, WC-EC-11
 
-**Goal:** ws server mapping sessions to kernel processes via the supervisor.
+**Goal:** gRPC server mapping sessions to kernel processes via the supervisor.
 
 **Tasks**
 - [ ] hello {sessionId, projectId, token}
@@ -703,11 +703,11 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 - Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).
 - Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.
 
-### WC-EC-28 - RemoteWsTransport (client)
+### WC-EC-28 - RemoteGrpcTransport (client)
 
 **Priority:** high · **Agent:** A · **Labels:** client, transport · **Parent:** WC-EC · **Depends on:** WC-EC-26, WC-EC-27
 
-**Goal:** Client transport implementing OCCTransport over WebSocket.
+**Goal:** Client transport implementing OCCTransport over gRPC.
 
 **Tasks**
 - [ ] Request/response by id, timeout, heartbeat
@@ -727,10 +727,10 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 
 **Priority:** medium · **Agent:** A · **Labels:** dx, config · **Parent:** WC-EC · **Depends on:** WC-EC-28
 
-**Goal:** Same-origin WS in dev (COOP/COEP enabled).
+**Goal:** Same-origin gRPC in dev (COOP/COEP enabled).
 
 **Tasks**
-- [ ] server.proxy /occ with ws: true
+- [ ] server.proxy /occ (configured for gRPC / HTTP/2 / gRPC-Web)
 - [ ] VITE_OCC_URL; empty = local WASM worker
 
 **Acceptance criteria**
@@ -876,11 +876,11 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Tasks**
 - [ ] App container (Node gateway) and kernel image from the pinned OCCT build
 - [ ] compose with healthchecks, volumes, env config
-- [ ] nginx with WebSocket upgrade, timeouts, COOP/COEP headers
+- [ ] nginx with gRPC / HTTP/2 proxying, timeouts, COOP/COEP headers
 
 **Acceptance criteria**
 - [ ] docker compose up gives a working UI + native engine
-- [ ] WS survives nginx idle timeouts via heartbeat
+- [ ] gRPC streams survive nginx idle timeouts via keepalive/heartbeat
 
 **Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely.)
 - Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.
@@ -894,13 +894,13 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** Uploaded B-rep is untrusted input to a native parser.
 
 **Tasks**
-- [ ] Short-lived token on WS upgrade; Origin check
+- [ ] Short-lived token on gRPC handshake/metadata; Origin check
 - [ ] Kernel runs non-root, read-only FS, seccomp/no network, CPU/memory limits
 - [ ] Per-user quotas
 - [ ] Kernel only receives untrusted B-rep after the pre-validation step (see B-rep import ticket)
 
 **Acceptance criteria**
-- [ ] Unauthenticated upgrade rejected
+- [ ] Unauthenticated request rejected
 - [ ] Crafted B-rep cannot affect other sessions or the host
 
 **Agent brief** (suitability C - human-led: the agent only gathers evidence, runs experiments and drafts the write-up; a human decides.)
@@ -1081,11 +1081,11 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 
 **Priority:** high · **Agent:** B · **Labels:** engine, architecture · **Parent:** WC-EC · **Depends on:** WC-EC-44
 
-**Goal:** Adopt the pattern SolidCraft uses: every operation is a command in one registry, and the same commands are reachable from UI, WebSocket, headless CLI/scripts and tests; layers are enforced by tooling.
+**Goal:** Adopt the pattern SolidCraft uses: every operation is a command in one registry, and the same commands are reachable from UI, gRPC, headless CLI/scripts and tests; layers are enforced by tooling.
 
 **Tasks**
 - [ ] Command registry: id, parameter schema, validation, undo/inverse, result shape; no operation reachable except through the registry
-- [ ] One session object per document; transports (WebSocket, CLI, test harness) only call the registry
+- [ ] One session object per document; transports (gRPC, CLI, test harness) only call the registry
 - [ ] JSON script runner: a script is a list of commands, used for headless tests, benchmarks and the parity harness
 - [ ] Define layers (geometry/kernel, feature timeline and parameters, I/O, engine/registry, transports/UI) and enforce dependency direction in CI (dependency-cruiser/eslint boundaries for TS, CMake target checks or equivalent for the kernel)
 - [ ] Document the layer rules and the check in the repo

@@ -1,0 +1,47 @@
+{
+  "id": "sweep_corner",
+  "name": "Sweep Corner",
+  "description": "Sweep a square profile along a bent spine (line + arc), expect valid solid",
+  "script": {
+    "name": "sweep_corner_test",
+    "steps": [
+      {
+        "name": "create_sweep",
+        "parameters": {
+          "profile_points": [
+            {"x": 0, "y": 0, "z": 0},
+            {"x": 1, "y": 0, "z": 0},
+            {"x": 1, "y": 1, "z": 0},
+            {"x": 0, "y": 1, "z": 0}
+          ],
+          "spine_points": [
+            {"x": 0, "y": 0, "z": 0},
+            {"x": 0, "y": 0, "z": 10},
+            {"x": 5, "y": 0, "z": 10}
+          ],
+          "is_solid": true,
+          "deflection": 0.1,
+          "entity_id": "sweep_result",
+          "profile_count": 4,
+          "corner_mode": "ROUND",
+          "is_ellipse": false
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 15.0,
+    "surfaceArea": 62.0,
+    "bbox": { "min": [0, 0, 0], "max": [5, 1, 10] },
+    "faceCount": 8,
+    "edgeCount": 20,
+    "vertexCount": 12,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 3.0,
+    "surfaceArea": 8.0,
+    "bbox": 1e-2,
+    "counts": 2
+  }
+}

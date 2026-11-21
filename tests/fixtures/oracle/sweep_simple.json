@@ -1,0 +1,46 @@
+{
+  "id": "sweep_simple",
+  "name": "Sweep Simple",
+  "description": "Sweep a square profile along a straight spine, expect valid solid",
+  "script": {
+    "name": "sweep_simple_test",
+    "steps": [
+      {
+        "name": "create_sweep",
+        "parameters": {
+          "profile_points": [
+            {"x": 0, "y": 0, "z": 0},
+            {"x": 1, "y": 0, "z": 0},
+            {"x": 1, "y": 1, "z": 0},
+            {"x": 0, "y": 1, "z": 0}
+          ],
+          "spine_points": [
+            {"x": 0, "y": 0, "z": 0},
+            {"x": 0, "y": 0, "z": 10}
+          ],
+          "is_solid": true,
+          "deflection": 0.1,
+          "entity_id": "sweep_result",
+          "profile_count": 4,
+          "corner_mode": "DEFAULT",
+          "is_ellipse": false
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 10.0,
+    "surfaceArea": 42.0,
+    "bbox": { "min": [0, 0, 0], "max": [1, 1, 10] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 2.0,
+    "surfaceArea": 5.0,
+    "bbox": 1e-2,
+    "counts": 2
+  }
+}

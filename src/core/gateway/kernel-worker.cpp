@@ -1386,6 +1386,134 @@ static OpResult OpCreateDraftSolidFaces(
 }
 
 // ---------------------------------------------------------------------------
+// OpCreateSweep — sweep a profile wire along a spine wire
+// Primary path: BRepOffsetAPI_MakePipeShell.
+// Fallback: BRepOffsetAPI_ThruSections with RMF (not yet implemented).
+// ---------------------------------------------------------------------------
+static OpResult OpCreateSweep(
+    const std::vector<std::array<double, 3>>& profilePoints,
+    const std::vector<std::array<double, 3>>& spinePoints,
+    bool isSolid,
+    double deflection,
+    const std::string& entityId,
+    const std::string& cornerMode,
+    bool isEllipse) {
+  OpResult r;
+
+  if (profilePoints.size() < 3) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "Sweep: need at least 3 profile points";
+    return r;
+  }
+  if (spinePoints.size() < 2) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "Sweep: need at least 2 spine points";
+    return r;
+  }
+
+  try {
+    // Build profile wire from profile points (closed wire).
+    BRepBuilderAPI_MakeWire profileWireBuilder;
+    for (size_t i = 1; i < profilePoints.size(); ++i) {
+      profileWireBuilder.Add(BRepBuilderAPI_MakeEdge(
+          gp_Pnt(profilePoints[i - 1][0], profilePoints[i - 1][1], profilePoints[i - 1][2]),
+          gp_Pnt(profilePoints[i][0], profilePoints[i][1], profilePoints[i][2])).Edge());
+    }
+    // Close the profile wire (last point back to first).
+    profileWireBuilder.Add(BRepBuilderAPI_MakeEdge(
+        gp_Pnt(profilePoints.back()[0], profilePoints.back()[1], profilePoints.back()[2]),
+        gp_Pnt(profilePoints.front()[0], profilePoints.front()[1], profilePoints.front()[2])).Edge());
+    TopoDS_Wire profileWire = profileWireBuilder.Wire();
+    if (!profileWireBuilder.IsDone() || profileWire.IsNull()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "Sweep: failed to build profile wire";
+      return r;
+    }
+
+    // Build spine wire from spine points.
+    BRepBuilderAPI_MakeWire spineWireBuilder;
+    for (size_t i = 1; i < spinePoints.size(); ++i) {
+      spineWireBuilder.Add(BRepBuilderAPI_MakeEdge(
+          gp_Pnt(spinePoints[i - 1][0], spinePoints[i - 1][1], spinePoints[i - 1][2]),
+          gp_Pnt(spinePoints[i][0], spinePoints[i][1], spinePoints[i][2])).Edge());
+    }
+    TopoDS_Wire spineWire = spineWireBuilder.Wire();
+    if (!spineWireBuilder.IsDone() || spineWire.IsNull()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "Sweep: failed to build spine wire";
+      return r;
+    }
+
+    // Fix spine wire connectivity/ordering.
+    ShapeFix_Wire spineFixer(spineWire, TopoDS_Face(), 1.0e-6);
+    spineFixer.FixReorder();
+    spineFixer.FixConnected();
+    spineWire = spineFixer.Wire();
+    if (spineWire.IsNull()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "Sweep: failed to fix spine wire";
+      return r;
+    }
+
+    // Build MakePipeShell with the spine wire.
+    BRepOffsetAPI_MakePipeShell pipeShell(spineWire);
+
+    // Set transition mode based on corner_mode.
+    if (cornerMode == "ROUND") {
+      pipeShell.SetTransitionMode(BRepBuilderAPI_RoundCorner);
+    } else if (cornerMode == "MITER") {
+      pipeShell.SetTransitionMode(BRepBuilderAPI_RightCorner);
+    } else {
+      // DEFAULT — extended intersection at corners.
+      pipeShell.SetTransitionMode(BRepBuilderAPI_Transformed);
+    }
+
+    // Frenet mode adapts orientation along curvature; good for curved spines.
+    pipeShell.SetMode(Standard_True);
+
+    // Add profile wire to pipe shell.
+    pipeShell.Add(profileWire, Standard_False, Standard_False);
+
+    pipeShell.Build();
+    if (!pipeShell.IsDone()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "Sweep: MakePipeShell build failed";
+      return r;
+    }
+
+    TopoDS_Shape result = pipeShell.Shape();
+    if (result.IsNull()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY);
+      r.message = "Sweep: resulting shape is null";
+      return r;
+    }
+
+    // If isSolid, cap ends into a solid.
+    if (isSolid) {
+      try {
+        pipeShell.MakeSolid();
+        result = pipeShell.Shape();
+      } catch (const Standard_Failure& e) {
+        LOG(kLogWarn) << "Sweep: MakeSolid failed, returning shell: "
+                      << e.GetMessageString() << std::endl;
+      }
+    }
+
+    EnsurePositiveVolume(result);
+
+    return OpCreateAndCache(result, deflection, entityId);
+  } catch (const Standard_Failure& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "Sweep: OCCT failure: " + std::string(e.GetMessageString());
+    return r;
+  } catch (const std::exception& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "Sweep: " + std::string(e.what());
+    return r;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // OpExtractFaceProfile — extract 2D loop profile from a face
 // Returns 2D loops (not a 3D solid); tested via dedicated integration test.
 // ---------------------------------------------------------------------------
@@ -2694,6 +2822,8 @@ class KernelServiceImpl final : public KernelService::Service {
           return HandleMakeThickSolid(request, response);
         case ExecuteRequest::kDraftSolidFaces:
           return HandleDraftSolidFaces(request, response);
+        case ExecuteRequest::kCreateSweep:
+          return HandleCreateSweep(request, response);
         case ExecuteRequest::kMultMatrixShape:
           return HandleTransformMultMatrix(request, response);
         case ExecuteRequest::kTransformShape:
@@ -3455,6 +3585,53 @@ class KernelServiceImpl final : public KernelService::Service {
     auto* success = response->mutable_success();
     success->set_shape_id(r.shapeId);
     auto* result = success->mutable_draft_solid_faces();
+    result->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    // MeshData — opt-in tessellation output
+    if (request->include_brep() && it != g_shapeCache.end()) {
+      double meshDeflection = deflection > 0.0 ? deflection : 0.1;
+      PopulateMeshData(it->second, meshDeflection, response->mutable_mesh());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreateSweep(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_sweep();
+    double deflection = op.deflection() > 0.0 ? op.deflection() : 0.1;
+    std::string entityId = op.entity_id();
+    bool isSolid = op.is_solid();
+    std::string cornerMode = op.corner_mode();
+    bool isEllipse = op.is_ellipse();
+
+    std::vector<std::array<double, 3>> profilePoints;
+    profilePoints.reserve(op.profile_points_size());
+    for (int i = 0; i < op.profile_points_size(); ++i) {
+      const auto& pt = op.profile_points(i);
+      profilePoints.push_back({pt.x(), pt.y(), pt.z()});
+    }
+
+    std::vector<std::array<double, 3>> spinePoints;
+    spinePoints.reserve(op.spine_points_size());
+    for (int i = 0; i < op.spine_points_size(); ++i) {
+      const auto& pt = op.spine_points(i);
+      spinePoints.push_back({pt.x(), pt.y(), pt.z()});
+    }
+
+    auto r = OpCreateSweep(profilePoints, spinePoints, isSolid, deflection,
+                           entityId, cornerMode, isEllipse);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* result = success->mutable_sweep();
     result->set_shape_id(r.shapeId);
 
     auto it = g_shapeCache.find(r.shapeId);

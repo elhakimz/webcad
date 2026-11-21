@@ -84,6 +84,7 @@ export class NativeKernelAdapter implements KernelAdapter {
       create_convex_hull: 'create_convex_hull',
       create_extrude: 'create_extrude',
       create_revolve: 'create_revolve',
+      create_sweep: 'create_sweep',
       create_compound: 'create_compound',
       create_boolean: 'create_boolean',
       fillet_solid: 'fillet_solid',

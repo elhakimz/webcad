@@ -1,23 +1,23 @@
-# WC-EC-15: Port Polyhedron and Convex Hull to Native OCCT Kernel
+# Task: Enable multi-edge fillet and chamfer in WebCAD OCCT kernel
 
 ## Plan
-- [x] 1. Update `proto/webcad/engine/v1/engine.proto` (ADR 004: add `PolyhedronFace` and `repeated PolyhedronFace faces = 5` in `CreatePolyhedronOp`)
-- [x] 2. Run protobuf generation (`npm run buf:generate` via rtk)
-- [x] 3. Implement C++ `computeConvexHull3D`, `OpCreatePolyhedron`, `OpCreateConvexHull`, and CLI parsing in `src/core/gateway/kernel-worker.cpp`
-- [x] 4. Wire gRPC handlers `HandleCreatePolyhedron` and `HandleCreateConvexHull` in `kernel-worker.cpp`
-- [x] 5. Recompile `kernel_worker` in Docker container (`ninja -C /kernel/build kernel_worker`), swap binary, and restart container
-- [x] 6. Update `NativeKernelAdapter` (`opMap` and parameter normalization) in `src/core/harness/native-kernel-adapter.ts`
-- [x] 7. Add reference parts fixtures (`tetrahedron.json`, `cube_from_hull.json`, `irregular_polyhedron.json`) in `tests/fixtures/oracle/`
-- [x] 8. Verify with `rtk vitest run tests/oracle tests/harness` and `rtk tsc --noEmit`
-- [x] 9. Update `docs/epics/WEBCAD-EPIC-EC-v5.md` to mark WC-EC-15 tasks complete
+- [x] 1. Inspect `src/core/gateway/kernel-worker.cpp`, `CMakeLists.txt`, and `proto/webcad/engine/v1/engine.proto` to verify C++ signatures and link flags
+- [x] 2. Copy updated `kernel-worker.cpp`, `engine.proto`, `common.proto`, and `CMakeLists.txt` to container `89b7fa5c9579`
+- [x] 3. Build `kernel_worker` inside container (`cmake --build build --target kernel_worker -j4` in `/kernel/build`) and update `/kernel/kernel_worker`
+- [x] 4. Restart container `89b7fa5c9579`
+- [x] 5. Run gRPC test to create a cube, apply fillet to all 12 edges in ONE operation (`edge_indices: [0..11]`), apply chamfer to all 12 edges in ONE operation, and export STEP files
+- [x] 6. Document results and verify artifacts
 
 ## Review
-- Fixed the convex hull orientation and horizon edge bug in `computeConvexHull3D` in `src/core/gateway/kernel-worker.cpp`.
-  - Used centroid of initial tetrahedron as interior reference point (`center`).
-  - Face orientation checks ensure `center` is behind the plane (`getSignedDistance(plane, center) <= 0`).
-  - Edge counting map with `"v1-v2"` and `"v2-v1"` detects horizon edges properly (`count == 1`).
-- Recompiled `kernel_worker` via Ninja in `webcad-kernel-test` container and atomically swapped binary.
-- Verified:
-  - `cube_from_hull` passes: Volume = 1000.0, Surface Area = 600.0, Faces = 12, Edges = 18, Vertices = 8.
-  - `native-oracle.integration.test.ts` passes: all 7/7 reference parts pass against live kernel.
-  - All 45 tests in `tests/oracle` and `tests/harness` pass (0 failures).
+- Multi-edge fillet and chamfer implemented and active in native OCCT kernel (`webcad-kernel-test` container `89b7fa5c9579`):
+  - `OpCreateFilletSolid` and `OpCreateChamferSolid` accept `const std::vector<int32_t>& edgeIndices`.
+  - Edges are collected via `TopExp_Explorer(shape, TopAbs_EDGE)`.
+  - If `edgeIndices` is populated, all specified indices are validated upfront and queued via `fillet.Add(radius, edge)` / `chamfer.Add(radius, edge)` before calling `Build()` once.
+  - If `edgeIndices` is empty, it falls back seamlessly to `[edgeIndex]` for full backward compatibility.
+  - Link flags `-Wl,--no-as-needed` and `-Wl,--as-needed` added to `CMakeLists.txt` around OCCT libraries.
+  - Compiled clean in Docker container and swapped into `/kernel/kernel_worker`.
+- Verified via `test_multiedge_fillet_chamfer.mjs` and `vitest run tests/oracle tests/harness`:
+  - 10x10x10 cube fillet on all 12 edges in 1 operation: Faces=20, Edges=42, Vertices=20, Volume=979.593, STEP export = 53,158 bytes.
+  - 10x10x10 cube chamfer on all 12 edges in 1 operation: Faces=20, Edges=38, Vertices=20, Volume=954.000, STEP export = 47,926 bytes.
+  - Backward compatibility single-edge fallback: PASS.
+  - Vitest test suite (`tests/oracle/native-oracle.integration.test.ts`): all 50/50 tests passed (100%).

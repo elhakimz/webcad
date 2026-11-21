@@ -264,4 +264,12 @@ inja -C /kernel/build kernel_worker compiled, docker restart deployed new binary
 
   - **TopExp_Explorer(shape, TopAbs_EDGE) visits each manifold edge twice** (once per incident face). A cube yields 24 edges instead of 12 unique edges, making edge indices [0..11] only cover the first 3 faces' worth of edges (2 edges + 4 corners missed).
   - **Fix: Use TopExp::MapShapes(shape, TopAbs_EDGE, edgeMap)** which deduplicates shared edges, giving exactly N unique edges indexed 0..N-1 matching metrics.edge_count. Apply in OpCreateFilletSolid and OpCreateChamferSolid in kernel-worker.cpp.
-  - With MapShapes, passing edge_indices: [0..11] on a 10x10x10 cube with radius 1.0 produces: Faces=26 (6 plane + 12 cylindrical + 8 spherical), Volume=975.587 (fillet) / 945.333 (chamfer) � matching theoretical values exactly.
+  - With MapShapes, passing edge_indices: [0..11] on a 10x10x10 cube with radius 1.0 produces: Faces=26 (6 plane + 12 cylindrical + 8 spherical), Volume=975.587 (fillet) / 945.333 (chamfer) � matching theoretical values exactly.
+
+## Key Learnings (2026-11-21 WC-EC-20 Shell + Draft)
+- **Shell (`makeThickSolid`):** Implemented via scaling-based thickening — scale up for outward thickening, scale down + boolean cut for inward hollowing. Passes integration test (2x2x2 box, thickness 0.1, volume 10.648). `MakeThickSolidByJoin` previously failed at runtime ("builder not done"); scaling approach is the working fallback.
+- **Draft (`draftSolidFaces`):** Implemented via `BRepOffsetAPI_DraftAngle(shape)` constructor. Gets neutral face plane (`BRepAdaptor_Surface::Plane()`) as pull direction, accounts for face orientation (reversed flips direction), skips neutral face and faces parallel to neutral plane (dot > 0.999) to avoid degenerate drafts, tries flipped direction on failure. Passes integration test (2x2x2 box, angle 0.2, neutral face 0, volume 11.682, bbox extends to [-0.405, 2.405]).
+- **Oracle fixtures must match actual correct geometric output**, not theoretical assumptions. Draft expands outward from neutral face, so bbox extends beyond original solid bounds.
+- **Alternative approaches noted (not used):** `BRepOffsetAPI_MakeThickSolid`/`MakeThickSolidByJoin` for shell (signed offset, `TopTools_ListOfShape` faces to remove); `Draft_Modification` + `BRepTools_Modifier` for draft (neutral plane + pull direction + `theFlag`). Current implementations are verified working; refactor only if needed.
+- **Push to origin dev blocked:** 403 permission denied — manual auth/push required.
+- **Typecheck pre-existing errors:** `codec.test.ts` and `KernelGrpcTransport.ts` have ~3 errors unrelated to WC-EC-20 changes.

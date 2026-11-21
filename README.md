@@ -166,6 +166,24 @@ See `docs/superpowers/specs/` for kernel build-speed design, dependency triage, 
 - [x] **Test automation:** In-app test bridge giving the e2e suite a semantic API into camera, scene graph, selection, snap state, and kernel validity.
 - [ ] **WebGPU renderer** *(in progress)* — the groundwork has landed: antialiasing, a coalesced frame loop, a `RendererBackend` seam, a capability probe with automatic fallback, and the three.js r160 → r185 upgrade. The WebGPU backend itself is not wired up yet; WebGL will remain a permanent fallback either way, since WebGPU coverage still has gaps. See [`docs/plans/rendering_roadmap.md`](docs/plans/rendering_roadmap.md).
 
+## 🧪 Codec validation (WC-EC-09)
+
+The language-neutral kernel protocol codecs (protobuf `bytes` fields, misaligned-byte handling, 256 KiB payload boundaries, `ExecuteFailure` enum) are validated in both TypeScript and C++:
+
+- **TS:** `src/core/io/__tests__/codec.test.ts` — 16 round-trip codec tests under vitest (`CommandHeader`, `OpenSession`, `MeshData`, misaligned bytes via `DataView` copy, 256 KiB boundary, all 9 `ExecuteFailureCode` values). Run with `npm test`.
+- **C++:** `kernel/tests/codec_test.cpp` — mirrors the TS suite under the kernel's CMake/CTest setup.
+
+No production code or proto changes — pure validation that generated codecs serialize/deserialize correctly across the language boundary.
+
+## 🧪 Gateway Kernel Supervisor (WC-EC-11)
+
+The Gateway Kernel Supervisor (Node side) owns kernel processes: spawning, pooling, framing, and respawn.
+
+- **Tests:** `tests/gateway/supervisor.test.ts` — 6 tests covering kernel crash recovery, ordering under load, spawn/respawn, and per-session FIFO queue ordering. Run with `npm test`.
+- **Implementation:** `src/core/gateway/kernel-supervisor.ts` — spawns kernel processes over UDS/stdio, preserves per-session `client_seq` ordering, health checks, kill-on-timeout, respawn + rehydrate, and a warm process pool.
+
+Key fix: kernel crash recovery uses `await supervisor.onKernelCrash()` (awaited) instead of fire-and-forget `triggerExit`, which previously caused a vitest worker OOM (~4GB RSS) during import.
+
 ## 📄 License
 MIT
 

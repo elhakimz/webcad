@@ -21,11 +21,11 @@
   },
   "expected": {
     "volume": 15.0,
-    "surfaceArea": 72.0,
+    "surfaceArea": 42.0,
     "bbox": { "min": [0.0, 0.0, 0.0], "max": [3.0, 3.0, 3.0] },
     "faceCount": 12,
-    "edgeCount": 24,
-    "vertexCount": 16,
+    "edgeCount": 30,
+    "vertexCount": 20,
     "isValid": true
   },
   "tolerances": {

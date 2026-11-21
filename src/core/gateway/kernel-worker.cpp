@@ -759,9 +759,9 @@ static OpResult OpCreateBoolean(const std::string& operation,
     if (operation == "fuse") {
       BRepAlgoAPI_Fuse builder(shapeA, shapeB);
       builder.SetFuzzyValue(1e-6);
-      builder.RunParallel(false);
-      builder.CheckInverted(true);
-      builder.NonDestructive(false);
+      builder.SetRunParallel(false);
+      builder.SetCheckInverted(true);
+      builder.SetNonDestructive(false);
       builder.Build();
       if (!builder.IsDone()) {
         r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
@@ -772,9 +772,9 @@ static OpResult OpCreateBoolean(const std::string& operation,
     } else if (operation == "cut") {
       BRepAlgoAPI_Cut builder(shapeA, shapeB);
       builder.SetFuzzyValue(1e-6);
-      builder.RunParallel(false);
-      builder.CheckInverted(true);
-      builder.NonDestructive(false);
+      builder.SetRunParallel(false);
+      builder.SetCheckInverted(true);
+      builder.SetNonDestructive(false);
       builder.Build();
       if (!builder.IsDone()) {
         r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
@@ -785,9 +785,9 @@ static OpResult OpCreateBoolean(const std::string& operation,
     } else if (operation == "common") {
       BRepAlgoAPI_Common builder(shapeA, shapeB);
       builder.SetFuzzyValue(1e-6);
-      builder.RunParallel(false);
-      builder.CheckInverted(true);
-      builder.NonDestructive(false);
+      builder.SetRunParallel(false);
+      builder.SetCheckInverted(true);
+      builder.SetNonDestructive(false);
       builder.Build();
       if (!builder.IsDone()) {
         r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);

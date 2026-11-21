@@ -29,7 +29,7 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-15 ✔ | Port: polyhedron and convex hull (done) | medium | A | Phase 2 |
 | WC-EC-16 ✓ | Port: transforms (matrix, translate, rotate, mirror, scale) | high | A | Phase 2 |
 | WC-EC-17 ✓ | Port: extrude, revolve, compound and face-profile extraction | high | A | Phase 2 |
-| WC-EC-18 | Port: booleans (createBoolean, scad CSG temp ids) | high | A | Phase 2 |
+| WC-EC-18 ✓ | Port: booleans (createBoolean, scad CSG temp ids) | high | A | Phase 2 |
 | WC-EC-19 | Port: fillet and chamfer (solid and face variants) | high | B | Phase 2 |
 | WC-EC-20 | Port: shell (makeThickSolid) and draft | high | B | Phase 2 |
 | WC-EC-21 | Port: sweep | high | B | Phase 2 |

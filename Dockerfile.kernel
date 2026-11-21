@@ -9,7 +9,9 @@ RUN apt-get update && apt-get install -y \
   libglew-dev libfreetype6-dev libfontconfig1-dev \
   libglu1-mesa-dev libxcursor-dev libxi-dev libxt-dev \
   protobuf-compiler libprotobuf-dev libgrpc-dev libgrpc++-dev protobuf-compiler-grpc \
-  && rm -rf /var/lib/apt/lists/*
+  libgtest-dev socat \
+  && rm -rf /var/lib/apt/lists/* \
+  && cd /usr/src/googletest && cmake . && make && make install
 
 # Stage 2: Build OCCT 7.9.3
 FROM deps AS occt
@@ -30,7 +32,10 @@ RUN git config --global http.sslVerify false && \
 
 # Stage 3: Kernel worker
 FROM occt AS kernel
+ARG KERNEL_CACHEBUST=1
 WORKDIR /kernel
+# Bust cache for proto copy — ARG must be referenced in RUN to invalidate Docker layer cache
+RUN echo "Kernel cachebust: $KERNEL_CACHEBUST"
 COPY CMakeLists.txt ./
 COPY proto/ ./proto/
 COPY src/core/gateway/ ./src/core/gateway/
@@ -39,4 +44,4 @@ RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/usr/lib/
   # Move binary to workdir root and remove build artifacts to reduce image size \
   && cp build/kernel_worker ./kernel_worker && rm -rf build
 
-CMD ["./kernel_worker"]
+CMD ["sh", "-c", "./kernel_worker & for i in $(seq 1 20); do [ -S /tmp/webcad-kernel.sock ] && break; sleep 0.5; done && socat TCP-LISTEN:50051,fork UNIX-CONNECT:/tmp/webcad-kernel.sock"]

@@ -154,7 +154,28 @@ using webcad::engine::v1::HealthResponse;
 // Stage 1: client-authoritative, kernel is a rebuildable per-session cache.
 // TopoDS_Shape is stored by value (it is a lightweight handle-like OCCT class,
 // not a Standard_Transient subclass, so opencascade::handle<> does not apply).
+//
+// Bounded to prevent unbounded growth (logical leak, skill checklist #11).
+// When full, the oldest entry is evicted before inserting a new one.
+// Clients should call release_shapes to free shapes they no longer need.
+static constexpr std::size_t kMaxCachedShapes = 1024;
 static std::unordered_map<std::string, TopoDS_Shape> g_shapeCache;
+
+// Insert a shape into the cache, evicting the oldest entry if at capacity.
+// Returns the assigned shape_id.
+static std::string CacheShape(const TopoDS_Shape& shape,
+                              const std::string& entityId) {
+  std::string shapeId = entityId.empty()
+      ? "shape_" + std::to_string(g_shapeCache.size())
+      : entityId;
+  if (g_shapeCache.size() >= kMaxCachedShapes) {
+    // Evict oldest entry (unordered_map begin() is arbitrary but deterministic
+    // for a given build; sufficient for a bounded per-session cache).
+    g_shapeCache.erase(g_shapeCache.begin());
+  }
+  g_shapeCache[shapeId] = shape;
+  return shapeId;
+}
 
 static void InitLogLevel() {
   const char* env = std::getenv("WEBCAD_KERNEL_LOG_LEVEL");
@@ -279,10 +300,8 @@ static OpResult OpCreateBox(double x, double y, double z, double dx, double dy,
     r.message = "BRepMesh_IncrementalMesh failed";
     return r;
   }
-  std::string shapeId = entityId.empty() ? "shape_" + std::to_string(g_shapeCache.size()) : entityId;
-  g_shapeCache[shapeId] = shape;
+  r.shapeId = CacheShape(shape, entityId);
   r.ok = true;
-  r.shapeId = shapeId;
   return r;
 }
 
@@ -489,10 +508,8 @@ static OpResult OpCreateAndCache(const TopoDS_Shape& shape, double deflection,
     r.message = "BRepMesh_IncrementalMesh failed";
     return r;
   }
-  std::string shapeId = entityId.empty() ? "shape_" + std::to_string(g_shapeCache.size()) : entityId;
-  g_shapeCache[shapeId] = shape;
+  r.shapeId = CacheShape(shape, entityId);
   r.ok = true;
-  r.shapeId = shapeId;
   return r;
 }
 
@@ -1547,10 +1564,17 @@ static OpResult OpImportBRep(const std::string& brepData, const std::string& ent
     r.message = "Failed to write temp B-rep file";
     return r;
   }
+  close(fd); // ofstream opens its own fd by path; mkstemp fd is redundant
+
   std::ofstream out(tmpPath, std::ios::binary);
+  if (!out) {
+    std::remove(tmpPath);
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_IMPORT_FAILED);
+    r.message = "Failed to open temp B-rep file for writing";
+    return r;
+  }
   out.write(brepData.data(), static_cast<std::streamsize>(brepData.size()));
   out.close();
-  close(fd);
 
   TopoDS_Shape shape;
   try {
@@ -1568,10 +1592,8 @@ static OpResult OpImportBRep(const std::string& brepData, const std::string& ent
     r.message = "Imported B-rep shape is null";
     return r;
   }
-  std::string shapeId = entityId.empty() ? "shape_" + std::to_string(g_shapeCache.size()) : entityId;
-  g_shapeCache[shapeId] = shape;
+  r.shapeId = CacheShape(shape, entityId);
   r.ok = true;
-  r.shapeId = shapeId;
   return r;
 }
 

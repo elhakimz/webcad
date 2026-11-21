@@ -223,6 +223,12 @@ ew message construction or 	oBinary/romBinary calls in source code. Test file R
 ## Key Learnings (2026-11-21 WC-EC-18 Booleans + C++ Memory Safety Review)
 
 - OCCT 7.9.3 `BRepAlgoAPI_Fuse/Cut/Common` builders use setter-style API: `SetRunParallel(bool)`, `SetCheckInverted(bool)`, `SetNonDestructive(bool)`. Getter-style `RunParallel(false)` etc. do not exist and fail to compile.
+
+## Key Learnings (2026-11-21 cpp-memory-leak-prevention fixes in kernel-worker.cpp)
+
+- **Bounded g_shapeCache (logical leak, skill checklist #11):** Added `kMaxCachedShapes = 1024` constant and `CacheShape(shape, entityId)` helper that evicts oldest entry (`g_shapeCache.erase(g_shapeCache.begin())`) when at capacity before inserting. All cache writes route through `CacheShape` — `OpCreateBox`, `OpCreateCylinder`, `OpCreateAndCache` (used by all transform handlers), and `OpImportBRep`. No more unbounded growth.
+- **mkstemp fd exception safety (OpImportBRep):** mkstemp fd is now `close(fd)`'d immediately after creation since `std::ofstream` opens its own fd by path. Added `if (!out)` check that removes tmpPath and returns error on open failure. `BinTools::Read` remains wrapped in try/catch that removes tmpPath. OpExportBRep and OpStepExport already closed fd immediately — only OpImportBRep needed fixing.
+- C++ build in container (`webcad-kernel-test`) succeeds with no errors after both fixes. All 580 TypeScript unit tests pass. Pre-existing typecheck errors (3) unchanged.
 - `OpCreateBoolean` (kernel-worker.cpp ~lines 724-810) is memory-safe per cpp-memory-leak-prevention skill: no naked new/delete, all OCCT builders stack-allocated (RAII), `TopoDS_Shape` is ref-counted handle, `try/catch(Standard_Failure)` wraps OCCT calls, builder→Shape→cache in single statement (`return OpCreateAndCache(builder.Shape(), deflection, entityId)`).
 - Boolean face/edge/vertex counts are OCCT 7.9.3 implementation-dependent (splitting at intersection curves); not a single "correct" value — fixtures must match actual deterministic output. `surfaceArea`/`volume` are geometric invariants and must match analytic values.
 - `g_shapeCache` is `std::unordered_map<std::string, TopoDS_Shape>` — TopoDS_Shape handles are ref-counted, no leaks from cache insertion/overwrite.

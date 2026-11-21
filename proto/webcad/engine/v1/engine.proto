@@ -160,8 +160,13 @@ message CreatePolyhedronOp {
   // Large field: use oneof for inline or BlobRef
   repeated Point3D points_inline = 1;
   BlobRef points_ref = 2;
-  double deflection = 3;
-  string entity_id = 4;
+  repeated PolyhedronFace faces = 5;
+  double deflection = 6;
+  string entity_id = 7;
+}
+
+message PolyhedronFace {
+  repeated int32 vertex_indices = 1;
 }
 message Point3D { double x = 1; double y = 2; double z = 3; }
 message CreateConvexHullOp {
@@ -275,6 +280,7 @@ message ExecuteSuccess {
     MakeThickSolidResult make_thick_solid = 27;
     DraftSolidFacesResult draft_solid_faces = 28;
     GenericShapeResult generic = 29;
+    ExtractFaceProfileResult extract_face_profile = 30;
   }
 }
 
@@ -306,6 +312,9 @@ message ChamferSolidFaceResult { string shape_id = 1; }
 message MakeThickSolidResult { string shape_id = 1; }
 message DraftSolidFacesResult { string shape_id = 1; }
 message GenericShapeResult { string shape_id = 1; }
+message Point2D { double x = 1; double y = 2; double bulge = 3; }
+message Loop2D { repeated Point2D points = 1; }
+message ExtractFaceProfileResult { repeated Loop2D loops = 1; }
 
 message RestoreRequest {
   CommandHeader header = 1;

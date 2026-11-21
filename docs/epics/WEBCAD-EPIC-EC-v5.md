@@ -364,14 +364,14 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** Independent correctness check that does not depend on any one kernel: parts with analytically known volume, surface area, centre of mass and bounding box (SolidCraft validates 75 of 76 public reference parts this way against analytic or FreeCAD values).
 
 **Tasks**
-- [ ] Define a corpus of reference parts as JSON command scripts with expected volume/area/centre of mass/bbox (analytic where possible, otherwise computed with an independent tool such as FreeCAD)
-- [ ] Tolerances per metric; failures report the metric and delta
-- [ ] Run against every kernel (WASM worker, native OCCT, optional solidcore) in CI
-- [ ] Track known failures explicitly, not silently
+- [x] Define a corpus of reference parts as JSON command scripts with expected volume/area/centre of mass/bbox (analytic where possible, otherwise computed with an independent tool such as FreeCAD)
+- [x] Tolerances per metric; failures report the metric and delta
+- [x] Run against every kernel (WASM worker, native OCCT, optional solidcore) in CI
+- [x] Track known failures explicitly, not silently
 
 **Acceptance criteria**
-- [ ] Suite runs in CI for each kernel
-- [ ] Each ported operation group adds at least one reference part
+- [x] Suite runs in CI for each kernel
+- [x] Each ported operation group adds at least one reference part
 
 **Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)
 - Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.

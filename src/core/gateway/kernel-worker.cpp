@@ -240,7 +240,7 @@ static OpResult OpCreateBox(double x, double y, double z, double dx, double dy,
                             double dz, double deflection,
                             const std::string& entityId) {
   OpResult r;
-  BRepPrimAPI_MakeBox box(dx, dy, dz);
+  BRepPrimAPI_MakeBox box(gp_Pnt(x, y, z), dx, dy, dz);
   box.Build();
   if (!box.IsDone()) {
     r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);

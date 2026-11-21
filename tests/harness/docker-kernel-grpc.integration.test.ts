@@ -77,6 +77,10 @@ describe('TypeScript gRPC against Docker kernel', () => {
     expect(response.success).toBeDefined();
     expect(response.success.shape_id).toBe('box_1');
     shapeId = response.success.shape_id;
+    expect(response.metrics).toBeDefined();
+    expect(response.metrics.volume).toBeCloseTo(1000, 2);
+    expect(response.metrics.face_count).toBe(6);
+    expect(response.metrics.is_valid).toBe(true);
   });
 
   it('step_export returns valid STEP-214 data', async () => {
@@ -101,6 +105,59 @@ describe('TypeScript gRPC against Docker kernel', () => {
     expect(response.brep_ref.format).toBe('FORMAT_STEP');
     expect(response.brep_ref.data).toBeDefined();
     expect(response.brep_ref.data.length).toBeGreaterThan(0);
+  });
+
+
+  it('create_cylinder returns success with metrics', async () => {
+    const request = {
+      header: {
+        session_id: 'test-session-grpc',
+        request_id: 'test-req-create-cylinder',
+        client_seq: 4,
+        document_id: '',
+      },
+      include_brep: false,
+      create_cylinder: {
+        x: 0, y: 0, z: 0,
+        r: 5, h: 10,
+        deflection: 0.1,
+        entity_id: 'cyl_1',
+      },
+    };
+    const response = await execute(request);
+    console.log('create_cylinder response:', JSON.stringify(response));
+    expect(response.result).toBe('success');
+    expect(response.success).toBeDefined();
+    expect(response.success.shape_id).toBe('cyl_1');
+    expect(response.metrics).toBeDefined();
+    expect(response.metrics.volume).toBeCloseTo(785.398, 1);
+    expect(response.metrics.is_valid).toBe(true);
+  });
+
+  it('create_sphere returns success with metrics', async () => {
+    const request = {
+      header: {
+        session_id: 'test-session-grpc',
+        request_id: 'test-req-create-sphere',
+        client_seq: 5,
+        document_id: '',
+      },
+      include_brep: false,
+      create_sphere: {
+        x: 0, y: 0, z: 0,
+        r: 5,
+        deflection: 0.1,
+        entity_id: 'sphere_1',
+      },
+    };
+    const response = await execute(request);
+    console.log('create_sphere response:', JSON.stringify(response));
+    expect(response.result).toBe('success');
+    expect(response.success).toBeDefined();
+    expect(response.success.shape_id).toBe('sphere_1');
+    expect(response.metrics).toBeDefined();
+    expect(response.metrics.volume).toBeCloseTo(523.599, 1);
+    expect(response.metrics.is_valid).toBe(true);
   });
 
   it('step_export on missing entity returns failure', async () => {

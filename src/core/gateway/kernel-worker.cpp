@@ -86,10 +86,19 @@ static bool ShouldLog(LogLevel level) { return level >= g_logLevel; }
 #include <opencascade/BRepBndLib.hxx>
 #include <opencascade/BRepCheck_Analyzer.hxx>
 #include <opencascade/BRepMesh_IncrementalMesh.hxx>
+#include <opencascade/gp_Trsf.hxx>
+#include <opencascade/gp_Vec.hxx>
+#include <opencascade/gp_Pnt.hxx>
+#include <opencascade/TopoDS.hxx>
+#include <opencascade/BRepBuilderAPI_Transform.hxx>
+#include <opencascade/BRepBuilderAPI_MakeSolid.hxx>
+#include <opencascade/BRepBuilderAPI_MakeVertex.hxx>
+#include <opencascade/BRepOffsetAPI_ThruSections.hxx>
 #include <opencascade/BinTools.hxx>
 #include <opencascade/STEPControl_Writer.hxx>
 #include <opencascade/Interface_Static.hxx>
 #include <opencascade/IFSelect.hxx>
+#include <cmath>
 #include <cstdio>
 #include <unistd.h>
 #include <fstream>
@@ -255,6 +264,252 @@ static OpResult OpCreateBox(double x, double y, double z, double dx, double dy,
   r.ok = true;
   r.shapeId = shapeId;
   return r;
+}
+
+// Shared helper: mesh + cache a created shape.
+static OpResult OpCreateAndCache(const TopoDS_Shape& shape, double deflection,
+                                 const std::string& entityId) {
+  OpResult r;
+  if (shape.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY);
+    r.message = "Resulting shape is null";
+    return r;
+  }
+  BRepMesh_IncrementalMesh mesh(shape, deflection);
+  if (!mesh.IsDone()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "BRepMesh_IncrementalMesh failed";
+    return r;
+  }
+  std::string shapeId = entityId.empty() ? "shape_" + std::to_string(g_shapeCache.size()) : entityId;
+  g_shapeCache[shapeId] = shape;
+  r.ok = true;
+  r.shapeId = shapeId;
+  return r;
+}
+
+// Apply translation (x, y, z) to a shape. Returns the original shape if zero translation.
+static TopoDS_Shape ApplyTranslation(const TopoDS_Shape& shape, double x, double y, double z) {
+  if (x == 0.0 && y == 0.0 && z == 0.0) return shape;
+  gp_Trsf trsf;
+  trsf.SetTranslation(gp_Vec(x, y, z));
+  BRepBuilderAPI_Transform transform(shape, trsf);
+  return transform.Shape();
+}
+
+static OpResult OpCreateCylinder(double x, double y, double z, double r, double h,
+                                 double deflection, const std::string& entityId) {
+  OpResult result;
+  if (r <= 0.0 || h <= 0.0) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    result.message = "Cylinder: radius and height must be positive";
+    return result;
+  }
+  TopoDS_Shape shape = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), r, h).Shape();
+  shape = ApplyTranslation(shape, x, y, z);
+  return OpCreateAndCache(shape, deflection, entityId);
+}
+
+static OpResult OpCreateSphere(double x, double y, double z, double r,
+                               double deflection, const std::string& entityId) {
+  OpResult result;
+  if (r <= 0.0) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    result.message = "Sphere: radius must be positive";
+    return result;
+  }
+  TopoDS_Shape shape = BRepPrimAPI_MakeSphere(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), r).Shape();
+  shape = ApplyTranslation(shape, x, y, z);
+  return OpCreateAndCache(shape, deflection, entityId);
+}
+
+static OpResult OpCreateCone(double x, double y, double z, double r, double h,
+                             double deflection, const std::string& entityId) {
+  OpResult result;
+  if (r <= 0.0 || h <= 0.0) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    result.message = "Cone: radius and height must be positive";
+    return result;
+  }
+  TopoDS_Shape shape =
+      BRepPrimAPI_MakeCone(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), r, 0.0, h).Shape();
+  shape = ApplyTranslation(shape, x, y, z);
+  return OpCreateAndCache(shape, deflection, entityId);
+}
+
+static OpResult OpCreateTorus(double x, double y, double z, double r1, double r2,
+                              double deflection, const std::string& entityId) {
+  OpResult result;
+  if (r1 <= 0.0 || r2 <= 0.0) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    result.message = "Torus: major and minor radii must be positive";
+    return result;
+  }
+  TopoDS_Shape shape =
+      BRepPrimAPI_MakeTorus(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), r1, r2).Shape();
+  shape = ApplyTranslation(shape, x, y, z);
+  return OpCreateAndCache(shape, deflection, entityId);
+}
+
+static OpResult OpCreateFrustum(double x, double y, double z, double r1, double r2, double h,
+                                double deflection, const std::string& entityId) {
+  OpResult result;
+  if (r1 < 0.0 || r2 < 0.0 || h <= 0.0) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    result.message = "Frustum: radii must be non-negative, height must be positive";
+    return result;
+  }
+  TopoDS_Shape shape;
+  if (std::abs(r1 - r2) < 1e-6) {
+    // Equal radii -> cylinder
+    shape = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), r1, h).Shape();
+  } else {
+    shape = BRepPrimAPI_MakeCone(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), r1, r2, h).Shape();
+  }
+  shape = ApplyTranslation(shape, x, y, z);
+  return OpCreateAndCache(shape, deflection, entityId);
+}
+
+static OpResult OpCreateWedge(double x1, double y1, double z1, double x2, double y2,
+                              double height, double ltx, double deflection,
+                              const std::string& entityId) {
+  OpResult result;
+  double dx = std::abs(x2 - x1);
+  double dy = std::abs(y2 - y1);
+  double dz = std::abs(height);
+  if (dx < 1e-10 || dy < 1e-10 || dz < 1e-10) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    result.message = "Wedge: dimensions must be non-zero";
+    return result;
+  }
+  double ox = std::min(x1, x2);
+  double oy = std::min(y1, y2);
+  double oz = height >= 0 ? z1 : z1 - dz;
+  double altx = std::max(0.0, std::min(dx, ltx));
+
+  // 8 corners of the wedge prismoid
+  gp_Pnt pts[8] = {
+    gp_Pnt(ox + 0.0,     oy + 0.0,     oz + 0.0),   // 0: Bottom-Front-Left
+    gp_Pnt(ox + dx,      oy + 0.0,     oz + 0.0),   // 1: Bottom-Front-Right
+    gp_Pnt(ox + dx,      oy + dy,      oz + 0.0),   // 2: Bottom-Back-Right
+    gp_Pnt(ox + 0.0,     oy + dy,      oz + 0.0),   // 3: Bottom-Back-Left
+    gp_Pnt(ox + 0.0,     oy + 0.0,     oz + dz),    // 4: Top-Front-Left
+    gp_Pnt(ox + altx,    oy + 0.0,     oz + dz),    // 5: Top-Front-Right
+    gp_Pnt(ox + altx,    oy + dy,      oz + dz),    // 6: Top-Back-Right
+    gp_Pnt(ox + 0.0,     oy + dy,      oz + dz)     // 7: Top-Back-Left
+  };
+
+  int faceIdxs[6][4] = {
+    {3, 2, 1, 0}, // Bottom
+    {4, 5, 6, 7}, // Top
+    {0, 1, 5, 4}, // Front
+    {1, 2, 6, 5}, // Right
+    {2, 3, 7, 6}, // Back
+    {3, 0, 4, 7}  // Left
+  };
+
+  BRepBuilderAPI_Sewing sewing(1e-4);
+
+  for (int i = 0; i < 6; ++i) {
+    BRepBuilderAPI_MakeWire wire;
+    for (int j = 0; j < 4; ++j) {
+      const gp_Pnt& p1 = pts[faceIdxs[i][j]];
+      const gp_Pnt& p2 = pts[faceIdxs[i][(j + 1) % 4]];
+      BRepBuilderAPI_MakeEdge edge(p1, p2);
+      if (edge.IsDone()) {
+        wire.Add(edge.Edge());
+      }
+    }
+    if (!wire.IsDone()) {
+      result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      result.message = "Wedge: failed to build face wire";
+      return result;
+    }
+    BRepBuilderAPI_MakeFace face(wire.Wire(), false);
+    if (!face.IsDone()) {
+      result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      result.message = "Wedge: failed to build face";
+      return result;
+    }
+    sewing.Add(face.Face());
+  }
+
+  sewing.Perform();
+  TopoDS_Shape sewed = sewing.SewedShape();
+
+  BRepBuilderAPI_MakeSolid makeSolid;
+  TopExp_Explorer exp(sewed, TopAbs_SHELL, TopAbs_SHAPE);
+  while (exp.More()) {
+    makeSolid.Add(TopoDS::Shell(exp.Current()));
+    exp.Next();
+  }
+  if (!makeSolid.IsDone()) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    result.message = "Wedge: failed to build solid";
+    return result;
+  }
+
+  TopoDS_Shape shape = makeSolid.Solid();
+  shape = ApplyTranslation(shape, x1, y1, z1);
+  return OpCreateAndCache(shape, deflection, entityId);
+}
+
+static OpResult OpCreatePyramid(double x, double y, double z, int sides, double radius,
+                                double h, double deflection, const std::string& entityId) {
+  OpResult result;
+  if (sides < 3) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    result.message = "Pyramid: sides must be >= 3";
+    return result;
+  }
+  if (radius <= 0.0 || h <= 0.0) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    result.message = "Pyramid: radius and height must be positive";
+    return result;
+  }
+
+  // Build base polygon wire
+  BRepBuilderAPI_MakeWire wire;
+  std::vector<gp_Pnt> basePts;
+  basePts.reserve(sides);
+  for (int i = 0; i < sides; ++i) {
+    double ang = (static_cast<double>(i) / static_cast<double>(sides)) * 2.0 * M_PI;
+    basePts.emplace_back(radius * std::cos(ang), radius * std::sin(ang), 0.0);
+  }
+  for (int i = 0; i < sides; ++i) {
+    BRepBuilderAPI_MakeEdge edge(basePts[i], basePts[(i + 1) % sides]);
+    if (!edge.IsDone()) {
+      result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      result.message = "Pyramid: failed to build base edge";
+      return result;
+    }
+    wire.Add(edge.Edge());
+  }
+  if (!wire.IsDone()) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    result.message = "Pyramid: failed to build base wire";
+    return result;
+  }
+
+  // Apex vertex
+  gp_Pnt apexPnt(0.0, 0.0, h);
+  BRepBuilderAPI_MakeVertex makeVertex(apexPnt);
+  TopoDS_Shape apexVertex = makeVertex.Vertex();
+
+  // Loft between wire and vertex
+  BRepOffsetAPI_ThruSections loft(true, true, 1e-6);
+  loft.AddWire(wire.Wire());
+  loft.AddVertex(TopoDS::Vertex(apexVertex));
+  loft.Build();
+  if (!loft.IsDone()) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    result.message = "Pyramid: ThruSections build failed";
+    return result;
+  }
+
+  TopoDS_Shape shape = loft.Shape();
+  shape = ApplyTranslation(shape, x, y, z);
+  return OpCreateAndCache(shape, deflection, entityId);
 }
 
 static OpResult OpImportBRep(const std::string& brepData, const std::string& entityId) {
@@ -638,6 +893,20 @@ class KernelServiceImpl final : public KernelService::Service {
           return HandleClearCache(request, response);
         case ExecuteRequest::kCreateBox:
           return HandleCreateBox(request, response);
+        case ExecuteRequest::kCreateCylinder:
+          return HandleCreateCylinder(request, response);
+        case ExecuteRequest::kCreateFrustum:
+          return HandleCreateFrustum(request, response);
+        case ExecuteRequest::kCreateSphere:
+          return HandleCreateSphere(request, response);
+        case ExecuteRequest::kCreateCone:
+          return HandleCreateCone(request, response);
+        case ExecuteRequest::kCreateTorus:
+          return HandleCreateTorus(request, response);
+        case ExecuteRequest::kCreateWedge:
+          return HandleCreateWedge(request, response);
+        case ExecuteRequest::kCreatePyramid:
+          return HandleCreatePyramid(request, response);
         case ExecuteRequest::kImportBrep:
           return HandleImportBRep(request, response);
         case ExecuteRequest::kExportBrep:
@@ -733,6 +1002,169 @@ class KernelServiceImpl final : public KernelService::Service {
     }
 
     return Status::OK;  // gRPC OK; business failures carried in-band via ExecuteFailure
+  }
+
+  Status HandleCreateCylinder(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_cylinder();
+    double x = op.x(), y = op.y(), z = op.z();
+    double r = op.r(), h = op.h();
+
+    auto result = OpCreateCylinder(x, y, z, r, h, op.deflection(), op.entity_id());
+    if (!result.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(result.code), result.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(result.shapeId);
+    auto* cylResult = success->mutable_cylinder();
+    cylResult->set_shape_id(result.shapeId);
+
+    auto it = g_shapeCache.find(result.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreateSphere(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_sphere();
+    double x = op.x(), y = op.y(), z = op.z();
+    double r = op.r();
+
+    auto result = OpCreateSphere(x, y, z, r, op.deflection(), op.entity_id());
+    if (!result.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(result.code), result.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(result.shapeId);
+    auto* sphResult = success->mutable_sphere();
+    sphResult->set_shape_id(result.shapeId);
+
+    auto it = g_shapeCache.find(result.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreateCone(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_cone();
+    double x = op.x(), y = op.y(), z = op.z();
+    double r = op.r(), h = op.h();
+
+    auto result = OpCreateCone(x, y, z, r, h, op.deflection(), op.entity_id());
+    if (!result.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(result.code), result.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(result.shapeId);
+    auto* coneResult = success->mutable_cone();
+    coneResult->set_shape_id(result.shapeId);
+
+    auto it = g_shapeCache.find(result.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreateTorus(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_torus();
+    double x = op.x(), y = op.y(), z = op.z();
+    double r1 = op.r1(), r2 = op.r2();
+
+    auto r = OpCreateTorus(x, y, z, r1, r2, op.deflection(), op.entity_id());
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* torusResult = success->mutable_torus();
+    torusResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreateFrustum(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_frustum();
+    double x = op.x(), y = op.y(), z = op.z();
+    double r1 = op.r1(), r2 = op.r2(), h = op.h();
+
+    auto r = OpCreateFrustum(x, y, z, r1, r2, h, op.deflection(), op.entity_id());
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* frustResult = success->mutable_frustum();
+    frustResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreateWedge(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_wedge();
+    double x1 = op.x1(), y1 = op.y1(), z1 = op.z1();
+    double x2 = op.x2(), y2 = op.y2(), height = op.height();
+    double ltx = op.ltx();
+
+    auto r = OpCreateWedge(x1, y1, z1, x2, y2, height, ltx, op.deflection(), op.entity_id());
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* wedgeResult = success->mutable_wedge();
+    wedgeResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreatePyramid(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_pyramid();
+    double x = op.x(), y = op.y(), z = op.z();
+    int sides = op.sides();
+    double radius = op.radius(), h = op.h();
+
+    auto r = OpCreatePyramid(x, y, z, sides, radius, h, op.deflection(), op.entity_id());
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* pyrResult = success->mutable_pyramid();
+    pyrResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
   }
 
   Status SetFailure(ExecuteResponse* response, ExecutionFailureCode code,

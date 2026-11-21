@@ -77,6 +77,9 @@ export class NativeKernelAdapter implements KernelAdapter {
       create_sphere: 'create_sphere',
       create_cone: 'create_cone',
       create_torus: 'create_torus',
+      create_frustum: 'create_frustum',
+      create_wedge: 'create_wedge',
+      create_pyramid: 'create_pyramid',
     };
 
     const opField = opMap[step.name];

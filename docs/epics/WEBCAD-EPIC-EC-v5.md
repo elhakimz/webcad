@@ -24,8 +24,8 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-10 v | Kernel worker skeleton (C++17, CMake) | high | B | Phase 1 |
 | WC-EC-11 | Gateway kernel supervisor (Node): spawn, pool, framing, respawn | high | B | Phase 1 |
 | WC-EC-12 | Parity harness: WASM worker vs native kernel | high | A | Phase 2 |
-| WC-EC-13 | Reference-parts oracle suite (analytic expected values) | high | A | Phase 2 |
-| WC-EC-14 | Port: simple primitives (box, cylinder, frustum, sphere, cone, torus, wedge, pyramid) | high | A | Phase 2 |
+| WC-EC-13 ✓ | Reference-parts oracle suite (analytic expected values) (done) | high | A | Phase 2 |
+| WC-EC-14 ✓ | Port: simple primitives (box, cylinder, frustum, sphere, cone, torus, wedge, pyramid) (done) | high | A | Phase 2 |
 | WC-EC-15 | Port: polyhedron and convex hull | medium | A | Phase 2 |
 | WC-EC-16 | Port: transforms (matrix, translate, rotate, mirror, scale) | high | A | Phase 2 |
 | WC-EC-17 | Port: extrude, revolve, compound and face-profile extraction | high | A | Phase 2 |
@@ -385,20 +385,20 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: createBox, createCylinder, createFrustum, createSphere, createCone, createTorus, createWedge, createPyramid.
 
 **Tasks**
-- [ ] Port `createBox` (OCCWorker.ts lines 811-860)
-- [ ] Port `createCylinder` (OCCWorker.ts lines 1618-1665)
-- [ ] Port `createFrustum` (OCCWorker.ts lines 1666-1727)
-- [ ] Port `createSphere` (OCCWorker.ts lines 1728-1775)
-- [ ] Port `createCone` (OCCWorker.ts lines 1776-1823)
-- [ ] Port `createTorus` (OCCWorker.ts lines 1824-1861)
-- [ ] Port `createWedge` (OCCWorker.ts lines 1862-1982)
-- [ ] Port `createPyramid` (OCCWorker.ts lines 1983-2050)
-- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
-- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
+- [x] Port `createBox` (OCCWorker.ts lines 811-860)
+- [x] Port `createCylinder` (OCCWorker.ts lines 1618-1665)
+- [x] Port `createFrustum` (OCCWorker.ts lines 1666-1727)
+- [x] Port `createSphere` (OCCWorker.ts lines 1728-1775)
+- [x] Port `createCone` (OCCWorker.ts lines 1776-1823)
+- [x] Port `createTorus` (OCCWorker.ts lines 1824-1861)
+- [x] Port `createWedge` (OCCWorker.ts lines 1862-1982)
+- [x] Port `createPyramid` (OCCWorker.ts lines 1983-2050)
+- [x] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
+- [x] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
 
 **Acceptance criteria**
-- [ ] Parity harness passes for every primitive
-- [ ] Each primitive has an oracle reference part with analytic volume/area
+- [x] Parity harness passes for every primitive
+- [x] Each primitive has an oracle reference part with analytic volume/area
 
 **Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)
 - Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 811-860 and 1618-2050.

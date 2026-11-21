@@ -85,6 +85,7 @@ export class NativeKernelAdapter implements KernelAdapter {
       create_extrude: 'create_extrude',
       create_revolve: 'create_revolve',
       create_compound: 'create_compound',
+      create_boolean: 'create_boolean',
       extract_face_profile: 'extract_face_profile',
       mult_matrix_shape: 'mult_matrix_shape',
       transform_shape: 'transform_shape',

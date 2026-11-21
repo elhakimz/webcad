@@ -1,0 +1,37 @@
+{
+  "id": "boolean_cut",
+  "name": "Boolean Cut",
+  "description": "Cut box_b from box_a (2x2x2 minus 1x1x1 overlap)",
+  "script": {
+    "name": "boolean_cut_test",
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": { "x": 0, "y": 0, "z": 0, "dx": 2, "dy": 2, "dz": 2, "deflection": 0.1, "entity_id": "box_a" }
+      },
+      {
+        "name": "create_box",
+        "parameters": { "x": 1, "y": 1, "z": 1, "dx": 2, "dy": 2, "dz": 2, "deflection": 0.1, "entity_id": "box_b" }
+      },
+      {
+        "name": "create_boolean",
+        "parameters": { "operation": "cut", "id_a": "box_a", "id_b": "box_b", "deflection": 0.1, "entity_id": "cut_result" }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 7.0,
+    "surfaceArea": 30.0,
+    "bbox": { "min": [0.0, 0.0, 0.0], "max": [2.0, 2.0, 2.0] },
+    "faceCount": 12,
+    "edgeCount": 24,
+    "vertexCount": 16,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 1e-4,
+    "surfaceArea": 1e-4,
+    "bbox": 1e-3,
+    "counts": 0
+  }
+}

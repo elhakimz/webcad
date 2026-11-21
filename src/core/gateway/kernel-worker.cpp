@@ -721,6 +721,93 @@ static OpResult OpCreateCompound(const std::vector<std::string>& childIds,
 }
 
 // ---------------------------------------------------------------------------
+// OpCreateBoolean — fuse/cut/common boolean operation on two cached shapes
+// Mirrors WASM OCCWorker.ts makeBooleanBuilder:
+//   BRepAlgoAPI_Fuse/Cut/Common with FuzzyValue(1e-6), RunParallel(false),
+//   CheckInverted(true), NonDestructive(false)
+// ---------------------------------------------------------------------------
+static OpResult OpCreateBoolean(const std::string& operation,
+                                const std::string& idA,
+                                const std::string& idB,
+                                double deflection,
+                                const std::string& entityId) {
+  OpResult r;
+
+  auto itA = g_shapeCache.find(idA);
+  if (itA == g_shapeCache.end()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
+    r.message = "Boolean: shape not found in cache: " + idA;
+    return r;
+  }
+  auto itB = g_shapeCache.find(idB);
+  if (itB == g_shapeCache.end()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
+    r.message = "Boolean: shape not found in cache: " + idB;
+    return r;
+  }
+
+  const TopoDS_Shape& shapeA = itA->second;
+  const TopoDS_Shape& shapeB = itB->second;
+
+  if (shapeA.IsNull() || shapeB.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY);
+    r.message = "Boolean: input shape is null";
+    return r;
+  }
+
+  try {
+    if (operation == "fuse") {
+      BRepAlgoAPI_Fuse builder(shapeA, shapeB);
+      builder.SetFuzzyValue(1e-6);
+      builder.RunParallel(false);
+      builder.CheckInverted(true);
+      builder.NonDestructive(false);
+      builder.Build();
+      if (!builder.IsDone()) {
+        r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+        r.message = "Boolean fuse failed: builder not done";
+        return r;
+      }
+      return OpCreateAndCache(builder.Shape(), deflection, entityId);
+    } else if (operation == "cut") {
+      BRepAlgoAPI_Cut builder(shapeA, shapeB);
+      builder.SetFuzzyValue(1e-6);
+      builder.RunParallel(false);
+      builder.CheckInverted(true);
+      builder.NonDestructive(false);
+      builder.Build();
+      if (!builder.IsDone()) {
+        r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+        r.message = "Boolean cut failed: builder not done";
+        return r;
+      }
+      return OpCreateAndCache(builder.Shape(), deflection, entityId);
+    } else if (operation == "common") {
+      BRepAlgoAPI_Common builder(shapeA, shapeB);
+      builder.SetFuzzyValue(1e-6);
+      builder.RunParallel(false);
+      builder.CheckInverted(true);
+      builder.NonDestructive(false);
+      builder.Build();
+      if (!builder.IsDone()) {
+        r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+        r.message = "Boolean common failed: builder not done";
+        return r;
+      }
+      return OpCreateAndCache(builder.Shape(), deflection, entityId);
+    } else {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+      r.message = "Unknown boolean operation: " + operation + " (expected 'fuse', 'cut', or 'common')";
+      return r;
+    }
+  } catch (const Standard_Failure& e) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "OCCT boolean failed: " + std::string(e.GetMessageString());
+    return r;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // OpExtractFaceProfile — extract 2D loop profile from a face
 // Returns 2D loops (not a 3D solid); tested via dedicated integration test.
 // ---------------------------------------------------------------------------
@@ -1840,6 +1927,8 @@ class KernelServiceImpl final : public KernelService::Service {
           return HandleCreateRevolve(request, response);
         case ExecuteRequest::kCreateCompound:
           return HandleCreateCompound(request, response);
+        case ExecuteRequest::kCreateBoolean:
+          return HandleCreateBoolean(request, response);
         case ExecuteRequest::kExtractFaceProfile:
           return HandleExtractFaceProfile(request, response);
         case ExecuteRequest::kMultMatrixShape:
@@ -2272,6 +2361,32 @@ class KernelServiceImpl final : public KernelService::Service {
     success->set_shape_id(r.shapeId);
     auto* compResult = success->mutable_compound();
     compResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreateBoolean(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_boolean();
+    std::string operation = op.operation();
+    std::string idA = op.id_a();
+    std::string idB = op.id_b();
+    std::string entityId = op.entity_id();
+    double deflection = op.deflection();
+
+    auto r = OpCreateBoolean(operation, idA, idB, deflection, entityId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* boolResult = success->mutable_boolean();
+    boolResult->set_shape_id(r.shapeId);
 
     auto it = g_shapeCache.find(r.shapeId);
     if (it != g_shapeCache.end()) {

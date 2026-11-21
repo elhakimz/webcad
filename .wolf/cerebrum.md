@@ -222,3 +222,10 @@ inja -C /kernel/build kernel_worker compiled, docker restart deployed new binary
 - Lint: 0 errors on native-kernel-adapter.ts (pre-existing ny warnings only)
 - Harness tests: 32/32 passed
 
+
+## Key Learnings (Session WC-EC-17)
+
+- **BRepBndLib::Add with Standard_False** computes exact bounding box without using triangulated mesh. Required after BRepMesh_IncrementalMesh has meshed the shape, otherwise bbox on curved surfaces (revolved cylinders) has ~0.0146 error vs 0.001 tolerance.
+- **ShapeFix_Wire methods**: FixConnected(), FixReorder(), FixGaps3d() — NOT FixAddConnected() or FixGaps().
+- **BRepAdaptor_Curve, BRep_Tool::Curve(), BRep_Tool::CurveOnSurface()** work on TopoDS_Edge, NOT TopoDS_Wire. To sample a wire as a single curve, iterate its edges individually and append to one loop.
+- **OpExtractFaceProfile**: build one ShapeFix_Wire from all face edges, then sample each wire edge into a single continuous 2D loop — matches WASM reference behavior (1 loop per wire, not per edge).

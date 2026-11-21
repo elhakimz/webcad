@@ -646,3 +646,8 @@ Dev servers stopped (5173, 4173). Uncommitted: .wolf/, .claude/, CLAUDE.md, plan
  |   1 3 : 4 5   |   W C - E C - 1 4   n a t i v e   p r i m i t i v e s   c o m p i l e d ,   c o n t a i n e r   r e s t a r t e d ,   T S   t y p e c h e c k / l i n t / t e s t s   p a s s ,   c o m m i t t e d   t o   d e v   |   s r c / c o r e / g a t e w a y / k e r n e l - w o r k e r . c p p ,   s r c / c o r e / h a r n e s s / n a t i v e - k e r n e l - a d a p t e r . t s ,   d o c s / e p i c s / W E B C A D - E P I C - E C - v 5 . m d   |   s u c c e s s   |   ~ 1 5 0 0   |  
  | 13:50 | WC-EC-13 oracle tasks marked complete in epic, committed to dev | docs/epics/WEBCAD-EPIC-EC-v5.md | success | ~100 |
 | 15:30 | WC-EC-16 transforms ported, verified live, committed 6db399a, pushed to origin/dev | kernel-worker.cpp, native-kernel-adapter.ts, oracle-runner.ts, 5 fixtures, WEBCAD-EPIC-EC-v5.md | done | ~0 |
+| 16:08 | WC-EC-17 extrude/revolve/compound/face-profile fixed: revolve bbox (Standard_False), extract_face_profile single wire via ShapeFix_Wire; 46/46 tests pass, committed 1e8becf locally | kernel-worker.cpp, WEBCAD-EPIC-EC-v5.md | success | ~300 |
+
+| 16:10 | WC-EC-17 implementation complete and verified (46/46 tests, buf lint pass); push to origin/dev blocked by GitHub 403 credentials | kernel-worker.cpp, engine.proto, native-kernel-adapter.ts, test fixtures | complete | ~1500 |
+
+| 16:11 | Push succeeded, branch up to date with origin/dev; 46/46 tests pass, zero failures, buf lint passes | all WC-EC-17 files | complete | ~100 |

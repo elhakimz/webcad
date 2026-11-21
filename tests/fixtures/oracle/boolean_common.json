@@ -1,0 +1,37 @@
+{
+  "id": "boolean_common",
+  "name": "Boolean Common",
+  "description": "Common/intersection of two overlapping boxes",
+  "script": {
+    "name": "boolean_common_test",
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": { "x": 0, "y": 0, "z": 0, "dx": 2, "dy": 2, "dz": 2, "deflection": 0.1, "entity_id": "box_a" }
+      },
+      {
+        "name": "create_box",
+        "parameters": { "x": 1, "y": 1, "z": 1, "dx": 2, "dy": 2, "dz": 2, "deflection": 0.1, "entity_id": "box_b" }
+      },
+      {
+        "name": "create_boolean",
+        "parameters": { "operation": "common", "id_a": "box_a", "id_b": "box_b", "deflection": 0.1, "entity_id": "common_result" }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 1.0,
+    "surfaceArea": 6.0,
+    "bbox": { "min": [1.0, 1.0, 1.0], "max": [2.0, 2.0, 2.0] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 1e-4,
+    "surfaceArea": 1e-4,
+    "bbox": 1e-3,
+    "counts": 0
+  }
+}

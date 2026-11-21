@@ -19,9 +19,10 @@ describe('Native kernel oracle integration (localhost:50051)', () => {
 
   it('all reference parts pass against native kernel', async () => {
     const report = await runner.run(adapter);
+    console.log('ORACLE REPORT:', JSON.stringify(report, null, 2));
     expect(report.failedParts).toBe(0);
     expect(report.passedParts).toBe(report.totalParts);
-    expect(report.totalParts).toBe(4);
+    expect(report.totalParts).toBe(12);
     for (const result of report.results) {
       expect(result.passed).toBe(true);
       expect(result.errors).toHaveLength(0);

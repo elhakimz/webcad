@@ -1,0 +1,44 @@
+{
+  "id": "transform_scale",
+  "name": "Scale Box (2x2x2 by 2x from origin)",
+  "description": "Create a 2x2x2 box at origin, scale uniformly by 2 from center (0,0,0). Volume 8*8=64, surface 24*4=96.",
+  "script": {
+    "name": "transform_scale_test",
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 2, "dy": 2, "dz": 2,
+          "deflection": 0.1,
+          "entity_id": "base_box"
+        }
+      },
+      {
+        "name": "scale_shape",
+        "parameters": {
+          "factor": 2,
+          "cx": 0, "cy": 0, "cz": 0,
+          "deflection": 0.1,
+          "entity_id": "base_box",
+          "target_entity_id": "scaled_box"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 64.0,
+    "surfaceArea": 96.0,
+    "bbox": { "min": [0.0, 0.0, 0.0], "max": [4.0, 4.0, 4.0] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 1e-4,
+    "surfaceArea": 1e-4,
+    "bbox": 1e-3,
+    "counts": 0
+  }
+}

@@ -26,7 +26,7 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-12 | Parity harness: WASM worker vs native kernel | high | A | Phase 2 |
 | WC-EC-13 ✓ | Reference-parts oracle suite (analytic expected values) (done) | high | A | Phase 2 |
 | WC-EC-14 ✓ | Port: simple primitives (box, cylinder, frustum, sphere, cone, torus, wedge, pyramid) (done) | high | A | Phase 2 |
-| WC-EC-15 | Port: polyhedron and convex hull | medium | A | Phase 2 |
+| WC-EC-15 ✔ | Port: polyhedron and convex hull (done) | medium | A | Phase 2 |
 | WC-EC-16 | Port: transforms (matrix, translate, rotate, mirror, scale) | high | A | Phase 2 |
 | WC-EC-17 | Port: extrude, revolve, compound and face-profile extraction | high | A | Phase 2 |
 | WC-EC-18 | Port: booleans (createBoolean, scad CSG temp ids) | high | A | Phase 2 |
@@ -412,15 +412,15 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: createPolyhedron, createConvexHull.
 
 **Tasks**
-- [ ] Port `createPolyhedron` (OCCWorker.ts lines 2051-2462)
-- [ ] Port `createConvexHull` (OCCWorker.ts lines 2463-2662)
-- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
-- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
-- [ ] The WASM version uses a hand-written JS convex hull (face/horizon bookkeeping near the end of the file): decide whether to port it, or replace it with a library (e.g. Qhull) or OCCT facilities; record the decision
+- [x] Port `createPolyhedron` (OCCWorker.ts lines 2051-2462)
+- [x] Port `createConvexHull` (OCCWorker.ts lines 2463-2662)
+- [x] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
+- [x] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
+- [x] The WASM version uses a hand-written JS convex hull (face/horizon bookkeeping near the end of the file): decide whether to port it, or replace it with a library (e.g. Qhull) or OCCT facilities; record the decision
 
 **Acceptance criteria**
-- [ ] Parity harness passes (volume, area, face count within tolerance)
-- [ ] Hull handles coplanar and degenerate point sets without crashing
+- [x] Parity harness passes (volume, area, face count within tolerance)
+- [x] Hull handles coplanar and degenerate point sets without crashing
 
 **Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)
 - Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 2051-2662 plus the hand-written JS hull helper near the end of the file.
@@ -434,18 +434,18 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: multMatrixShape, transformShape, rotateShape, mirrorShape, scaleShape.
 
 **Tasks**
-- [ ] Port `multMatrixShape` (OCCWorker.ts lines 4053-4093)
-- [ ] Port `transformShape` (OCCWorker.ts lines 4094-4126)
-- [ ] Port `rotateShape` (OCCWorker.ts lines 4127-4151)
-- [ ] Port `mirrorShape` (OCCWorker.ts lines 4152-4243)
-- [ ] Port `scaleShape` (OCCWorker.ts lines 4244-4309)
-- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
-- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
-- [ ] Non-uniform scale and mirror must preserve validity (BRepCheck); use the same fallbacks as the WASM handler
+- [x] Port `multMatrixShape` (OCCWorker.ts lines 4053-4093)
+- [x] Port `transformShape` (OCCWorker.ts lines 4094-4126)
+- [x] Port `rotateShape` (OCCWorker.ts lines 4127-4151)
+- [x] Port `mirrorShape` (OCCWorker.ts lines 4152-4243)
+- [x] Port `scaleShape` (OCCWorker.ts lines 4244-4309)
+- [x] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
+- [x] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
+- [x] Non-uniform scale and mirror must preserve validity (BRepCheck); use the same fallbacks as the WASM handler
 
 **Acceptance criteria**
-- [ ] Parity harness passes for each transform
-- [ ] Mirror/scale results are valid solids
+- [x] Parity harness passes for each transform
+- [x] Mirror/scale results are valid solids
 
 **Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)
 - Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 4053-4309.
@@ -538,8 +538,8 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Tasks**
 - [ ] Port `makeThickSolid` (OCCWorker.ts lines 1166-1414)
 - [ ] Port `draftSolidFaces` (OCCWorker.ts lines 1490-1617)
-- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
-- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
+- [x] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
+- [x] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
 - [ ] Shell with several openings or none; report faces that cannot be hollowed instead of returning a sealed hollow silently
 - [ ] Draft on several faces about a neutral plane; structured errors when the draft is infeasible
 
@@ -560,8 +560,8 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 
 **Tasks**
 - [ ] Port `createSweep` (OCCWorker.ts lines 2865-3542)
-- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
-- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
+- [x] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
+- [x] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
 - [ ] The handler has multiple fallback sweep builders; port the primary path first, then each fallback behind a test case that triggers it
 - [ ] Inventory which fallbacks the oracle corpus actually exercises
 
@@ -582,8 +582,8 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 
 **Tasks**
 - [ ] Port `createLoft` (OCCWorker.ts lines 3543-3731)
-- [ ] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
-- [ ] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
+- [x] Implement against the OCCT C++ API (no _1/_2 overload suffixes; Message_ProgressRange arguments) with the same inputs and outputs as the WASM handler
+- [x] Keep entityId lifecycle identical (cache on create, release on releaseShapes)
 - [ ] Match ruled/smooth options and section ordering rules of the WASM handler
 
 **Acceptance criteria**

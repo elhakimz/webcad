@@ -1,0 +1,44 @@
+{
+  "id": "transform_rotate",
+  "name": "Rotate Box (2x2x2 by 90deg around Z at origin)",
+  "description": "Create a 2x2x2 box at origin, rotate 90deg (PI/2) around Z axis at center (0,0,0). Volume stays 8, bbox becomes [-2,0,0] to [0,2,2].",
+  "script": {
+    "name": "transform_rotate_test",
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 2, "dy": 2, "dz": 2,
+          "deflection": 0.1,
+          "entity_id": "base_box"
+        }
+      },
+      {
+        "name": "rotate_shape",
+        "parameters": {
+          "rx": 0, "ry": 0, "rz": 1.57079632679,
+          "cx": 0, "cy": 0, "cz": 0,
+          "deflection": 0.1,
+          "entity_id": "base_box",
+          "target_entity_id": "rotated_box"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 8.0,
+    "surfaceArea": 24.0,
+    "bbox": { "min": [-2.0, 0.0, 0.0], "max": [0.0, 2.0, 2.0] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 1e-4,
+    "surfaceArea": 1e-4,
+    "bbox": 1e-3,
+    "counts": 0
+  }
+}

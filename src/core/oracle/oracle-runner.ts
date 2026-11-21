@@ -43,14 +43,20 @@ export class OracleRunner {
               continue;
             }
 
-            const evalResult = evaluateMetrics(part.expected, result.metrics, part.tolerances);
-            for (const [key, diff] of Object.entries(evalResult.diffs)) {
-              diffs[key] = diff;
-              if (!diff.passed) partPassed = false;
-            }
-            for (const err of evalResult.errors) {
-              const alreadyReported = Object.values(diffs).some(d => d.message === err);
-              if (!alreadyReported) errors.push(err);
+            // Only evaluate metrics against expected on the final step;
+            // intermediate steps (e.g. creating a base shape before a transform)
+            // just need to succeed.
+            const isLastStep = i === kernelResults.length - 1;
+            if (isLastStep) {
+              const evalResult = evaluateMetrics(part.expected, result.metrics, part.tolerances);
+              for (const [key, diff] of Object.entries(evalResult.diffs)) {
+                diffs[key] = diff;
+                if (!diff.passed) partPassed = false;
+              }
+              for (const err of evalResult.errors) {
+                const alreadyReported = Object.values(diffs).some(d => d.message === err);
+                if (!alreadyReported) errors.push(err);
+              }
             }
           }
         } catch (err) {

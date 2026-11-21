@@ -80,13 +80,39 @@ export class NativeKernelAdapter implements KernelAdapter {
       create_frustum: 'create_frustum',
       create_wedge: 'create_wedge',
       create_pyramid: 'create_pyramid',
+      create_polyhedron: 'create_polyhedron',
+      create_convex_hull: 'create_convex_hull',
+      mult_matrix_shape: 'mult_matrix_shape',
+      transform_shape: 'transform_shape',
+      rotate_shape: 'rotate_shape',
+      mirror_shape: 'mirror_shape',
+      scale_shape: 'scale_shape',
     };
 
     const opField = opMap[step.name];
     const request: any = { header, include_brep: false };
 
     if (opField) {
-      request[opField] = { ...step.parameters, entity_id: `shape_${step.name}_${opField}` };
+      const params: Record<string, unknown> = { ...step.parameters };
+
+      // Protobuf-es serializes using proto field names (snake_case). Convert
+      // `points` (array of [x,y,z]) → `points_inline` (array of {x,y,z}) and
+      // `faces` entries keep `vertex_indices` (already snake_case).
+      if (opField === 'create_polyhedron' || opField === 'create_convex_hull') {
+        if (Array.isArray(params.points)) {
+          params.points_inline = (params.points as [number, number, number][]).map(([x, y, z]) => ({
+            x,
+            y,
+            z,
+          }));
+          delete params.points;
+        }
+      }
+
+      request[opField] = { ...params };
+      if (!request[opField].entity_id) {
+        request[opField].entity_id = `shape_${step.name}_${opField}`;
+      }
     }
 
     return request;

@@ -1,0 +1,45 @@
+{
+  "id": "transform_mirror",
+  "name": "Mirror Box (2x2x2 across plane x=1)",
+  "description": "Create a 2x2x2 box at origin, mirror across plane x=1 with normal (1,0,0). Box is symmetric so bbox unchanged.",
+  "script": {
+    "name": "transform_mirror_test",
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 2, "dy": 2, "dz": 2,
+          "deflection": 0.1,
+          "entity_id": "base_box"
+        }
+      },
+      {
+        "name": "mirror_shape",
+        "parameters": {
+          "p1": { "x": 1, "y": 0, "z": 0 },
+          "p2": { "x": 1, "y": 1, "z": 0 },
+          "normal": { "x": 1, "y": 0, "z": 0 },
+          "deflection": 0.1,
+          "entity_id": "base_box",
+          "target_entity_id": "mirrored_box"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 8.0,
+    "surfaceArea": 24.0,
+    "bbox": { "min": [0.0, 0.0, 0.0], "max": [2.0, 2.0, 2.0] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 1e-4,
+    "surfaceArea": 1e-4,
+    "bbox": 1e-3,
+    "counts": 0
+  }
+}

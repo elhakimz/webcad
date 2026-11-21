@@ -276,6 +276,194 @@ static OpResult OpCreateBox(double x, double y, double z, double dx, double dy,
   return r;
 }
 
+// Forward declarations for helpers defined later in this file.
+static TopoDS_Shape ApplyTransform(const TopoDS_Shape& shape, const gp_Trsf& trsf, bool copy = true);
+static TopoDS_Shape ApplyTransform(const TopoDS_Shape& shape, const gp_GTrsf& gtrsf, bool copy = true);
+static void EnsurePositiveVolume(TopoDS_Shape& shape);
+static OpResult OpCreateAndCache(const TopoDS_Shape& shape, double deflection,
+                                 const std::string& entityId);
+
+// Transform operations ported from WASM OCCWorker.ts.
+
+static OpResult OpTransformMultMatrix(const TopoDS_Shape& shape,
+                                      const std::vector<double>& matrix,
+                                      double deflection,
+                                      const std::string& entityId) {
+  OpResult r;
+  if (matrix.size() != 16) {
+    r.ok = false;
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "multMatrixShape: matrix must have exactly 16 values";
+    return r;
+  }
+
+  // OCCT gp_GTrsf::SetValue only accepts rows 1-3 (row 4 = [0,0,0,1] is implicit).
+  // Matrix layout (row-major, 1-based indexing):
+  //   m[0] m[1] m[2] m[3]   -> row 1
+  //   m[4] m[5] m[6] m[7]   -> row 2
+  //   m[8] m[9] m[10] m[11] -> row 3
+  //   m[12] m[13] m[14] m[15] -> row 4 (implicit: [0,0,0,1] for affine)
+  gp_GTrsf gtrsf;
+  gtrsf.SetValue(1, 1, matrix[0]); gtrsf.SetValue(1, 2, matrix[1]); gtrsf.SetValue(1, 3, matrix[2]); gtrsf.SetValue(1, 4, matrix[3]);
+  gtrsf.SetValue(2, 1, matrix[4]); gtrsf.SetValue(2, 2, matrix[5]); gtrsf.SetValue(2, 3, matrix[6]); gtrsf.SetValue(2, 4, matrix[7]);
+  gtrsf.SetValue(3, 1, matrix[8]); gtrsf.SetValue(3, 2, matrix[9]); gtrsf.SetValue(3, 3, matrix[10]); gtrsf.SetValue(3, 4, matrix[11]);
+
+  TopoDS_Shape transformed = ApplyTransform(shape, gtrsf);
+  if (transformed.IsNull()) {
+    r.ok = false;
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "multMatrixShape: transform failed";
+    return r;
+  }
+
+  return OpCreateAndCache(transformed, deflection, entityId);
+}
+
+static OpResult OpTransformTranslate(const TopoDS_Shape& shape,
+                                     double dx, double dy, double dz,
+                                     double deflection,
+                                     const std::string& entityId) {
+  OpResult r;
+
+  gp_Trsf trsf;
+  trsf.SetTranslation(gp_Vec(dx, dy, dz));
+
+  TopoDS_Shape transformed = ApplyTransform(shape, trsf);
+  if (transformed.IsNull()) {
+    r.ok = false;
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "transformShape: translate failed";
+    return r;
+  }
+
+  return OpCreateAndCache(transformed, deflection, entityId);
+}
+
+static OpResult OpTransformRotate(const TopoDS_Shape& shape,
+                                  double rx, double ry, double rz,
+                                  double cx, double cy, double cz,
+                                  double deflection,
+                                  const std::string& entityId) {
+  OpResult r;
+
+  gp_Trsf toCenter;
+  toCenter.SetTranslation(gp_Vec(-cx, -cy, -cz));
+
+  gp_Trsf rotZ, rotY, rotX;
+  rotZ.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), rz);
+  rotY.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0)), ry);
+  rotX.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)), rx);
+
+  gp_Trsf fromCenter;
+  fromCenter.SetTranslation(gp_Vec(cx, cy, cz));
+
+  gp_Trsf trsf;
+  trsf.Multiply(fromCenter);
+  trsf.Multiply(rotZ);
+  trsf.Multiply(rotY);
+  trsf.Multiply(rotX);
+  trsf.Multiply(toCenter);
+
+  TopoDS_Shape transformed = ApplyTransform(shape, trsf);
+  if (transformed.IsNull()) {
+    r.ok = false;
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "rotateShape: transform failed";
+    return r;
+  }
+
+  return OpCreateAndCache(transformed, deflection, entityId);
+}
+
+static OpResult OpTransformMirror(const TopoDS_Shape& shape,
+                                  double p1x, double p1y, double p1z,
+                                  double p2x, double p2y, double p2z,
+                                  double nx, double ny, double nz,
+                                  bool hasNormal,
+                                  double deflection,
+                                  const std::string& entityId) {
+  OpResult r;
+
+  gp_Trsf trsf;
+  if (hasNormal) {
+    trsf.SetMirror(gp_Ax2(gp_Pnt(p1x, p1y, p1z), gp_Dir(nx, ny, nz)));
+  } else {
+    gp_Pnt p1(p1x, p1y, p1z);
+    gp_Pnt p2(p2x, p2y, p2z);
+    gp_Vec dir(p2x - p1x, p2y - p1y, p2z - p1z);
+    gp_Vec normal(dir.Y(), -dir.X(), 0.0);
+    if (normal.Magnitude() < 1e-12) {
+      normal = gp_Vec(0, 0, 1);
+    }
+    trsf.SetMirror(gp_Ax2(p1, normal));
+  }
+
+  TopoDS_Shape transformed = ApplyTransform(shape, trsf);
+  if (transformed.IsNull()) {
+    r.ok = false;
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "mirrorShape: transform failed";
+    return r;
+  }
+
+  EnsurePositiveVolume(transformed);
+
+  return OpCreateAndCache(transformed, deflection, entityId);
+}
+
+static OpResult OpTransformScale(const TopoDS_Shape& shape,
+                                 double factor,
+                                 double cx, double cy, double cz,
+                                 double factorX, double factorY, double factorZ,
+                                 bool hasNonUniform,
+                                 double deflection,
+                                 const std::string& entityId) {
+  OpResult r;
+
+  if (hasNonUniform) {
+    if (factorX <= 0 || factorY <= 0 || factorZ <= 0) {
+      r.ok = false;
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+      r.message = "scaleShape: non-uniform factors must all be > 0";
+      return r;
+    }
+    gp_GTrsf gtrsf;
+    gtrsf.SetValue(1, 1, factorX); gtrsf.SetValue(1, 2, 0); gtrsf.SetValue(1, 3, 0); gtrsf.SetValue(1, 4, 0);
+    gtrsf.SetValue(2, 1, 0); gtrsf.SetValue(2, 2, factorY); gtrsf.SetValue(2, 3, 0); gtrsf.SetValue(2, 4, 0);
+    gtrsf.SetValue(3, 1, 0); gtrsf.SetValue(3, 2, 0); gtrsf.SetValue(3, 3, factorZ); gtrsf.SetValue(3, 4, 0);
+    gtrsf.SetValue(4, 1, 0); gtrsf.SetValue(4, 2, 0); gtrsf.SetValue(4, 3, 0); gtrsf.SetValue(4, 4, 1);
+
+    TopoDS_Shape transformed = ApplyTransform(shape, gtrsf);
+    if (transformed.IsNull()) {
+      r.ok = false;
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "scaleShape: non-uniform transform failed";
+      return r;
+    }
+    return OpCreateAndCache(transformed, deflection, entityId);
+  }
+
+  if (factor <= 0) {
+    r.ok = false;
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "scaleShape: factor must be > 0";
+    return r;
+  }
+
+  gp_Trsf trsf;
+  trsf.SetScale(gp_Pnt(cx, cy, cz), factor);
+
+  TopoDS_Shape transformed = ApplyTransform(shape, trsf);
+  if (transformed.IsNull()) {
+    r.ok = false;
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "scaleShape: transform failed";
+    return r;
+  }
+
+  return OpCreateAndCache(transformed, deflection, entityId);
+}
+
 // Shared helper: mesh + cache a created shape.
 static OpResult OpCreateAndCache(const TopoDS_Shape& shape, double deflection,
                                  const std::string& entityId) {
@@ -538,14 +726,14 @@ static void EnsurePositiveVolume(TopoDS_Shape& shape) {
 
 static TopoDS_Shape ApplyTransform(const TopoDS_Shape& shape,
                                    const gp_Trsf& trsf,
-                                   bool copy = true) {
+                                   bool copy) {
   BRepBuilderAPI_Transform transformer(shape, trsf, copy);
   return transformer.Shape();
 }
 
 static TopoDS_Shape ApplyTransform(const TopoDS_Shape& shape,
                                    const gp_GTrsf& gtrsf,
-                                   bool copy = true) {
+                                   bool copy) {
   BRepBuilderAPI_GTransform transformer(shape, gtrsf, copy);
   return transformer.Shape();
 }
@@ -1337,6 +1525,16 @@ class KernelServiceImpl final : public KernelService::Service {
           return HandleCreatePolyhedron(request, response);
         case ExecuteRequest::kCreateConvexHull:
           return HandleCreateConvexHull(request, response);
+        case ExecuteRequest::kMultMatrixShape:
+          return HandleTransformMultMatrix(request, response);
+        case ExecuteRequest::kTransformShape:
+          return HandleTransformTranslate(request, response);
+        case ExecuteRequest::kRotateShape:
+          return HandleTransformRotate(request, response);
+        case ExecuteRequest::kMirrorShape:
+          return HandleTransformMirror(request, response);
+        case ExecuteRequest::kScaleShape:
+          return HandleTransformScale(request, response);
         case ExecuteRequest::kImportBrep:
           return HandleImportBRep(request, response);
         case ExecuteRequest::kExportBrep:
@@ -1658,6 +1856,155 @@ class KernelServiceImpl final : public KernelService::Service {
     success->set_shape_id(r.shapeId);
     auto* hullResult = success->mutable_convex_hull();
     hullResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleTransformMultMatrix(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->mult_matrix_shape();
+    double deflection = op.deflection();
+    std::string entityId = op.entity_id();
+    std::string targetId = op.target_entity_id();
+    if (targetId.empty()) targetId = entityId;
+
+    std::vector<double> matrix;
+    matrix.reserve(op.m_size());
+    for (int i = 0; i < op.m_size(); ++i) {
+      matrix.push_back(op.m(i));
+    }
+
+    auto r = OpTransformMultMatrix(g_shapeCache[entityId], matrix, deflection, targetId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* result = success->mutable_mult_matrix_shape();
+    result->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleTransformTranslate(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->transform_shape();
+    double deflection = op.deflection();
+    std::string entityId = op.entity_id();
+    std::string targetId = op.target_entity_id();
+    if (targetId.empty()) targetId = entityId;
+
+    auto r = OpTransformTranslate(g_shapeCache[entityId], op.dx(), op.dy(), op.dz(),
+                                  deflection, targetId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* result = success->mutable_transform_shape();
+    result->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleTransformRotate(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->rotate_shape();
+    double deflection = op.deflection();
+    std::string entityId = op.entity_id();
+    std::string targetId = op.target_entity_id();
+    if (targetId.empty()) targetId = entityId;
+
+    auto r = OpTransformRotate(g_shapeCache[entityId], op.rx(), op.ry(), op.rz(),
+                               op.cx(), op.cy(), op.cz(), deflection, targetId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* result = success->mutable_rotate_shape();
+    result->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleTransformMirror(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->mirror_shape();
+    double deflection = op.deflection();
+    std::string entityId = op.entity_id();
+    std::string targetId = op.target_entity_id();
+    if (targetId.empty()) targetId = entityId;
+
+    double p1x = op.p1().x(), p1y = op.p1().y(), p1z = op.p1().z();
+    double p2x = op.p2().x(), p2y = op.p2().y(), p2z = op.p2().z();
+    bool hasNormal = op.has_normal();
+    double nx = 0, ny = 0, nz = 0;
+    if (hasNormal) {
+      nx = op.normal().x(); ny = op.normal().y(); nz = op.normal().z();
+    }
+
+    auto r = OpTransformMirror(g_shapeCache[entityId], p1x, p1y, p1z,
+                               p2x, p2y, p2z, nx, ny, nz, hasNormal,
+                               deflection, targetId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* result = success->mutable_mirror_shape();
+    result->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleTransformScale(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->scale_shape();
+    double deflection = op.deflection();
+    std::string entityId = op.entity_id();
+    std::string targetId = op.target_entity_id();
+    if (targetId.empty()) targetId = entityId;
+
+    double factor = op.factor();
+    double cx = op.cx(), cy = op.cy(), cz = op.cz();
+    bool hasNonUniform = (op.factor_x() != 0.0 || op.factor_y() != 0.0 || op.factor_z() != 0.0);
+    double fx = op.factor_x(), fy = op.factor_y(), fz = op.factor_z();
+
+    auto r = OpTransformScale(g_shapeCache[entityId], factor, cx, cy, cz,
+                              fx, fy, fz, hasNonUniform, deflection, targetId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* result = success->mutable_scale_shape();
+    result->set_shape_id(r.shapeId);
 
     auto it = g_shapeCache.find(r.shapeId);
     if (it != g_shapeCache.end()) {

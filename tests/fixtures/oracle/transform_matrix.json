@@ -1,0 +1,43 @@
+{
+  "id": "transform_matrix",
+  "name": "Matrix Transform Box (2x2x2 translated by +5 on X)",
+  "description": "Create a 2x2x2 box at origin, apply 4x4 translation matrix (5,0,0). Volume stays 8, bbox shifts to [5,0,0]-[7,2,2].",
+  "script": {
+    "name": "transform_matrix_test",
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 2, "dy": 2, "dz": 2,
+          "deflection": 0.1,
+          "entity_id": "base_box"
+        }
+      },
+      {
+        "name": "mult_matrix_shape",
+        "parameters": {
+          "m": [1,0,0,5, 0,1,0,0, 0,0,1,0, 0,0,0,1],
+          "deflection": 0.1,
+          "entity_id": "base_box",
+          "target_entity_id": "matrix_box"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 8.0,
+    "surfaceArea": 24.0,
+    "bbox": { "min": [5.0, 0.0, 0.0], "max": [7.0, 2.0, 2.0] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 1e-4,
+    "surfaceArea": 1e-4,
+    "bbox": 1e-3,
+    "counts": 0
+  }
+}

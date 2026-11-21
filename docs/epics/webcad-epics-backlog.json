@@ -1,0 +1,1293 @@
+{
+  "epics": [
+    {
+      "epic": {
+        "id": "WC-GEO",
+        "name": "Geometry Quality, Healing and Validation",
+        "description": "Define what a valid model is, repair imperfect input, and keep results trustworthy across kernels. Builds on OCCT's open shape-healing and checking tools (ShapeAnalysis, ShapeFix, ShapeUpgrade, BRepCheck); evaluate commercial add-ons only if these prove insufficient.\n\nStart after: WC-EC kernel skeleton and parity harness.",
+        "labels": [
+          "backlog",
+          "geometry"
+        ],
+        "priority": "low"
+      },
+      "issues": [
+        {
+          "id": "WC-GEO-01",
+          "name": "[WC-GEO-01] Validity and tolerance policy",
+          "description": "**Goal:** One written definition of 'valid' and of tolerances, used by every operation and import.\n\n**Tasks**\n- [ ] Define validity checks per operation (BRepCheck, closed solid, positive volume, volume-drift limits)\n- [ ] Define units, precision and fuzzy-value defaults; how they are stored in documents\n- [ ] Specify the result gates shared by booleans, fillets and imports\n- [ ] Document differences between kernels (WASM fallback vs native)\n\n**Acceptance criteria**\n- [ ] Policy doc approved\n- [ ] Gates exist as shared, testable functions\n\n**Depends on:** WC-EC-12, WC-EC-13\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "high",
+          "labels": [
+            "geometry",
+            "policy",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-GEO",
+          "depends_on": [
+            "WC-EC-12",
+            "WC-EC-13"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-GEO-02",
+          "name": "[WC-GEO-02] Healing pipeline for imported shapes",
+          "description": "**Goal:** Analyze and repair imports before they enter a document.\n\n**Tasks**\n- [ ] Pipeline: analyze, fix wires/faces/shells/solids, upgrade; each stage optional and logged\n- [ ] Do NOT run seam-merge/unify blindly: re-validate and reject if it changes volume or validity (lesson from materializr's changelog)\n- [ ] Per-stage time limits and failure handling (structured errors)\n- [ ] Run inside the kernel sandbox after B-rep input pre-validation\n\n**Acceptance criteria**\n- [ ] Dirty-model corpus repaired with measured validity gains\n- [ ] Volume drift within policy tolerance\n\n**Depends on:** WC-GEO-01, WC-EC-24\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "high",
+          "labels": [
+            "geometry",
+            "import",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-GEO",
+          "depends_on": [
+            "WC-GEO-01",
+            "WC-EC-24"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-GEO-03",
+          "name": "[WC-GEO-03] Repair report and user review",
+          "description": "**Goal:** Tell users what was wrong and what was changed.\n\n**Tasks**\n- [ ] Structured report: gaps, tiny edges, self-intersections, orientation fixes, before/after metrics\n- [ ] UI to review, accept or reject the repair; keep the original\n- [ ] Store the report with the document version\n\n**Acceptance criteria**\n- [ ] Report generated for every repaired import\n- [ ] User can reject repairs and keep the original\n\n**Depends on:** WC-GEO-02\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "geometry",
+            "ux",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-GEO",
+          "depends_on": [
+            "WC-GEO-02"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-GEO-04",
+          "name": "[WC-GEO-04] Dirty-model regression corpus",
+          "description": "**Goal:** Fixtures and metrics so healing never regresses silently.\n\n**Tasks**\n- [ ] Collect supplier-style models and synthetic defects (gaps, flipped faces, tiny edges)\n- [ ] Metrics: validity before/after, volume/area drift, runtime\n- [ ] Run in CI for the kernel version matrix (7.9.3 and 8.0.x)\n\n**Acceptance criteria**\n- [ ] Corpus and metrics in CI\n- [ ] Failures report metric and delta\n\n**Depends on:** WC-GEO-02, WC-EC-40\n\n**Agent brief:** suitability A - agent-led, human reviews the PR.",
+          "priority": "high",
+          "labels": [
+            "geometry",
+            "testing",
+            "backlog",
+            "agent-a"
+          ],
+          "parent": "WC-GEO",
+          "depends_on": [
+            "WC-GEO-02",
+            "WC-EC-40"
+          ],
+          "agent_suitability": "A"
+        },
+        {
+          "id": "WC-GEO-05",
+          "name": "[WC-GEO-05] Analytic form recovery (spike)",
+          "description": "**Goal:** Evaluate recovering planes/cylinders/etc. from NURBS geometry in imported parts.\n\n**Tasks**\n- [ ] Survey open options in OCCT before considering the commercial 'canonical recognition' component\n- [ ] Measure recovery rate on the corpus\n- [ ] Decision memo: build / skip / buy\n\n**Acceptance criteria**\n- [ ] Memo with measurements and recommendation\n\n**Depends on:** WC-GEO-04\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "low",
+          "labels": [
+            "geometry",
+            "spike",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-GEO",
+          "depends_on": [
+            "WC-GEO-04"
+          ],
+          "agent_suitability": "C"
+        }
+      ]
+    },
+    {
+      "epic": {
+        "id": "WC-XCH",
+        "name": "Data Exchange and Export",
+        "description": "Import/export formats, fidelity and delivery for large files. Uses OCCT's open exchange modules first; proprietary formats are a separate decision.\n\nStart after: WC-EC export ticket and gRPC blob/result streaming.",
+        "labels": [
+          "backlog",
+          "exchange"
+        ],
+        "priority": "low"
+      },
+      "issues": [
+        {
+          "id": "WC-XCH-01",
+          "name": "[WC-XCH-01] Format matrix and priorities",
+          "description": "**Goal:** Decide which formats are supported, at what fidelity, in which tier.\n\n**Tasks**\n- [ ] List candidate formats (STEP, IGES, BREP, STL, OBJ, glTF, 3MF, DXF, SVG, USD) with direction (import/export), fidelity expectations and owner module (OCCT built-in vs library)\n- [ ] Rank by customer demand\n- [ ] Record licences for every library involved\n\n**Acceptance criteria**\n- [ ] Matrix approved\n- [ ] Each format has an owner module and a test plan\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "exchange",
+            "decision",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-XCH",
+          "depends_on": [],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-XCH-02",
+          "name": "[WC-XCH-02] STEP import/export with assemblies and attributes",
+          "description": "**Goal:** Round-trip STEP with names, colors, layers and assembly structure.\n\n**Tasks**\n- [ ] Use the OCCT XCAF-based exchange path; cover AP214 and AP242 as supported\n- [ ] Map assembly structure to the assembly model (see assemblies epic)\n- [ ] Round-trip tests on the oracle/corpus parts\n\n**Acceptance criteria**\n- [ ] Round trip preserves geometry within tolerance and keeps names/colors\n- [ ] Assembly structure imported\n\n**Depends on:** WC-XCH-01, WC-EC-24, WC-EC-25\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "high",
+          "labels": [
+            "exchange",
+            "step",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-XCH",
+          "depends_on": [
+            "WC-XCH-01",
+            "WC-EC-24",
+            "WC-EC-25"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-XCH-03",
+          "name": "[WC-XCH-03] Mesh export: STL, OBJ, glTF, 3MF",
+          "description": "**Goal:** Export meshes with quality controls and correct units.\n\n**Tasks**\n- [ ] Quality presets (deflection/angle); units and axis conventions\n- [ ] Evaluate optional compression (meshoptimizer, Draco) and its browser decode cost\n- [ ] 3MF: evaluate OCCT support vs a library; verify licence\n\n**Acceptance criteria**\n- [ ] Exports open correctly in third-party viewers\n- [ ] Quality presets documented\n\n**Depends on:** WC-XCH-01, WC-EC-23\n\n**Agent brief:** suitability A - agent-led, human reviews the PR.",
+          "priority": "medium",
+          "labels": [
+            "exchange",
+            "mesh",
+            "backlog",
+            "agent-a"
+          ],
+          "parent": "WC-XCH",
+          "depends_on": [
+            "WC-XCH-01",
+            "WC-EC-23"
+          ],
+          "agent_suitability": "A"
+        },
+        {
+          "id": "WC-XCH-04",
+          "name": "[WC-XCH-04] Large import/export jobs",
+          "description": "**Goal:** Handle files too large for a single request.\n\n**Tasks**\n- [ ] Imports via BlobRef chunked upload; exports via result_id/StreamResult or object-store link\n- [ ] Background jobs with progress, cancel and deadlines\n- [ ] Untrusted-input handling: size limits, pre-validation, sandbox\n- [ ] Retention and cleanup of job artifacts\n\n**Acceptance criteria**\n- [ ] Multi-hundred-MB file imports and exports complete without exceeding gRPC limits\n- [ ] Cancel and failure leave no leaked blobs\n\n**Depends on:** WC-XCH-01, WC-EC-09, WC-EC-32\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "high",
+          "labels": [
+            "exchange",
+            "infra",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-XCH",
+          "depends_on": [
+            "WC-XCH-01",
+            "WC-EC-09",
+            "WC-EC-32"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-XCH-05",
+          "name": "[WC-XCH-05] 2D import/export: DXF and SVG",
+          "description": "**Goal:** Bring 2D drawings into sketches and export outlines.\n\n**Tasks**\n- [ ] Parse SVG/DXF in the browser; send profiles to the kernel\n- [ ] Check licences of candidate DXF libraries (many C++ DXF libraries are GPL)\n- [ ] Fitting/simplification options for splines\n\n**Acceptance criteria**\n- [ ] Sample DXF/SVG files import to editable profiles\n- [ ] Licence decision recorded\n\n**Depends on:** WC-XCH-01\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "exchange",
+            "2d",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-XCH",
+          "depends_on": [
+            "WC-XCH-01"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-XCH-06",
+          "name": "[WC-XCH-06] Scene and mesh import: Assimp, USD (evaluate)",
+          "description": "**Goal:** Decide whether extra mesh/scene formats are worth supporting.\n\n**Tasks**\n- [ ] Evaluate Assimp (BSD-3-Clause) and OpenUSD (modified Apache-2.0); verify licences and binary sizes\n- [ ] Estimate demand and maintenance cost\n\n**Acceptance criteria**\n- [ ] Memo: adopt / defer\n\n**Depends on:** WC-XCH-01\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "low",
+          "labels": [
+            "exchange",
+            "spike",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-XCH",
+          "depends_on": [
+            "WC-XCH-01"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-XCH-07",
+          "name": "[WC-XCH-07] Proprietary CAD formats decision (Parasolid, ACIS, JT)",
+          "description": "**Goal:** There is no practical open-source route; decide the commercial or customer-STEP policy.\n\n**Tasks**\n- [ ] Document demand and alternatives (customers export STEP; commercial SDKs)\n- [ ] If pursued: licensing, cost and integration plan\n\n**Acceptance criteria**\n- [ ] Decision memo\n\n**Depends on:** WC-XCH-01\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "medium",
+          "labels": [
+            "exchange",
+            "decision",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-XCH",
+          "depends_on": [
+            "WC-XCH-01"
+          ],
+          "agent_suitability": "C"
+        }
+      ]
+    },
+    {
+      "epic": {
+        "id": "WC-MSH",
+        "name": "Mesh Pipeline, LOD and Previews",
+        "description": "Fast, small, stable meshes for large models, plus thumbnails and a possible mesh/export worker split.\n\nStart after: WC-EC tessellation port and observability.",
+        "labels": [
+          "backlog",
+          "mesh"
+        ],
+        "priority": "low"
+      },
+      "issues": [
+        {
+          "id": "WC-MSH-01",
+          "name": "[WC-MSH-01] Tessellation quality presets and mesher evaluation",
+          "description": "**Goal:** Per-use quality settings and a measured mesher choice.\n\n**Tasks**\n- [ ] Presets for display vs export; adaptive by object size\n- [ ] Evaluate OCCT's Delabella mesher on many-hole faces (reference: 400-hole plate, 1.1 s default vs 84 ms Delabella as reported by materializr)\n- [ ] Track faces that fail to triangulate\n\n**Acceptance criteria**\n- [ ] Benchmarked presets documented\n- [ ] Mesher choice recorded\n\n**Depends on:** WC-EC-23, WC-EC-33\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "mesh",
+            "performance",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-MSH",
+          "depends_on": [
+            "WC-EC-23",
+            "WC-EC-33"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-MSH-02",
+          "name": "[WC-MSH-02] Mesh payload optimization and delta updates",
+          "description": "**Goal:** Send less data per edit.\n\n**Tasks**\n- [ ] Per-body hashing; only changed bodies sent\n- [ ] Optional quantization/compression with measured browser decode cost\n- [ ] Compatibility with the packed bytes layout in the protocol\n\n**Acceptance criteria**\n- [ ] Edit of one body transfers only that body\n- [ ] Payload sizes measured before/after\n\n**Depends on:** WC-MSH-01, WC-EC-09\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "mesh",
+            "protocol",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-MSH",
+          "depends_on": [
+            "WC-MSH-01",
+            "WC-EC-09"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-MSH-03",
+          "name": "[WC-MSH-03] LOD generation and progressive loading",
+          "description": "**Goal:** Open large assemblies quickly.\n\n**Tasks**\n- [ ] Simplification (evaluate meshoptimizer, MIT)\n- [ ] Progressive streaming of detail levels\n- [ ] Client switching rules by screen size\n\n**Acceptance criteria**\n- [ ] Large-assembly open time target met on reference models\n\n**Depends on:** WC-MSH-01\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "mesh",
+            "scale",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-MSH",
+          "depends_on": [
+            "WC-MSH-01"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-MSH-04",
+          "name": "[WC-MSH-04] Thumbnail and preview service",
+          "description": "**Goal:** Server-side previews for lists and sharing.\n\n**Tasks**\n- [ ] Scale the headless snapshot renderer into a service\n- [ ] Evaluate software rendering vs headless browser; caching by version hash\n\n**Acceptance criteria**\n- [ ] Thumbnail for every document version, cached\n\n**Depends on:** WC-EC-04\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "low",
+          "labels": [
+            "mesh",
+            "service",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-MSH",
+          "depends_on": [
+            "WC-EC-04"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-MSH-05",
+          "name": "[WC-MSH-05] Mesh/export worker split",
+          "description": "**Goal:** Split meshing/export from geometry workers only when contention is measured.\n\n**Tasks**\n- [ ] Define trigger metrics from observability data\n- [ ] Separate worker pool and queue; keep kernel semantics unchanged\n- [ ] Rollout and rollback plan\n\n**Acceptance criteria**\n- [ ] Trigger criteria documented\n- [ ] Split is a no-op until criteria are met\n\n**Depends on:** WC-EC-38, WC-EC-34\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "medium",
+          "labels": [
+            "mesh",
+            "infra",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-MSH",
+          "depends_on": [
+            "WC-EC-38",
+            "WC-EC-34"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-MSH-06",
+          "name": "[WC-MSH-06] Stable picking and topology mapping",
+          "description": "**Goal:** Selections survive rebuilds.\n\n**Tasks**\n- [ ] Map mesh faces/edges to persistent topology ids\n- [ ] Picking BVH on the client\n- [ ] Test selection stability across upstream edits\n\n**Acceptance criteria**\n- [ ] Selection persists across rebuilds on corpus parts\n\n**Depends on:** WC-EC-42\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "high",
+          "labels": [
+            "mesh",
+            "topology",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-MSH",
+          "depends_on": [
+            "WC-EC-42"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-MSH-07",
+          "name": "[WC-MSH-07] Client rendering performance budget",
+          "description": "**Goal:** Keep the web UI smooth.\n\n**Tasks**\n- [ ] Budgets: frame time, draw calls, memory\n- [ ] Instancing, culling, material sharing in three.js\n- [ ] Profiling dashboard in CI/e2e\n\n**Acceptance criteria**\n- [ ] Budget enforced in e2e on reference scenes\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "mesh",
+            "web",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-MSH",
+          "depends_on": [],
+          "agent_suitability": "B"
+        }
+      ]
+    },
+    {
+      "epic": {
+        "id": "WC-ASM",
+        "name": "Assemblies and Analysis",
+        "description": "Multi-part assemblies with mates, interference checks, measurements and mass properties. Supersedes the single 'Assembly model (backlog)' ticket in WC-EC.\n\nStart after: WC-EC command API, operation log and persistent ids.",
+        "labels": [
+          "backlog",
+          "assembly"
+        ],
+        "priority": "low"
+      },
+      "issues": [
+        {
+          "id": "WC-ASM-01",
+          "name": "[WC-ASM-01] Assembly data model",
+          "description": "**Goal:** Parts, instances and transforms referencing versioned part studios.\n\n**Tasks**\n- [ ] Reference model: part studio version + instance transform\n- [ ] Command-registry operations for add/move/remove instances\n- [ ] Interaction with the versioned operation log\n\n**Acceptance criteria**\n- [ ] Design doc approved\n- [ ] Instances survive part edits via stable references\n\n**Depends on:** WC-EC-47, WC-EC-48\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "assembly",
+            "design",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-ASM",
+          "depends_on": [
+            "WC-EC-47",
+            "WC-EC-48"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-ASM-02",
+          "name": "[WC-ASM-02] Mates and basic kinematics",
+          "description": "**Goal:** Rigid mates (fastened, revolute, slider) and a solver.\n\n**Tasks**\n- [ ] Choose approach: custom solver vs open library (verify licences)\n- [ ] Diagnostics for over/under-constrained mates\n- [ ] Persistent references for mate connectors\n\n**Acceptance criteria**\n- [ ] Mates solved deterministically on test assemblies\n\n**Depends on:** WC-ASM-01, WC-EC-42\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "medium",
+          "labels": [
+            "assembly",
+            "solver",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-ASM",
+          "depends_on": [
+            "WC-ASM-01",
+            "WC-EC-42"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-ASM-03",
+          "name": "[WC-ASM-03] Interference detection",
+          "description": "**Goal:** Find overlapping parts.\n\n**Tasks**\n- [ ] Exact checks with OCCT common/extrema; mesh-level pre-filter (BVH; evaluate FCL, BSD-3-Clause, or Bullet, zlib)\n- [ ] Incremental recheck after edits\n- [ ] Report with highlighted regions\n\n**Acceptance criteria**\n- [ ] Known interference corpus detected with no false negatives\n\n**Depends on:** WC-ASM-01\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "assembly",
+            "analysis",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-ASM",
+          "depends_on": [
+            "WC-ASM-01"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-ASM-04",
+          "name": "[WC-ASM-04] Distance, clearance and measurement tools",
+          "description": "**Goal:** Measure between shapes.\n\n**Tasks**\n- [ ] Use OCCT BRepExtrema distance tools\n- [ ] Tool UI: point/edge/face to point/edge/face\n- [ ] Units and precision from the policy\n\n**Acceptance criteria**\n- [ ] Measurements match oracle values within tolerance\n\n**Depends on:** WC-ASM-01\n\n**Agent brief:** suitability A - agent-led, human reviews the PR.",
+          "priority": "low",
+          "labels": [
+            "assembly",
+            "analysis",
+            "backlog",
+            "agent-a"
+          ],
+          "parent": "WC-ASM",
+          "depends_on": [
+            "WC-ASM-01"
+          ],
+          "agent_suitability": "A"
+        },
+        {
+          "id": "WC-ASM-05",
+          "name": "[WC-ASM-05] Mass properties and materials",
+          "description": "**Goal:** Volume, mass, centre of mass, inertia.\n\n**Tasks**\n- [ ] Use OCCT GProp\n- [ ] Material library and units\n- [ ] Include in reports/exports\n\n**Acceptance criteria**\n- [ ] Values match analytic references for the oracle parts\n\n**Depends on:** WC-EC-13\n\n**Agent brief:** suitability A - agent-led, human reviews the PR.",
+          "priority": "low",
+          "labels": [
+            "assembly",
+            "analysis",
+            "backlog",
+            "agent-a"
+          ],
+          "parent": "WC-ASM",
+          "depends_on": [
+            "WC-EC-13"
+          ],
+          "agent_suitability": "A"
+        },
+        {
+          "id": "WC-ASM-06",
+          "name": "[WC-ASM-06] Exploded and section views",
+          "description": "**Goal:** Understand assemblies visually.\n\n**Tasks**\n- [ ] Explode by direction/distance\n- [ ] Section planes (client clipping + exact kernel sections where needed)\n\n**Acceptance criteria**\n- [ ] Saved views restore exactly\n\n**Depends on:** WC-ASM-01\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "low",
+          "labels": [
+            "assembly",
+            "viz",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-ASM",
+          "depends_on": [
+            "WC-ASM-01"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-ASM-07",
+          "name": "[WC-ASM-07] Configurations and variants",
+          "description": "**Goal:** Parameter tables producing variants.\n\n**Tasks**\n- [ ] Configuration table schema bound to feature parameters\n- [ ] Rebuild per configuration with caching by chain hash\n- [ ] UI for selecting/editing configurations\n\n**Acceptance criteria**\n- [ ] Two configurations of one part studio build and cache independently\n\n**Depends on:** WC-EC-44, WC-EC-45\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "medium",
+          "labels": [
+            "assembly",
+            "engine",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-ASM",
+          "depends_on": [
+            "WC-EC-44",
+            "WC-EC-45"
+          ],
+          "agent_suitability": "C"
+        }
+      ]
+    },
+    {
+      "epic": {
+        "id": "WC-DRW",
+        "name": "2D Drawings and Documentation",
+        "description": "Drawing sheets with projected views, dimensions and export. Uses OCCT's open hidden-line removal; the project already depends on jspdf and svg2pdf.js for output.\n\nStart after: WC-EC persistent ids and command registry.",
+        "labels": [
+          "backlog",
+          "drawing"
+        ],
+        "priority": "low"
+      },
+      "issues": [
+        {
+          "id": "WC-DRW-01",
+          "name": "[WC-DRW-01] Drawing document model",
+          "description": "**Goal:** Sheets, views and annotations linked to model versions.\n\n**Tasks**\n- [ ] Schema for sheets, views, annotations\n- [ ] Update policy when the model changes\n- [ ] Storage via the operation log\n\n**Acceptance criteria**\n- [ ] Design doc approved\n\n**Depends on:** WC-EC-48, WC-EC-46\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "drawing",
+            "design",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-DRW",
+          "depends_on": [
+            "WC-EC-48",
+            "WC-EC-46"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-DRW-02",
+          "name": "[WC-DRW-02] Projected views with HLR",
+          "description": "**Goal:** Visible/hidden-line views from the kernel.\n\n**Tasks**\n- [ ] Use OCCT HLRBRep (exact vs polygonal; measure speed)\n- [ ] Return 2D edges as packed buffers\n- [ ] Section and detail views\n\n**Acceptance criteria**\n- [ ] Views match reference drawings within tolerance\n\n**Depends on:** WC-DRW-01\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "high",
+          "labels": [
+            "drawing",
+            "kernel",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-DRW",
+          "depends_on": [
+            "WC-DRW-01"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-DRW-03",
+          "name": "[WC-DRW-03] Dimensions and annotations",
+          "description": "**Goal:** Dimensions bound to geometry.\n\n**Tasks**\n- [ ] Reference persistent topology ids\n- [ ] Re-attachment and 'reference lost' states\n- [ ] Standard styles (units, tolerances)\n\n**Acceptance criteria**\n- [ ] Dimensions follow model edits or flag lost references\n\n**Depends on:** WC-DRW-02, WC-EC-43\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "drawing",
+            "topology",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-DRW",
+          "depends_on": [
+            "WC-DRW-02",
+            "WC-EC-43"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-DRW-04",
+          "name": "[WC-DRW-04] PMI/GD&T via STEP AP242 (evaluate)",
+          "description": "**Goal:** Evaluate reading/writing PMI with OCCT's XCAF support.\n\n**Tasks**\n- [ ] Scope which PMI types matter\n- [ ] Round-trip tests\n- [ ] Decision: build / defer\n\n**Acceptance criteria**\n- [ ] Memo with findings\n\n**Depends on:** WC-DRW-01\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "low",
+          "labels": [
+            "drawing",
+            "spike",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-DRW",
+          "depends_on": [
+            "WC-DRW-01"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-DRW-05",
+          "name": "[WC-DRW-05] Drawing export: PDF, SVG, DXF",
+          "description": "**Goal:** Output drawings.\n\n**Tasks**\n- [ ] PDF via the existing jspdf/svg2pdf.js dependencies; SVG; DXF (see exchange epic for licences)\n- [ ] Title blocks and templates\n- [ ] Page sizes and scaling\n\n**Acceptance criteria**\n- [ ] Exported PDF matches on-screen layout\n\n**Depends on:** WC-DRW-02\n\n**Agent brief:** suitability A - agent-led, human reviews the PR.",
+          "priority": "medium",
+          "labels": [
+            "drawing",
+            "export",
+            "backlog",
+            "agent-a"
+          ],
+          "parent": "WC-DRW",
+          "depends_on": [
+            "WC-DRW-02"
+          ],
+          "agent_suitability": "A"
+        },
+        {
+          "id": "WC-DRW-06",
+          "name": "[WC-DRW-06] BOM and tables",
+          "description": "**Goal:** Bills of materials from assemblies.\n\n**Tasks**\n- [ ] Derive from the assembly model\n- [ ] Balloons and table styles\n- [ ] CSV/PDF output\n\n**Acceptance criteria**\n- [ ] BOM matches assembly contents\n\n**Depends on:** WC-DRW-01\n\n**Agent brief:** suitability A - agent-led, human reviews the PR.",
+          "priority": "low",
+          "labels": [
+            "drawing",
+            "assembly",
+            "backlog",
+            "agent-a"
+          ],
+          "parent": "WC-DRW",
+          "depends_on": [
+            "WC-DRW-01"
+          ],
+          "agent_suitability": "A"
+        }
+      ]
+    },
+    {
+      "epic": {
+        "id": "WC-SKT",
+        "name": "Sketch Solver and Sketch Tools",
+        "description": "Choose and harden the 2D constraint solver and sketch tooling. Complements the single server-side re-solve ticket in WC-EC.\n\nStart after: WC-EC feature graph and server-side sketch re-solve.",
+        "labels": [
+          "backlog",
+          "sketch"
+        ],
+        "priority": "low"
+      },
+      "issues": [
+        {
+          "id": "WC-SKT-01",
+          "name": "[WC-SKT-01] Solver evaluation and decision",
+          "description": "**Goal:** Pick the long-term solver.\n\n**Tasks**\n- [ ] Candidates: existing TypeScript solver, SolidCraft's sketch crate (MIT or Apache per its README), FreeCAD planegcs and SolveSpace's solver (verify licences; SolveSpace's is GPL)\n- [ ] Criteria: DOF reporting, redundant/conflicting detection, performance at 200+ entities, determinism, licence, wasm/node support\n- [ ] Decision memo\n\n**Acceptance criteria**\n- [ ] Memo with benchmarks and recommendation\n\n**Depends on:** WC-EC-50\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "sketch",
+            "spike",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-SKT",
+          "depends_on": [
+            "WC-EC-50"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-SKT-02",
+          "name": "[WC-SKT-02] Constraint diagnostics and feedback",
+          "description": "**Goal:** Tell users why a sketch is stuck.\n\n**Tasks**\n- [ ] Expose solved/unsolved, remaining freedom, conflicting and redundant constraints\n- [ ] Highlight offending entities\n- [ ] Cancelable large solves\n\n**Acceptance criteria**\n- [ ] Diagnostics correct on a library of broken sketches\n\n**Depends on:** WC-SKT-01\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "sketch",
+            "ux",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-SKT",
+          "depends_on": [
+            "WC-SKT-01"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-SKT-03",
+          "name": "[WC-SKT-03] Regions, offsets and 2D booleans",
+          "description": "**Goal:** Planar region handling.\n\n**Tasks**\n- [ ] Closed-region detection with holes\n- [ ] Offsets and planar booleans via OCCT\n- [ ] Checks after each operation\n\n**Acceptance criteria**\n- [ ] Region and offset results validated on corpus\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "sketch",
+            "kernel",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-SKT",
+          "depends_on": [],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-SKT-04",
+          "name": "[WC-SKT-04] Sketch import: SVG and DXF",
+          "description": "**Goal:** Import 2D vector data into sketches.\n\n**Tasks**\n- [ ] Browser-side parsing; fitting and simplification\n- [ ] Constraint inference options\n\n**Acceptance criteria**\n- [ ] Imported files become editable sketches\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "low",
+          "labels": [
+            "sketch",
+            "exchange",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-SKT",
+          "depends_on": [],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-SKT-05",
+          "name": "[WC-SKT-05] Model references in sketches",
+          "description": "**Goal:** Project/intersect model geometry.\n\n**Tasks**\n- [ ] Use persistent topology references\n- [ ] Lost-reference states\n\n**Acceptance criteria**\n- [ ] Projected geometry follows upstream edits\n\n**Depends on:** WC-EC-42\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "high",
+          "labels": [
+            "sketch",
+            "topology",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-SKT",
+          "depends_on": [
+            "WC-EC-42"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-SKT-06",
+          "name": "[WC-SKT-06] Solver determinism and client/server agreement tests",
+          "description": "**Goal:** Same sketch, same result on client and server.\n\n**Tasks**\n- [ ] Golden sketches with expected solved coordinates\n- [ ] Run on client and Node\n- [ ] Tolerance and tie-breaking rules\n\n**Acceptance criteria**\n- [ ] Agreement test in CI\n\n**Depends on:** WC-SKT-01\n\n**Agent brief:** suitability A - agent-led, human reviews the PR.",
+          "priority": "medium",
+          "labels": [
+            "sketch",
+            "testing",
+            "backlog",
+            "agent-a"
+          ],
+          "parent": "WC-SKT",
+          "depends_on": [
+            "WC-SKT-01"
+          ],
+          "agent_suitability": "A"
+        }
+      ]
+    },
+    {
+      "epic": {
+        "id": "WC-MFG",
+        "name": "Sheet Metal and Manufacturing Preparation",
+        "description": "Flat patterns, bends and manufacturing outputs. Exploratory: validate demand before building.\n\nStart after: WC-GEO validity policy and WC-XCH 2D export.",
+        "labels": [
+          "backlog",
+          "manufacturing"
+        ],
+        "priority": "low"
+      },
+      "issues": [
+        {
+          "id": "WC-MFG-01",
+          "name": "[WC-MFG-01] Demand validation and scope",
+          "description": "**Goal:** Decide which manufacturing features matter.\n\n**Tasks**\n- [ ] Interview/usage data; shortlist (sheet metal, hole/thread wizard, CAM prep)\n- [ ] Go/no-go per feature\n\n**Acceptance criteria**\n- [ ] Scope memo\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "medium",
+          "labels": [
+            "manufacturing",
+            "decision",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-MFG",
+          "depends_on": [],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-MFG-02",
+          "name": "[WC-MFG-02] Sheet-metal model and unfolding",
+          "description": "**Goal:** Thickness, bend radius, K-factor, flat pattern.\n\n**Tasks**\n- [ ] Data model for sheet-metal features\n- [ ] Unfold algorithm: evaluate reusing SolidCraft's sheet-metal (MIT or Apache per its README) vs implementing; materializr's unfold is GPLv3 (reference only)\n- [ ] Deformation review\n\n**Acceptance criteria**\n- [ ] Flat pattern of reference parts within tolerance\n\n**Depends on:** WC-MFG-01\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "medium",
+          "labels": [
+            "manufacturing",
+            "kernel",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-MFG",
+          "depends_on": [
+            "WC-MFG-01"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-MFG-03",
+          "name": "[WC-MFG-03] Flat pattern export for cutting",
+          "description": "**Goal:** DXF/SVG outlines with bend lines.\n\n**Tasks**\n- [ ] Layer conventions and units\n- [ ] Nesting out of scope\n\n**Acceptance criteria**\n- [ ] Exported outlines open in common tools\n\n**Depends on:** WC-MFG-02\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "manufacturing",
+            "export",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-MFG",
+          "depends_on": [
+            "WC-MFG-02"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-MFG-04",
+          "name": "[WC-MFG-04] Hole and thread features",
+          "description": "**Goal:** Standard holes and threads.\n\n**Tasks**\n- [ ] Hole/thread tables\n- [ ] Performance on long threads (materializr reverted from OCCT 8.0.0 after a long-rod thread-generation hang; include in the version gate)\n\n**Acceptance criteria**\n- [ ] Long-thread cases pass on the baseline kernel\n\n**Depends on:** WC-MFG-01\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "low",
+          "labels": [
+            "manufacturing",
+            "kernel",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-MFG",
+          "depends_on": [
+            "WC-MFG-01"
+          ],
+          "agent_suitability": "B"
+        }
+      ]
+    },
+    {
+      "epic": {
+        "id": "WC-COL",
+        "name": "Collaboration, Versioning and Sharing",
+        "description": "Multi-user workflows on top of the server-owned document. Features stay operation-log based; any CRDT use is limited to presence.\n\nStart after: WC-EC operation log, document actor and concurrent writers.",
+        "labels": [
+          "backlog",
+          "collaboration"
+        ],
+        "priority": "low"
+      },
+      "issues": [
+        {
+          "id": "WC-COL-01",
+          "name": "[WC-COL-01] Presence and cursors",
+          "description": "**Goal:** See who is in the document.\n\n**Tasks**\n- [ ] Server-streaming presence events\n- [ ] Evaluate Yjs awareness only for presence; no CRDT for features\n- [ ] Client-to-server rate limits (unary calls)\n\n**Acceptance criteria**\n- [ ] Two users see each other's presence\n\n**Depends on:** WC-EC-49\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "collab",
+            "realtime",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-COL",
+          "depends_on": [
+            "WC-EC-49"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-COL-02",
+          "name": "[WC-COL-02] Version history and compare",
+          "description": "**Goal:** Browse, name, restore and diff versions.\n\n**Tasks**\n- [ ] Version list UI\n- [ ] Feature-level diff\n- [ ] Restore as a new version\n\n**Acceptance criteria**\n- [ ] Restore and compare work on reference documents\n\n**Depends on:** WC-EC-48\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "high",
+          "labels": [
+            "collab",
+            "versioning",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-COL",
+          "depends_on": [
+            "WC-EC-48"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-COL-03",
+          "name": "[WC-COL-03] Branch and merge (research)",
+          "description": "**Goal:** Branching semantics for parametric history.\n\n**Tasks**\n- [ ] Rebase rules per command type\n- [ ] Conflict surfacing\n- [ ] Decision memo\n\n**Acceptance criteria**\n- [ ] Memo\n\n**Depends on:** WC-EC-52\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "low",
+          "labels": [
+            "collab",
+            "spike",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-COL",
+          "depends_on": [
+            "WC-EC-52"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-COL-04",
+          "name": "[WC-COL-04] Comments anchored to references",
+          "description": "**Goal:** Comments tied to persistent references.\n\n**Tasks**\n- [ ] Anchor model; lost-anchor behavior\n- [ ] Notifications\n\n**Acceptance criteria**\n- [ ] Comments follow edits or show orphaned state\n\n**Depends on:** WC-EC-42\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "collab",
+            "topology",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-COL",
+          "depends_on": [
+            "WC-EC-42"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-COL-05",
+          "name": "[WC-COL-05] Permissions, sharing and audit log",
+          "description": "**Goal:** Roles and link sharing.\n\n**Tasks**\n- [ ] Roles: view/comment/edit; org/team model\n- [ ] Share links with expiry\n- [ ] Audit log of edits and access\n\n**Acceptance criteria**\n- [ ] Policy doc approved; enforcement tested\n\n**Depends on:** WC-EC-37\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "collab",
+            "security",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-COL",
+          "depends_on": [
+            "WC-EC-37"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-COL-06",
+          "name": "[WC-COL-06] Writer-lock UX and conflict handling",
+          "description": "**Goal:** Clear behavior when editing collides.\n\n**Tasks**\n- [ ] Lock acquisition/release/timeouts\n- [ ] Stale base-version messaging\n- [ ] Reconnect behavior\n\n**Acceptance criteria**\n- [ ] UX flows tested in e2e\n\n**Depends on:** WC-EC-52\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "collab",
+            "ux",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-COL",
+          "depends_on": [
+            "WC-EC-52"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-COL-07",
+          "name": "[WC-COL-07] Offline and local-fallback reconciliation (research)",
+          "description": "**Goal:** What happens when the browser falls back to the WASM kernel.\n\n**Tasks**\n- [ ] Define allowed offline edits\n- [ ] Reconcile on reconnect\n- [ ] Risks of kernel version differences\n\n**Acceptance criteria**\n- [ ] Memo with recommendation\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "low",
+          "labels": [
+            "collab",
+            "spike",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-COL",
+          "depends_on": [],
+          "agent_suitability": "C"
+        }
+      ]
+    },
+    {
+      "epic": {
+        "id": "WC-PLT",
+        "name": "Platform Scaling and Operations",
+        "description": "Run the engine reliably for many users: capacity, deploys, storage and security operations.\n\nStart after: WC-EC compose, observability and benchmark.",
+        "labels": [
+          "backlog",
+          "platform"
+        ],
+        "priority": "low"
+      },
+      "issues": [
+        {
+          "id": "WC-PLT-01",
+          "name": "[WC-PLT-01] Kernel fleet autoscaling and routing",
+          "description": "**Goal:** Scale kernel processes with load.\n\n**Tasks**\n- [ ] Capacity model from the benchmark; sessions per host\n- [ ] Sticky routing by client-generated session id\n- [ ] Drain on deploy\n\n**Acceptance criteria**\n- [ ] Load test meets targets\n\n**Depends on:** WC-EC-33, WC-EC-34\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "platform",
+            "scale",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-PLT",
+          "depends_on": [
+            "WC-EC-33",
+            "WC-EC-34"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-PLT-02",
+          "name": "[WC-PLT-02] Multi-tenancy quotas and accounting",
+          "description": "**Goal:** Fair use and cost visibility.\n\n**Tasks**\n- [ ] Per-org limits (sessions, memory, uploads)\n- [ ] Usage metering\n\n**Acceptance criteria**\n- [ ] Quota breaches return the defined errors\n\n**Depends on:** WC-EC-32\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "platform",
+            "tenancy",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-PLT",
+          "depends_on": [
+            "WC-EC-32"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-PLT-03",
+          "name": "[WC-PLT-03] Storage lifecycle",
+          "description": "**Goal:** Retention and cleanup.\n\n**Tasks**\n- [ ] Retention for uploads, results, blobs and B-rep revisions\n- [ ] Garbage collection\n- [ ] Storage cost reporting\n\n**Acceptance criteria**\n- [ ] No orphaned blobs after soak test\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "platform",
+            "storage",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-PLT",
+          "depends_on": [],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-PLT-04",
+          "name": "[WC-PLT-04] Backups and disaster recovery",
+          "description": "**Goal:** Protect customer data.\n\n**Tasks**\n- [ ] Postgres and object-store backups\n- [ ] RPO/RTO targets and restore drills\n\n**Acceptance criteria**\n- [ ] Restore drill passed\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "platform",
+            "reliability",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-PLT",
+          "depends_on": [],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-PLT-05",
+          "name": "[WC-PLT-05] SLOs, tracing and alerting",
+          "description": "**Goal:** Beyond basic metrics.\n\n**Tasks**\n- [ ] SLOs for latency/error budgets\n- [ ] End-to-end tracing browser to kernel\n- [ ] Alert routing\n\n**Acceptance criteria**\n- [ ] Dashboards and alerts live\n\n**Depends on:** WC-EC-38\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "platform",
+            "observability",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-PLT",
+          "depends_on": [
+            "WC-EC-38"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-PLT-06",
+          "name": "[WC-PLT-06] Release engineering: rolling deploys and version skew",
+          "description": "**Goal:** Safe upgrades.\n\n**Tasks**\n- [ ] Rolling deploys with session drain\n- [ ] Protocol version skew policy\n- [ ] Canary kernel versions (7.9.3 vs 8.0.x)\n\n**Acceptance criteria**\n- [ ] Upgrade rehearsal without data loss\n\n**Depends on:** WC-EC-40, WC-EC-09\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "platform",
+            "release",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-PLT",
+          "depends_on": [
+            "WC-EC-40",
+            "WC-EC-09"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-PLT-07",
+          "name": "[WC-PLT-07] Security hardening",
+          "description": "**Goal:** Ongoing hardening.\n\n**Tasks**\n- [ ] Dependency and image scanning\n- [ ] Secrets rotation\n- [ ] External penetration test\n- [ ] Kernel sandbox profile review\n\n**Acceptance criteria**\n- [ ] Findings tracked to closure\n\n**Depends on:** WC-EC-37\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "platform",
+            "security",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-PLT",
+          "depends_on": [
+            "WC-EC-37"
+          ],
+          "agent_suitability": "C"
+        }
+      ]
+    },
+    {
+      "epic": {
+        "id": "WC-AGT",
+        "name": "Automation, Scripting and Agent Access",
+        "description": "Expose the command registry to scripts, CI and AI agents (the pattern SolidCraft documents with a headless CLI and MCP server).\n\nStart after: WC-EC command registry.",
+        "labels": [
+          "backlog",
+          "automation"
+        ],
+        "priority": "low"
+      },
+      "issues": [
+        {
+          "id": "WC-AGT-01",
+          "name": "[WC-AGT-01] Versioned scripting API",
+          "description": "**Goal:** Public JSON script format over the registry.\n\n**Tasks**\n- [ ] Script schema and versioning\n- [ ] Validation and dry-run\n- [ ] Error reporting\n\n**Acceptance criteria**\n- [ ] Recorded scripts replay headlessly\n\n**Depends on:** WC-EC-46\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "high",
+          "labels": [
+            "automation",
+            "api",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-AGT",
+          "depends_on": [
+            "WC-EC-46"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-AGT-02",
+          "name": "[WC-AGT-02] Headless CLI runner",
+          "description": "**Goal:** Run scripts in CI and batch.\n\n**Tasks**\n- [ ] CLI wrapping the session/registry\n- [ ] Exit codes and artifacts\n- [ ] Use in the oracle/parity suites\n\n**Acceptance criteria**\n- [ ] CI job runs a script and compares outputs\n\n**Depends on:** WC-AGT-01\n\n**Agent brief:** suitability A - agent-led, human reviews the PR.",
+          "priority": "medium",
+          "labels": [
+            "automation",
+            "cli",
+            "backlog",
+            "agent-a"
+          ],
+          "parent": "WC-AGT",
+          "depends_on": [
+            "WC-AGT-01"
+          ],
+          "agent_suitability": "A"
+        },
+        {
+          "id": "WC-AGT-03",
+          "name": "[WC-AGT-03] MCP server for agents",
+          "description": "**Goal:** Expose commands as tools.\n\n**Tasks**\n- [ ] Auth, scopes and rate limits\n- [ ] Command allowlist; treat tool outputs and document contents as data\n- [ ] Audit trail with 'agent' as author\n\n**Acceptance criteria**\n- [ ] Security review passed; agent can build a sample part\n\n**Depends on:** WC-AGT-01\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "medium",
+          "labels": [
+            "automation",
+            "agents",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-AGT",
+          "depends_on": [
+            "WC-AGT-01"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-AGT-04",
+          "name": "[WC-AGT-04] API keys, webhooks and batch jobs",
+          "description": "**Goal:** Programmatic integration.\n\n**Tasks**\n- [ ] API keys and scopes\n- [ ] Webhooks for completed jobs\n- [ ] Batch export jobs\n\n**Acceptance criteria**\n- [ ] Integration test with a sample client\n\n**Depends on:** WC-AGT-01\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "low",
+          "labels": [
+            "automation",
+            "integration",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-AGT",
+          "depends_on": [
+            "WC-AGT-01"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-AGT-05",
+          "name": "[WC-AGT-05] Agent-in-the-loop UX",
+          "description": "**Goal:** Safe human oversight.\n\n**Tasks**\n- [ ] Group agent actions for undo\n- [ ] Preview/confirm destructive operations\n- [ ] Attribution in version history\n\n**Acceptance criteria**\n- [ ] Agent edits are undoable as one unit\n\n**Depends on:** WC-EC-51\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "automation",
+            "ux",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-AGT",
+          "depends_on": [
+            "WC-EC-51"
+          ],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-AGT-06",
+          "name": "[WC-AGT-06] Extension/plugin sandbox (evaluate)",
+          "description": "**Goal:** Decide whether to allow third-party extensions.\n\n**Tasks**\n- [ ] Review SolidCraft's documented plugin sandbox (WASM with resource limits) and alternatives\n- [ ] Threat model and decision\n\n**Acceptance criteria**\n- [ ] Memo\n\n**Depends on:** WC-AGT-01\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "low",
+          "labels": [
+            "automation",
+            "spike",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-AGT",
+          "depends_on": [
+            "WC-AGT-01"
+          ],
+          "agent_suitability": "C"
+        }
+      ]
+    },
+    {
+      "epic": {
+        "id": "WC-LIC",
+        "name": "Licensing, Compliance and Customer Data",
+        "description": "Resolve licence questions raised during design and protect customer CAD data. Not legal advice; items need legal review.\n\nStart after: Start early: feeds the kernel ADR.",
+        "labels": [
+          "backlog",
+          "compliance"
+        ],
+        "priority": "low"
+      },
+      "issues": [
+        {
+          "id": "WC-LIC-01",
+          "name": "[WC-LIC-01] OCCT licence decision",
+          "description": "**Goal:** LGPL-2.1 with exception vs a commercial licence.\n\n**Tasks**\n- [ ] Hosted-only vs distributed binaries; static vs dynamic linking\n- [ ] Ask Open Cascade about commercial terms (their own demos run under a commercial licence)\n- [ ] Legal review and written decision\n\n**Acceptance criteria**\n- [ ] Decision recorded in the ADR\n\n**Depends on:** WC-EC-05\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "compliance",
+            "legal",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-LIC",
+          "depends_on": [
+            "WC-EC-05"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-LIC-02",
+          "name": "[WC-LIC-02] Third-party inventory and SBOM automation",
+          "description": "**Goal:** Know exactly what ships.\n\n**Tasks**\n- [ ] SBOM for kernel image, gateway and web app\n- [ ] Generate notices page automatically\n- [ ] Fail CI on unapproved licences\n\n**Acceptance criteria**\n- [ ] SBOM and notices produced in CI\n\n**Agent brief:** suitability A - agent-led, human reviews the PR.",
+          "priority": "high",
+          "labels": [
+            "compliance",
+            "supply-chain",
+            "backlog",
+            "agent-a"
+          ],
+          "parent": "WC-LIC",
+          "depends_on": [],
+          "agent_suitability": "A"
+        },
+        {
+          "id": "WC-LIC-03",
+          "name": "[WC-LIC-03] Fonts and assets for the text tool",
+          "description": "**Goal:** Licences for fonts served to browsers.\n\n**Tasks**\n- [ ] Inventory candidate fonts and licences\n- [ ] Attribution and redistribution requirements\n- [ ] Choose the shipped set\n\n**Acceptance criteria**\n- [ ] Approved font list with notices\n\n**Agent brief:** suitability B - agent drafts, human owns design decisions.",
+          "priority": "medium",
+          "labels": [
+            "compliance",
+            "assets",
+            "backlog",
+            "agent-b"
+          ],
+          "parent": "WC-LIC",
+          "depends_on": [],
+          "agent_suitability": "B"
+        },
+        {
+          "id": "WC-LIC-04",
+          "name": "[WC-LIC-04] Code-reuse and clean-room policy",
+          "description": "**Goal:** Rules for humans and agents.\n\n**Tasks**\n- [ ] materializr is GPLv3: reference only, no copying\n- [ ] SolidCraft: MIT or Apache for the app, Apache for solidcore, separate brand licence and clean-room contribution rules\n- [ ] Agent guidance in AGENTS.md\n\n**Acceptance criteria**\n- [ ] Policy published; PR checklist item added\n\n**Depends on:** WC-EC-02\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "compliance",
+            "policy",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-LIC",
+          "depends_on": [
+            "WC-EC-02"
+          ],
+          "agent_suitability": "C"
+        },
+        {
+          "id": "WC-LIC-05",
+          "name": "[WC-LIC-05] Customer data protection",
+          "description": "**Goal:** Customer CAD files are sensitive IP.\n\n**Tasks**\n- [ ] Encryption in transit/at rest\n- [ ] Retention and deletion on request\n- [ ] Tenant isolation review\n- [ ] Kernel sandbox data-access rules\n\n**Acceptance criteria**\n- [ ] Review completed with a gap list\n\n**Agent brief:** suitability C - human-led; agent gathers evidence and drafts.",
+          "priority": "high",
+          "labels": [
+            "compliance",
+            "security",
+            "backlog",
+            "agent-c"
+          ],
+          "parent": "WC-LIC",
+          "depends_on": [],
+          "agent_suitability": "C"
+        }
+      ]
+    }
+  ]
+}

@@ -10,7 +10,25 @@ import {
 import {
   OpenSessionRequestSchema,
   OpenSessionResponseSchema,
+  ServerLimitsSchema,
+  HealthRequestSchema,
+  HealthResponseSchema,
+  InitOpSchema,
+  ClearCacheOpSchema,
+  ReleaseShapesOpSchema,
+  CheckValidityOpSchema,
+  ExportBRepOpSchema,
+  CreateBoxOpSchema,
+  CreateCylinderOpSchema,
+  CreateSphereOpSchema,
+  CreateConeOpSchema,
+  CreateBooleanOpSchema,
+  CreateExtrudeOpSchema,
+  CreateRevolveOpSchema,
+  MultMatrixShapeOpSchema,
+  TransformShapeOpSchema,
 } from '../../../generated/proto/webcad/engine/v1/engine_pb';
+import golden from '../../../../tests/golden/messages.json';
 
 // Helper: serialize then deserialize a message, assert deep equality
 function roundTrip(schema: DescMessage, input: Record<string, unknown>): Record<string, unknown> {
@@ -286,5 +304,92 @@ describe('codec round-trip (TS)', () => {
       expect(output.code).toBe(ExecutionFailureCode.OPERATION_FAILED);
       expect(output.details).toBe('');
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Golden file round-trip (shared with C++ via tests/golden/messages.json)
+  // ---------------------------------------------------------------------------
+
+  const SCHEMA_BY_TYPE: Record<string, DescMessage> = {
+    CommandHeader: CommandHeaderSchema,
+    MeshData: MeshDataSchema,
+    ExecuteFailure: ExecuteFailureSchema,
+    OpenSessionRequest: OpenSessionRequestSchema,
+    OpenSessionResponse: OpenSessionResponseSchema,
+    ServerLimits: ServerLimitsSchema,
+    HealthRequest: HealthRequestSchema,
+    HealthResponse: HealthResponseSchema,
+    InitOp: InitOpSchema,
+    ClearCacheOp: ClearCacheOpSchema,
+    ReleaseShapesOp: ReleaseShapesOpSchema,
+    CheckValidityOp: CheckValidityOpSchema,
+    ExportBRepOp: ExportBRepOpSchema,
+    CreateBoxOp: CreateBoxOpSchema,
+    CreateCylinderOp: CreateCylinderOpSchema,
+    CreateSphereOp: CreateSphereOpSchema,
+    CreateConeOp: CreateConeOpSchema,
+    CreateBooleanOp: CreateBooleanOpSchema,
+    CreateExtrudeOp: CreateExtrudeOpSchema,
+    CreateRevolveOp: CreateRevolveOpSchema,
+    MultMatrixShapeOp: MultMatrixShapeOpSchema,
+    TransformShapeOp: TransformShapeOpSchema,
+  };
+
+  // Fields that are protobuf `bytes` — in golden JSON they are base64 strings;
+  // TS needs them as Uint8Array before passing to create().
+  const BYTES_FIELDS: Record<string, Set<string>> = {
+    MeshData: new Set(['positions', 'indices', 'faceMapping', 'edgeOffsets', 'edgeLines']),
+  };
+
+  // Convert bigint (uint64) values to numbers so deep equality works against
+  // the JSON input (which stores them as plain numbers).
+  function toComparable(value: unknown): unknown {
+    if (typeof value === 'bigint') return Number(value);
+    if (Array.isArray(value)) return value.map(toComparable);
+    if (value !== null && typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      const result: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (k === '$typeName') continue; // bufbuild adds this to decoded messages
+        result[k] = toComparable(v);
+      }
+      return result;
+    }
+    return value;
+  }
+
+  // Preprocess golden input: convert base64 string bytes fields to Uint8Array.
+  function prepareInput(messageType: string, input: Record<string, unknown>): Record<string, unknown> {
+    const bytesFields = BYTES_FIELDS[messageType];
+    if (!bytesFields) return input;
+    const out: Record<string, unknown> = { ...input };
+    for (const field of bytesFields) {
+      const v = out[field];
+      if (typeof v === 'string') {
+        out[field] = Uint8Array.from(atob(v), (c) => c.charCodeAt(0));
+      }
+    }
+    return out;
+  }
+
+  type GoldenCase = { message_type: string; description: string; input: Record<string, unknown> };
+
+  describe('golden round-trip (shared JSON)', () => {
+    const cases = golden as GoldenCase[];
+    for (const { message_type, description, input } of cases) {
+      it(`${message_type}: ${description}`, () => {
+        const schema = SCHEMA_BY_TYPE[message_type];
+        expect(schema, `no schema for message_type ${message_type}`).toBeDefined();
+        const prepared = prepareInput(message_type, input);
+        const expected = toComparable(prepared);
+        const decoded = roundTrip(schema, prepared);
+        const actual = toComparable(decoded);
+        // Only assert on fields that were set in the input; protobuf fills
+        // defaults for unset fields, so we can't compare whole objects.
+        for (const [key, value] of Object.entries(expected)) {
+          expect(actual[key], `field ${key} did not round-trip`).toEqual(value);
+        }
+      });
+    }
   });
 });

@@ -1,0 +1,45 @@
+{
+  "id": "cube_from_hull",
+  "name": "Cube from Convex Hull (10 x 10 x 10)",
+  "description": "Convex hull of 8 cube corners; volume 1000, surface area 600; topology (face/edge count) to be verified live",
+  "script": {
+    "name": "create_cube_from_hull",
+    "steps": [
+      {
+        "name": "create_convex_hull",
+        "parameters": {
+          "deflection": 0.1,
+          "entity_id": "hull_cube_target",
+          "points": [
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [10.0, 10.0, 0.0],
+            [0.0, 0.0, 10.0],
+            [10.0, 0.0, 10.0],
+            [0.0, 10.0, 10.0],
+            [10.0, 10.0, 10.0]
+          ]
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 1000.0,
+    "surfaceArea": 600.0,
+    "bbox": {
+      "min": [0.0, 0.0, 0.0],
+      "max": [10.0, 10.0, 10.0]
+    },
+    "faceCount": 12,
+    "edgeCount": 18,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 1e-4,
+    "surfaceArea": 1e-4,
+    "bbox": 1e-3,
+    "counts": 0
+  }
+}

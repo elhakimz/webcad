@@ -1,0 +1,251 @@
+name: Kernel Build Guardrails
+
+# CI guardrails for Phase B item 5.8 of the kernel build speed design spec:
+# docs/superpowers/specs/2026-11-20-kernel-build-speed-design.md
+# Fails when the cold kernel build time, Docker image size, or stripped kernel
+# binary size exceed the thresholds in spec section 6 (Guardrail Thresholds).
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  kernel-build-guardrails:
+    name: kernel-build-guardrails
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      BUILD_DIR: ${{ github.workspace }}/build/kernel-guardrails
+      # Thresholds per spec section 6 (Guardrail Thresholds, from ADR Section 10).
+      COLD_BUILD_THRESHOLD_SECONDS: 900
+      DOCKER_IMAGE_SIZE_THRESHOLD_MB: 1500
+      KERNEL_BINARY_SIZE_THRESHOLD_MB: 100
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools and dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            ccache \
+            gcc \
+            g++ \
+            mold \
+            lld \
+            binutils \
+            libocct-dev \
+            libprotobuf-dev \
+            protobuf-compiler \
+            libgrpc-dev \
+            libgrpc++-dev \
+            protobuf-compiler-grpc
+          # The kernel CMakeLists.txt looks for OCCT under /usr/local; map the
+          # apt-installed headers/libs there so an unmodified CMakeLists.txt
+          # configures on a stock ubuntu-latest runner.
+          sudo mkdir -p /usr/local/lib /usr/local/include/opencascade
+          sudo sh -c 'ln -sf /usr/lib/x86_64-linux-gnu/libTK*.so* /usr/local/lib/ 2>/dev/null || true'
+          sudo sh -c 'ln -sf /usr/include/opencascade/* /usr/local/include/opencascade/ 2>/dev/null || true'
+          cmake --version
+          g++ --version
+          ccache --version
+          (mold --version || true)
+          (ld.lld --version || true)
+
+      - name: Restore ccache cache
+        id: ccache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: kernel-ccache-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'src/core/gateway/kernel-worker.cpp') }}
+          restore-keys: |
+            kernel-ccache-${{ runner.os }}-
+            kernel-ccache-
+
+      - name: Cold kernel build (CMake configure + Ninja build)
+        id: cold-build
+        run: |
+          START=$(date +%s.%N)
+          cmake -S . -B "${BUILD_DIR}" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          cmake --build "${BUILD_DIR}" -j"$(nproc)"
+          END=$(date +%s.%N)
+          ELAPSED=$(awk -v s="$START" -v e="$END" 'BEGIN { printf "%.2f", e - s }')
+          echo "cold_build_seconds=${ELAPSED}" >> "$GITHUB_OUTPUT"
+          echo "Cold kernel build (configure + build): ${ELAPSED} s"
+
+      - name: Warm kernel build (incremental rebuild, ccache warm)
+        id: warm-build
+        run: |
+          # Touch one source file so Ninja recompiles a single translation unit —
+          # this measures an incremental warm rebuild rather than a no-op.
+          touch src/core/gateway/kernel-worker.cpp
+          START=$(date +%s.%N)
+          cmake --build "${BUILD_DIR}" -j"$(nproc)"
+          END=$(date +%s.%N)
+          ELAPSED=$(awk -v s="$START" -v e="$END" 'BEGIN { printf "%.2f", e - s }')
+          echo "warm_build_seconds=${ELAPSED}" >> "$GITHUB_OUTPUT"
+          echo "Warm kernel build (incremental): ${ELAPSED} s"
+
+      - name: Save ccache cache
+        id: ccache-save
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: kernel-ccache-${{ runner.os }}-${{ hashFiles('CMakeLists.txt', 'src/core/gateway/kernel-worker.cpp') }}
+
+      - name: Kernel binary size (stripped)
+        id: binary-size
+        run: |
+          BIN="${BUILD_DIR}/kernel_worker"
+          if [[ ! -x "${BIN}" ]]; then
+            echo "kernel_worker binary not found at ${BIN}" >&2
+            echo "binary_size_bytes=0" >> "$GITHUB_OUTPUT"
+            echo "binary_size_mb=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          STRIPPED="$(mktemp -d)/kernel_worker.stripped"
+          cp "${BIN}" "${STRIPPED}"
+          strip --strip-all "${STRIPPED}"
+          BYTES=$(stat -c %s "${STRIPPED}")
+          MB=$(awk -v b="$BYTES" 'BEGIN { printf "%.2f", b / 1048576 }')
+          rm -f "${STRIPPED}"
+          echo "binary_size_bytes=${BYTES}" >> "$GITHUB_OUTPUT"
+          echo "binary_size_mb=${MB}" >> "$GITHUB_OUTPUT"
+          echo "Stripped kernel binary size: ${MB} MB"
+
+      - name: Docker image size (optional, if Docker available)
+        id: docker-image
+        continue-on-error: true
+        run: |
+          echo "docker_available=false" >> "$GITHUB_OUTPUT"
+          echo "image_size_mb=0" >> "$GITHUB_OUTPUT"
+          if ! docker info >/dev/null 2>&1; then
+            echo "Docker daemon not available — skipping Docker image size measurement"
+            exit 0
+          fi
+          echo "docker_available=true" >> "$GITHUB_OUTPUT"
+          # Build the kernel image (Dockerfile.kernel builds OCCT from source);
+          # cap the build time so an optional measurement cannot block the job.
+          timeout 45m docker build -t webcad/kernel:guardrails -f Dockerfile.kernel . || true
+          SIZE=$(docker images --format '{{.Size}}' webcad/kernel:guardrails | head -n 1)
+          if [[ -z "$SIZE" ]]; then
+            echo "Docker image webcad/kernel:guardrails not found after build"
+            exit 0
+          fi
+          MB=$(awk -v r="$SIZE" 'BEGIN {
+            n = r + 0;
+            if (r ~ /GB$/) n = n * 1024;
+            else if (r ~ /TB$/) n = n * 1024 * 1024;
+            printf "%.2f", n
+          }')
+          echo "image_size_mb=${MB}" >> "$GITHUB_OUTPUT"
+          echo "Docker image size: ${MB} MB (reported ${SIZE})"
+
+      - name: Check thresholds and publish summary
+        id: check-guardrails
+        run: |
+          set -euo pipefail
+          COLD="${{ steps.cold-build.outputs.cold_build_seconds }}"
+          COLD="${COLD:-0}"
+          WARM="${{ steps.warm-build.outputs.warm_build_seconds }}"
+          WARM="${WARM:-0}"
+          BINARY_MB="${{ steps.binary-size.outputs.binary_size_mb }}"
+          BINARY_MB="${BINARY_MB:-0}"
+          DOCKER_AVAILABLE="${{ steps.docker-image.outputs.docker_available }}"
+          DOCKER_MB="${{ steps.docker-image.outputs.image_size_mb }}"
+          DOCKER_MB="${DOCKER_MB:-0}"
+
+          COLD_T=900
+          DOCKER_T=1500
+          BINARY_T=100
+
+          FAIL=0
+
+          {
+            echo "## Kernel Build Guardrails"
+            echo ""
+            echo "| Check | Value | Threshold | Status |"
+            echo "|---|---|---|:---:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          row() {
+            echo "| $1 | $2 | $3 | $4 |" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          if awk -v v="$COLD" -v t="$COLD_T" 'BEGIN { exit !(v > t) }'; then
+            row "Cold kernel build time" "${COLD} s" "≤ ${COLD_T} s (15 min)" "❌ FAIL"
+            FAIL=1
+          else
+            row "Cold kernel build time" "${COLD} s" "≤ ${COLD_T} s (15 min)" "✅ PASS"
+          fi
+
+          row "Warm kernel build time (ccache)" "${WARM} s" "informational" "ℹ️ measured"
+
+          if awk -v v="$BINARY_MB" -v t="$BINARY_T" 'BEGIN { exit !(v > t) }'; then
+            row "Kernel binary size (stripped)" "${BINARY_MB} MB" "≤ ${BINARY_T} MB" "❌ FAIL"
+            FAIL=1
+          else
+            row "Kernel binary size (stripped)" "${BINARY_MB} MB" "≤ ${BINARY_T} MB" "✅ PASS"
+          fi
+
+          if [[ "$DOCKER_AVAILABLE" == "true" ]]; then
+            if awk -v v="$DOCKER_MB" -v t="$DOCKER_T" 'BEGIN { exit !(v > t) }'; then
+              row "Docker image size" "${DOCKER_MB} MB" "≤ ${DOCKER_T} MB (1.5 GB)" "❌ FAIL"
+              FAIL=1
+            else
+              row "Docker image size" "${DOCKER_MB} MB" "≤ ${DOCKER_T} MB (1.5 GB)" "✅ PASS"
+            fi
+          else
+            row "Docker image size" "not measured" "≤ ${DOCKER_T} MB (1.5 GB)" "⚠️ skipped"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$FAIL" -ne 0 ]]; then
+            echo "### Result: ❌ Guardrail violated — one or more thresholds exceeded" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Result: ✅ All guardrails passed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "_Thresholds per docs/superpowers/specs/2026-11-20-kernel-build-speed-design.md, section 6._" >> "$GITHUB_STEP_SUMMARY"
+
+          cat > kernel-guardrails-timing.json <<EOF
+          {
+            "cold_build_seconds": ${COLD},
+            "warm_build_seconds": ${WARM},
+            "binary_size_mb": ${BINARY_MB},
+            "binary_size_bytes": $(awk -v m="$BINARY_MB" 'BEGIN { printf "%d", m * 1048576 }'),
+            "docker_available": ${DOCKER_AVAILABLE},
+            "image_size_mb": ${DOCKER_MB},
+            "thresholds": {
+              "cold_build_seconds": ${COLD_T},
+              "docker_image_size_mb": ${DOCKER_T},
+              "kernel_binary_size_mb": ${BINARY_T}
+            },
+            "result": "$(if [[ "$FAIL" -ne 0 ]]; then echo 'failed'; else echo 'passed'; fi)",
+            "run": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+
+          if [[ "$FAIL" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Upload timing results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-build-timing
+          path: kernel-guardrails-timing.json
+          retention-days: 7

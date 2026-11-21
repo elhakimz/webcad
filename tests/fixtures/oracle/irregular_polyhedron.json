@@ -1,0 +1,47 @@
+{
+  "id": "irregular_tetrahedron",
+  "name": "Irregular Tetrahedron",
+  "description": "Irregular tetrahedron with vertices (0,0,0), (3,0,0), (0,4,0), (0,0,5); volume 10, surface area ~37.3654",
+  "script": {
+    "name": "create_irregular_polyhedron",
+    "steps": [
+      {
+        "name": "create_polyhedron",
+        "parameters": {
+          "deflection": 0.1,
+          "entity_id": "irreg_target",
+          "points": [
+            [0.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [0.0, 4.0, 0.0],
+            [0.0, 0.0, 5.0]
+          ],
+          "faces": [
+            { "vertex_indices": [0, 1, 2] },
+            { "vertex_indices": [0, 1, 3] },
+            { "vertex_indices": [0, 2, 3] },
+            { "vertex_indices": [1, 2, 3] }
+          ]
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 10.0,
+    "surfaceArea": 37.3654,
+    "bbox": {
+      "min": [0.0, 0.0, 0.0],
+      "max": [3.0, 4.0, 5.0]
+    },
+    "faceCount": 4,
+    "edgeCount": 6,
+    "vertexCount": 4,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 1e-4,
+    "surfaceArea": 1e-3,
+    "bbox": 1e-3,
+    "counts": 0
+  }
+}

@@ -80,13 +80,13 @@ describe('Document undo/redo — solid B-rep restore', () => {
     expect(Array.from(bytes as Uint8Array)).toEqual([1, 2, 3])
   })
 
-  it('restores the B-rep on redo as well', () => {
+  it('restores the B-rep on redo as well', async () => {
     const doc = new Document()
     editSolid(doc)
 
-    doc.undo()
+    await doc.undo()
     importBRep.mockClear()
-    doc.redo()
+    await doc.redo()
 
     expect(importBRep).toHaveBeenCalledTimes(1)
     expect(importBRep.mock.calls[0][0]).toBe('S1')

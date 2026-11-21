@@ -1,0 +1,36 @@
+{
+  "id": "extrude_rectangle",
+  "name": "Extrude Rectangle (2x2x3 box)",
+  "description": "2x2 square profile extruded by 3 along Z axis",
+  "script": {
+    "name": "extrude_rectangle_test",
+    "steps": [
+      {
+        "name": "create_extrude",
+        "parameters": {
+          "points": [[0, 0, 0], [2, 0, 0], [2, 2, 0], [0, 2, 0]],
+          "height": 3,
+          "vector": [0, 0, 1],
+          "is_closed": true,
+          "deflection": 0.1,
+          "entity_id": "extrude_target"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 12.0,
+    "surfaceArea": 32.0,
+    "bbox": { "min": [0.0, 0.0, 0.0], "max": [2.0, 2.0, 3.0] },
+    "faceCount": 6,
+    "edgeCount": 12,
+    "vertexCount": 8,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 1e-4,
+    "surfaceArea": 1e-4,
+    "bbox": 1e-3,
+    "counts": 0
+  }
+}

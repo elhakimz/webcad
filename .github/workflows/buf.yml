@@ -8,3 +8,4 @@ jobs:
       - uses: bufbuild/buf-setup-action@v1
       - run: buf lint proto/
       - run: buf breaking --against '.git#branch=main' proto/
+      - run: bash scripts/check-proto-version.sh

@@ -1,0 +1,3 @@
+FROM webcad/kernel:occt-7.9.3
+RUN apt-get update && apt-get install -y socat && rm -rf /var/lib/apt/lists/*
+CMD ["/bin/sh", "-c", "/kernel/build/kernel_worker & sleep 2 && socat TCP-LISTEN:50051,fork UNIX-CONNECT:/tmp/webcad-kernel.sock"]

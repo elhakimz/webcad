@@ -1,0 +1,102 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 16,
+    "patch": 0
+  },
+
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_STANDARD": "17",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_C_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=mold",
+        "CMAKE_SHARED_LINKER_FLAGS": "-fuse-ld=mold",
+        "CMAKE_MODULE_PATH": "/usr/local/lib/cmake/OpenCASCADE"
+      }
+    },
+    {
+      "name": "dev",
+      "inherits": "base",
+      "description": "Developer build: fast incremental, no optimizations, debug info",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-O0 -g -Wall -Wextra"
+      }
+    },
+    {
+      "name": "ci",
+      "inherits": "base",
+      "description": "CI build: Release, fast linker, ccache enabled",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_FLAGS": "-O2 -Wall -Wextra"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "base",
+      "description": "Release build: optimized, stripped binary",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_FLAGS": "-O3 -DNDEBUG",
+        "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=mold -s",
+        "CMAKE_SHARED_LINKER_FLAGS": "-fuse-ld=mold -s"
+      }
+    },
+    {
+      "name": "asan-ubsan",
+      "inherits": "base",
+      "description": "ASan + USan build for memory/UB debugging",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-O0 -g -fsanitize=address,undefined -fno-omit-frame-pointer",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
+        "CMAKE_SHARED_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
+    }
+  ],
+
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "asan-ubsan",
+      "configurePreset": "asan-ubsan"
+    }
+  ],
+
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci",
+      "configurePreset": "ci",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

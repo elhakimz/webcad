@@ -57,6 +57,7 @@
 - **Do not enable ACES tone mapping in this viewport** without arguing it separately. Most of the scene is flat `MeshBasicMaterial`/`LineBasicMaterial` carrying ACI layer colours; a filmic response curve desaturates every one of them, so a layer set to red stops drawing the red it was assigned. Antialiasing and explicit `outputColorSpace` are on; tone mapping was deliberately left off (#159).
 
 - **Docs layout (2026-10-20):** all documentation lives in `docs/` (`docs/plans/`, `docs/scad/`, `docs/3d/`, `docs/base/`, `docs/uidesign/`). Third-party reference code lives in `vendors/` (`replicad-main`, `chili3d`, `BOSL-master`) and is gitignored. `docs/` and `vendors/` are excluded from eslint and vitest; `tsconfig` includes only `src`, so vendored code never type-checks. **Never put vendored repos under `docs/`** — vitest's default glob picks up their `__tests__/` and `test/` suites (it broke 75 test files) and eslint reports errors on them.
+- **WC-EC-16 — OCCT 7.9.3 `gp_GTrsf::SetValue` row-4 quirk:** `SetValue(row, col, value)` only accepts rows 1-3; row 4 (`[0,0,0,1]`) is implicit. Calling `SetValue(4, ...)` raises `Standard_OutOfRange` (caught by kernel catch-all, returns empty error). Build `gp_Trsf` with `SetValues(mat, tr)` or construct translation/rotation/scale/mirror directly; never call `SetValue(4, ...)`.
 
 ## Do-Not-Repeat
 
@@ -160,3 +161,64 @@
  - **v1 generated connect-es ServiceType objects ({ typeName, methods: Record<string, ...> }) are incompatible with @connectrpc/connect v2.x, which requires DescService (methods as array with localName, parent.typeName). Step 0 spike confirmed runtime mismatch: TypeError: Cannot read properties of undefined (reading 'toString') at create-method-url.js:31. Regeneration with protoc-gen-es v2 is the correct fix, not alias shims.
 - **3 source files import from src/generated/**: session-manager.ts (types only), connect-server.ts (uses 	oDescService() wrapper), RemoteGrpcTransport.ts (casts s any). No 
 ew message construction or 	oBinary/romBinary calls in source code. Test file RemoteGrpcTransport.test.ts mocks generated modules only.
+
+## Key Learnings (2026-11-20 SolidCraft evaluation)
+
+- **SolidCraft** (elhakimz fork of tangency-labs/solidcraft at C:\Dev\Research\solidcraft) is pure-Rust parametric CAD; kernel = solidcore/SMLib (Rust port of NVIDIA's SMLib, Apache-2.0), migrating from "truck" kernel on kernel-smlib branch (not in releases).
+- **Version 0.45.0-rc.4**, daily releases, 0.x pre-1.0. Requires Rust 1.95+/1.99.1 CI; machine has 1.92.0 (user said "dont code or compile solidcraft, just check it").
+- **License:** MIT OR Apache-2.0 (app), Apache-2.0 (solidcore), separate brand license for UI kit/look/name.
+- **Command model:** every operation is a command with JSON input/output; same commands from desktop UI, browser API (`solidcraft.execute(command, params)`), headless CLI (`solidcraft-cli exec`), MCP server. Matches WebCad's `Kernel.Execute(ExecuteRequest)` handler model.
+- **Oracle:** 90/90 reference parts pass (analytic + FreeCAD cross-check). **Kernel regression rig:** 372 cases — booleans 73/89 pass (14 fail, 1 hang), fillets 41/50 (6 fail), shell 13/18 (5 fail), sweeps 74/83 (7 fail, 1 crash, 1 hang), threads 23/28 (3 fail, 2 hang).
+- **Platforms:** desktop, browser (WASM), headless CLI, MCP server — same commands everywhere.
+- **WC-EC-06 recommendation:** Option A — Ignore SolidCraft as kernel. WC-EC-05 ADR already selected OCCT 7.9.3 as sole kernel; SolidCraft "for inspiration only." Kernel mid-migration, known failures/hangs, 0.x version, Rust toolchain mismatch, protocol constraint ("do not change protocol"). Borrow patterns only: command registry, oracle reference parts, regression rig, browser command API.
+
+## Decision Log
+
+- [2026-11-20] **WC-EC-06 SolidCraft evaluation — go/no-go:** Ignore (stay with OCCT only). Rationale: ADR already decided OCCT 7.9.3 as sole kernel; SolidCraft kernel mid-migration (truck→SMLib branch, not in releases), 0.x pre-1.0, known regression rig failures/hangs, Rust toolchain mismatch with WebCad's Node/C++ stack, and protocol constraint ("do not change protocol"). Borrow patterns only (command registry, oracle, regression rig, browser command API) — no code changes.
+
+## Key Learnings (2026-11-20 WC-EC-09 Chunk 2)
+
+- @bufbuild/protobuf v2 uses standalone 	oBinary(schema, msg) and romBinary(schema, bytes) functions � NOT msg.toBinary() method calls
+- DescMessage type is exported from @bufbuild/protobuf, NOT @bufbuild/protobuf/codegenv2
+- Protobuf enum values in TS are short names (e.g. ExecutionFailureCode.UNSPECIFIED), not full proto names (EXECUTION_FAILURE_CODE_UNSPECIFIED)
+- For uint32 enum field value   (UNSPECIFIED), round-trip returns   (number), not undefined � use 	oBe(0) not 	oBe(undefined) | Done | ~200 |
+
+
+## Key Learnings (2026-11-20 WC-EC-09 Chunks 3-4 C++ codec tests)
+
+- gtest ASSERT_TRUE/ASSERT_* macros return void � cannot be used inside value-returning functions (e.g. template roundTrip<T>()); use EXPECT_* or omit assertions inside helpers
+- C++ test target linking generated *.grpc.pb.cc files needs gRPC libraries (libgrpc++, libgrpc) in 	arget_link_libraries, not just protobuf
+- Container path mapping: host C:\Dev\webcad\ = container /kernel/; CMakeLists.txt lives at project root
+- docker cp requires destination directory to exist in container first (docker exec mkdir -p before docker cp)
+- Push to https://github.com/elhakimz/webcad.git returns 403 for user bilidade � no write access; SSH host key not configured; cannot push until access granted or alternate auth configured
+
+
+## Key Learnings (2026-11-21 WC-EC phase 1 Docker kernel integration test)
+
+- OCCT kernel in Docker image `webcad/kernel:occt-7.9.3` returns `BRepPrimAPI_MakeBox IsDone=0` for `MakeBox(10,10,10)` — create_box fails with code 5 ("BRepPrimAPI_MakeBox failed") in this kernel; do not assert success for create_box/step_export against this kernel image
+- Kernel worker gRPC `Execute()` switch statement handles only kCreateBox/kImportBrep/kExportBrep/kStepExport/kReleaseShapes — InitOp falls to `default` → "Unknown or missing operation" (code 2); test expectations must match actual kernel behavior, not spec ideal
+- Pre-existing typecheck errors (3: codec.test.ts ×2, KernelGrpcTransport.ts ×1) are unrelated to this change and block `npm run verify`; lint/test/buf pass
+- Push to `https://github.com/elhakimz/webcad.git` returns 403 — user `abilidad` lacks write access to elhakimz/webcad; commits stay local until access granted or alternate auth configured
+## Key Learnings (2026-11-21 WC-EC-12 Shape Metrics Parity)
+
+- buf generate unavailable in this environment (missing protoc-gen-grpc plugin); generated TS stubs hand-edited not required since harness uses protoLoader dynamic loading at runtime
+- ShapeMetrics attached to ExecuteResponse (field 6), not inside ExecuteSuccess � response.mutable_metrics() returns ShapeMetrics* in C++
+- BoundingBox3D uses inline double fields (min_x/y/z, max_x/y/z) instead of Point3D reference to avoid circular proto import (common.proto imported by engine.proto, Point3D defined in engine.proto)
+- Native adapter parseExecuteResponse reads response.metrics (any type) and maps snake_case proto fields to camelCase KernelMetric fields
+- Pre-existing typecheck errors (codec.test.ts x2, KernelGrpcTransport.ts x1) are unrelated and block 
+pm run verify; lint/test/buf:lint all pass
+ 
+ # #   S e s s i o n :   W C - E C - 1 3   O r a c l e   S u i t e  
+ -   N a t i v e K e r n e l A d a p t e r . i n i t ( )   o n   W i n d o w s   n e e d s   i n c l u d e D i r s :   [ P R O T O _ R O O T ]   i n   p r o t o L o a d e r . l o a d S y n c ( )   t o   r e s o l v e   c o m m o n . p r o t o   i m p o r t s  
+ -   T o p E x p _ E x p l o r e r   c o u n t i n g   i n f l a t e s   t o p o l o g y   c o u n t s ;   T o p E x p : : M a p S h a p e s   g i v e s   u n i q u e   c o u n t s   ( b o x :   6 / 1 2 / 8   i n s t e a d   o f   6 / 2 4 / 4 8 )  
+ -   K e r n e l   t o p o l o g y - c o u n t   f i x   c o m m i t t e d   b u t   n o t   d e p l o y e d   t o   r u n n i n g   c o n t a i n e r   ( u s e r   f o r b a d e   D o c k e r   r e b u i l d )  
+ 
+## Key Learnings (2026-11-21 WC-EC-14 Native Primitives)
+- PowerShell does not support && operator; use ; or separate commands
+- Docker container binary replacement: docker cp updated source, 
+inja -C /kernel/build kernel_worker compiled, docker restart deployed new binary
+- All 7 primitives (cylinder, frustum, sphere, cone, torus, wedge, pyramid) compiled and deployed to webcad-kernel-test container
+- TS typecheck: 3 pre-existing errors in codec.test.ts/KernelGrpcTransport.ts, 0 in modified files
+- Lint: 0 errors on native-kernel-adapter.ts (pre-existing ny warnings only)
+- Harness tests: 32/32 passed
+

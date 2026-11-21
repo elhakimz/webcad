@@ -1,0 +1,14 @@
+{
+  "name": "unit-box",
+  "operation": "box",
+  "parameters": {
+    "minX": -10,
+    "minY": -10,
+    "minZ": -10,
+    "maxX": 10,
+    "maxY": 10,
+    "maxZ": 10
+  },
+  "views": ["iso", "top", "front", "right"],
+  "resolution": [1024, 1024]
+}

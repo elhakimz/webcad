@@ -1,0 +1,51 @@
+{
+  "id": "compound_two_boxes",
+  "name": "Compound of Two Boxes",
+  "description": "Fuse two 1x1x1 boxes side by side",
+  "script": {
+    "name": "compound_two_boxes_test",
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 1, "dy": 1, "dz": 1,
+          "deflection": 0.1,
+          "entity_id": "box1"
+        }
+      },
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 2, "y": 0, "z": 0,
+          "dx": 1, "dy": 1, "dz": 1,
+          "deflection": 0.1,
+          "entity_id": "box2"
+        }
+      },
+      {
+        "name": "create_compound",
+        "parameters": {
+          "children_ids": ["box1", "box2"],
+          "deflection": 0.1,
+          "entity_id": "compound_target"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 2.0,
+    "surfaceArea": 12.0,
+    "bbox": { "min": [0.0, 0.0, 0.0], "max": [3.0, 1.0, 1.0] },
+    "faceCount": 12,
+    "edgeCount": 24,
+    "vertexCount": 16,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 1e-4,
+    "surfaceArea": 1e-4,
+    "bbox": 1e-3,
+    "counts": 0
+  }
+}

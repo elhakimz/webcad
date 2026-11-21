@@ -52,7 +52,8 @@ export function compareStepResults(
   // Surface area
   if (wm.surfaceArea !== undefined && nm.surfaceArea !== undefined) {
     const d = relativeDiff(wm.surfaceArea, nm.surfaceArea);
-    diffs.surface = { wasm: wm.surfaceArea, native: nm.surfaceArea, diff: d, tolerance: tolerances.surface, passed: d <= tolerances.surface };
+    const surfaceTol = tolerances.surfaceArea ?? tolerances.surface;
+    diffs.surface = { wasm: wm.surfaceArea, native: nm.surfaceArea, diff: d, tolerance: surfaceTol, passed: d <= surfaceTol };
   } else if (wm.surfaceArea !== undefined || nm.surfaceArea !== undefined) {
     errors.push('surfaceArea missing from one kernel');
   }

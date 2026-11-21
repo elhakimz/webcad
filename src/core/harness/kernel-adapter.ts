@@ -8,6 +8,10 @@ export interface KernelMetric {
   valid?: boolean;
 }
 
+export interface Loop2D {
+  points: Array<{ x: number; y: number; bulge: number }>;
+}
+
 export interface KernelResult {
   stepIndex: number;
   stepName: string;
@@ -15,6 +19,7 @@ export interface KernelResult {
   metrics: KernelMetric;
   success: boolean;
   error?: string;
+  loops?: Loop2D[];
 }
 
 export interface ScriptStep {
@@ -25,6 +30,7 @@ export interface ScriptStep {
 export interface ScriptTolerances {
   volume: number;
   surface: number;
+  surfaceArea?: number;
   bbox: number;
   counts: number;
 }
@@ -45,6 +51,7 @@ export interface KernelAdapter {
 export const DEFAULT_TOLERANCES: ScriptTolerances = {
   volume: 1e-4,
   surface: 1e-4,
+  surfaceArea: 1e-4,
   bbox: 1e-3,
   counts: 0,
 };

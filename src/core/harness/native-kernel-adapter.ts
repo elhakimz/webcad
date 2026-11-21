@@ -82,6 +82,10 @@ export class NativeKernelAdapter implements KernelAdapter {
       create_pyramid: 'create_pyramid',
       create_polyhedron: 'create_polyhedron',
       create_convex_hull: 'create_convex_hull',
+      create_extrude: 'create_extrude',
+      create_revolve: 'create_revolve',
+      create_compound: 'create_compound',
+      extract_face_profile: 'extract_face_profile',
       mult_matrix_shape: 'mult_matrix_shape',
       transform_shape: 'transform_shape',
       rotate_shape: 'rotate_shape',
@@ -106,6 +110,39 @@ export class NativeKernelAdapter implements KernelAdapter {
             z,
           }));
           delete params.points;
+        }
+      }
+
+      // Normalize `points` for extrude/revolve: [[x,y,z], ...] or [{x,y,z}, ...] → points
+      // (proto field is `points`, not `points_inline` — those are for polyhedron/convex_hull only)
+      if (opField === 'create_extrude' || opField === 'create_revolve') {
+        if (Array.isArray(params.points)) {
+          params.points = (params.points as Array<[number, number, number] | { x: number; y: number; z: number }>).map((p) => {
+            if (Array.isArray(p)) return { x: p[0], y: p[1], z: p[2] };
+            return p as { x: number; y: number; z: number };
+          });
+        }
+      }
+
+      // Normalize axis_point and axis_dir for revolve: [x,y,z] → {x,y,z}
+      if (opField === 'create_revolve') {
+        if (Array.isArray(params.axis_point)) {
+          const [x, y, z] = params.axis_point as [number, number, number];
+          params.axis_point = { x, y, z };
+        }
+        if (Array.isArray(params.axis_dir)) {
+          const [x, y, z] = params.axis_dir as [number, number, number];
+          params.axis_dir = { x, y, z };
+        }
+      }
+
+      // Normalize childrenIds → children_ids for compound
+      if (opField === 'create_compound') {
+        if (Array.isArray(params.children_ids)) {
+          // already correct
+        } else if (Array.isArray(params.childrenIds)) {
+          params.children_ids = params.childrenIds as string[];
+          delete params.childrenIds;
         }
       }
 
@@ -171,13 +208,27 @@ export class NativeKernelAdapter implements KernelAdapter {
       if (typeof m.is_valid === 'boolean') metrics.valid = m.is_valid;
     }
 
-    return {
+    const result: KernelResult = {
       stepIndex,
       stepName,
       shapeId,
       metrics,
       success: true,
     };
+
+    // Parse ExtractFaceProfileResult loops (2D loops, not shape metrics)
+    const efp = success.extract_face_profile;
+    if (efp && Array.isArray(efp.loops)) {
+      result.loops = efp.loops.map((loop: any) => ({
+        points: (loop.points || []).map((p: any) => ({
+          x: p.x,
+          y: p.y,
+          bulge: p.bulge ?? 0,
+        })),
+      }));
+    }
+
+    return result;
   }
 
   async cleanup(): Promise<void> {

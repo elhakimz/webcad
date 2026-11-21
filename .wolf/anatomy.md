@@ -774,6 +774,7 @@
 - `2026-11-20-port-workflow.md` — Phase B item 5.6 port workflow: Python OCP prototype workflow, parity-harness-as-oracle rule, ~15 files / ~600 lines PR budget, step-by-step port sequence (proto op → Python OCP → OpXxx → HandleXxx → switch case → CLI branch → unit tests → parity script → PR), create_cylinder porting example, harness runbook for Python vs C++ results (~6k tok)
 - `2026-11-20-dev-environment.md` — Dev environment setup for Phase B item 5.7: .devcontainer configuration, verify-kernel.sh usage, sanitizer (asan/ubsan) builds, gdb/lldb debugging (~6k tok)
 - `2026-11-20-binary-occt-evaluation.md` — Phase B item 5.9 Binary OCCT evaluation: conda-forge occt 7.9.3 novtk via micromamba (proposed primary), vcpkg (no OCCT package), Debian/Ubuntu (max 7.6.3, not 7.9.3), from-source occt-base Docker as documented fallback (~11k tok)
+- `2026-11-20-wc-ec-09-kernel-protocol-codecs.md` — Implementation plan for WC-EC-09 kernel protocol codecs (TS + C++): TS codec round-trip, misaligned bytes, 256 KiB boundary tests in vitest; C++ codec round-trip, misaligned bytes, 256 KiB boundary tests in CTest (~32k tok)
 
 ## docs/superpowers/specs/
 
@@ -783,7 +784,8 @@
 - `2026-11-20-vitest-protobuf-alias-fix-design.md` — Vitest protobuf alias fix design spec (SUPERSEDED by regenerate-protobuf-es-v2-design.md): add resolve.alias to vitest.config.ts via shared vite.aliases.ts module (~4000 tok)
 - `2026-11-20-regenerate-protobuf-es-v2-design.md` — Regenerate protobuf with protoc-gen-es v2 design spec: replace v1 generated code, delete compat shims, remove aliases (~4300 tok)
 - `2026-11-20-kernel-strategy-adr-design.md
-- `2026-11-20-kernel-dependency-triage-spec.md` — Dependency triage & reuse plan for native OCCT kernel using materializr as reference: adopt OCCT in kernel, zlib in gateway (Node built-in), skip ImGui/SDL3/GLEW/pfd/libcurl/GLM, keep nanosvg/fonts in browser; OCCT build flags, export analysis, LGPL license text (~27k tok)` — WC-EC-05 ADR: native OCCT 7.9.3 kernel workers behind gRPC/UDS, WASM fallback kept, SolidCraft waiver recorded (~9000 tok)
+- `2026-11-20-kernel-dependency-triage-spec.md` — Dependency triage & reuse plan for native OCCT kernel using materializr as reference: adopt OCCT in kernel, zlib in gateway (Node built-in), skip ImGui/SDL3/GLEW/pfd/libcurl/GLM, keep nanosvg/fonts in browser; OCCT build flags, export analysis, LGPL license text (~27k tok)
+- `2026-11-20-wc-ec-09-kernel-protocol-design.md` — WC-EC-09 language-neutral kernel protocol spec: wire protocol semantics, TS/C++ codec validation, data flow, error handling, testing (~9000 tok)
 
 ## Root
 
@@ -876,6 +878,7 @@
 - `wasm-kernel-adapter.integration.test.ts` — Mocked Playwright tests; 2 tests pass (~200 tok)
 - `native-kernel-adapter.integration.test.ts` — Mocked gRPC tests; 3 tests pass (~200 tok)
 - `parity-harness.integration.test.ts` — Mocked adapter tests; 3 tests pass (~200 tok)
+- `kernel-docker-phase1.integration.test.ts` — gRPC integration against Docker OCCT kernel; 6 tests pass (health, InitOp→failure, create_box→failure, step_export→failure, missing-entity→failure ×2) (~300 tok)
 
 ## tests/e2e/
 
@@ -899,3 +902,6 @@
  -    r e p - i m p o r t . t e s t . t s      5   t e s t s   f o r   v a l i d a t e B R e p   i m p o r t   s c e n a r i o s ;   a l l   p a s s   ( ~ 4 0 0   t o k )  
  -   s t e p - e x p o r t . t e s t . t s      5   t e s t s   f o r   v a l i d a t e S t e p   e x p o r t   s c e n a r i o s   ( e m p t y ,   o v e r s i z e d ,   t r u n c a t e d   S T E P   e n d   m a r k e r ,   v a l i d   t e r m i n a t o r ,   v a l i d   a t   6 4 M i B   l i m i t ) ;   a l l   p a s s   ( ~ 4 0 0   t o k )  
  
+- src/core/io/__tests__/codec.test.ts — TS codec round-trip test suite (16 tests: CommandHeader, OpenSession, MeshData, misaligned bytes, 256 KiB boundary, ExecuteFailure); vitest + @bufbuild/protobuf v2 | ~2KB
+
+- 	ests/codec_test.cpp — C++ gtest codec round-trip suite (14 tests: CommandHeader, OpenSessionRequest/Response, MeshData, misaligned bytes, 256 KiB boundary, ExecuteFailure); mirrors TS codec.test.ts for WC-EC-09 chunks 3-4 | ~2KB

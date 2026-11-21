@@ -10,7 +10,7 @@ function toVec3(v: Vec3Like): { x: number; y: number; z: number } {
 }
 
 export interface OpenCascadeConfig {
-  transport?: 'local' | 'grpc';
+  transport?: 'local' | 'grpc' | 'kernel';
   gatewayUrl?: string;
   sessionId?: string;
   includeBrep?: boolean;
@@ -45,11 +45,16 @@ export class OpenCascadeService {
     if (this.transport) return;
     if (this.loading) return this.loading;
 
-    const useGrpc = config.transport === 'grpc' || !!config.gatewayUrl;
+    const useKernel = config.transport === 'kernel';
+    const useGrpc = !useKernel && (config.transport === 'grpc' || !!config.gatewayUrl);
 
     this.loading = (async () => {
       try {
-        if (useGrpc) {
+        if (useKernel) {
+          if (!config.sessionId) throw new Error('sessionId required for kernel transport');
+          const { KernelGrpcTransport } = await import('./KernelGrpcTransport.js');
+          this.transport = new KernelGrpcTransport(config.sessionId);
+        } else if (useGrpc) {
           this.transport = new RemoteGrpcTransport({
             gatewayUrl: config.gatewayUrl!,
             sessionId: config.sessionId,
@@ -59,8 +64,8 @@ export class OpenCascadeService {
         } else {
           this.transport = new OCCWorkerClient();
         }
-        await this.transport.init();
-        console.log(`OpenCascade transport initialized (${useGrpc ? 'grpc' : 'local worker'})`);
+        await this.transport!.init();
+        console.log(`OpenCascade transport initialized (${useKernel ? 'kernel' : useGrpc ? 'grpc' : 'local worker'})`);
       } catch (error) {
         this.reportError(`Failed to initialize OpenCascade transport: ${error instanceof Error ? error.message : String(error)}`);
         throw error;

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>WebCAD Snapshot Host</title>
+</head>
+<body>
+  <canvas id="snapshot-canvas" width="1024" height="1024"></canvas>
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.185.1/build/three.module.js';
+
+    const canvas = document.getElementById('snapshot-canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+    renderer.setSize(1024, 1024);
+    renderer.setPixelRatio(1);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x222222);
+
+    const camera = new THREE.OrthographicCamera(-512, 512, 512, -512, 0.1, 2000);
+
+    // Lighting matching App constructor pattern
+    const ambient = new THREE.HemisphereLight(0xffffff, 0x888888, 1.1);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(200, 400, 500);
+    dirLight.castShadow = true;
+    scene.add(ambient, dirLight);
+
+    let currentMesh = null;
+
+    window.__webcadSnapshot = {
+      loadMesh: (positions, indices, colorIndex = 7) => {
+        if (currentMesh) {
+          scene.remove(currentMesh);
+          currentMesh.geometry.dispose();
+          currentMesh.material.dispose();
+        }
+
+        const color = colorIndex === 7 ? 0xebf2ff : 0xffffff;
+        const material = new THREE.MeshPhongMaterial({ color });
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setIndex(indices);
+        geometry.computeVertexNormals();
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        scene.add(mesh);
+        currentMesh = mesh;
+      },
+
+      setView: (viewName) => {
+        const size = 512;
+        camera.left = -size;
+        camera.right = size;
+        camera.top = size;
+        camera.bottom = -size;
+
+        switch (viewName) {
+          case 'ISOMETRIC':
+            camera.position.set(size, -size, size);
+            camera.up.set(0, 0, 1);
+            break;
+          case 'TOP':
+            camera.position.set(0, 0, size * 2);
+            camera.up.set(0, 1, 0);
+            break;
+          case 'FRONT':
+            camera.position.set(0, -size * 2, 0);
+            camera.up.set(0, 0, 1);
+            break;
+          case 'RIGHT':
+            camera.position.set(size * 2, 0, 0);
+            camera.up.set(0, 0, 1);
+            break;
+        }
+        camera.lookAt(0, 0, 0);
+        camera.updateProjectionMatrix();
+      },
+
+      capturePNG: () => {
+        renderer.render(scene, camera);
+        return canvas.toDataURL('image/png');
+      },
+
+      setSize: (w, h) => {
+        renderer.setSize(w, h);
+        camera.left = -w / 2;
+        camera.right = w / 2;
+        camera.top = h / 2;
+        camera.bottom = -h / 2;
+        camera.updateProjectionMatrix();
+      },
+    };
+  </script>
+</body>
+</html>

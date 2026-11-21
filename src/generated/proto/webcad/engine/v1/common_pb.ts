@@ -10,7 +10,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file webcad/engine/v1/common.proto.
  */
 export const file_webcad_engine_v1_common: GenFile = /*@__PURE__*/
-  fileDesc("Ch13ZWJjYWQvZW5naW5lL3YxL2NvbW1vbi5wcm90bxIQd2ViY2FkLmVuZ2luZS52MSJgCg1Db21tYW5kSGVhZGVyEhIKCnNlc3Npb25faWQYASABKAkSEgoKcmVxdWVzdF9pZBgCIAEoCRISCgpjbGllbnRfc2VxGAMgASgEEhMKC2RvY3VtZW50X2lkGAQgASgJIjQKDFJlc3VsdEhlYWRlchISCgpyZXF1ZXN0X2lkGAEgASgJEhAKCGV2ZW50X2lkGAIgASgEIrwBCg1CcmVwUmVmZXJlbmNlEjYKBmZvcm1hdBgBIAEoDjImLndlYmNhZC5lbmdpbmUudjEuQnJlcFJlZmVyZW5jZS5Gb3JtYXQSDgoGc2hhMjU2GAIgASgJEgwKBGRhdGEYAyABKAwiVQoGRm9ybWF0EhYKEkZPUk1BVF9VTlNQRUNJRklFRBAAEhEKDUZPUk1BVF9CSU5BUlkQARIPCgtGT1JNQVRfVEVYVBACEg8KC0ZPUk1BVF9TVEVQEAMiTgoHQmxvYlJlZhIRCgl1cGxvYWRfaWQYASABKAkSDgoGc2hhMjU2GAIgASgJEgwKBHNpemUYAyABKAQSEgoKc2Vzc2lvbl9pZBgEIAEoCSJuCghNZXNoRGF0YRIRCglwb3NpdGlvbnMYASABKAwSDwoHaW5kaWNlcxgCIAEoDBIUCgxmYWNlX21hcHBpbmcYAyABKAwSFAoMZWRnZV9vZmZzZXRzGAQgASgMEhIKCmVkZ2VfbGluZXMYBSABKAwiYgoLUmVzdWx0Q2h1bmsSEQoJcmVzdWx0X2lkGAEgASgJEhMKC2NodW5rX2luZGV4GAIgASgNEgwKBGRhdGEYAyABKAwSDgoGc2hhMjU2GAQgASgJEg0KBWZpbmFsGAUgASgIIjwKElJlc3VsdENodW5rUmVxdWVzdBIRCglyZXN1bHRfaWQYASABKAkSEwoLY2h1bmtfaW5kZXgYAiABKA0iUwoORXhlY3V0ZUZhaWx1cmUSEQoJb3BlcmF0aW9uGAEgASgJEgwKBGNvZGUYAiABKA0SDwoHbWVzc2FnZRgDIAEoCRIPCgdkZXRhaWxzGAQgASgJKpcDChRFeGVjdXRpb25GYWlsdXJlQ29kZRImCiJFWEVDVVRJT05fRkFJTFVSRV9DT0RFX1VOU1BFQ0lGSUVEEAASKQolRVhFQ1VUSU9OX0ZBSUxVUkVfQ09ERV9NSVNTSU5HX0VOVElUWRABEiwKKEVYRUNVVElPTl9GQUlMVVJFX0NPREVfSU5WQUxJRF9QQVJBTUVURVIQAhIqCiZFWEVDVVRJT05fRkFJTFVSRV9DT0RFX0lOVkFMSURfUFJPRklMRRADEiYKIkVYRUNVVElPTl9GQUlMVVJFX0NPREVfVU5TVVBQT1JURUQQBBIrCidFWEVDVVRJT05fRkFJTFVSRV9DT0RFX09QRVJBVElPTl9GQUlMRUQQBRIpCiVFWEVDVVRJT05fRkFJTFVSRV9DT0RFX0dFT01FVFJZX0VNUFRZEAYSKAokRVhFQ1VUSU9OX0ZBSUxVUkVfQ09ERV9JTVBPUlRfRkFJTEVEEAcSKAokRVhFQ1VUSU9OX0ZBSUxVUkVfQ09ERV9FWFBPUlRfRkFJTEVEEAhCSwoUY29tLndlYmNhZC5lbmdpbmUudjFQAVoxZ2l0aHViLmNvbS9lbGhha2ltei93ZWJjYWQvcHJvdG8vd2ViY2FkL2VuZ2luZS92MWIGcHJvdG8z");
+  fileDesc("Ch13ZWJjYWQvZW5naW5lL3YxL2NvbW1vbi5wcm90bxIQd2ViY2FkLmVuZ2luZS52MSJgCg1Db21tYW5kSGVhZGVyEhIKCnNlc3Npb25faWQYASABKAkSEgoKcmVxdWVzdF9pZBgCIAEoCRISCgpjbGllbnRfc2VxGAMgASgEEhMKC2RvY3VtZW50X2lkGAQgASgJIjQKDFJlc3VsdEhlYWRlchISCgpyZXF1ZXN0X2lkGAEgASgJEhAKCGV2ZW50X2lkGAIgASgEIrwBCg1CcmVwUmVmZXJlbmNlEjYKBmZvcm1hdBgBIAEoDjImLndlYmNhZC5lbmdpbmUudjEuQnJlcFJlZmVyZW5jZS5Gb3JtYXQSDgoGc2hhMjU2GAIgASgJEgwKBGRhdGEYAyABKAwiVQoGRm9ybWF0EhYKEkZPUk1BVF9VTlNQRUNJRklFRBAAEhEKDUZPUk1BVF9CSU5BUlkQARIPCgtGT1JNQVRfVEVYVBACEg8KC0ZPUk1BVF9TVEVQEAMiTgoHQmxvYlJlZhIRCgl1cGxvYWRfaWQYASABKAkSDgoGc2hhMjU2GAIgASgJEgwKBHNpemUYAyABKAQSEgoKc2Vzc2lvbl9pZBgEIAEoCSJuCghNZXNoRGF0YRIRCglwb3NpdGlvbnMYASABKAwSDwoHaW5kaWNlcxgCIAEoDBIUCgxmYWNlX21hcHBpbmcYAyABKAwSFAoMZWRnZV9vZmZzZXRzGAQgASgMEhIKCmVkZ2VfbGluZXMYBSABKAwiYgoLUmVzdWx0Q2h1bmsSEQoJcmVzdWx0X2lkGAEgASgJEhMKC2NodW5rX2luZGV4GAIgASgNEgwKBGRhdGEYAyABKAwSDgoGc2hhMjU2GAQgASgJEg0KBWZpbmFsGAUgASgIIjwKElJlc3VsdENodW5rUmVxdWVzdBIRCglyZXN1bHRfaWQYASABKAkSEwoLY2h1bmtfaW5kZXgYAiABKA0iUwoORXhlY3V0ZUZhaWx1cmUSEQoJb3BlcmF0aW9uGAEgASgJEgwKBGNvZGUYAiABKA0SDwoHbWVzc2FnZRgDIAEoCRIPCgdkZXRhaWxzGAQgASgJImkKDUJvdW5kaW5nQm94M0QSDQoFbWluX3gYASABKAESDQoFbWluX3kYAiABKAESDQoFbWluX3oYAyABKAESDQoFbWF4X3gYBCABKAESDQoFbWF4X3kYBSABKAESDQoFbWF4X3oYBiABKAEiswEKDFNoYXBlTWV0cmljcxIOCgZ2b2x1bWUYASABKAESFAoMc3VyZmFjZV9hcmVhGAIgASgBEi0KBGJib3gYAyABKAsyHy53ZWJjYWQuZW5naW5lLnYxLkJvdW5kaW5nQm94M0QSEgoKZmFjZV9jb3VudBgEIAEoDRISCgplZGdlX2NvdW50GAUgASgNEhQKDHZlcnRleF9jb3VudBgGIAEoDRIQCghpc192YWxpZBgHIAEoCCqXAwoURXhlY3V0aW9uRmFpbHVyZUNvZGUSJgoiRVhFQ1VUSU9OX0ZBSUxVUkVfQ09ERV9VTlNQRUNJRklFRBAAEikKJUVYRUNVVElPTl9GQUlMVVJFX0NPREVfTUlTU0lOR19FTlRJVFkQARIsCihFWEVDVVRJT05fRkFJTFVSRV9DT0RFX0lOVkFMSURfUEFSQU1FVEVSEAISKgomRVhFQ1VUSU9OX0ZBSUxVUkVfQ09ERV9JTlZBTElEX1BST0ZJTEUQAxImCiJFWEVDVVRJT05fRkFJTFVSRV9DT0RFX1VOU1VQUE9SVEVEEAQSKwonRVhFQ1VUSU9OX0ZBSUxVUkVfQ09ERV9PUEVSQVRJT05fRkFJTEVEEAUSKQolRVhFQ1VUSU9OX0ZBSUxVUkVfQ09ERV9HRU9NRVRSWV9FTVBUWRAGEigKJEVYRUNVVElPTl9GQUlMVVJFX0NPREVfSU1QT1JUX0ZBSUxFRBAHEigKJEVYRUNVVElPTl9GQUlMVVJFX0NPREVfRVhQT1JUX0ZBSUxFRBAIQksKFGNvbS53ZWJjYWQuZW5naW5lLnYxUAFaMWdpdGh1Yi5jb20vZWxoYWtpbXovd2ViY2FkL3Byb3RvL3dlYmNhZC9lbmdpbmUvdjFiBnByb3RvMw");
 
 /**
  * Command header carried on every sequenced RPC.
@@ -365,6 +365,100 @@ export type ExecuteFailure = Message<"webcad.engine.v1.ExecuteFailure"> & {
  */
 export const ExecuteFailureSchema: GenMessage<ExecuteFailure> = /*@__PURE__*/
   messageDesc(file_webcad_engine_v1_common, 7);
+
+/**
+ * Axis-aligned bounding box in 3D space.
+ *
+ * @generated from message webcad.engine.v1.BoundingBox3D
+ */
+export type BoundingBox3D = Message<"webcad.engine.v1.BoundingBox3D"> & {
+  /**
+   * @generated from field: double min_x = 1;
+   */
+  minX: number;
+
+  /**
+   * @generated from field: double min_y = 2;
+   */
+  minY: number;
+
+  /**
+   * @generated from field: double min_z = 3;
+   */
+  minZ: number;
+
+  /**
+   * @generated from field: double max_x = 4;
+   */
+  maxX: number;
+
+  /**
+   * @generated from field: double max_y = 5;
+   */
+  maxY: number;
+
+  /**
+   * @generated from field: double max_z = 6;
+   */
+  maxZ: number;
+};
+
+/**
+ * Describes the message webcad.engine.v1.BoundingBox3D.
+ * Use `create(BoundingBox3DSchema)` to create a new message.
+ */
+export const BoundingBox3DSchema: GenMessage<BoundingBox3D> = /*@__PURE__*/
+  messageDesc(file_webcad_engine_v1_common, 8);
+
+/**
+ * Geometric and topological metrics for a CAD shape, used by the parity harness
+ * to compare WASM worker vs native OCCT kernel results.
+ *
+ * @generated from message webcad.engine.v1.ShapeMetrics
+ */
+export type ShapeMetrics = Message<"webcad.engine.v1.ShapeMetrics"> & {
+  /**
+   * @generated from field: double volume = 1;
+   */
+  volume: number;
+
+  /**
+   * @generated from field: double surface_area = 2;
+   */
+  surfaceArea: number;
+
+  /**
+   * @generated from field: webcad.engine.v1.BoundingBox3D bbox = 3;
+   */
+  bbox?: BoundingBox3D | undefined;
+
+  /**
+   * @generated from field: uint32 face_count = 4;
+   */
+  faceCount: number;
+
+  /**
+   * @generated from field: uint32 edge_count = 5;
+   */
+  edgeCount: number;
+
+  /**
+   * @generated from field: uint32 vertex_count = 6;
+   */
+  vertexCount: number;
+
+  /**
+   * @generated from field: bool is_valid = 7;
+   */
+  isValid: boolean;
+};
+
+/**
+ * Describes the message webcad.engine.v1.ShapeMetrics.
+ * Use `create(ShapeMetricsSchema)` to create a new message.
+ */
+export const ShapeMetricsSchema: GenMessage<ShapeMetrics> = /*@__PURE__*/
+  messageDesc(file_webcad_engine_v1_common, 9);
 
 /**
  * @generated from enum webcad.engine.v1.ExecutionFailureCode

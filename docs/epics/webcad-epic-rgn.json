@@ -1,0 +1,212 @@
+{
+  "epic": {
+    "id": "WC-RGN",
+    "name": "Regeneration Engine and Kernel Contracts",
+    "priority": "high",
+    "labels": [
+      "webcad",
+      "engine",
+      "regeneration"
+    ],
+    "description": "Make the feature tree the source of truth and the kernel a geometry processor: ordered feature rebuilds in one call, topology history returned with every result, per-feature failure containment, a decided worker model and job path for non-interactive work, and an OCCT knowledge pack so the coding agent uses version-correct APIs.\n\nWhy now: the proto and generated code already exist, so the Rebuild and topology-history messages should be agreed before more code depends on the current messages. Adding fields is additive in protobuf, but the semantics (ids, ordering, caching) are not. Builds on WC-EC (kernel, gRPC/Connect, command registry, feature graph); it does not replace any WC-EC ticket, but several WC-EC tickets need edits (see Impact).\n\nDesign stance (see ADR ticket): stateful per-session kernel with a warm shape cache stays the default; stateless worker pools are evaluated after the benchmark. A message broker is used only for non-interactive jobs.\n\nImpact on WC-EC: WC-EC-09: Specify Rebuild and topology-history messages (see WC-RGN-03, WC-RGN-02). WC-EC-05: Link the worker-model ADR (WC-RGN-01) and state per-session stateful kernels as the stage-1 model. WC-EC-41: Test the native history behavior needed by WC-RGN-02. WC-EC-42: Use the id and history format from WC-RGN-02. WC-EC-44: Expose the dirty-set computation to the gateway (WC-RGN-06). WC-EC-45: Use the same chain-hash definition as the kernel cache key in WC-RGN-04. WC-EC-47: Add Rebuild as a sequenced command. WC-EC-49: Rebuild runs through the serial queue and broadcasts events to viewers. WC-EC-02: Add the OCCT citation rule and link the knowledge pack (WC-RGN-11)."
+  },
+  "issues": [
+    {
+      "id": "WC-RGN-01",
+      "name": "[WC-RGN-01] ADR: kernel worker model (stateful per-session vs pooled vs hybrid)",
+      "description": "**Goal:** Record which worker model WebCad uses for regeneration and why, with a measured trigger for revisiting.\n\n**Tasks**\n- [ ] Options: (A) stateful per-session kernel with warm shape cache (current), (B) stateless pool where every operation loads inputs from storage, (C) hybrid: per-session kernel plus a content-addressed shape cache used for recovery and migration\n- [ ] Criteria: latency, memory per session, density, crash-recovery cost, multi-user documents (several sessions on one document), operational complexity\n- [ ] Use benchmark data from the real-model benchmark; define the density/latency threshold that would trigger evaluating (B)\n- [ ] State how a message queue relates: not on the interactive path\n\n**Acceptance criteria**\n- [ ] ADR merged with measurements or explicit 'pending benchmark' status\n- [ ] Revisit trigger written down\n\n**Depends on:** WC-EC-33, WC-EC-05\n\n**Agent brief** (suitability C - human-led; the agent gathers evidence and drafts, a human decides)\n- Context pack: AGENTS.md, the protocol spec, the gRPC/Connect design doc, and the files named in the tasks; for OCCT calls use the knowledge pack and cite header path and line.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion maps to a check.\n- Stop and ask a human if the spec is ambiguous, the protocol must change beyond this ticket, or the change exceeds about 15 files / 600 lines.\n- Do not make the decision yourself: present options, evidence and a recommendation.",
+      "priority": "high",
+      "labels": [
+        "adr",
+        "architecture",
+        "agent-c"
+      ],
+      "parent": "WC-RGN",
+      "depends_on": [
+        "WC-EC-33",
+        "WC-EC-05"
+      ],
+      "agent_suitability": "C"
+    },
+    {
+      "id": "WC-RGN-02",
+      "name": "[WC-RGN-02] Proto: topology history and persistent ids in kernel responses",
+      "description": "**Goal:** Every operation result carries enough information to keep downstream references stable. Today MeshData has only a triangle-to-face index.\n\n**Tasks**\n- [ ] Add per-face and per-edge persistent id arrays aligned with mesh face/edge indices\n- [ ] Add a TopologyHistory table per operation: old id -> new ids, with kind (modified, generated, deleted); derived from OCCT Generated/Modified/IsDeleted (API presence was confirmed in the WASM build; behavior is covered by the shape-history spike)\n- [ ] Id assignment rule: creating feature id plus a role (e.g. sidewall of sketch entity, cap); child ids for split faces\n- [ ] Opt-in request flag include_history; size limits and compression; additive proto changes only (buf breaking must pass)\n- [ ] Golden test vectors and a mock-kernel implementation\n\n**Acceptance criteria**\n- [ ] buf lint/breaking pass\n- [ ] History for extrude, boolean and fillet is correct on reference parts\n- [ ] Payload cost measured with and without history\n\n**Depends on:** WC-EC-09, WC-EC-41, WC-EC-42\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely)\n- Context pack: AGENTS.md, the protocol spec, the gRPC/Connect design doc, and the files named in the tasks; for OCCT calls use the knowledge pack and cite header path and line.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion maps to a check.\n- Stop and ask a human if the spec is ambiguous, the protocol must change beyond this ticket, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "protocol",
+        "topology",
+        "agent-b"
+      ],
+      "parent": "WC-RGN",
+      "depends_on": [
+        "WC-EC-09",
+        "WC-EC-41",
+        "WC-EC-42"
+      ],
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-RGN-03",
+      "name": "[WC-RGN-03] Proto: Rebuild RPC (ordered feature batch, streamed per-feature status)",
+      "description": "**Goal:** Replaying a feature tree as N separate calls pays N round trips; send an ordered batch and stream results.\n\n**Tasks**\n- [ ] EngineGateway.Rebuild (server-streaming, browser-safe) and Kernel.Rebuild (server-streaming): request = ordered feature commands (reusing the command envelope), base_version, start index (first dirty feature), known cache revisions, rebuild_id\n- [ ] Events per feature: started, progress, completed (status, mesh delta reference, topology history), failed (ExecuteFailure code/operation), plus a final summary\n- [ ] Rebuild is a sequenced command: client_seq ordering, dedupe by rebuild_id, cancel via the existing Cancel by id\n- [ ] Limits: max features per request, message size, BlobRef for large parameters\n- [ ] Keep Execute for single interactive operations; document when each is used\n\n**Acceptance criteria**\n- [ ] Proto reviewed against the gRPC/Connect design (no client or bidirectional streaming on the browser-facing service)\n- [ ] buf lint/breaking pass; mock kernel implements Rebuild\n\n**Depends on:** WC-RGN-02, WC-EC-09, WC-EC-47\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely)\n- Context pack: AGENTS.md, the protocol spec, the gRPC/Connect design doc, and the files named in the tasks; for OCCT calls use the knowledge pack and cite header path and line.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion maps to a check.\n- Stop and ask a human if the spec is ambiguous, the protocol must change beyond this ticket, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "protocol",
+        "regeneration",
+        "agent-b"
+      ],
+      "parent": "WC-RGN",
+      "depends_on": [
+        "WC-RGN-02",
+        "WC-EC-09",
+        "WC-EC-47"
+      ],
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-RGN-04",
+      "name": "[WC-RGN-04] Kernel: execute a feature chain against the local shape cache",
+      "description": "**Goal:** The kernel runs the chain in order, skipping steps whose result is already cached.\n\n**Tasks**\n- [ ] Cache key = hash(chain prefix + parameters); LRU eviction and memory cap; release shapes on eviction\n- [ ] Same handler code path as Execute (no duplicated operation logic)\n- [ ] Deterministic ordering; stream per-feature events as they finish\n- [ ] Respect per-feature deadlines and the process-kill cancellation model\n\n**Acceptance criteria**\n- [ ] Result equals executing the same commands one at a time (parity harness)\n- [ ] Cache hit skips recomputation; counters exposed in metrics\n\n**Depends on:** WC-RGN-03, WC-EC-10, WC-EC-12, WC-EC-45\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely)\n- Context pack: AGENTS.md, the protocol spec, the gRPC/Connect design doc, and the files named in the tasks; for OCCT calls use the knowledge pack and cite header path and line.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion maps to a check.\n- Stop and ask a human if the spec is ambiguous, the protocol must change beyond this ticket, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "regeneration",
+        "agent-b"
+      ],
+      "parent": "WC-RGN",
+      "depends_on": [
+        "WC-RGN-03",
+        "WC-EC-10",
+        "WC-EC-12",
+        "WC-EC-45"
+      ],
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-RGN-05",
+      "name": "[WC-RGN-05] Per-feature failure containment and dependents policy",
+      "description": "**Goal:** A failed feature must not abort the whole rebuild or hide what still works.\n\n**Tasks**\n- [ ] Per-feature status: ok, failed, skipped (depends on a failed feature), suppressed\n- [ ] Independent branches keep rebuilding; dependents of a failed feature are skipped and marked\n- [ ] Rollback bar: rebuild up to feature k; resume from the failed feature after a fix\n- [ ] Decision for a human: show last-good geometry (greyed, flagged) or nothing for a failed body. Proposed default: show last-good, clearly marked\n- [ ] Failure details use the in-band ExecuteFailure model\n\n**Acceptance criteria**\n- [ ] Matrix of failure cases tested (single failure, chain failure, independent branches)\n- [ ] Resume after fix rebuilds only the affected suffix\n\n**Depends on:** WC-RGN-04, WC-EC-44\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely)\n- Context pack: AGENTS.md, the protocol spec, the gRPC/Connect design doc, and the files named in the tasks; for OCCT calls use the knowledge pack and cite header path and line.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion maps to a check.\n- Stop and ask a human if the spec is ambiguous, the protocol must change beyond this ticket, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "engine",
+        "regeneration",
+        "agent-b"
+      ],
+      "parent": "WC-RGN",
+      "depends_on": [
+        "WC-RGN-04",
+        "WC-EC-44"
+      ],
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-RGN-06",
+      "name": "[WC-RGN-06] Gateway rebuild orchestration",
+      "description": "**Goal:** Turn an edit into the smallest valid rebuild.\n\n**Tasks**\n- [ ] Compute the dirty set from the feature graph; start from the first dirty feature\n- [ ] Call Kernel.Rebuild and relay events to the browser; version-stamp results\n- [ ] Rebuild runs through the document actor's serial queue; per-rebuild and per-feature deadlines\n- [ ] Cancellation and reconnect: resume from the event stream, rehydrate if the kernel restarted\n\n**Acceptance criteria**\n- [ ] Editing a late feature in a long chain rebuilds only the suffix (measured)\n- [ ] Cancel mid-rebuild leaves the session recoverable\n\n**Depends on:** WC-RGN-03, WC-RGN-05, WC-EC-49, WC-EC-44, WC-EC-31\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely)\n- Context pack: AGENTS.md, the protocol spec, the gRPC/Connect design doc, and the files named in the tasks; for OCCT calls use the knowledge pack and cite header path and line.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion maps to a check.\n- Stop and ask a human if the spec is ambiguous, the protocol must change beyond this ticket, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "server",
+        "regeneration",
+        "agent-b"
+      ],
+      "parent": "WC-RGN",
+      "depends_on": [
+        "WC-RGN-03",
+        "WC-RGN-05",
+        "WC-EC-49",
+        "WC-EC-44",
+        "WC-EC-31"
+      ],
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-RGN-07",
+      "name": "[WC-RGN-07] Client integration: feature status, changed-body updates, selection stability",
+      "description": "**Goal:** Show rebuild results in the UI without redrawing everything.\n\n**Tasks**\n- [ ] Feature tree statuses (ok, failed, skipped, suppressed) with error text\n- [ ] Update only changed bodies' meshes; keep selection by persistent id\n- [ ] Undo/redo triggers a rebuild through the inverse command\n- [ ] Progress and cancel controls\n\n**Acceptance criteria**\n- [ ] E2E: edit a sketch dimension; affected bodies update, a failing feature shows a badge, selection survives\n\n**Depends on:** WC-RGN-06, WC-RGN-02\n\n**Agent brief** (suitability B - agent drafts, a human owns design decisions and reviews closely)\n- Context pack: AGENTS.md, the protocol spec, the gRPC/Connect design doc, and the files named in the tasks; for OCCT calls use the knowledge pack and cite header path and line.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion maps to a check.\n- Stop and ask a human if the spec is ambiguous, the protocol must change beyond this ticket, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "client",
+        "regeneration",
+        "agent-b"
+      ],
+      "parent": "WC-RGN",
+      "depends_on": [
+        "WC-RGN-06",
+        "WC-RGN-02"
+      ],
+      "agent_suitability": "B"
+    },
+    {
+      "id": "WC-RGN-08",
+      "name": "[WC-RGN-08] Decision and spike: job queue and async job API for non-interactive work",
+      "description": "**Goal:** Imports, exports, healing, thumbnails and LOD should not block interactive operations.\n\n**Tasks**\n- [ ] Define job types versus interactive operations\n- [ ] Compare a Postgres-based queue (SKIP LOCKED), NATS JetStream, RabbitMQ and Kafka on operations burden, retries, priorities, visibility and fit with the compose-stage deployment (Kafka is an event log, not an obvious work queue)\n- [ ] Job API: submit, get, subscribe, cancel; inputs via BlobRef, outputs via StreamResult or an object-store link; idempotency by job_id; quotas\n- [ ] Spike with three job types; the interactive path must not change\n\n**Acceptance criteria**\n- [ ] Decision memo with recommendation\n- [ ] Spike results for import, export and thumbnail jobs\n\n**Depends on:** WC-EC-09, WC-EC-34\n\n**Agent brief** (suitability C - human-led; the agent gathers evidence and drafts, a human decides)\n- Context pack: AGENTS.md, the protocol spec, the gRPC/Connect design doc, and the files named in the tasks; for OCCT calls use the knowledge pack and cite header path and line.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion maps to a check.\n- Stop and ask a human if the spec is ambiguous, the protocol must change beyond this ticket, or the change exceeds about 15 files / 600 lines.\n- Do not make the decision yourself: present options, evidence and a recommendation.",
+      "priority": "medium",
+      "labels": [
+        "decision",
+        "jobs",
+        "agent-c"
+      ],
+      "parent": "WC-RGN",
+      "depends_on": [
+        "WC-EC-09",
+        "WC-EC-34"
+      ],
+      "agent_suitability": "C"
+    },
+    {
+      "id": "WC-RGN-09",
+      "name": "[WC-RGN-09] Rebuild correctness suite",
+      "description": "**Goal:** Prove rebuilds are right, not just fast.\n\n**Tasks**\n- [ ] Replay equals incremental equals cold rebuild (metrics and hashes where deterministic)\n- [ ] Cache hit equals cold result\n- [ ] Failure containment matrix\n- [ ] Topology stability: edit an upstream sketch dimension; downstream fillet or hole keeps its target by persistent id\n- [ ] Run through the JSON script runner and the oracle reference parts\n\n**Acceptance criteria**\n- [ ] Suite runs in CI\n- [ ] Failures print the metric and delta\n\n**Depends on:** WC-RGN-04, WC-RGN-05, WC-RGN-06, WC-EC-13, WC-EC-12\n\n**Agent brief** (suitability A - agent-led, a human reviews the PR)\n- Context pack: AGENTS.md, the protocol spec, the gRPC/Connect design doc, and the files named in the tasks; for OCCT calls use the knowledge pack and cite header path and line.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion maps to a check.\n- Stop and ask a human if the spec is ambiguous, the protocol must change beyond this ticket, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "testing",
+        "regeneration",
+        "agent-a"
+      ],
+      "parent": "WC-RGN",
+      "depends_on": [
+        "WC-RGN-04",
+        "WC-RGN-05",
+        "WC-RGN-06",
+        "WC-EC-13",
+        "WC-EC-12"
+      ],
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-RGN-10",
+      "name": "[WC-RGN-10] Rebuild performance benchmarks",
+      "description": "**Goal:** Measure what the batch RPC and partial rebuild actually buy.\n\n**Tasks**\n- [ ] Chains of 10, 50 and 200 features on reference models\n- [ ] Compare per-feature Execute round trips vs Rebuild; full vs partial; cache hit effect; memory growth\n- [ ] Define targets after measuring (proposed, not fixed)\n\n**Acceptance criteria**\n- [ ] Report with numbers and proposed targets\n\n**Depends on:** WC-RGN-04, WC-RGN-06, WC-EC-33\n\n**Agent brief** (suitability A - agent-led, a human reviews the PR)\n- Context pack: AGENTS.md, the protocol spec, the gRPC/Connect design doc, and the files named in the tasks; for OCCT calls use the knowledge pack and cite header path and line.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion maps to a check.\n- Stop and ask a human if the spec is ambiguous, the protocol must change beyond this ticket, or the change exceeds about 15 files / 600 lines.",
+      "priority": "medium",
+      "labels": [
+        "performance",
+        "regeneration",
+        "agent-a"
+      ],
+      "parent": "WC-RGN",
+      "depends_on": [
+        "WC-RGN-04",
+        "WC-RGN-06",
+        "WC-EC-33"
+      ],
+      "agent_suitability": "A"
+    },
+    {
+      "id": "WC-RGN-11",
+      "name": "[WC-RGN-11] OCCT knowledge pack for the coding agent",
+      "description": "**Goal:** Version-correct OCCT API information so the agent stops guessing signatures. OCCT's documentation sources are Markdown with Doxygen markup in the dox directory, and headers carry most API documentation.\n\n**Tasks**\n- [ ] Authority for signatures: headers from the pinned package (7.9.3), separately for the gated 8.0.x\n- [ ] Sparse checkout (or documented download script) of the OCCT repo at the pinned tag: dox/ user guides (Modeling Data, Modeling Algorithms, Mesh, Shape Healing, STEP, XDE) and the Draw demo scripts as working call sequences; prefer a script or submodule over copying; check documentation licence terms\n- [ ] occt-api helper: prints a class's documentation comments and method signatures from the headers, per version\n- [ ] Optionally generate HTML for only the modules in use (gendoc supports a module list)\n- [ ] AGENTS.md and PR template rule: cite the header path and line for every OCCT API used; add a CI or review check where practical\n\n**Acceptance criteria**\n- [ ] Agent can answer signature questions from the pack for both versions\n- [ ] helper has tests\n- [ ] PR template updated\n\n**Depends on:** WC-EC-02\n\n**Agent brief** (suitability A - agent-led, a human reviews the PR)\n- Context pack: AGENTS.md, the protocol spec, the gRPC/Connect design doc, and the files named in the tasks; for OCCT calls use the knowledge pack and cite header path and line.\n- Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion maps to a check.\n- Stop and ask a human if the spec is ambiguous, the protocol must change beyond this ticket, or the change exceeds about 15 files / 600 lines.",
+      "priority": "high",
+      "labels": [
+        "agent",
+        "docs",
+        "agent-a"
+      ],
+      "parent": "WC-RGN",
+      "depends_on": [
+        "WC-EC-02"
+      ],
+      "agent_suitability": "A"
+    }
+  ]
+}

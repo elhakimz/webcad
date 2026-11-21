@@ -97,6 +97,18 @@ export default defineConfig({
   },
   resolve: {
   },
+  build: {
+    target: 'esnext',
+    rollupOptions: {
+      external: (id) => {
+        // kernel-supervisor.ts is server-only (Node.js built-ins); never bundle into browser
+        if (id.includes('kernel-supervisor')) return true;
+        // Externalize node: built-ins so they pass through as bare imports
+        if (id.startsWith('node:')) return true;
+        return false;
+      },
+    },
+  },
   server: {
     port: 5173,
     headers: {

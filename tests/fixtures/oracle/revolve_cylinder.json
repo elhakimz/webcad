@@ -1,0 +1,37 @@
+{
+  "id": "revolve_cylinder",
+  "name": "Revolve Cylinder (radius 2, height 1)",
+  "description": "2x1 rectangle revolved 360° around Y axis at origin",
+  "script": {
+    "name": "revolve_cylinder_test",
+    "steps": [
+      {
+        "name": "create_revolve",
+        "parameters": {
+          "points": [[0, 0, 0], [2, 0, 0], [2, 1, 0], [0, 1, 0]],
+          "axis_point": [0, 0, 0],
+          "axis_dir": [0, 1, 0],
+          "angle": 360,
+          "is_closed": true,
+          "deflection": 0.1,
+          "entity_id": "revolve_target"
+        }
+      }
+    ]
+  },
+  "expected": {
+    "volume": 12.566,
+    "surfaceArea": 37.699,
+    "bbox": { "min": [-2.0, 0.0, -2.0], "max": [2.0, 1.0, 2.0] },
+    "faceCount": 3,
+    "edgeCount": 3,
+    "vertexCount": 2,
+    "isValid": true
+  },
+  "tolerances": {
+    "volume": 1e-3,
+    "surfaceArea": 1e-3,
+    "bbox": 1e-3,
+    "counts": 0
+  }
+}

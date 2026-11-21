@@ -63,17 +63,18 @@ export function evaluateMetrics(
   // Surface area — relative diff
   if (actual.surfaceArea !== undefined) {
     const d = relativeDiff(actual.surfaceArea, expected.surfaceArea);
-    const passed = d <= tolerances.surface;
+    const surfaceTol = tolerances.surfaceArea ?? tolerances.surface;
+    const passed = d <= surfaceTol;
     diffs.surfaceArea = {
       metric: 'surfaceArea',
       expected: expected.surfaceArea,
       actual: actual.surfaceArea,
       delta: d,
-      tolerance: tolerances.surface,
+      tolerance: tolerances.surfaceArea ?? tolerances.surface,
       passed,
       message: passed
-        ? `surfaceArea: expected ${expected.surfaceArea}, actual ${actual.surfaceArea}, delta ${d.toExponential(4)}, tolerance ${tolerances.surface} — PASSED`
-        : `surfaceArea: expected ${expected.surfaceArea}, actual ${actual.surfaceArea}, delta ${d.toExponential(4)}, tolerance ${tolerances.surface} — FAILED`,
+        ? `surfaceArea: expected ${expected.surfaceArea}, actual ${actual.surfaceArea}, delta ${d.toExponential(4)}, tolerance ${tolerances.surfaceArea ?? tolerances.surface} — PASSED`
+        : `surfaceArea: expected ${expected.surfaceArea}, actual ${actual.surfaceArea}, delta ${d.toExponential(4)}, tolerance ${tolerances.surfaceArea ?? tolerances.surface} — FAILED`,
     };
     if (!passed) errors.push(diffs.surfaceArea.message!);
   } else {
@@ -82,7 +83,7 @@ export function evaluateMetrics(
       expected: expected.surfaceArea,
       actual: undefined,
       delta: Number.NaN,
-      tolerance: tolerances.surface,
+      tolerance: tolerances.surfaceArea ?? tolerances.surface,
       passed: false,
       message: 'surfaceArea missing from kernel result',
     };

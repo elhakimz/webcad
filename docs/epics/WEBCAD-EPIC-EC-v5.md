@@ -27,8 +27,8 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-13 ✓ | Reference-parts oracle suite (analytic expected values) (done) | high | A | Phase 2 |
 | WC-EC-14 ✓ | Port: simple primitives (box, cylinder, frustum, sphere, cone, torus, wedge, pyramid) (done) | high | A | Phase 2 |
 | WC-EC-15 ✔ | Port: polyhedron and convex hull (done) | medium | A | Phase 2 |
-| WC-EC-16 | Port: transforms (matrix, translate, rotate, mirror, scale) | high | A | Phase 2 |
-| WC-EC-17 | Port: extrude, revolve, compound and face-profile extraction | high | A | Phase 2 |
+| WC-EC-16 ✓ | Port: transforms (matrix, translate, rotate, mirror, scale) | high | A | Phase 2 |
+| WC-EC-17 ✓ | Port: extrude, revolve, compound and face-profile extraction | high | A | Phase 2 |
 | WC-EC-18 | Port: booleans (createBoolean, scad CSG temp ids) | high | A | Phase 2 |
 | WC-EC-19 | Port: fillet and chamfer (solid and face variants) | high | B | Phase 2 |
 | WC-EC-20 | Port: shell (makeThickSolid) and draft | high | B | Phase 2 |
@@ -459,16 +459,16 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** Port to the native OCCT kernel behind the protocol; the existing WASM handler is the behavioral reference and the parity harness is the oracle. Message types: createExtrude, createRevolve, createCompound, extractFaceProfile.
 
 **Tasks**
-- [ ] Port `createExtrude` (OCCWorker.ts lines 2663-2864)
-- [ ] Port `createRevolve` (OCCWorker.ts lines 3732-3860)
-- [ ] Port `createCompound` (OCCWorker.ts lines 3861-3894)
-- [ ] Port `extractFaceProfile` (OCCWorker.ts lines 4384-4529)
-- [ ] Wire/face building from sketch payloads, arcs/splines/holes
-- [ ] Extrude (incl. draft/both directions), revolve
-- [ ] Validation of closed profiles with clear errors
+- [x] Port `createExtrude` (OCCWorker.ts lines 2663-2864)
+- [x] Port `createRevolve` (OCCWorker.ts lines 3732-3860)
+- [x] Port `createCompound` (OCCWorker.ts lines 3861-3894)
+- [x] Port `extractFaceProfile` (OCCWorker.ts lines 4384-4529)
+- [x] Wire/face building from sketch payloads, arcs/splines/holes
+- [x] Extrude (incl. draft/both directions), revolve
+- [x] Validation of closed profiles with clear errors
 
 **Acceptance criteria**
-- [ ] Parity harness passes for the group
+- [x] Parity harness passes for the group
 
 **Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)
 - Context pack: AGENTS.md, protocol spec, kernel skeleton, parity script for this group, and OCCWorker.ts lines 2663-2864, 3732-3894 and 4384-4529.

@@ -34,8 +34,8 @@ describe('NativeKernelAdapter', () => {
   beforeEach(() => {
     vi.resetAllMocks();
 
-    protoLoader.loadSync as any = vi.fn().mockReturnValue({});
-    (grpc as any).loadPackageDefinition as any = vi.fn().mockReturnValue({
+    (protoLoader.loadSync as any) = vi.fn().mockReturnValue({});
+    ((grpc as any).loadPackageDefinition as any) = vi.fn().mockReturnValue({
       webcad: { engine: { v1: { KernelService: mockKernelService } } },
     });
 

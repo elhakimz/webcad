@@ -1,0 +1,675 @@
+{
+  "epic": {
+    "id": "WC-EC",
+    "name": "WebCad Engine Container",
+    "description": "Run the WebCad geometry kernel as native OCCT (latest stable, pinned to 8.0.1) in server-side worker processes behind a Node gateway, connected to the UI over WebSocket; the OCCT WASM worker remains in the browser as offline/preview fallback. Then evolve the service into an Onshape-style engine: server-owned document, feature graph, persistent topology references, versioned operation log.\n\nSupersedes the first version of this epic (WASM-in-Node server). Staged deployment: Node app + native kernel workers + postgres + minio + nginx; split mesh/export or collaboration services only after measured contention.",
+    "labels": [
+      "webcad",
+      "engine"
+    ],
+    "priority": "high"
+  },
+  "issues": [
+    {
+      "id": "WC-EC-01",
+      "name": "[WC-EC-01] ADR: native OCCT 8.x kernel behind a language-neutral protocol",
+      "description": "**Goal:** Record the decision: Node gateway + native OCCT kernel worker processes; WASM worker stays in the browser as offline/preview fallback.\n\n**Tasks**\n- [ ] Document benchmark evidence (same job, boolean-heavy: WASM-in-Node 6.3 s vs native OCCT 7.7 0.6 s vs native OCCT 8.0 0.43 s for 30 cuts; meshing ~3x; single core, one run, WASM build is an older OCCT) and its caveats\n- [ ] Pin target: OCCT 8.0.1 (latest stable per public sources as of Oct 2026); confirm the exact git tag on the OCCT GitHub releases page\n- [ ] Decide kernel language (C++17 direct; Python OCP only as prototyping aid)\n- [ ] LGPL-2.1 review for server deployment and any binary distribution\n- [ ] Define what is authoritative: server owns B-rep; client receives meshes\n\n**Acceptance criteria**\n- [ ] ADR merged in docs\n- [ ] Open risks listed (8.0.x maturity, ecosystem bindings lag, OCCT version differences)",
+      "priority": "high",
+      "labels": [
+        "adr",
+        "architecture",
+        "phase-1"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [],
+      "phase": "Phase 1 - Native kernel foundations"
+    },
+    {
+      "id": "WC-EC-02",
+      "name": "[WC-EC-02] OCCT 8.0.1 build image (pinned, reproducible)",
+      "description": "**Goal:** Container image with OCCT built from the pinned tag.\n\n**Tasks**\n- [ ] Multi-stage Dockerfile: build OCCT from source (Release, only required modules), runtime stage with shared libs only\n- [ ] Verify module/toolkit layout against the 8.0 documentation (Data Exchange modules were restructured in 8.0)\n- [ ] Enable/disable TBB per decision; record compiler flags\n- [ ] SBOM and image scan in CI\n\n**Acceptance criteria**\n- [ ] Image builds reproducibly in CI\n- [ ] Smoke test: create box, boolean, mesh, BRep round trip inside the image\n\n**Depends on:** WC-EC-01",
+      "priority": "high",
+      "labels": [
+        "infra",
+        "kernel",
+        "phase-1"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-01"
+      ],
+      "phase": "Phase 1 - Native kernel foundations"
+    },
+    {
+      "id": "WC-EC-03",
+      "name": "[WC-EC-03] Language-neutral kernel protocol spec + codecs (TS and C++)",
+      "description": "**Goal:** Replace JS-structured-clone assumptions with a spec both gateway and kernel implement.\n\n**Tasks**\n- [ ] Frame = [u32 headerLen][header][buffers]; header (JSON, JSON-Schema defined) lists buffers name/dtype/length\n- [ ] Message catalog derived from the ~40 types in OCCWorker.ts; response always carries id, success, error\n- [ ] edgeLines packed as Float32Array + offsets (no number[][] on the wire)\n- [ ] Golden test vectors shared by TS and C++ implementations\n- [ ] Version field and capability negotiation in hello\n\n**Acceptance criteria**\n- [ ] Round-trip tests pass in both languages with identical golden files\n- [ ] Spec reviewed against every message type\n\n**Depends on:** WC-EC-01",
+      "priority": "high",
+      "labels": [
+        "protocol",
+        "kernel",
+        "phase-1"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-01"
+      ],
+      "phase": "Phase 1 - Native kernel foundations"
+    },
+    {
+      "id": "WC-EC-04",
+      "name": "[WC-EC-04] Kernel worker skeleton (C++17, CMake)",
+      "description": "**Goal:** Process that reads framed requests from a Unix socket or stdio and dispatches to handlers.\n\n**Tasks**\n- [ ] Handler registry, per-process shape cache keyed by entityId (as today)\n- [ ] Map Standard_Failure / std::exception to protocol errors; never crash on bad input\n- [ ] Structured logging, debug flag for verbose logs\n- [ ] Graceful shutdown; health ping\n- [ ] Unit tests with a fake client\n\n**Acceptance criteria**\n- [ ] Handles ping, createBox, release over the protocol\n- [ ] Malformed frames produce errors, not crashes\n\n**Depends on:** WC-EC-02, WC-EC-03",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "phase-1"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-02",
+        "WC-EC-03"
+      ],
+      "phase": "Phase 1 - Native kernel foundations"
+    },
+    {
+      "id": "WC-EC-05",
+      "name": "[WC-EC-05] Gateway kernel supervisor (Node): spawn, pool, framing, respawn",
+      "description": "**Goal:** Node side that owns kernel processes.\n\n**Tasks**\n- [ ] Spawn kernel processes and speak the protocol over UDS/stdio\n- [ ] Per-session (later per-document) FIFO queue preserving ordering the client relies on\n- [ ] Backpressure, health checks, kill on timeout, respawn + rehydrate\n- [ ] Process pool with warm instances (native start is far cheaper than the ~3 s WASM init)\n\n**Acceptance criteria**\n- [ ] Killing a kernel mid-operation recovers the session automatically\n- [ ] Ordering preserved under load test\n\n**Depends on:** WC-EC-04",
+      "priority": "high",
+      "labels": [
+        "server",
+        "kernel",
+        "phase-1"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-04"
+      ],
+      "phase": "Phase 1 - Native kernel foundations"
+    },
+    {
+      "id": "WC-EC-06",
+      "name": "[WC-EC-06] Parity harness: WASM worker vs native kernel",
+      "description": "**Goal:** Use the existing WASM worker as the behavioral oracle while porting.\n\n**Tasks**\n- [ ] Operation scripts replayed against both kernels\n- [ ] Compare volume, surface area, bbox, face/edge/vertex counts, validity (BRepCheck) with tolerances\n- [ ] Known differences between OCCT versions documented, not silently ignored\n- [ ] Run in CI per ported operation group\n\n**Acceptance criteria**\n- [ ] Harness green for each ported group\n- [ ] Report artifact lists tolerances and diffs\n\n**Depends on:** WC-EC-04",
+      "priority": "high",
+      "labels": [
+        "testing",
+        "kernel",
+        "phase-2"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-04"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)"
+    },
+    {
+      "id": "WC-EC-07",
+      "name": "[WC-EC-07] Port: primitives and transforms",
+      "description": "**Goal:** Box, cylinder, sphere, cone, torus, wedge; translate/rotate/scale/mirror; copy; release.\n\n**Tasks**\n- [ ] Implement handlers against OCCT 8 C++ API (no _1/_2 binding suffixes; Message_ProgressRange arguments)\n- [ ] Map entityId lifecycle (create/transform/release)\n\n**Acceptance criteria**\n- [ ] Parity harness passes for the group\n\n**Depends on:** WC-EC-06",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-06"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)"
+    },
+    {
+      "id": "WC-EC-08",
+      "name": "[WC-EC-08] Port: sketch to wire/face, extrude, revolve",
+      "description": "**Goal:** Profile construction and basic feature ops.\n\n**Tasks**\n- [ ] Wire/face building from sketch payloads, arcs/splines/holes\n- [ ] Extrude (incl. draft/both directions), revolve\n- [ ] Validation of closed profiles with clear errors\n\n**Acceptance criteria**\n- [ ] Parity harness passes for the group\n\n**Depends on:** WC-EC-06",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-06"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)"
+    },
+    {
+      "id": "WC-EC-09",
+      "name": "[WC-EC-09] Port: booleans (cut/fuse/common, parallel mode)",
+      "description": "**Goal:** Booleans are the hot path in the benchmark.\n\n**Tasks**\n- [ ] Implement with BRepAlgoAPI_*; evaluate SetRunParallel and fuzzy tolerance\n- [ ] Retain history (Generated/Modified/IsDeleted) for persistent ids later\n- [ ] Timing comparison vs WASM on the benchmark job\n\n**Acceptance criteria**\n- [ ] Parity passes\n- [ ] Native is measurably faster than WASM on the benchmark job\n\n**Depends on:** WC-EC-06",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-06"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)"
+    },
+    {
+      "id": "WC-EC-10",
+      "name": "[WC-EC-10] Port: fillet, chamfer, shell, draft, offset",
+      "description": "**Goal:** Finishing operations that currently take raw edgeIndex/faceIndices.\n\n**Tasks**\n- [ ] Port with the same inputs first (indices), keep behavior identical\n- [ ] Expose history so persistent refs can replace indices later (see engine core)\n- [ ] Error reporting for failed fillets (which edge)\n\n**Acceptance criteria**\n- [ ] Parity harness passes\n- [ ] Failure cases return structured errors\n\n**Depends on:** WC-EC-06",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-06"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)"
+    },
+    {
+      "id": "WC-EC-11",
+      "name": "[WC-EC-11] Port: sweep, loft, text/path, scad CSG executor ops and remaining message types",
+      "description": "**Goal:** Everything else in OCCWorker.ts (inventory the full message list; ~40 types).\n\n**Tasks**\n- [ ] Inventory remaining handlers and rank by usage\n- [ ] Port in order of usage; leave rarely used ones on a deprecation list\n- [ ] Support temp ids used by the scad CsgExecutor (scad_N)\n\n**Acceptance criteria**\n- [ ] Message inventory shows 100% ported or explicitly deprecated\n\n**Depends on:** WC-EC-06",
+      "priority": "medium",
+      "labels": [
+        "kernel",
+        "port",
+        "phase-2"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-06"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)"
+    },
+    {
+      "id": "WC-EC-12",
+      "name": "[WC-EC-12] Port: tessellation to binary buffers",
+      "description": "**Goal:** positions, indices, faceMapping, edge polylines from BRepMesh_IncrementalMesh.\n\n**Tasks**\n- [ ] Deflection/angle parameters matching current visual quality\n- [ ] faceMapping (triangle -> face index) and edge lines as packed buffers\n- [ ] Parallel meshing (OSD_ThreadPool/BRepMesh parallel flag) measured on a multi-core host\n\n**Acceptance criteria**\n- [ ] Mesh stats match WASM within tolerance\n- [ ] Payload smaller than JSON equivalent (measure)\n\n**Depends on:** WC-EC-06, WC-EC-03",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "port",
+        "performance",
+        "phase-2"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-06",
+        "WC-EC-03"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)"
+    },
+    {
+      "id": "WC-EC-13",
+      "name": "[WC-EC-13] B-rep import/export and cross-version compatibility",
+      "description": "**Goal:** importBRep/exportBRep with native BinTools plus text BRep fallback.\n\n**Tasks**\n- [ ] Test B-rep produced by the browser WASM worker (older OCCT, text BRep path because BinTools is absent there) imported by OCCT 8.0.1\n- [ ] Test 8.0.1 export imported by the WASM worker if the local fallback is kept\n- [ ] Content hash of B-rep for caching and revisions\n- [ ] Fuzz-test the importer (untrusted input)\n\n**Acceptance criteria**\n- [ ] Cross-version round trips pass or incompatibilities are documented with a migration path\n\n**Depends on:** WC-EC-04",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "persistence",
+        "phase-2"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-04"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)"
+    },
+    {
+      "id": "WC-EC-14",
+      "name": "[WC-EC-14] Server-side STEP / STL / glTF export",
+      "description": "**Goal:** Exports run in the kernel (later a separate mesh worker if they block geometry ops).\n\n**Tasks**\n- [ ] Use the OCCT 8 data-exchange modules (verify names/layout in 8.0 docs)\n- [ ] Stream results to MinIO, return a link\n\n**Acceptance criteria**\n- [ ] Exports of a sample assembly open correctly in a third-party viewer\n\n**Depends on:** WC-EC-12",
+      "priority": "medium",
+      "labels": [
+        "kernel",
+        "export",
+        "phase-2"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-12"
+      ],
+      "phase": "Phase 2 - Port operations (parity-driven)"
+    },
+    {
+      "id": "WC-EC-15",
+      "name": "[WC-EC-15] Extract OCCTransport interface; keep WASM worker as local fallback",
+      "description": "**Goal:** Seam between UI and kernel.\n\n**Tasks**\n- [ ] Derive OCCTransport from OCCWorkerClient public methods (send, pendingCount, init)\n- [ ] LocalWorkerTransport = today's OCCWorkerClient\n- [ ] OpenCascadeService selects transport from config\n\n**Acceptance criteria**\n- [ ] No behavior change in local mode\n- [ ] TestBridge idle detection (pendingCount) still works",
+      "priority": "high",
+      "labels": [
+        "refactor",
+        "transport",
+        "phase-3"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [],
+      "phase": "Phase 3 - Gateway and client integration"
+    },
+    {
+      "id": "WC-EC-16",
+      "name": "[WC-EC-16] Gateway: WebSocket server, auth hello, sessions",
+      "description": "**Goal:** ws server mapping sessions to kernel processes via the supervisor.\n\n**Tasks**\n- [ ] hello {sessionId, projectId, token}\n- [ ] Session registry; isolation of entityIds between sessions\n- [ ] Forward binary frames to/from the kernel unchanged where possible (zero-copy Buffers)\n\n**Acceptance criteria**\n- [ ] Two sessions cannot see each other's shapes\n\n**Depends on:** WC-EC-05, WC-EC-03",
+      "priority": "high",
+      "labels": [
+        "server",
+        "transport",
+        "phase-3"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-05",
+        "WC-EC-03"
+      ],
+      "phase": "Phase 3 - Gateway and client integration"
+    },
+    {
+      "id": "WC-EC-17",
+      "name": "[WC-EC-17] RemoteWsTransport (client)",
+      "description": "**Goal:** Client transport implementing OCCTransport over WebSocket.\n\n**Tasks**\n- [ ] Request/response by id, timeout, heartbeat\n- [ ] Reconnect with backoff; connection state events; UI status: connected / reconnecting / rehydrating\n- [ ] Surface failures of previously fire-and-forget calls (restoreSolidBRep, undo transformShape)\n\n**Acceptance criteria**\n- [ ] Kill gateway mid-session: UI recovers\n- [ ] No silent failures on formerly fire-and-forget calls\n\n**Depends on:** WC-EC-15, WC-EC-16",
+      "priority": "high",
+      "labels": [
+        "client",
+        "transport",
+        "phase-3"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-15",
+        "WC-EC-16"
+      ],
+      "phase": "Phase 3 - Gateway and client integration"
+    },
+    {
+      "id": "WC-EC-18",
+      "name": "[WC-EC-18] Vite dev proxy and local/remote switch",
+      "description": "**Goal:** Same-origin WS in dev (COOP/COEP enabled).\n\n**Tasks**\n- [ ] server.proxy /occ with ws: true\n- [ ] VITE_OCC_URL; empty = local WASM worker\n\n**Acceptance criteria**\n- [ ] npm run dev works in both modes without COEP errors\n\n**Depends on:** WC-EC-17",
+      "priority": "medium",
+      "labels": [
+        "dx",
+        "config",
+        "phase-3"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-17"
+      ],
+      "phase": "Phase 3 - Gateway and client integration"
+    },
+    {
+      "id": "WC-EC-19",
+      "name": "[WC-EC-19] Session resume, rehydrate and restoreMany",
+      "description": "**Goal:** Recover kernel state after disconnect or kernel crash.\n\n**Tasks**\n- [ ] Grace period keeping the kernel alive after disconnect\n- [ ] hello with sessionId resumes; otherwise needsRehydrate\n- [ ] restoreMany re-imports all solids in one round trip (reuse brepSnapshot/PersistenceService)\n\n**Acceptance criteria**\n- [ ] Reconnect within grace: nothing re-imported\n- [ ] After kernel crash: all solids restored; test with 50+ solids\n\n**Depends on:** WC-EC-17, WC-EC-13",
+      "priority": "high",
+      "labels": [
+        "resilience",
+        "protocol",
+        "phase-3"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-17",
+        "WC-EC-13"
+      ],
+      "phase": "Phase 3 - Gateway and client integration"
+    },
+    {
+      "id": "WC-EC-20",
+      "name": "[WC-EC-20] Cancellation, per-operation timeouts, progress events",
+      "description": "**Goal:** A native kernel process can simply be killed and respawned.\n\n**Tasks**\n- [ ] Server-side timeout per operation type (replace fixed 120 s client timeout)\n- [ ] cancel {id}: kill process, respawn, rehydrate\n- [ ] progress {id, pct} messages for long operations; gate log frames behind debug flag\n\n**Acceptance criteria**\n- [ ] Runaway op is killed and the session recovers automatically\n\n**Depends on:** WC-EC-19",
+      "priority": "medium",
+      "labels": [
+        "resilience",
+        "protocol",
+        "phase-3"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-19"
+      ],
+      "phase": "Phase 3 - Gateway and client integration"
+    },
+    {
+      "id": "WC-EC-21",
+      "name": "[WC-EC-21] Input validation, frame limits and quotas",
+      "description": "**Goal:** Worker currently trusts payloads (e.g. points: any[]).\n\n**Tasks**\n- [ ] Schema validation for every message type at the gateway\n- [ ] Max frame size; ops/sec rate limits; per-session shape and memory caps\n- [ ] Malformed payload returns an error without killing the session\n\n**Acceptance criteria**\n- [ ] Negative/fuzz tests pass\n\n**Depends on:** WC-EC-16, WC-EC-03",
+      "priority": "high",
+      "labels": [
+        "security",
+        "phase-3"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-16",
+        "WC-EC-03"
+      ],
+      "phase": "Phase 3 - Gateway and client integration"
+    },
+    {
+      "id": "WC-EC-22",
+      "name": "[WC-EC-22] Benchmark on real models: native vs WASM, thread scaling",
+      "description": "**Goal:** The first benchmark was synthetic and ran on one core.\n\n**Tasks**\n- [ ] Collect representative models and operation scripts from real projects\n- [ ] Measure p50/p95 per operation, memory per document, throughput per core\n- [ ] Measure parallel booleans/meshing on a multi-core host and the effect of OCCT's parallel flags\n- [ ] Define capacity targets (documents per core/host)\n\n**Acceptance criteria**\n- [ ] Report with targets; hosting size recommendation\n\n**Depends on:** WC-EC-09, WC-EC-12",
+      "priority": "high",
+      "labels": [
+        "performance",
+        "testing",
+        "phase-4"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-09",
+        "WC-EC-12"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations"
+    },
+    {
+      "id": "WC-EC-23",
+      "name": "[WC-EC-23] Kernel process pool, affinity, idle eviction, cgroup limits",
+      "description": "**Goal:** Bound CPU and memory per kernel process.\n\n**Tasks**\n- [ ] Warm pool; assign by session now, by document later\n- [ ] Idle TTL eviction; release shapes on disconnect\n- [ ] cgroup/container memory and CPU limits; OOM handling\n\n**Acceptance criteria**\n- [ ] Soak test keeps memory bounded\n\n**Depends on:** WC-EC-05",
+      "priority": "medium",
+      "labels": [
+        "infra",
+        "performance",
+        "phase-4"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-05"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations"
+    },
+    {
+      "id": "WC-EC-24",
+      "name": "[WC-EC-24] Crash isolation, diagnostics and sanitizer CI",
+      "description": "**Goal:** Native crashes must never take down other users.\n\n**Tasks**\n- [ ] Core dump/crash report capture with operation context\n- [ ] ASan/UBSan CI builds running the parity suite\n- [ ] Fuzz B-rep/sketch payload parsers\n- [ ] Automatic respawn tested with injected crashes\n\n**Acceptance criteria**\n- [ ] Injected segfault affects only one session and recovers\n\n**Depends on:** WC-EC-04",
+      "priority": "high",
+      "labels": [
+        "kernel",
+        "quality",
+        "phase-4"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-04"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations"
+    },
+    {
+      "id": "WC-EC-25",
+      "name": "[WC-EC-25] Dockerfile and docker-compose (app, kernel, postgres, minio, nginx)",
+      "description": "**Goal:** Stage-1 deployment: monolith app + native kernel workers.\n\n**Tasks**\n- [ ] App container (Node gateway) and kernel image from the pinned OCCT build\n- [ ] compose with healthchecks, volumes, env config\n- [ ] nginx with WebSocket upgrade, timeouts, COOP/COEP headers\n\n**Acceptance criteria**\n- [ ] docker compose up gives a working UI + native engine\n- [ ] WS survives nginx idle timeouts via heartbeat\n\n**Depends on:** WC-EC-02, WC-EC-16",
+      "priority": "high",
+      "labels": [
+        "infra",
+        "docker",
+        "phase-4"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-02",
+        "WC-EC-16"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations"
+    },
+    {
+      "id": "WC-EC-26",
+      "name": "[WC-EC-26] Auth, origin check and sandboxing",
+      "description": "**Goal:** Uploaded B-rep is untrusted input to a native parser.\n\n**Tasks**\n- [ ] Short-lived token on WS upgrade; Origin check\n- [ ] Kernel runs non-root, read-only FS, seccomp/no network, CPU/memory limits\n- [ ] Per-user quotas\n\n**Acceptance criteria**\n- [ ] Unauthenticated upgrade rejected\n- [ ] Crafted B-rep cannot affect other sessions or the host\n\n**Depends on:** WC-EC-25",
+      "priority": "high",
+      "labels": [
+        "security",
+        "infra",
+        "phase-4"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-25"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations"
+    },
+    {
+      "id": "WC-EC-27",
+      "name": "[WC-EC-27] Observability: metrics and structured logs",
+      "description": "**Goal:** Detect contention before splitting services.\n\n**Tasks**\n- [ ] Metrics: queue depth, op latency by type, kernel RSS, sessions, respawn count\n- [ ] Structured logs with sessionId/documentId\n- [ ] Dashboards and alerts\n\n**Acceptance criteria**\n- [ ] Clear signal for when export/meshing blocks geometry ops\n\n**Depends on:** WC-EC-25",
+      "priority": "medium",
+      "labels": [
+        "infra",
+        "observability",
+        "phase-4"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-25"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations"
+    },
+    {
+      "id": "WC-EC-28",
+      "name": "[WC-EC-28] Production file API (replace Vite dev middleware)",
+      "description": "**Goal:** /api/files exists only as a Vite dev plugin.\n\n**Tasks**\n- [ ] Move list/read/write/absolute-path endpoints into the app server\n- [ ] Path traversal protection (dev plugin joins user paths unchecked)\n- [ ] Storage on MinIO or volume\n\n**Acceptance criteria**\n- [ ] Existing file features work; traversal tests pass\n\n**Depends on:** WC-EC-25",
+      "priority": "medium",
+      "labels": [
+        "backend",
+        "infra",
+        "phase-4"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-25"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations"
+    },
+    {
+      "id": "WC-EC-29",
+      "name": "[WC-EC-29] OCCT upgrade policy and regression corpus",
+      "description": "**Goal:** 8.0.x is new; bindings in the wider ecosystem lag it.\n\n**Tasks**\n- [ ] Pin exact tag; track 8.0.x patch releases and migration notes\n- [ ] Regression corpus (models + expected metrics) gating every upgrade\n- [ ] Document how persisted B-rep/revisions behave across upgrades\n\n**Acceptance criteria**\n- [ ] Upgrade checklist and CI gate in place\n\n**Depends on:** WC-EC-06",
+      "priority": "medium",
+      "labels": [
+        "kernel",
+        "process",
+        "phase-4"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-06"
+      ],
+      "phase": "Phase 4 - Performance, deployment, operations"
+    },
+    {
+      "id": "WC-EC-30",
+      "name": "[WC-EC-30] Spike: shape history API for persistent references",
+      "description": "**Goal:** Verify BRepBuilderAPI_MakeShape::Generated/Modified/IsDeleted and BRepTools_History in OCCT 8.0.1 for each operation (the WASM build exposed the API, but behavior was not tested).\n\n**Tasks**\n- [ ] Test extrude, fillet, chamfer, boolean, shell natively: which source faces map to which result faces\n- [ ] Document operations without usable history\n\n**Acceptance criteria**\n- [ ] Table of operations vs history quality\n- [ ] Go/no-go for history-based propagation\n\n**Depends on:** WC-EC-04",
+      "priority": "high",
+      "labels": [
+        "spike",
+        "topology",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-04"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    },
+    {
+      "id": "WC-EC-31",
+      "name": "[WC-EC-31] Persistent face/edge ids",
+      "description": "**Goal:** Stable ids that survive upstream edits.\n\n**Tasks**\n- [ ] Assign ids at creation (creating feature id + role, e.g. sidewall of sketch entity E2, cap-start)\n- [ ] Propagate through ops using history; split faces get child ids; deleted become unresolved\n- [ ] Store id table per feature step\n\n**Acceptance criteria**\n- [ ] Edit upstream sketch dimension: downstream fillet still targets same face\n- [ ] Ids deterministic across rebuilds\n\n**Depends on:** WC-EC-30",
+      "priority": "high",
+      "labels": [
+        "topology",
+        "engine",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-30"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    },
+    {
+      "id": "WC-EC-32",
+      "name": "[WC-EC-32] Replace index references; geometric-signature fallback",
+      "description": "**Goal:** FeatureNode currently stores edgeIndex / faceIndices; topologicalReference (GeometricSignature) is declared but unused.\n\n**Tasks**\n- [ ] Migrate Fillet, Chamfer, Shell, Draft features to persistent refs\n- [ ] Fallback matching by centroid/normal/area/faceType with scoring\n- [ ] Per-feature status: ok / reference repaired / reference lost with UI to re-pick\n- [ ] Migration for existing documents\n\n**Acceptance criteria**\n- [ ] Lost reference yields visible error, never a silent wrong target\n- [ ] Existing documents open and migrate\n\n**Depends on:** WC-EC-31",
+      "priority": "high",
+      "labels": [
+        "topology",
+        "engine",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-31"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    },
+    {
+      "id": "WC-EC-33",
+      "name": "[WC-EC-33] Document-level feature graph and partial rebuild",
+      "description": "**Goal:** Today Solid3DReevaluator replays per solid from the primitive each time.\n\n**Tasks**\n- [ ] Document-wide dependency DAG (sketch -> extrude -> fillet ...)\n- [ ] Dirty propagation; rebuild from first dirty feature\n- [ ] Per-feature status and suppression; rollback bar\n\n**Acceptance criteria**\n- [ ] Editing a late feature does not recompute earlier ones (measure)\n- [ ] Cycles rejected\n\n**Depends on:** WC-EC-31",
+      "priority": "high",
+      "labels": [
+        "engine",
+        "architecture",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-31"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    },
+    {
+      "id": "WC-EC-34",
+      "name": "[WC-EC-34] Per-step shape cache keyed by feature-chain hash",
+      "description": "**Goal:** Rebuild results are cacheable and always rebuildable from the definition.\n\n**Tasks**\n- [ ] Cache key = hash(feature chain up to step + params)\n- [ ] In-memory LRU, then MinIO (B-rep content hashes from the native kernel)\n- [ ] Invalidate correctly on edits\n\n**Acceptance criteria**\n- [ ] Repeated open of same version skips rebuild\n- [ ] Cache hit rate metric\n\n**Depends on:** WC-EC-33",
+      "priority": "medium",
+      "labels": [
+        "engine",
+        "performance",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-33"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    },
+    {
+      "id": "WC-EC-35",
+      "name": "[WC-EC-35] Command API (AddFeature / EditFeature / Suppress / Reorder)",
+      "description": "**Goal:** Client sends commands against a base version instead of imperative kernel calls.\n\n**Tasks**\n- [ ] Command schema incl. featureId, inputs, params, refs, baseVersion\n- [ ] Server validates, applies, rebuilds, returns version + per-feature status + meshes\n- [ ] Reject stale baseVersion with a clear conflict response\n\n**Acceptance criteria**\n- [ ] Client UI can create and edit features through commands only\n- [ ] Kernel calls no longer made directly by UI\n\n**Depends on:** WC-EC-33, WC-EC-16",
+      "priority": "high",
+      "labels": [
+        "engine",
+        "protocol",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-33",
+        "WC-EC-16"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    },
+    {
+      "id": "WC-EC-36",
+      "name": "[WC-EC-36] Operation log and microversions in Postgres",
+      "description": "**Goal:** Definition stored as immutable versions {parent, author, change}; regeneration results are derived.\n\n**Tasks**\n- [ ] Append-only log table; periodic snapshots\n- [ ] Changes keyed by feature id so they can apply to a different parent version\n- [ ] Named versions and branches (later)\n\n**Acceptance criteria**\n- [ ] Any version reproducible by replay\n- [ ] Snapshot restore equals replay result\n\n**Depends on:** WC-EC-35",
+      "priority": "high",
+      "labels": [
+        "backend",
+        "versioning",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-35"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    },
+    {
+      "id": "WC-EC-37",
+      "name": "[WC-EC-37] Document actor: serial queue, worker affinity, viewer broadcast",
+      "description": "**Goal:** One serial queue per document; workers keyed by document, not connection.\n\n**Tasks**\n- [ ] Document actor owning queue and worker\n- [ ] Multiple clients share one kernel\n- [ ] Broadcast new versions to viewers\n- [ ] Single-writer lock in stage 1\n\n**Acceptance criteria**\n- [ ] Second client sees edits live\n- [ ] Concurrent edit attempt by non-holder is rejected cleanly\n\n**Depends on:** WC-EC-35",
+      "priority": "high",
+      "labels": [
+        "engine",
+        "collab",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-35"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    },
+    {
+      "id": "WC-EC-38",
+      "name": "[WC-EC-38] Server-side sketch re-solve",
+      "description": "**Goal:** Sketch definition (entities + constraints) stored in the document; server re-solves authoritatively; client keeps its own solver for interactive drag.\n\n**Tasks**\n- [ ] Verify solver runs in Node (SketchModel/System/Solver have no DOM/three refs; check constraints/ and GCSBridge.ts)\n- [ ] Run SketchModel.deserialize + System.solve in rebuild\n- [ ] Return solved result to client when it disagrees\n\n**Acceptance criteria**\n- [ ] Server rebuild without a browser reproduces client sketches\n- [ ] Disagreement path tested\n\n**Depends on:** WC-EC-33",
+      "priority": "medium",
+      "labels": [
+        "engine",
+        "sketch",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-33"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    },
+    {
+      "id": "WC-EC-39",
+      "name": "[WC-EC-39] Per-user undo/redo as inverse changes",
+      "description": "**Goal:** Undo must work with multiple editors: inverse of my last change, not rollback to previous version.\n\n**Tasks**\n- [ ] Inverse change generation per command type\n- [ ] Undo/redo stacks per user per document\n\n**Acceptance criteria**\n- [ ] Two users editing: undo only reverts own change\n\n**Depends on:** WC-EC-35",
+      "priority": "medium",
+      "labels": [
+        "engine",
+        "versioning",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-35"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    },
+    {
+      "id": "WC-EC-40",
+      "name": "[WC-EC-40] Concurrent writers with rebase (stage 2)",
+      "description": "**Goal:** Replace single-writer lock with changes that rebase onto newer versions.\n\n**Tasks**\n- [ ] Rebase rules per command type\n- [ ] Conflict surfacing in UI\n\n**Acceptance criteria**\n- [ ] Two users edit different features simultaneously without loss\n\n**Depends on:** WC-EC-36, WC-EC-37",
+      "priority": "low",
+      "labels": [
+        "collab",
+        "versioning",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-36",
+        "WC-EC-37"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    },
+    {
+      "id": "WC-EC-41",
+      "name": "[WC-EC-41] Assembly model (backlog)",
+      "description": "**Goal:** Assemblies referencing Part Studios as stable version snapshots.\n\n**Tasks**\n- [ ] Design only: references, mates, versioned part references\n\n**Acceptance criteria**\n- [ ] Design note reviewed\n\n**Depends on:** WC-EC-35",
+      "priority": "low",
+      "labels": [
+        "engine",
+        "assembly",
+        "phase-5"
+      ],
+      "parent": "WC-EC",
+      "depends_on": [
+        "WC-EC-35"
+      ],
+      "phase": "Phase 5 - Onshape-style engine core"
+    }
+  ]
+}

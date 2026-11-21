@@ -1,0 +1,279 @@
+[
+  {
+    "message_type": "CommandHeader",
+    "description": "all fields populated",
+    "input": {
+      "sessionId": "c9bf9a6e-6bbd-4c7a-bd1e-0f5a6c1b2d3e",
+      "requestId": "d1e2f3a4-5b6c-7d8e-9f0a-1b2c3d4e5f6a",
+      "clientSeq": 7,
+      "documentId": "doc-42"
+    }
+  },
+  {
+    "message_type": "CommandHeader",
+    "description": "empty / default fields",
+    "input": {}
+  },
+  {
+    "message_type": "CommandHeader",
+    "description": "max safe integer clientSeq",
+    "input": {
+      "clientSeq": 9007199254740991
+    }
+  },
+  {
+    "message_type": "MeshData",
+    "description": "typical triangular mesh with positions, indices, edge lines",
+    "input": {
+      "positions": "AAECAwQFBgcICQoLDA0ODw==",
+      "indices": "AAECAQ==",
+      "faceMapping": "AA==",
+      "edgeOffsets": "AAECAA==",
+      "edgeLines": "AAECAwQFBgc="
+    }
+  },
+  {
+    "message_type": "MeshData",
+    "description": "empty mesh data",
+    "input": {}
+  },
+  {
+    "message_type": "ExecuteFailure",
+    "description": "all failure codes and fields",
+    "input": {
+      "operation": "create_box",
+      "code": 6,
+      "message": "boolean failed",
+      "details": "non-manifold result"
+    }
+  },
+  {
+    "message_type": "ExecuteFailure",
+    "description": "empty / default failure",
+    "input": {}
+  },
+
+  {
+    "message_type": "OpenSessionRequest",
+    "description": "header + version + includeBrep",
+    "input": {
+      "header": {
+        "sessionId": "sess-1",
+        "requestId": "req-1",
+        "clientSeq": 1,
+        "documentId": ""
+      },
+      "clientVersion": "1.0.0",
+      "includeBrep": true
+    }
+  },
+  {
+    "message_type": "OpenSessionRequest",
+    "description": "empty / default",
+    "input": {}
+  },
+  {
+    "message_type": "OpenSessionResponse",
+    "description": "all fields incl. serverLimits and supportedOperations",
+    "input": {
+      "protocolVersion": "1.0",
+      "minimumClientVersion": "0.9.0",
+      "serverLimits": {
+        "maxMessageSize": 16777216,
+        "inlineRequestLimit": 4194304,
+        "inlineResponseLimit": 4194304,
+        "chunkSizeLimit": 1048576,
+        "perSessionBlobQuota": 67108864
+      },
+      "heartbeatInterval": 15,
+      "kernelVersion": "kernel-v1",
+      "occtVersion": "7.9.3",
+      "supportedOperations": ["create_box", "boolean", "mesh"]
+    }
+  },
+  {
+    "message_type": "OpenSessionResponse",
+    "description": "empty / default",
+    "input": {}
+  },
+
+  {
+    "message_type": "HealthRequest",
+    "description": "service name set",
+    "input": {
+      "service": "kernel"
+    }
+  },
+  {
+    "message_type": "HealthRequest",
+    "description": "empty service",
+    "input": {}
+  },
+  {
+    "message_type": "HealthResponse",
+    "description": "serving status",
+    "input": {
+      "status": 1
+    }
+  },
+  {
+    "message_type": "HealthResponse",
+    "description": "unspecified status",
+    "input": {}
+  },
+
+  {
+    "message_type": "InitOp",
+    "description": "empty message",
+    "input": {}
+  },
+  {
+    "message_type": "ClearCacheOp",
+    "description": "empty message",
+    "input": {}
+  },
+  {
+    "message_type": "ReleaseShapesOp",
+    "description": "list of entity ids to release",
+    "input": {
+      "entityIds": ["ent-1", "ent-2", "ent-3"]
+    }
+  },
+  {
+    "message_type": "ReleaseShapesOp",
+    "description": "no entity ids",
+    "input": {}
+  },
+  {
+    "message_type": "CheckValidityOp",
+    "description": "entity id to validate",
+    "input": {
+      "entityId": "ent-42"
+    }
+  },
+  {
+    "message_type": "ExportBRepOp",
+    "description": "entity id to export",
+    "input": {
+      "entityId": "ent-7"
+    }
+  },
+
+  {
+    "message_type": "CreateBoxOp",
+    "description": "box with all fields",
+    "input": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "dx": 10.0,
+      "dy": 5.0,
+      "dz": 3.0,
+      "deflection": 0.001,
+      "entityId": "box-1"
+    }
+  },
+  {
+    "message_type": "CreateCylinderOp",
+    "description": "cylinder with all fields",
+    "input": {
+      "x": 1.0,
+      "y": 2.0,
+      "z": 3.0,
+      "r": 4.0,
+      "h": 8.0,
+      "deflection": 0.01,
+      "entityId": "cyl-1"
+    }
+  },
+  {
+    "message_type": "CreateSphereOp",
+    "description": "sphere with all fields",
+    "input": {
+      "x": -1.0,
+      "y": 0.0,
+      "z": 5.0,
+      "r": 2.5,
+      "deflection": 0.005,
+      "entityId": "sph-1"
+    }
+  },
+  {
+    "message_type": "CreateConeOp",
+    "description": "cone with all fields",
+    "input": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "r": 3.0,
+      "h": 7.0,
+      "deflection": 0.002,
+      "entityId": "cone-1"
+    }
+  },
+
+  {
+    "message_type": "CreateBooleanOp",
+    "description": "fuse operation with rot/center points",
+    "input": {
+      "operation": "fuse",
+      "idA": "ent-a",
+      "idB": "ent-b",
+      "entityId": "bool-1",
+      "deflection": 0.001,
+      "rotA": { "x": 0.0, "y": 0.0, "z": 1.0 },
+      "rotB": { "x": 0.0, "y": 1.0, "z": 0.0 },
+      "centerA": { "x": 1.0, "y": 2.0, "z": 3.0 },
+      "centerB": { "x": 4.0, "y": 5.0, "z": 6.0 }
+    }
+  },
+  {
+    "message_type": "CreateExtrudeOp",
+    "description": "extrude with profile points and vector",
+    "input": {
+      "points": [{ "x": 0.0, "y": 0.0, "z": 0.0 }, { "x": 1.0, "y": 0.0, "z": 0.0 }],
+      "height": 5.0,
+      "thickness": 0.0,
+      "deflection": 0.001,
+      "isClosed": true,
+      "entityId": "ext-1",
+      "vector": [0.0, 0.0, 1.0]
+    }
+  },
+  {
+    "message_type": "CreateRevolveOp",
+    "description": "revolve with axis and closed profile",
+    "input": {
+      "points": [{ "x": 0.0, "y": 0.0, "z": 0.0 }, { "x": 1.0, "y": 0.0, "z": 0.0 }],
+      "axisPoint": { "x": 0.0, "y": 0.0, "z": 0.0 },
+      "axisDir": { "x": 0.0, "y": 0.0, "z": 1.0 },
+      "angle": 6.283185307179586,
+      "thickness": 0.0,
+      "deflection": 0.001,
+      "isClosed": false,
+      "entityId": "rev-1"
+    }
+  },
+  {
+    "message_type": "MultMatrixShapeOp",
+    "description": "matrix transform with 16 doubles",
+    "input": {
+      "entityId": "ent-9",
+      "m": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      "targetEntityId": "ent-10",
+      "deflection": 0.001
+    }
+  },
+  {
+    "message_type": "TransformShapeOp",
+    "description": "translate shape by dx dy dz",
+    "input": {
+      "entityId": "ent-11",
+      "dx": 1.5,
+      "dy": -2.5,
+      "dz": 3.5,
+      "targetEntityId": "ent-12",
+      "deflection": 0.001
+    }
+  }
+]

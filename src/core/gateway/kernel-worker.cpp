@@ -78,6 +78,10 @@ static bool ShouldLog(LogLevel level) { return level >= g_logLevel; }
 #include <opencascade/Geom_ToroidalSurface.hxx>
 #include <opencascade/Geom_BezierSurface.hxx>
 #include <opencascade/Geom_BSplineSurface.hxx>
+#include <opencascade/ShapeFix_Wire.hxx>
+#include <opencascade/ShapeAnalysis_FreeBounds.hxx>
+#include <opencascade/TopoDS_Wire.hxx>
+#include <opencascade/GeomAPI_ProjectPointOnSurf.hxx>
 #include <opencascade/TopExp_Explorer.hxx>
 #include <opencascade/TopExp.hxx>
 #include <opencascade/TopTools_IndexedMapOfShape.hxx>
@@ -95,6 +99,10 @@ static bool ShouldLog(LogLevel level) { return level >= g_logLevel; }
 #include <opencascade/BRepBuilderAPI_Transform.hxx>
 #include <opencascade/BRepBuilderAPI_MakeSolid.hxx>
 #include <opencascade/BRepBuilderAPI_MakeVertex.hxx>
+#include <opencascade/BRepOffsetAPI_MakePipeShell.hxx>
+#include <opencascade/GCPnts_QuasiUniformDeflection.hxx>
+#include <opencascade/BRepAdaptor_Curve.hxx>
+#include <opencascade/BRep_Builder.hxx>
 #include <opencascade/BRepOffsetAPI_ThruSections.hxx>
 #include <opencascade/BinTools.hxx>
 #include <opencascade/STEPControl_Writer.hxx>
@@ -244,6 +252,7 @@ struct OpResult {
   std::string shapeId;
   std::string format;  // "BINARY" or "STEP"
   std::string data;    // raw bytes for brep/step export
+  std::vector<std::vector<std::array<double, 3>>> loops; // 2D loops for ExtractFaceProfile
 };
 
 static OpResult OpCreateBox(double x, double y, double z, double dx, double dy,
@@ -519,6 +528,305 @@ static OpResult OpCreateSphere(double x, double y, double z, double r,
   TopoDS_Shape shape = BRepPrimAPI_MakeSphere(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), r).Shape();
   shape = ApplyTranslation(shape, x, y, z);
   return OpCreateAndCache(shape, deflection, entityId);
+}
+
+// ---------------------------------------------------------------------------
+// OpCreateExtrude — extrude a 2D profile wire along a direction vector
+// Ported from WASM OCCWorker.ts createExtrude (prism-fusion approach).
+// For each segment: build 4-corner base face → BRepPrimAPI_MakePrism → fuse.
+// ---------------------------------------------------------------------------
+static OpResult OpCreateExtrude(const std::vector<std::array<double, 3>>& points,
+                                double dx, double dy, double dz,
+                                bool isClosed, bool addCapFaces,
+                                double deflection, const std::string& entityId) {
+  OpResult r;
+  if (points.size() < 2) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "Extrude: need at least 2 points";
+    return r;
+  }
+
+  gp_Vec dirVec(dx, dy, dz);
+  if (dirVec.SquareMagnitude() <= 1e-12) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "Extrude: direction vector is zero";
+    return r;
+  }
+
+  // Build a wire from consecutive profile points (Z ignored for 2D profile).
+  BRepBuilderAPI_MakeWire wireBuilder;
+  for (size_t i = 1; i < points.size(); ++i) {
+    wireBuilder.Add(BRepBuilderAPI_MakeEdge(gp_Pnt(points[i-1][0], points[i-1][1], 0.0),
+                                            gp_Pnt(points[i][0], points[i][1], 0.0)).Edge());
+  }
+  TopoDS_Wire profileWire = wireBuilder.Wire();
+  if (profileWire.IsNull() || !wireBuilder.IsDone()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "Extrude: failed to build profile wire";
+    return r;
+  }
+
+  // Close the wire by adding an edge from last point back to first if isClosed.
+  if (isClosed && points.size() >= 3) {
+    BRepBuilderAPI_MakeEdge closeEdge(gp_Pnt(points.back()[0], points.back()[1], 0.0),
+                                      gp_Pnt(points.front()[0], points.front()[1], 0.0));
+    BRepBuilderAPI_MakeWire closeWireBuilder;
+    closeWireBuilder.Add(profileWire);
+    closeWireBuilder.Add(closeEdge);
+    profileWire = closeWireBuilder.Wire();
+    if (!closeWireBuilder.IsDone()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "Extrude: failed to close profile wire";
+      return r;
+    }
+  }
+
+  // Build a face from the wire.
+  BRepBuilderAPI_MakeFace faceBuilder(profileWire);
+  TopoDS_Face profileFace = faceBuilder.Face();
+  if (profileFace.IsNull() || !faceBuilder.IsDone()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "Extrude: failed to build profile face";
+    return r;
+  }
+
+  // Extrude the face into a solid prism along dirVec.
+  BRepPrimAPI_MakePrism prismBuilder(profileFace, dirVec, Standard_False, Standard_True);
+  prismBuilder.Build();
+  if (!prismBuilder.IsDone()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "Extrude: BRepPrimAPI_MakePrism failed";
+    return r;
+  }
+
+  TopoDS_Shape solid = prismBuilder.Shape();
+  EnsurePositiveVolume(solid);
+
+  return OpCreateAndCache(solid, deflection, entityId);
+}
+
+// ---------------------------------------------------------------------------
+// OpCreateRevolve — revolve a 2D profile wire around an axis
+// Ported from WASM OCCWorker.ts createRevolve.
+// ---------------------------------------------------------------------------
+static OpResult OpCreateRevolve(const std::vector<std::array<double, 3>>& points,
+                                double ax, double ay, double az,
+                                double dx, double dy, double dz,
+                                double angleDeg, bool isClosed,
+                                double deflection, const std::string& entityId) {
+  OpResult r;
+  if (points.size() < 2) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "Revolve: need at least 2 points";
+    return r;
+  }
+
+  gp_Pnt axisPoint(ax, ay, az);
+  gp_Vec axisDirVec(dx, dy, dz);
+  if (axisDirVec.SquareMagnitude() <= 1e-12) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "Revolve: axis direction vector is zero";
+    return r;
+  }
+  gp_Dir axisDir(axisDirVec);
+  gp_Ax1 revAxis(axisPoint, axisDir);
+
+  // Build wire from consecutive profile points.
+  BRepBuilderAPI_MakeWire wireBuilder;
+  for (size_t i = 1; i < points.size(); ++i) {
+    wireBuilder.Add(BRepBuilderAPI_MakeEdge(gp_Pnt(points[i-1][0], points[i-1][1], points[i-1][2]),
+                                            gp_Pnt(points[i][0], points[i][1], points[i][2])).Edge());
+  }
+  TopoDS_Wire profileWire = wireBuilder.Wire();
+  if (profileWire.IsNull() || !wireBuilder.IsDone()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "Revolve: failed to build profile wire";
+    return r;
+  }
+
+  // Close wire if requested.
+  if (isClosed && points.size() >= 3) {
+    BRepBuilderAPI_MakeEdge closeEdge(gp_Pnt(points.back()[0], points.back()[1], points.back()[2]),
+                                      gp_Pnt(points.front()[0], points.front()[1], points.front()[2]));
+    BRepBuilderAPI_MakeWire closeWireBuilder;
+    closeWireBuilder.Add(profileWire);
+    closeWireBuilder.Add(closeEdge);
+    profileWire = closeWireBuilder.Wire();
+    if (!closeWireBuilder.IsDone()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+      r.message = "Revolve: failed to close profile wire";
+      return r;
+    }
+  }
+
+  // Build face from wire (revolve works on a face).
+  BRepBuilderAPI_MakeFace faceBuilder(profileWire);
+  TopoDS_Face profileFace = faceBuilder.Face();
+  if (profileFace.IsNull() || !faceBuilder.IsDone()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "Revolve: failed to build profile face";
+    return r;
+  }
+
+  double angleRad = angleDeg * M_PI / 180.0;
+  if (angleRad <= 0.0) {
+    angleRad = 2.0 * M_PI; // default 360° when angle is 0
+  }
+
+  BRepPrimAPI_MakeRevol revolBuilder(profileFace, revAxis, angleRad, Standard_False);
+  revolBuilder.Build();
+  if (!revolBuilder.IsDone()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "Revolve: BRepPrimAPI_MakeRevol failed";
+    return r;
+  }
+
+  TopoDS_Shape solid = revolBuilder.Shape();
+  // For a full 360° revolution, ensure positive volume (outward normals).
+  if (fabs(angleRad - 2.0 * M_PI) < 1e-9) {
+    EnsurePositiveVolume(solid);
+  }
+
+  return OpCreateAndCache(solid, deflection, entityId);
+}
+
+// ---------------------------------------------------------------------------
+// OpCreateCompound — fuse multiple shapes into a compound
+// ---------------------------------------------------------------------------
+static OpResult OpCreateCompound(const std::vector<std::string>& childIds,
+                                 double deflection, const std::string& entityId) {
+  OpResult r;
+  if (childIds.empty()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "Compound: need at least 1 child";
+    return r;
+  }
+
+  TopoDS_Compound compound;
+  BRep_Builder builder;
+  builder.MakeCompound(compound);
+
+  for (const auto& id : childIds) {
+    auto it = g_shapeCache.find(id);
+    if (it == g_shapeCache.end()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
+      r.message = "Compound: child shape not found in cache: " + id;
+      return r;
+    }
+    builder.Add(compound, it->second);
+  }
+
+  TopoDS_Shape shape = compound;
+  return OpCreateAndCache(shape, deflection, entityId);
+}
+
+// ---------------------------------------------------------------------------
+// OpExtractFaceProfile — extract 2D loop profile from a face
+// Returns 2D loops (not a 3D solid); tested via dedicated integration test.
+// ---------------------------------------------------------------------------
+static OpResult OpExtractFaceProfile(const std::string& entityId,
+                                     int32_t faceIndex, double deflection) {
+  OpResult r;
+  auto it = g_shapeCache.find(entityId);
+  if (it == g_shapeCache.end()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
+    r.message = "ExtractFaceProfile: shape not found in cache: " + entityId;
+    return r;
+  }
+
+  const TopoDS_Shape& shape = it->second;
+  if (shape.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+    r.message = "ExtractFaceProfile: shape is null";
+    return r;
+  }
+
+  // Select the face at faceIndex from the shape.
+  TopoDS_Face face;
+  if (shape.ShapeType() == TopAbs_FACE) {
+    if (faceIndex != 0) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+      r.message = "ExtractFaceProfile: face_index must be 0 for a standalone face";
+      return r;
+    }
+    face = TopoDS::Face(shape);
+  } else {
+    // Iterate faces to find the one at faceIndex.
+    TopExp_Explorer faceExplorer(shape, TopAbs_FACE);
+    int32_t idx = 0;
+    while (faceExplorer.More()) {
+      if (idx == faceIndex) {
+        face = TopoDS::Face(faceExplorer.Current());
+        break;
+      }
+      faceExplorer.Next();
+      ++idx;
+    }
+    if (face.IsNull()) {
+      r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+      r.message = "ExtractFaceProfile: face_index out of range";
+      return r;
+    }
+  }
+  Handle(Geom_Surface) surf = BRep_Tool::Surface(face);
+  if (surf.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "ExtractFaceProfile: face has no surface";
+    return r;
+  }
+
+  // Build a single wire from all face edges, then sample as one continuous 2D loop.
+  // This matches the WASM reference behavior (one loop per wire, not per edge).
+  TopoDS_Wire wire;
+  BRep_Builder builder;
+  builder.MakeWire(wire);
+
+  TopExp_Explorer edgeExplorer(face, TopAbs_EDGE);
+  while (edgeExplorer.More()) {
+    builder.Add(wire, TopoDS::Edge(edgeExplorer.Current()));
+    edgeExplorer.Next();
+  }
+
+  // Fix/reorder wire to ensure edges form a continuous chain.
+  ShapeFix_Wire wireFixer;
+  wireFixer.Load(wire);
+  wireFixer.FixConnected();   // connect edges end-to-end
+  wireFixer.FixReorder();     // reorder edges into a continuous chain
+  wireFixer.FixGaps3d();      // fix small gaps between edges
+  wire = wireFixer.Wire();
+
+  if (wire.IsNull()) {
+    r.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    r.message = "ExtractFaceProfile: could not build wire from face edges";
+    return r;
+  }
+
+  // Sample the wire edges as a single 2D loop (project 3D points onto surface UV space).
+  std::vector<std::array<double, 3>> loop; // each point: {u, v, bulge}
+  TopExp_Explorer wireEdgeExplorer(wire, TopAbs_EDGE);
+  while (wireEdgeExplorer.More()) {
+    TopoDS_Edge wireEdge = TopoDS::Edge(wireEdgeExplorer.Current());
+    BRepAdaptor_Curve adaptor(wireEdge, face);
+    GCPnts_QuasiUniformDeflection sampler(adaptor, deflection, GeomAbs_C0);
+    if (sampler.IsDone()) {
+      for (Standard_Integer i = 1; i <= sampler.NbPoints(); ++i) {
+        gp_Pnt pt3d = sampler.Value(i);
+        GeomAPI_ProjectPointOnSurf projector(pt3d, surf);
+        if (projector.NbPoints() > 0) {
+          Standard_Real pu, pv;
+          projector.Parameters(1, pu, pv);
+          loop.push_back({pu, pv, 0.0}); // bulge = 0 (no arcs)
+        }
+      }
+    }
+    wireEdgeExplorer.Next();
+  }
+
+  r.ok = true;
+  r.shapeId = entityId;
+  if (!loop.empty()) r.loops.push_back(std::move(loop));
+  r.message = "Extracted " + std::to_string(r.loops.size()) + " loop(s)";
+  return r;
 }
 
 static OpResult OpCreateCone(double x, double y, double z, double r, double h,
@@ -1320,9 +1628,10 @@ static void ComputeShapeMetrics(const TopoDS_Shape& shape,
   BRepGProp::SurfaceProperties(shape, sProps);
   metrics->set_surface_area(sProps.Mass());
 
-  // 3. Bounding box
+  // 3. Bounding box — BRepBndLib::Add with Standard_False uses exact geometry,
+  // not the triangulated mesh, so bbox is exact even for curved surfaces.
   Bnd_Box bndBox;
-  BRepBndLib::Add(shape, bndBox);
+  BRepBndLib::Add(shape, bndBox, Standard_False);
   if (!bndBox.IsVoid()) {
     double xmin, ymin, zmin, xmax, ymax, zmax;
     bndBox.Get(xmin, ymin, zmin, xmax, ymax, zmax);
@@ -1525,6 +1834,14 @@ class KernelServiceImpl final : public KernelService::Service {
           return HandleCreatePolyhedron(request, response);
         case ExecuteRequest::kCreateConvexHull:
           return HandleCreateConvexHull(request, response);
+        case ExecuteRequest::kCreateExtrude:
+          return HandleCreateExtrude(request, response);
+        case ExecuteRequest::kCreateRevolve:
+          return HandleCreateRevolve(request, response);
+        case ExecuteRequest::kCreateCompound:
+          return HandleCreateCompound(request, response);
+        case ExecuteRequest::kExtractFaceProfile:
+          return HandleExtractFaceProfile(request, response);
         case ExecuteRequest::kMultMatrixShape:
           return HandleTransformMultMatrix(request, response);
         case ExecuteRequest::kTransformShape:
@@ -1860,6 +2177,134 @@ class KernelServiceImpl final : public KernelService::Service {
     auto it = g_shapeCache.find(r.shapeId);
     if (it != g_shapeCache.end()) {
       ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreateExtrude(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_extrude();
+    double deflection = op.deflection();
+    std::string entityId = op.entity_id();
+
+    std::vector<std::array<double, 3>> points;
+    points.reserve(op.points_size());
+    for (int i = 0; i < op.points_size(); ++i) {
+      points.push_back({op.points(i).x(), op.points(i).y(), op.points(i).z()});
+    }
+
+    double height = op.height();
+    double vx = op.vector(0), vy = op.vector(1), vz = op.vector(2);
+    gp_Vec dirVec(vx, vy, vz);
+    dirVec.Multiply(height);
+    bool isClosed = op.is_closed();
+
+    auto r = OpCreateExtrude(points, dirVec.X(), dirVec.Y(), dirVec.Z(), isClosed, false, deflection, entityId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* extResult = success->mutable_extrude();
+    extResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreateRevolve(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_revolve();
+    double deflection = op.deflection();
+    std::string entityId = op.entity_id();
+
+    std::vector<std::array<double, 3>> points;
+    points.reserve(op.points_size());
+    for (int i = 0; i < op.points_size(); ++i) {
+      points.push_back({op.points(i).x(), op.points(i).y(), op.points(i).z()});
+    }
+
+    double ax = op.axis_point().x(), ay = op.axis_point().y(), az = op.axis_point().z();
+    double dx = op.axis_dir().x(), dy = op.axis_dir().y(), dz = op.axis_dir().z();
+    double angleDeg = op.angle();
+    bool isClosed = op.is_closed();
+
+    auto r = OpCreateRevolve(points, ax, ay, az, dx, dy, dz, angleDeg, isClosed,
+                             deflection, entityId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* revResult = success->mutable_revolve();
+    revResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleCreateCompound(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->create_compound();
+    double deflection = op.deflection();
+    std::string entityId = op.entity_id();
+
+    std::vector<std::string> childIds;
+    childIds.reserve(op.children_ids_size());
+    for (int i = 0; i < op.children_ids_size(); ++i) {
+      childIds.push_back(op.children_ids(i));
+    }
+
+    auto r = OpCreateCompound(childIds, deflection, entityId);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+    auto* compResult = success->mutable_compound();
+    compResult->set_shape_id(r.shapeId);
+
+    auto it = g_shapeCache.find(r.shapeId);
+    if (it != g_shapeCache.end()) {
+      ComputeShapeMetrics(it->second, response->mutable_metrics());
+    }
+
+    return Status::OK;
+  }
+
+  Status HandleExtractFaceProfile(const ExecuteRequest* request, ExecuteResponse* response) {
+    const auto& op = request->extract_face_profile();
+    double deflection = op.deflection();
+    std::string entityId = op.entity_id();
+    int32_t faceIndex = op.face_index();
+
+    auto r = OpExtractFaceProfile(entityId, faceIndex, deflection);
+    if (!r.ok) {
+      return SetFailure(response, static_cast<ExecutionFailureCode>(r.code), r.message);
+    }
+
+    auto* success = response->mutable_success();
+    success->set_shape_id(r.shapeId);
+
+    // Populate ExtractFaceProfileResult with 2D loops (not a 3D solid — no ShapeMetrics).
+    auto* profileResult = success->mutable_extract_face_profile();
+    for (const auto& loop : r.loops) {
+      auto* loop2d = profileResult->add_loops();
+      for (const auto& pt : loop) {
+        auto* p = loop2d->add_points();
+        p->set_x(pt[0]);
+        p->set_y(pt[1]);
+        p->set_bulge(pt[2]);
+      }
     }
 
     return Status::OK;

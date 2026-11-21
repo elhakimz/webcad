@@ -6,6 +6,7 @@ import { dedupeCache } from './dedupe.js';
 import { ordererRegistry } from './ordering.js';
 import { CommandRegistry } from './command-registry.js';
 import { BoxCommand } from './commands/box.js';
+import { kernelSupervisor } from './kernel-supervisor.js';
 
 export const commandRegistry = new CommandRegistry();
 commandRegistry.register(BoxCommand);
@@ -288,16 +289,12 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
   },
 
   async executeOnKernel(sessionId: string, req: ExecuteRequestInput): Promise<ExecuteResponseOutput> {
-    return {
-      requestId: req.header?.requestId,
-      status: 'completed',
-    };
+    const client = await kernelSupervisor.getKernelForSession(sessionId);
+    return client.execute(req) as Promise<ExecuteResponseOutput>;
   },
 
   async restoreOnKernel(sessionId: string, req: ExecuteRequestInput): Promise<ExecuteResponseOutput> {
-    return {
-      requestId: req.header?.requestId,
-      status: 'restored',
-    };
+    const client = await kernelSupervisor.getKernelForSession(sessionId);
+    return client.restore(req) as Promise<ExecuteResponseOutput>;
   },
 };

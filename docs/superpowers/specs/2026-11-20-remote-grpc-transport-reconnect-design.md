@@ -4,112 +4,172 @@
 **Date:** 2026-11-20
 **Status:** Draft - pending human review
 **Depends on:** WC-EC-26, WC-EC-27
+**Agent rating:** B (session semantics)
 
 ## Problem
 
 `RemoteGrpcTransport.ts` already implements all `OCCTransport` methods over Connect/gRPC, but lacks:
 
 1. **Reconnect with backoff** — if the gateway is killed mid-session, the transport stays broken until the page reloads. The epic requires "Kill gateway mid-session: UI recovers."
-2. **Connection state events** — no way for `OpenCascadeService` or the UI to know if the transport is `connected`, `reconnecting`, `rehydrating`, `disconnected`, or `error`.
-3. **Heartbeat** — no liveness detection; a silent network failure isn't detected until the next RPC.
-4. **Fire-and-forget error surfacing** — in-flight calls dropped by a disconnect are silently lost instead of rejected.
+2. **Connection state events** — no way for `OpenCascadeService` or the UI to know if the transport is `connecting`, `connected`, `reconnecting`, `rehydrating`, `disconnected`, or `error`.
+3. **Liveness detection** — no watchdog on the gateway's server heartbeats; a silent network failure isn't detected until the next RPC.
+4. **Fire-and-forget error surfacing** — in-flight calls dropped by a disconnect are silently lost instead of retried or rejected per the ADR rule.
+5. **Resume vs rehydrate ambiguity** — the transport currently cannot tell whether to `Subscribe(last_event_id)` (kernel still has state) or trigger a full `Restore` (kernel lost everything).
 
 ## Decision
 
-Enhance `RemoteGrpcTransport.ts` in-place (Approach 1). All transport state (`sessionId`, `client`, listeners, pending calls) already lives in one class; adding reconnect, heartbeat, and state events there is the simplest change that meets all acceptance criteria. No new files.
+Enhance `RemoteGrpcTransport.ts` in-place (Approach 1). All transport state (`sessionId`, `client`, listeners, pending calls) already lives in one class; adding reconnect, liveness, state events, and retry/abort logic there is the simplest change that meets all acceptance criteria. No new files.
+
+The transport reuses the client-generated `session_id` on every reconnect and follows the approved gRPC design: resume via `Subscribe(last_event_id)` when the session survived, rehydrate via `Restore` only when the gateway signals kernel loss.
 
 ## Architecture
 
 ### ConnectionState enum
 
 ```
-CONNECTED    — session open, RPCs can be sent
-RECONNECTING — connection lost, backoff reconnect in progress
-REHYDRATING  — session re-opened, re-importing stored B-reps
-DISCONNECTED — closeSession called, no reconnect
-ERROR        — max reconnect attempts exceeded, stopped
+CONNECTING    — init() in progress (first OpenSession)
+CONNECTED     — session open, RPCs can be sent
+RECONNECTING  — connection lost, backoff reconnect in progress
+REHYDRATING   — session re-opened, Restore or Subscribe resume pending
+DISCONNECTED  — closeSession called, no reconnect
+ERROR         — max reconnect attempts exceeded, stopped
 ```
 
-### State subscribers
+### State subscribers — EventTarget
 
-Two mechanisms, same state set:
-- **Callback:** `onStateChange?: (state: ConnectionState) => void` config option
-- **EventEmitter:** `on('state', handler)` / `off('state', handler)`
+One mechanism only: `EventTarget` (works in browser and Node without polyfill).
 
-### Reconnect
+- `transport.addEventListener('statechange', (e) => e.detail.state)`
+- `transport.addEventListener('rehydrate-needed', (e) => e.detail)` — emitted when the gateway signals `needs_rehydrate`, `NOT_FOUND`, or kernel status `REHYDRATING`. `OpenCascadeService`/the document listens and calls `Restore` using an injected snapshot provider.
+- `transport.addEventListener('token-expired', (e) => e.detail)` — emitted on `UNAUTHENTICATED`. The consumer injects a fresh token via `transport.setToken(token)` and reconnect retries.
 
-- Triggered on any transport error (network, gateway kill, heartbeat failure)
-- Exponential backoff: 1s, 2s, 4s, ... cap 30s
-- Max 10 attempts, then `ERROR` state
-- On success: re-create Connect client, `OpenSession`, re-subscribe to event stream, state `REHYDRATING`, replay stored B-reps, state `CONNECTED`
-- `closeSession()` resets to `DISCONNECTED`, clears reconnect timer
+### Session ID
 
-### Heartbeat
+- Generated once by the client (`crypto.randomUUID()`) on first `init()`.
+- **Reused on every reconnect** — never regenerated.
+- Stored in `CommandHeader.sessionId` on every RPC.
+- Gateway uses it to find the existing session; `NOT_FOUND` after a gateway restart means the kernel lost state → trigger rehydrate.
 
-- Interval (default 30s, configurable) sends a lightweight RPC
-- Failure triggers reconnect (same path as network error)
-- Interval cleared during reconnect, resumed on `CONNECTED`
+### Retryable vs non-retryable errors
+
+| Error class | Examples | Action |
+|-------------|----------|--------|
+| Retryable | network errors, `UNAVAILABLE`, kernel restarting | Backoff reconnect, then retry with same `request_id` (dedupe returns prior result) |
+| Token refresh | `UNAUTHENTICATED` | Emit `token-expired`; consumer calls `setToken()`; reconnect with new token |
+| Non-retryable | `PERMISSION_DENIED`, `RESOURCE_EXHAUSTED`, version mismatch | Reject immediately; version mismatch → surface "update required" |
+| Session lost | `NOT_FOUND` on `OpenSession`/`Subscribe` | Emit `rehydrate-needed`; consumer calls `Restore`; replay aborted commands |
 
 ### Pending-call registry
 
-- `Map<requestId, { resolve, reject, timestamp }>` tracks in-flight `execute()` calls
-- On reconnect, all pending entries rejected with `GrpcTransportError('ABORTED', 'connection lost')`
-- Consumers `await` and catch these — no silent failures
+`Map<requestId, { resolve, reject, requestId, deadline, attempt }>` tracks in-flight `execute()` calls.
 
-### B-rep snapshot storage (for rehydration)
+**On reconnect with session survived:**
+- Pending calls are **retried** with the same `request_id` once the session is re-opened and `Subscribe(last_event_id)` resumes.
+- Dedupe at the gateway returns the prior result if the request was already applied.
+- `client_seq` continues incrementing; retried calls get a fresh `client_seq` (the old one is abandoned — the gateway's reorder buffer gap times out per its gap timeout).
 
-- Transport stores `entityId → brepBytes` from successful `create*`/`importBRep` calls
-- After reconnect, each stored B-rep re-imported via `importBRep(entityId, brepBytes)`
-- Map cleared on `closeSession()`
+**On session/kernel lost:**
+- All pending entries rejected with `GrpcTransportError('UNAVAILABLE', 'session lost')`.
+- The consumer is responsible for replaying aborted commands in order after `Restore` (ADR rule).
+
+**New calls during RECONNECTING:**
+- Queued in a bounded ordered queue (default max 50, configurable).
+- Each queued call gets a per-operation deadline from the config table.
+- On timeout: reject with `DEADLINE_EXCEEDED`, send `Cancel {id}` to the gateway.
+- Queue overflow: reject oldest entry with `RESOURCE_EXHAUSTED`.
+
+### Heartbeat / liveness
+
+- **No client heartbeat RPC.** No such gateway RPC exists (`Health` is kernel-side only).
+- The `Subscribe` stream carries server heartbeats every 15 s (per the approved design).
+- Client watchdog: if 2-3 heartbeat intervals are missed, state → `RECONNECTING`, reconnect loop starts.
+- Watchdog timer cleared during reconnect, resumed on `CONNECTED`.
+
+### Backoff
+
+- Exponential with jitter: base 1s, doubles each failure, cap 30s, plus random jitter (0-25%).
+- Max 10 attempts (~3.5 minutes total). After that: state → `ERROR`, no auto-reconnect.
+- Longer outages: user must call `init()` again or the app shows a reconnect button.
+- `online` and `visibilitychange` events trigger an immediate reconnect attempt (browsers throttle timers in hidden tabs).
+
+### Single-flight reconnect
+
+- A `generation` counter and `reconnecting` flag guard against two reconnect loops starting at once (e.g. heartbeat failure and RPC error simultaneously).
+- `init()` while `RECONNECTING`: no-op (reconnect already in progress); returns when current attempt completes or fails.
+
+### B-rep snapshot storage
+
+**Removed.** The transport does NOT own a B-rep snapshot map. The document already holds `brepSnapshot` per entity. The transport emits `rehydrate-needed`; `OpenCascadeService`/the document calls `Restore` (batched, BlobRef for large B-reps) using an injected snapshot provider.
 
 ## Data Flow
 
-**Normal operation** (unchanged):
-1. `init()` creates Connect client, calls `OpenSession`, state → `CONNECTED`
+**Normal operation:**
+1. `init()`: state `CONNECTING`, create Connect client, call `OpenSession` with client-generated `session_id`, state → `CONNECTED`
 2. Each OCC method builds protobuf op, `execute()` sends `Execute` RPC with incremented `clientSeq`
 3. Response parsed; `GrpcTransportError` thrown on `failure` case
 
-**On transport error:**
-1. State → `RECONNECTING`, subscribers notified
-2. Reconnect loop: backoff wait → new Connect client → `OpenSession` → re-subscribe
-3. On success: state → `REHYDRATING` → replay B-reps → state → `CONNECTED`
-4. Pending in-flight calls rejected with `ABORTED`
+**On transport error (network, gateway kill):**
+1. State → `RECONNECTING`, subscribers notified via `statechange`
+2. Single-flight guard: if already reconnecting, skip
+3. Reconnect loop: backoff wait (with jitter) → new Connect client → `OpenSession` (same `session_id`)
+4. Gateway responds:
+   - Session found: re-subscribe via `Subscribe(last_event_id)`, state → `CONNECTED`, retry pending calls
+   - `NOT_FOUND`: state → `REHYDRATING`, emit `rehydrate-needed`; consumer calls `Restore`
+5. Pending calls: retry (session survived) or reject `UNAVAILABLE` (session lost)
 
-**Heartbeat failure:** Same path as network error — triggers reconnect.
+**On heartbeat watchdog timeout:** Same path as transport error.
+
+**On `UNAUTHENTICATED`:** Emit `token-expired`; wait for `setToken()`; reconnect with new token.
+
+**New call during RECONNECTING:** Added to bounded queue; processed in order once `CONNECTED`.
 
 ## Error Handling
 
 | Scenario | Behavior |
 |----------|----------|
 | `execute()` returns `failure` | `GrpcTransportError(code, message)` — unchanged |
-| Network / gateway kill | State `RECONNECTING`, reconnect loop, pending calls `ABORTED` |
-| Heartbeat failure | Same as network error |
-| Max reconnect attempts | State `ERROR`, no auto-reconnect, user calls `init()` again |
+| Network / gateway kill | State `RECONNECTING`, backoff reconnect with jitter |
+| Heartbeat watchdog timeout | Same as network error |
+| `UNAUTHENTICATED` | Emit `token-expired`; consumer calls `setToken()`; reconnect |
+| `PERMISSION_DENIED` / `RESOURCE_EXHAUSTED` | Reject immediately, no retry |
+| Version mismatch | Reject immediately, surface "update required" |
+| `NOT_FOUND` after restart | Emit `rehydrate-needed`; consumer calls `Restore` |
+| Max reconnect attempts | State `ERROR`, no auto-reconnect |
 | `closeSession()` during reconnect | State `DISCONNECTED`, clears timer, nulls client |
 | `init()` while `CONNECTED` | No-op |
-
-Error codes: `ExecutionFailureCode` for kernel errors; `GrpcTransportError` with `ABORTED`/`FAILED_PRECONDITION`/`UNAVAILABLE` for transport issues. Generic UI messages; details in logs (consistent with WC-EC-27).
+| `init()` while `RECONNECTING` | No-op, waits for current attempt |
 
 ## Testing
 
-New test cases in `src/core/io/__tests__/RemoteGrpcTransport.test.ts`:
+**Unit tests** (fake timers) in `src/core/io/__tests__/RemoteGrpcTransport.test.ts`:
 
-1. Connection state transitions: `init()` → `CONNECTED`; simulated error → `RECONNECTING` → `CONNECTED`
-2. Reconnect with exponential backoff timing
-3. Heartbeat sends RPC; failure triggers reconnect
-4. Pending call rejected with `ABORTED` on disconnect
-5. Auto-rehydrate: stored B-reps re-imported after reconnect
-6. `closeSession()` during reconnect resets state and clears timer
-7. Max attempts → `ERROR` state, no more retries
-8. All existing tests continue to pass
+1. State transitions: `CONNECTING` → `CONNECTED` on `init()`; simulated error → `RECONNECTING` → `CONNECTED`
+2. Backoff with jitter: verify timing bounds, max 10 attempts, then `ERROR`
+3. Session resume: same `session_id` on reconnect, `Subscribe(last_event_id)` called, no B-rep replay
+4. Rehydrate signal: `NOT_FOUND` on `OpenSession` → emit `rehydrate-needed`, no transport-owned B-rep map
+5. Pending call retry: same `request_id` retried after reconnect, dedupe returns prior result
+6. Pending call abort: `UNAVAILABLE` rejection when session/kernel lost
+7. Token expiry: `UNAUTHENTICATED` → emit `token-expired`; `setToken()` → reconnect
+8. Non-retryable errors: `PERMISSION_DENIED`/`RESOURCE_EXHAUSTED` rejected immediately
+9. New calls during reconnect: queued, processed in order, deadline + `Cancel` on timeout
+10. `online`/`visibilitychange` triggers immediate reconnect
+11. Single-flight guard: two simultaneous errors → one reconnect loop
+12. All existing tests continue to pass
 
-No new test files. Mock Connect client already exists; extend for reconnect scenarios.
+**Integration test** (new file `src/core/io/__tests__/RemoteGrpcTransport.integration.test.ts`):
+- Kill and restart the real gateway with a mock kernel
+- Confirm no duplicate application on retry (dedupe returns prior result)
+- Confirm `rehydrate-needed` emitted after gateway restart with kernel loss
+- Confirm seq-gap handling: abandoned `client_seq` doesn't stall the gateway
 
 ## Acceptance Criteria
 
-- [x] Kill gateway mid-session: UI recovers (reconnect → reopen session → re-subscribe → rehydrate)
-- [x] No silent failures on formerly fire-and-forget calls (pending-call registry rejects with `ABORTED`)
+- [ ] Kill gateway mid-session: UI recovers
+- [ ] No silent failures on formerly fire-and-forget calls (retry with dedupe, or `UNAVAILABLE` + replay)
 
 ## Open Questions
 
-None. All decisions recorded above.
+1. Does `OpenCascadeService` inject the snapshot provider for `Restore`, or does the document call it directly?
+2. What is the default bounded queue size for calls made during RECONNECTING?
+3. What is the exact `last_event_id` semantics on `Subscribe` resume — does the gateway guarantee no missed events?
+4. How does `client_seq` gap timeout interact with retried calls that get a fresh `client_seq`?

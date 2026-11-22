@@ -1739,3 +1739,61 @@ describe('KernelGrpcTransport.chamferSolidFace()', () => {
     expect(mockExecute).toHaveBeenCalled();
   });
 });
+
+describe('KernelGrpcTransport.makeThickSolid()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with make_thick_solid op and thick-solid params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'thick-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.makeThickSolid('shape-1', [1, 2, 3], 5.0, true);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        make_thick_solid: {
+          entityId: 'shape-1',
+          faceIndices: [1, 2, 3],
+          thickness: 5.0,
+          removeFaces: true,
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'thick-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.makeThickSolid('shape-1', [0], 1.0);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults removeFaces to false', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.makeThickSolid('shape-1', [0], 1.0);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        make_thick_solid: expect.objectContaining({
+          removeFaces: false,
+        }),
+      })
+    );
+  });
+});

@@ -397,8 +397,17 @@ export class KernelGrpcTransport implements OCCTransport {
     });
   }
 
-  async makeThickSolid(entityId: string, faceIndices: number[], thickness: number, removeFaces?: boolean): Promise<any> {
-    throw new Error('makeThickSolid not yet implemented on KernelGrpcTransport');
+  async makeThickSolid(entityId: string, faceIndices: number[], thickness: number, removeFaces: boolean = false): Promise<any> {
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      make_thick_solid: {
+        entityId,
+        faceIndices,
+        thickness,
+        removeFaces,
+      },
+    });
   }
 
   async draftSolidFaces(entityId: string, faceIndices: number[], neutralFaceIndex: number, angleRad: number): Promise<any> {

@@ -412,6 +412,69 @@ describe('KernelGrpcTransport.createCone()', () => {
   });
 });
 
+describe('KernelGrpcTransport.createFrustum()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_frustum op and frustum params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'frustum-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.createFrustum(0, 0, 0, 5, 3, 10, 0.001, 'frustum-1');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_frustum: {
+          x: 0,
+          y: 0,
+          z: 0,
+          r1: 5,
+          r2: 3,
+          h: 10,
+          deflection: 0.001,
+          entityId: 'frustum-1',
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'frustum-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createFrustum(0, 0, 0, 5, 3, 10);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults deflection to 0 and entityId to empty string', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createFrustum(1, 2, 3, 4, 2, 5);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_frustum: expect.objectContaining({
+          deflection: 0,
+          entityId: '',
+        }),
+      })
+    );
+  });
+});
+
 describe('KernelGrpcTransport.extractFaceProfile()', () => {
   beforeEach(() => {
     vi.clearAllMocks();

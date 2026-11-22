@@ -109,7 +109,11 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async createFrustum(x: number, y: number, z: number, r1: number, r2: number, h: number, deflection?: number, entityId?: string): Promise<any> {
-    throw new Error('createFrustum not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_frustum: { x, y, z, r1, r2, h, deflection: deflection ?? 0, entityId: entityId ?? '' },
+    });
   }
 
   async createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number, entityId?: string): Promise<any> {

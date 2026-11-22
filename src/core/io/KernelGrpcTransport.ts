@@ -154,7 +154,16 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async createConvexHull(points?: any[], shapeIds?: string[], deflection?: number, entityId?: string): Promise<any> {
-    throw new Error('createConvexHull not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_convex_hull: {
+        shapeIds: shapeIds ?? [],
+        pointsInline: points?.map((p: any) => ({ x: p.x, y: p.y, z: p.z })) ?? [],
+        deflection: deflection ?? 0,
+        entityId: entityId ?? '',
+      },
+    });
   }
 
   async createExtrude(points: any[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string, vector?: number[]): Promise<any> {

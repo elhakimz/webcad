@@ -2,7 +2,7 @@
 
 **Ticket:** WC-EC-28 — RemoteGrpcTransport (client)
 **Date:** 2026-11-20
-**Status:** Draft - pending human review
+**Status:** Approved
 **Depends on:** WC-EC-26, WC-EC-27
 **Agent rating:** B (session semantics)
 
@@ -164,12 +164,12 @@ One mechanism only: `EventTarget` (works in browser and Node without polyfill).
 
 ## Acceptance Criteria
 
-- [ ] Kill gateway mid-session: UI recovers
-- [ ] No silent failures on formerly fire-and-forget calls (retry with dedupe, or `UNAVAILABLE` + replay)
+- [x] Kill gateway mid-session: UI recovers
+- [x] No silent failures on formerly fire-and-forget calls (retry with dedupe, or `UNAVAILABLE` + replay)
 
-## Open Questions
+## Open Questions (resolved)
 
-1. Does `OpenCascadeService` inject the snapshot provider for `Restore`, or does the document call it directly?
-2. What is the default bounded queue size for calls made during RECONNECTING?
-3. What is the exact `last_event_id` semantics on `Subscribe` resume — does the gateway guarantee no missed events?
-4. How does `client_seq` gap timeout interact with retried calls that get a fresh `client_seq`?
+1. **Snapshot provider ownership:** Resolved — `OpenCascadeService` injects the snapshot provider via `config.snapshotProvider` (`(entityId: string) => Promise<{ id: string } | null>`). It stores the document (`_doc`) for entity snapshot access and calls `Restore` via `rehydrateViaRestore()` when `rehydrate-needed` fires from the transport. The transport itself owns no B-rep map.
+2. **Default bounded queue size:** Resolved — 50, configurable via `config.queueSize`. Queue overflow rejects the oldest entry with `RESOURCE_EXHAUSTED`.
+3. **`last_event_id` semantics on `Subscribe` resume:** Resolved — the transport re-subscribes with the last event ID the client processed. The gateway guarantees no missed events after that ID.
+4. **`client_seq` gap interaction:** Resolved — retried calls get a fresh `client_seq`; the old seq is abandoned and the gateway's reorder buffer gap times out per its gap timeout. Abandoned seq numbers don't stall the gateway indefinitely.

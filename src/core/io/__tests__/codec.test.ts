@@ -383,10 +383,10 @@ describe('codec round-trip (TS)', () => {
         const prepared = prepareInput(message_type, input);
         const expected = toComparable(prepared);
         const decoded = roundTrip(schema, prepared);
-        const actual = toComparable(decoded);
+        const actual = toComparable(decoded) as Record<string, unknown>;
         // Only assert on fields that were set in the input; protobuf fills
         // defaults for unset fields, so we can't compare whole objects.
-        for (const [key, value] of Object.entries(expected)) {
+        for (const [key, value] of Object.entries(expected as Record<string, unknown>)) {
           expect(actual[key], `field ${key} did not round-trip`).toEqual(value);
         }
       });

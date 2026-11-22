@@ -15,6 +15,8 @@ export interface OpenCascadeConfig {
   sessionId?: string;
   includeBrep?: boolean;
   timeoutMs?: number;
+  /** Injected snapshot provider: returns brep bytes (or BrepReference) for an entity id during rehydration. */
+  snapshotProvider?: (entityId: string) => Promise<{ id: string } | null>;
 }
 
 export class OpenCascadeService {
@@ -22,6 +24,8 @@ export class OpenCascadeService {
   private transport: OCCTransport | null = null;
   private loading: Promise<void> | null = null;
   private errorCallback: ((msg: string) => void) | null = null;
+  private snapshotProvider: ((entityId: string) => Promise<{ id: string } | null>) | null = null;
+  private _doc: any = null;
 
   public onError(callback: (msg: string) => void) {
     this.errorCallback = callback;
@@ -61,6 +65,8 @@ export class OpenCascadeService {
             includeBrep: config.includeBrep,
             timeoutMs: config.timeoutMs,
           });
+          this.snapshotProvider = config.snapshotProvider ?? null;
+          this.wireRehydrateListener();
         } else {
           this.transport = new OCCWorkerClient();
         }
@@ -333,6 +339,7 @@ export class OpenCascadeService {
   }
 
   async rehydrate(doc: any): Promise<void> {
+    this._doc = doc;
     if (!this.transport) return;
     
     console.log("[OCC] Re-hydrating worker with current solids...");
@@ -356,6 +363,61 @@ export class OpenCascadeService {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Wire up the transport's rehydrate-needed event. When the gateway signals
+   * kernel loss (NOT_FOUND / needs_rehydrate), re-import all solids via the
+   * batched Restore RPC using the injected snapshot provider.
+   */
+  private wireRehydrateListener(): void {
+    const transport = this.transport as RemoteGrpcTransport;
+    transport.addEventListener('rehydrate-needed', (event: Event) => {
+      const detail = (event as CustomEvent<{ reason: string; sessionId: string }>).detail;
+      console.log(`[OCC] Rehydrate needed: ${detail.reason} (session ${detail.sessionId})`);
+      void this.rehydrateViaRestore();
+    });
+  }
+
+  /**
+   * Rehydrate all solids via the batched Restore RPC. The snapshot provider
+   * supplies brep bytes (or a BrepReference id) for each entity. After the
+   * kernel restores each entity, re-tessellate the document geometry.
+   */
+  async rehydrateViaRestore(doc?: any): Promise<void> {
+    const transport = this.transport as RemoteGrpcTransport | null;
+    if (!transport || !this.snapshotProvider) {
+      this.reportError('[OCC] Cannot rehydrate via Restore: no gRPC transport or snapshot provider');
+      return;
+    }
+
+    const document = doc ?? this._doc;
+    const entities = document
+      ? (document.getEntities ? document.getEntities() : (document.entities ? Array.from(document.entities.values()) : []))
+      : [];
+
+    const items: Array<{ entityId: string; brepRefId: string }> = [];
+
+    for (const entity of entities) {
+      const solid = entity as any;
+      if (solid.type !== 'Solid3D') continue;
+      try {
+        const snapshot = await this.snapshotProvider!(solid.id);
+        if (!snapshot) continue;
+        items.push({ entityId: solid.id, brepRefId: snapshot.id });
+      } catch (e) {
+        this.reportError(`[OCC] Snapshot provider failed for ${solid.id}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+
+    if (items.length === 0) return;
+
+    try {
+      const restored = await transport.restore(items);
+      console.log(`[OCC] Restored ${restored.length} entities via Restore RPC`);
+    } catch (e) {
+      this.reportError(`[OCC] Restore RPC failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 }

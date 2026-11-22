@@ -67,6 +67,16 @@
 - **Docs layout (2026-10-20):** all documentation lives in `docs/` (`docs/plans/`, `docs/scad/`, `docs/3d/`, `docs/base/`, `docs/uidesign/`). Third-party reference code lives in `vendors/` (`replicad-main`, `chili3d`, `BOSL-master`) and is gitignored. `docs/` and `vendors/` are excluded from eslint and vitest; `tsconfig` includes only `src`, so vendored code never type-checks. **Never put vendored repos under `docs/`** — vitest's default glob picks up their `__tests__/` and `test/` suites (it broke 75 test files) and eslint reports errors on them.
 - **WC-EC-16 — OCCT 7.9.3 `gp_GTrsf::SetValue` row-4 quirk:** `SetValue(row, col, value)` only accepts rows 1-3; row 4 (`[0,0,0,1]`) is implicit. Calling `SetValue(4, ...)` raises `Standard_OutOfRange` (caught by kernel catch-all, returns empty error). Build `gp_Trsf` with `SetValues(mat, tr)` or construct translation/rotation/scale/mirror directly; never call `SetValue(4, ...)`.
 
+- **Session 2026-11-23 — WC-EC-27 Gateway Auth + Session Ownership:**
+  - JWT validation via Connect interceptor covering all 8 EngineGateway RPCs (OpenSession, Execute, Restore, Subscribe, UploadChunk, Cancel, CloseSession, StreamResult). Skip auth on `openSession`; validate JWT via `authenticator.authenticate()`.
+  - Session ownership check: ownerId == `sub` → allow; unknown session → `NOT_FOUND`; cross-tenant → `PERMISSION_DENIED`. Session id from `x-session-id` header or message `header.sessionId`.
+  - `AuthError` extends `ConnectError` (not plain `Error`) so Connect reports correct gRPC code (`Code.Unauthenticated=16`, `Code.PermissionDenied=7`, `Code.NotFound=5`).
+  - Dedupe/ordering keys scoped by `${principal}:${sessionId}:${requestId}`; all dedupe methods take 3 args (principal, sessionId, requestId). `OrdererRegistry.getOrCreate`/`remove` take (principal, sessionId); internal key = `${principal}:${sessionId}`.
+  - `connect-server.ts`: `authInterceptor` wired via `interceptors: [authInterceptor]`; OpenSession extracts JWT to set ownerId; Execute/Restore/Cancel/CloseSession pass principal to dedupe/ordering (falls back to sessionId when session unknown).
+  - `session-manager.ts`: `SessionInfo` has `ownerId?: string`; `createSession` accepts ownerId param.
+  - Pre-existing issues: `codec.test.ts` typecheck failure (lines 389-390, unrelated); `buf:breaking` fails with "FIELD_NO_JSON_NAME unknown rule" (tooling version issue, pre-existing).
+  - All 695 unit tests pass; typecheck clean (except unrelated pre-existing); lint clean; buf:lint clean.
+
 ## Do-Not-Repeat
 
 <!-- Mistakes made and corrected. Each entry prevents the same mistake recurring. -->
@@ -86,6 +96,8 @@
 - [2026-07-27] **Never derive a stable identifier from `constructor.name`.** Vite/esbuild minifies class names in a production build, so `Solid3D` becomes `sn` and every type filter silently matches nothing. Dev mode is unminified and hides this completely — test any such code against `npm run build` output, not just the dev server. Use an `instanceof` table with explicit names instead.
 
 - [2026-11-20] **Protobuf v2 migration pattern:** v1 generated `ServiceType` + constructor functions (`new Xxx({...})`). v2 generates `GenService` (DescService-compatible) directly into `_pb.ts` files — no separate `_connect.ts`. v2 message types are type-only exports; runtime construction uses standalone `create(Schema, data)` from `@bufbuild/protobuf`, not `Schema.create(data)`. Import both Schema values AND types from generated files. Generated files carry `@ts-nocheck` so typecheck skips them. All 4 compat shims and all alias blocks deleted. `buf.gen.yaml`: protoc-gen-es v2 only (removed protoc-gen-connect-es).
+
+- [2026-11-23] **Do NOT build JSON by string concatenation for `.wolf/buglog.json`** — it corrupted the file structure with `],\n  {` instead of `},\n  {`. Use Python `json.load`/`json.dump` or a proper JSON editor. The buglog.json is not git-tracked so corruption doesn't affect commits, but it's still data loss.
 
 ## Decision Log
 
@@ -327,4 +339,18 @@ inja -C /kernel/build kernel_worker compiled, docker restart deployed new binary
 - Implementation plan saved to docs/superpowers/plans/2026-11-22-grpc-kernel-transport-parity.md (2026-11-22)
 - 37 commands across 11 chunks, each chunk self-contained and committable
 - TDD approach: write failing test first, then implement, then verify
+
+## Key Learnings (2026-11-22 WC-EC-28 RemoteGrpcTransport Reconnect)
+- **ConnectionState initial value:** Must start as `DISCONNECTED`, not `CONNECTING`, so `init()` emits a `statechange` event on first call.
+- **PowerShell `&&` unsupported:** Use `;` for command chaining in PowerShell. `docker exec ... bash -c '... && ...'` works because `&&` is interpreted by bash inside the container.
+- **`createBox` return type:** Returns `meshDataToResult(response.mesh, response.brepRef)` output, not raw `ExecuteResponse`. Test assertions checking `result.result.case` will fail.
+- **codec.test.ts pre-existing type errors:** Lines 389-390 needed casts to `Record<string, unknown>` for `expected` and `actual` variables.
+- **Vitest unhandled rejections:** Tests that deliberately trigger error paths (PERMISSION_DENIED, SESSION_NOT_FOUND, NOT_FOUND, DEADLINE_EXCEEDED, connection refused) produce 11 unhandled rejection warnings. All 713 tests pass; warnings are pre-existing and expected.
+- **buf:breaking network failure:** `buf breaking --against '.git#branch=main'` cannot access the remote repo. Pre-existing environmental issue, not code-related.
+- **Integration test quirks:** Constructor takes config only (no client param). `init()` creates client internally via `createConnectTransport`+`createClient`. Tests must mock `@connectrpc/connect-web` and `@connectrpc/connect`. Fake timers require `await vi.advanceTimersByTimeAsync()`.
+- **EventTarget vs EventEmitter:** Use `EventTarget` for connection state events (works in browser and Node without polyfill). Don't use both callback and EventEmitter subscriber APIs.
+- **Pending call retry semantics:** Session survived → retry with same `request_id` (dedupe returns prior result). Session/kernel lost → reject all pending with `UNAVAILABLE`, consumer replays aborted commands after `Restore` (ADR rule).
+- **B-rep snapshot storage removed from transport:** Document holds `brepSnapshot` per entity. Transport emits `rehydrate-needed`; `OpenCascadeService` calls `Restore` via injected `snapshotProvider`.
+- **Backoff with jitter:** Exponential backoff base 1s, doubles, cap 30s, jitter 0-25%, max 10 attempts (~3.5 min). `online`/`visibilitychange` trigger immediate reconnect.
+- **Single-flight reconnect:** Generation counter + `reconnecting` flag prevent duplicate reconnect loops from heartbeat failure and RPC error simultaneously.
 

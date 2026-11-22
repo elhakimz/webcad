@@ -119,6 +119,7 @@ vi.mock('@connectrpc/connect', () => {
     openSession: mockOpenSession,
     subscribe: mockSubscribe,
     closeSession: mockCloseSession,
+    cancel: vi.fn().mockResolvedValue(undefined),
   };
   return {
     createClient: vi.fn(() => mockClient),
@@ -130,7 +131,7 @@ vi.mock('@connectrpc/connect', () => {
   };
 });
 
-import { RemoteGrpcTransport } from '../RemoteGrpcTransport';
+import { RemoteGrpcTransport, GrpcTransportError, ConnectionState } from '../RemoteGrpcTransport';
 import { createConnectTransport } from '@connectrpc/connect-web';
 
 describe('RemoteGrpcTransport', () => {
@@ -193,8 +194,8 @@ describe('RemoteGrpcTransport', () => {
     });
 
     it('decrements pendingCount even when the call throws', async () => {
-      mockExecute.mockRejectedValue(new Error('kernel error'));
-      await expect(transport.createBox(0, 0, 0, 10, 10, 10)).rejects.toThrow('kernel error');
+      mockExecute.mockRejectedValueOnce(new GrpcTransportError('PERMISSION_DENIED', 'access denied'));
+      await expect(transport.createBox(0, 0, 0, 10, 10, 10)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
       expect(transport.pendingCount).toBe(0);
     });
   });
@@ -238,9 +239,10 @@ describe('RemoteGrpcTransport', () => {
       await expect(transport.createBox(0, 0, 0, 10, 10, 10)).rejects.toThrow(/shape not found/);
     });
 
-    it('throws on transport error (e.g. network)', async () => {
-      mockExecute.mockRejectedValue(new Error('connection refused'));
-      await expect(transport.createBox(0, 0, 0, 10, 10, 10)).rejects.toThrow('connection refused');
+    it('retries on transient transport error and succeeds', async () => {
+      mockExecute.mockRejectedValueOnce(new Error('connection refused'));
+      await expect(transport.createBox(0, 0, 0, 10, 10, 10)).resolves.toBeDefined();
+      expect(mockExecute).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -295,6 +297,163 @@ describe('RemoteGrpcTransport', () => {
     it('calls closeSession on the client', async () => {
       await transport.closeSession();
       expect(mockCloseSession).toHaveBeenCalled();
+    });
+  });
+
+  describe('ConnectionState', () => {
+    it('emits statechange CONNECTED on init', async () => {
+      const states: string[] = [];
+      transport.addEventListener('statechange', (e: Event) => {
+        const ce = e as CustomEvent;
+        states.push(ce.detail.state);
+      });
+      expect(transport.state).toBe('CONNECTED');
+    });
+
+    it('exposes current state via getter', () => {
+      expect((transport as any).state).toBe('CONNECTED');
+    });
+
+    it('transitions to RECONNECTING on transport error, then CONNECTED on successful reconnect', async () => {
+      vi.useFakeTimers();
+      const states: string[] = [];
+      transport.addEventListener('statechange', (e: Event) => {
+        const ce = e as CustomEvent;
+        states.push(ce.detail.state);
+      });
+      mockExecute.mockRejectedValueOnce(new Error('connection refused'));
+      mockExecute.mockResolvedValueOnce({ result: { case: 'success', value: {} }, mesh: undefined, brepRef: undefined });
+      const promise = transport.createBox(0, 0, 0, 10, 10, 10);
+      await vi.advanceTimersByTimeAsync(5000);
+      await expect(promise).resolves.toBeDefined();
+      expect(states).toContain('RECONNECTING');
+      vi.useRealTimers();
+    });
+  });
+
+  describe('pending-call registry', () => {
+    it('retries pending call with same requestId after reconnect', async () => {
+      vi.useFakeTimers();
+      mockExecute.mockRejectedValueOnce(new Error('connection refused'));
+      mockExecute.mockResolvedValueOnce({ result: { case: 'success', value: {} }, mesh: undefined, brepRef: undefined });
+      const promise = transport.createBox(0, 0, 0, 10, 10, 10);
+      await vi.advanceTimersByTimeAsync(5000);
+      await expect(promise).resolves.toBeDefined();
+      const executeCalls = mockExecute.mock.calls.map(c => c[0]);
+      const firstId = executeCalls[0].header.requestId;
+      const retried = executeCalls.find(c => c.header.requestId === firstId && executeCalls.indexOf(c) > 0);
+      expect(retried).toBeDefined();
+      vi.useRealTimers();
+    });
+
+    it('retries pending call when transport errors then recovers', async () => {
+      mockExecute.mockRejectedValueOnce(new Error('connection refused'));
+      await expect(transport.createBox(0, 0, 0, 10, 10, 10)).resolves.toBeDefined();
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+      expect(transport.pendingCount).toBe(0);
+    });
+  });
+
+  describe('reconnect backoff', () => {
+    it('uses exponential backoff and reaches ERROR after max attempts', async () => {
+      vi.useFakeTimers();
+      const states: string[] = [];
+      transport.addEventListener('statechange', (e: Event) => {
+        const ce = e as CustomEvent;
+        states.push(ce.detail.state);
+      });
+      // Short backoff config for fast test
+      (transport as any).config.maxRetries = 2;
+      (transport as any).config.baseBackoffMs = 10;
+      (transport as any).config.maxBackoffMs = 100;
+      mockExecute.mockRejectedValue(new Error('connection refused'));
+      const promise = transport.createBox(0, 0, 0, 10, 10, 10);
+      // Advance enough to exhaust retries (10ms + 20ms + jitter)
+      await vi.advanceTimersByTimeAsync(500);
+      await expect(promise).rejects.toThrow('connection refused');
+      expect(states).toContain('RECONNECTING');
+      expect(states.filter(s => s === 'ERROR')).toHaveLength(1);
+      vi.useRealTimers();
+    });
+  });
+
+  describe('heartbeat watchdog', () => {
+    it('triggers reconnect after missed heartbeats', async () => {
+      vi.useFakeTimers();
+      const states: string[] = [];
+      transport.addEventListener('statechange', (e: Event) => {
+        const ce = e as CustomEvent;
+        states.push(ce.detail.state);
+      });
+      // Restart watchdog with fake timers (beforeEach used real timers)
+      (transport as any).stopHeartbeatWatchdog();
+      (transport as any).startHeartbeatWatchdog();
+      // Simulate a stale heartbeat (older than threshold)
+      (transport as any).lastHeartbeat = Date.now() - 60_000;
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(states).toContain('RECONNECTING');
+      vi.useRealTimers();
+    });
+  });
+
+  describe('bounded queue during reconnect', () => {
+    it('queues calls made during RECONNECTING', async () => {
+      (transport as any).setState('RECONNECTING');
+      const p1 = transport.createBox(0, 0, 0, 10, 10, 10);
+      const p2 = transport.createBox(0, 0, 0, 20, 20, 20);
+      mockExecute.mockResolvedValue({ result: { case: 'success', value: {} }, mesh: undefined, brepRef: undefined });
+      (transport as any).setState('CONNECTED');
+      await (transport as any).processQueue();
+      const results = await Promise.all([p1, p2]);
+      expect(results).toHaveLength(2);
+    });
+
+    it('rejects with DEADLINE_EXCEEDED on timeout', async () => {
+      vi.useFakeTimers();
+      (transport as any).config.deadlineMs = 100;
+      mockExecute.mockReturnValue(new Promise(() => {})); // never resolves
+      const p = transport.createBox(0, 0, 0, 10, 10, 10);
+      await vi.advanceTimersByTimeAsync(200);
+      await expect(p).rejects.toThrow(/DEADLINE_EXCEEDED/);
+      vi.useRealTimers();
+    });
+  });
+
+  describe('error classification', () => {
+    it('rejects PERMISSION_DENIED immediately without retry', async () => {
+      mockExecute.mockRejectedValue(new GrpcTransportError('PERMISSION_DENIED', 'access denied'));
+      await expect(transport.createBox(0, 0, 0, 10, 10, 10)).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+    });
+
+    it('emits token-expired on UNAUTHENTICATED', async () => {
+      const events: any[] = [];
+      transport.addEventListener('token-expired', (e: Event) => {
+        events.push((e as CustomEvent).detail);
+      });
+      mockExecute.mockRejectedValue(new GrpcTransportError('UNAUTHENTICATED', 'token expired'));
+      await expect(transport.createBox(0, 0, 0, 10, 10, 10)).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+      expect(events.length).toBeGreaterThan(0);
+    });
+
+    it('emits rehydrate-needed on SESSION_NOT_FOUND', async () => {
+      const events: any[] = [];
+      transport.addEventListener('rehydrate-needed', (e: Event) => {
+        events.push((e as CustomEvent).detail);
+      });
+      mockExecute.mockRejectedValue(new GrpcTransportError('SESSION_NOT_FOUND', 'session lost'));
+      await expect(transport.createBox(0, 0, 0, 10, 10, 10)).rejects.toMatchObject({ code: 'SESSION_NOT_FOUND' });
+      expect(events.length).toBeGreaterThan(0);
+      expect(events[0].reason).toContain('session lost');
+    });
+
+    it('emits rehydrate-needed on NOT_FOUND', async () => {
+      const events: any[] = [];
+      transport.addEventListener('rehydrate-needed', (e: Event) => {
+        events.push((e as CustomEvent).detail);
+      });
+      mockExecute.mockRejectedValue(new GrpcTransportError('NOT_FOUND', 'gateway restart — state cleared'));
+      await expect(transport.createBox(0, 0, 0, 10, 10, 10)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      expect(events.length).toBeGreaterThan(0);
     });
   });
 });

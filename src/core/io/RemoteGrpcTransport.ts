@@ -43,22 +43,51 @@ import {
   ChamferSolidFaceOpSchema,
   MakeThickSolidOpSchema,
   DraftSolidFacesOpSchema,
+  RestoreRequestSchema,
+  RestoreItemSchema,
 } from '../../generated/proto/webcad/engine/v1/engine_pb.js';
-import { CommandHeader, CommandHeaderSchema, MeshData, BrepReference, ExecutionFailureCode } from '../../generated/proto/webcad/engine/v1/common_pb.js';
+import { CommandHeader, CommandHeaderSchema, MeshData, BrepReference, BrepReferenceSchema, BrepReference_Format, ExecutionFailureCode } from '../../generated/proto/webcad/engine/v1/common_pb.js';
 
 export interface RemoteGrpcTransportConfig {
   gatewayUrl: string;
   sessionId?: string;
   includeBrep?: boolean;
   timeoutMs?: number;
+  maxRetries?: number;
+  baseBackoffMs?: number;
+  maxBackoffMs?: number;
+  jitter?: number;
+  queueSize?: number;
+  deadlineMs?: number;
+  heartbeatIntervalMs?: number;
+  heartbeatMissedThreshold?: number;
 }
 
-class GrpcTransportError extends Error {
+export class GrpcTransportError extends Error {
   constructor(public code: string, message: string) {
     super(message);
     this.name = 'GrpcTransportError';
   }
 }
+
+// Retryable per the gRPC design ADR: network errors, UNAVAILABLE, kernel restarting.
+const RETRYABLE_CODES = new Set(['UNAVAILABLE', 'INTERNAL', 'DEADLINE_EXCEEDED', 'ABORTED']);
+// Non-retryable: never retry these.
+const NON_RETRYABLE_CODES = new Set([
+  'PERMISSION_DENIED',
+  'RESOURCE_EXHAUSTED',
+  'INVALID_PARAMETER',
+  'MISSING_ENTITY',
+  'INVALID_PROFILE',
+  'UNSUPPORTED',
+  'GEOMETRY_EMPTY',
+  'IMPORT_FAILED',
+  'EXPORT_FAILED',
+  'SESSION_NOT_FOUND',
+  'UPLOAD_NOT_FOUND',
+  'RESULT_NOT_FOUND',
+  'QUOTA_EXCEEDED',
+]);
 
 type OpCase =
   | 'init' | 'clearCache' | 'releaseShapes' | 'checkValidity' | 'exportBrep' | 'importBrep'
@@ -69,6 +98,30 @@ type OpCase =
   | 'mirrorShape' | 'scaleShape' | 'filletSolid' | 'chamferSolid' | 'filletSolidFace'
   | 'chamferSolidFace' | 'makeThickSolid' | 'draftSolidFaces';
 
+export enum ConnectionState {
+  CONNECTING = 'CONNECTING',
+  CONNECTED = 'CONNECTED',
+  RECONNECTING = 'RECONNECTING',
+  REHYDRATING = 'REHYDRATING',
+  DISCONNECTED = 'DISCONNECTED',
+  ERROR = 'ERROR',
+}
+
+export interface StateChangeEventDetail {
+  state: ConnectionState;
+  previous?: ConnectionState;
+  reason?: string;
+}
+
+export interface TokenExpiredEventDetail {
+  reason: string;
+}
+
+export interface RehydrateNeededEventDetail {
+  reason: string;
+  sessionId: string;
+}
+
 export class RemoteGrpcTransport implements OCCTransport {
   private config: Required<RemoteGrpcTransportConfig>;
   private client: any = null;
@@ -77,6 +130,26 @@ export class RemoteGrpcTransport implements OCCTransport {
   private pendingCountValue = 0;
   private subscribed = false;
   private eventListeners = new Set<(event: SessionEvent) => void>();
+  private stateValue: ConnectionState = ConnectionState.DISCONNECTED;
+  private reconnectAttempts = 0;
+  private reconnectingGeneration = 0;
+  private eventTarget = new EventTarget();
+  private pendingCalls = new Map<string, {
+    resolve: (value: ExecuteResponse) => void;
+    reject: (reason: any) => void;
+    requestId: string;
+    deadline: number;
+    attempt: number;
+    opName: string;
+    payload: unknown;
+  }>();
+  private callQueue: Array<{ opName: string; payload: unknown; requestId?: string; resolve: (v: ExecuteResponse) => void; reject: (r: any) => void }> = [];
+  private subscribeStream: any = null;
+  private heartbeatTimer: any = null;
+  private lastHeartbeat = 0;
+  private reconnectTimer: any = null;
+  private token: string | undefined;
+  private gettingToken = false;
 
   constructor(config: RemoteGrpcTransportConfig) {
     this.config = {
@@ -84,8 +157,60 @@ export class RemoteGrpcTransport implements OCCTransport {
       sessionId: config.sessionId ?? crypto.randomUUID(),
       includeBrep: config.includeBrep ?? true,
       timeoutMs: config.timeoutMs ?? 120_000,
+      maxRetries: config.maxRetries ?? 10,
+      baseBackoffMs: config.baseBackoffMs ?? 1000,
+      maxBackoffMs: config.maxBackoffMs ?? 30_000,
+      jitter: config.jitter ?? 0.25,
+      queueSize: config.queueSize ?? 50,
+      deadlineMs: config.deadlineMs ?? 120_000,
+      heartbeatIntervalMs: config.heartbeatIntervalMs ?? 15_000,
+      heartbeatMissedThreshold: config.heartbeatMissedThreshold ?? 3,
     };
     this.sessionId = this.config.sessionId;
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => this.attemptReconnect('browser online'));
+      window.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') this.attemptReconnect('tab visible');
+      });
+    }
+  }
+
+  get state(): ConnectionState {
+    return this.stateValue;
+  }
+
+  private setState(next: ConnectionState, reason?: string): void {
+    const prev = this.stateValue;
+    if (prev === next) return;
+    this.stateValue = next;
+    this.eventTarget.dispatchEvent(
+      new CustomEvent('statechange', {
+        detail: { state: next, previous: prev, reason },
+      }),
+    );
+  }
+
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject): void {
+    this.eventTarget.addEventListener(type, listener);
+  }
+
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject): void {
+    this.eventTarget.removeEventListener(type, listener);
+  }
+
+  private dispatchTokenExpired(reason: string): void {
+    this.eventTarget.dispatchEvent(
+      new CustomEvent('token-expired', { detail: { reason } }),
+    );
+  }
+
+  private dispatchRehydrateNeeded(reason: string): void {
+    this.eventTarget.dispatchEvent(
+      new CustomEvent('rehydrate-needed', {
+        detail: { reason, sessionId: this.sessionId },
+      }),
+    );
   }
 
   private get clientOrThrow() {
@@ -111,35 +236,228 @@ export class RemoteGrpcTransport implements OCCTransport {
   ): Promise<ExecuteResponse> {
     const reqId = requestId ?? crypto.randomUUID();
 
-    this.pendingCountValue++;
+    // If reconnecting, queue the call (bounded).
+    if (this.stateValue === ConnectionState.RECONNECTING) {
+      if (this.callQueue.length >= this.config.queueSize) {
+        throw new GrpcTransportError('RESOURCE_EXHAUSTED', 'Reconnect queue full');
+      }
+      return new Promise((resolve, reject) => {
+        this.callQueue.push({ opName, payload, requestId: reqId, resolve, reject });
+      });
+    }
+
+    const deadline = Date.now() + this.config.deadlineMs;
+    const pending: {
+      resolve: (value: ExecuteResponse) => void;
+      reject: (reason: any) => void;
+      requestId: string;
+      deadline: number;
+      attempt: number;
+      opName: string;
+      payload: unknown;
+    } = { resolve: () => {}, reject: () => {}, requestId: reqId, deadline, attempt: 0, opName, payload };
+
+    const run = async (): Promise<ExecuteResponse> => {
+      pending.attempt++;
+      this.pendingCalls.set(reqId, pending);
+      this.pendingCountValue++;
+
+      try {
+        const request = create(ExecuteRequestSchema, {
+          header: this.header(reqId),
+          includeBrep: this.config.includeBrep,
+          op: { case: opName as ExecuteRequest['op']['case'], value: payload } as ExecuteRequest['op'],
+        });
+
+        const response = await this.clientOrThrow.execute(request, {
+          headers: { 'x-session-id': this.sessionId },
+          responseTimeout: this.config.timeoutMs,
+        });
+
+        if (response.result?.case === 'failure') {
+          const f = response.result.value;
+          const code = ExecutionFailureCode[f.code] ?? 'UNKNOWN';
+          throw new GrpcTransportError(code, `Execution failure (${f.code}): ${f.message}`);
+        }
+
+        pending.resolve(response);
+        return response;
+      } catch (err) {
+        return this.handleExecuteError(err, pending, run);
+      } finally {
+        this.pendingCalls.delete(reqId);
+        this.pendingCountValue--;
+      }
+    };
+
+    let rejectFn: (reason: any) => void;
+    const promise = new Promise<ExecuteResponse>((resolve, reject) => {
+      rejectFn = reject;
+      run().then(resolve, reject);
+    });
+
+    // Per-operation deadline: Cancel on timeout.
+    const deadlineTimer = setTimeout(() => {
+      if (!this.client) return;
+      this.client.cancel(reqId).catch(() => {});
+      rejectFn(new GrpcTransportError('DEADLINE_EXCEEDED', `DEADLINE_EXCEEDED: Operation ${opName} timed out`));
+    }, Math.max(0, deadline - Date.now()));
+
+    promise.finally(() => clearTimeout(deadlineTimer));
+    return promise;
+  }
+
+  private async handleExecuteError(
+    err: any,
+    pending: { resolve: (v: ExecuteResponse) => void; reject: (r: any) => void; requestId: string; deadline: number; attempt: number; opName: string; payload: unknown },
+    run: () => Promise<ExecuteResponse>,
+  ): Promise<ExecuteResponse> {
+    const code = err instanceof GrpcTransportError ? err.code : 'UNKNOWN';
+    const isNetwork = !(err instanceof GrpcTransportError);
+
+    // Token refresh: UNAUTHENTICATED -> get fresh token, reconnect, retry once.
+    if (code === 'UNAUTHENTICATED') {
+      this.dispatchTokenExpired('token expired');
+      if (!this.gettingToken) {
+        this.gettingToken = true;
+        try {
+          await this.refreshToken();
+        } finally {
+          this.gettingToken = false;
+        }
+        this.attemptReconnect('token expired');
+        if (pending.attempt < 2) {
+          return run();
+        }
+      }
+      pending.reject(err);
+      throw err;
+    }
+
+    // Session/kernel lost (NOT_FOUND after gateway restart): abort, signal rehydrate.
+    // Must come BEFORE NON_RETRYABLE_CODES check so rehydrate-needed is dispatched.
+    if (code === 'SESSION_NOT_FOUND' || code === 'NOT_FOUND') {
+      this.setState(ConnectionState.REHYDRATING, 'session lost');
+      this.dispatchRehydrateNeeded('session lost — kernel state cleared');
+      this.attemptReconnect('session lost');
+      pending.reject(err);
+      throw err;
+    }
+
+    // Non-retryable: reject immediately.
+    if (NON_RETRYABLE_CODES.has(code)) {
+      pending.reject(err);
+      throw err;
+    }
+
+    // Retryable: network errors or retryable gRPC codes. Retry with same requestId (dedupe).
+    if (isNetwork || RETRYABLE_CODES.has(code)) {
+      if (pending.attempt < this.config.maxRetries) {
+        this.setState(ConnectionState.RECONNECTING, code);
+        const backoff = this.backoffDelay(pending.attempt);
+        await new Promise((r) => setTimeout(r, backoff));
+        this.setState(ConnectionState.CONNECTED);
+        return run();
+      }
+      this.setState(ConnectionState.ERROR, 'max retries exceeded');
+      pending.reject(err);
+      throw err;
+    }
+
+    pending.reject(err);
+    throw err;
+  }
+
+  private backoffDelay(attempt: number): number {
+    const base = this.config.baseBackoffMs;
+    const cap = this.config.maxBackoffMs;
+    const exp = Math.min(base * Math.pow(2, attempt), cap);
+    const jitter = exp * this.config.jitter * Math.random();
+    return exp + jitter;
+  }
+
+  async setToken(token: string): Promise<void> {
+    this.token = token;
+    if (this.stateValue === ConnectionState.CONNECTED) {
+      this.attemptReconnect('token refreshed');
+    }
+  }
+
+  async refreshToken(): Promise<void> {
+    // Subclasses / OpenCascadeService override this to fetch a fresh token.
+    throw new GrpcTransportError('UNAUTHENTICATED', 'No token refresh handler configured');
+  }
+
+  private async attemptReconnect(reason: string): Promise<void> {
+    if (this.reconnectTimer) return; // single-flight
+    const gen = ++this.reconnectingGeneration;
+    this.setState(ConnectionState.RECONNECTING, reason);
 
     try {
-      const request = create(ExecuteRequestSchema, {
-        header: this.header(reqId),
-        includeBrep: this.config.includeBrep,
-        op: { case: opName as ExecuteRequest['op']['case'], value: payload } as ExecuteRequest['op'],
-      });
+      const delay = this.backoffDelay(this.reconnectAttempts);
+      await new Promise((r) => setTimeout(r, delay));
 
-      const response = await this.clientOrThrow.execute(request, {
-        headers: { 'x-session-id': this.sessionId },
-        responseTimeout: this.config.timeoutMs,
-      });
+      // Reuse the same session_id; resume via Subscribe(last_event_id).
+      await this.init();
+      this.reconnectAttempts = 0;
+      this.setState(ConnectionState.CONNECTED, 'reconnected');
 
-      if (response.result?.case === 'failure') {
-        const f = response.result.value;
-        throw new GrpcTransportError(
-          ExecutionFailureCode[f.code] ?? 'UNKNOWN',
-          `Execution failure (${f.code}): ${f.message}`,
-        );
+      // Replay queued calls in order.
+      await this.processQueue();
+    } catch (err) {
+      this.reconnectAttempts++;
+      if (this.reconnectAttempts >= this.config.maxRetries) {
+        this.setState(ConnectionState.ERROR, 'max reconnect attempts');
+      } else {
+        this.setState(ConnectionState.RECONNECTING, 'reconnect failed, retrying');
+        // Schedule next attempt.
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = null;
+          this.attemptReconnect('retry');
+        }, this.backoffDelay(this.reconnectAttempts));
       }
-
-      return response;
+      throw err;
     } finally {
-      this.pendingCountValue--;
+      if (gen === this.reconnectingGeneration) {
+        this.reconnectTimer = null;
+      }
+    }
+  }
+
+  private async processQueue(): Promise<void> {
+    const queue = this.callQueue.splice(0, this.callQueue.length);
+    for (const item of queue) {
+      try {
+        const res = await this.execute(item.opName as OpCase, item.payload, item.requestId);
+        item.resolve(res);
+      } catch (err) {
+        item.reject(err);
+      }
+    }
+  }
+
+  private startHeartbeatWatchdog(): void {
+    this.stopHeartbeatWatchdog();
+    this.lastHeartbeat = Date.now();
+    this.heartbeatTimer = setInterval(() => {
+      const missed = Date.now() - this.lastHeartbeat;
+      const threshold = this.config.heartbeatIntervalMs * this.config.heartbeatMissedThreshold;
+      if (missed > threshold && this.stateValue === ConnectionState.CONNECTED) {
+        this.stopHeartbeatWatchdog();
+        this.attemptReconnect('heartbeat timeout');
+      }
+    }, this.config.heartbeatIntervalMs);
+  }
+
+  private stopHeartbeatWatchdog(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
   }
 
   async init(): Promise<void> {
+    this.setState(ConnectionState.CONNECTING, 'initializing');
     const transport = createConnectTransport({
       baseUrl: this.config.gatewayUrl,
     });
@@ -157,6 +475,9 @@ export class RemoteGrpcTransport implements OCCTransport {
     });
 
     await this.clientOrThrow.openSession(request);
+    this.setState(ConnectionState.CONNECTED);
+    this.startHeartbeatWatchdog();
+    this.reconnectAttempts = 0;
   }
 
   get pendingCount(): number {
@@ -438,7 +759,45 @@ export class RemoteGrpcTransport implements OCCTransport {
     }
   }
 
-  async subscribe(onEvent: (event: SessionEvent) => void): Promise<void> {
+  /**
+   * Restore (rehydrate) one or more entities on the kernel via batched Restore RPC.
+   * Called by OpenCascadeService/document when the gateway signals REHYDRATING / NOT_FOUND.
+   * Each item carries a BrepReference (BlobRef id) for the entity's B-rep snapshot.
+   */
+  async restore(items: Array<{
+    entityId: string;
+    brepRefId: string;
+  }>): Promise<string[]> {
+    if (!this.client) {
+      throw new GrpcTransportError('FAILED_PRECONDITION', 'Transport not initialized. Call init() first.');
+    }
+
+    const restoreItems = items.map(item =>
+      create(RestoreItemSchema, {
+        entityId: item.entityId,
+        source: { case: 'brepRef', value: create(BrepReferenceSchema, { format: BrepReference_Format.BINARY, sha256: item.brepRefId }) },
+      }),
+    );
+
+    const request = create(RestoreRequestSchema, {
+      header: create(CommandHeaderSchema, {
+        sessionId: this.sessionId,
+        requestId: crypto.randomUUID(),
+        clientSeq: ++this.clientSeq,
+        documentId: '',
+      }),
+      items: restoreItems,
+    });
+
+    const response = await this.client.restore(request, {
+      headers: { 'x-session-id': this.sessionId },
+      responseTimeout: this.config.timeoutMs,
+    });
+
+    return response.restoredEntityIds ?? [];
+  }
+
+  async subscribe(onEvent: (event: SessionEvent) => void, lastEventId: bigint = 0n): Promise<void> {
     if (!this.client) {
       throw new GrpcTransportError('FAILED_PRECONDITION', 'Transport not initialized');
     }
@@ -447,7 +806,7 @@ export class RemoteGrpcTransport implements OCCTransport {
     if (this.subscribed) return;
     this.subscribed = true;
 
-    const request = create(SubscribeRequestSchema, { header: this.header(), lastEventId: 0n });
+    const request = create(SubscribeRequestSchema, { header: this.header(), lastEventId });
 
     try {
       const stream = this.client.subscribe(request, {
@@ -456,10 +815,19 @@ export class RemoteGrpcTransport implements OCCTransport {
       });
 
       for await (const event of stream) {
+        this.lastHeartbeat = Date.now();
+
+        // Gateway signals kernel loss — consumer must call Restore.
+        if (event.case === 'needsRehydrate') {
+          this.dispatchRehydrateNeeded('gateway reported needs_rehydrate');
+        }
+
         this.eventListeners.forEach((listener) => listener(event));
       }
     } catch (err) {
       this.subscribed = false;
+      this.stopHeartbeatWatchdog();
+      this.attemptReconnect('subscribe stream ended');
       throw err;
     }
   }

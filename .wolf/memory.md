@@ -605,6 +605,8 @@ Dev servers stopped (5173, 4173). Uncommitted: .wolf/, .claude/, CLAUDE.md, plan
 
 | 13:32 | WC-EC-27 gateway auth: fixed typecheck errors (auth-interceptor null header, dedupe.test.ts 3-arg API, DedupeEntry principal field); wrote auth-interceptor.test.ts (11 tests), session-owner tests in session-manager.test.ts, restore-breps.test.ts; all 695 tests pass across 97 files; typecheck + lint + buf:lint clean | src/core/gateway/auth-interceptor.ts, auth-interceptor.test.ts, dedupe.test.ts, ordering.test.ts, session-manager.test.ts, restore-breps.test.ts | Done | ~2k |
 
+| 14:02 | Committed all WC-EC-27 gateway auth changes on dev branch (1ce0dc3, 15 files, +965/-279) | All staged files | Committed | ~0 |
+
 | 13:37 | Created assets/fonts/FONT-CREDITS.md (font license/attribution doc for public/fonts/); added anatomy.md entry; Chunk 1 of kernel-dependency-implementation-plan.md started | assets/fonts/FONT-CREDITS.md, .wolf/anatomy.md | Chunk 1 complete | ~800 |
 
 | 14:15 | Implemented ImportBRep and ExportBRep in kernel-worker.cpp via OCCT BinTools (Add ImportBRepOp/ExportBRepOp switch cases, 64 MiB size + 0x1a terminator pre-validation, temp file write/read, BrepReference FORMAT_BINARY response; BrepRef import rejected with INVALID_PARAMETER; removed unused kMaxBrepBytes const; added unistd.h) | src/core/gateway/kernel-worker.cpp | Committed as 7c0c72b | ~3k |
@@ -702,4 +704,6 @@ Dev servers stopped (5173, 4173). Uncommitted: .wolf/, .claude/, CLAUDE.md, plan
  | 11:21 | WEBCAD-218 gRPC kernel transport parity design written | docs/superpowers/specs/2026-11-22-grpc-kernel-transport-parity-design.md | Design doc created, ~4.5KB | ~1.5K |
 | 11:22 | WEBCAD-218 implementation plan written | docs/superpowers/plans/2026-11-22-grpc-kernel-transport-parity.md | Plan created, ~70 tasks across 11 chunks | ~2K |
 |   1 2 : 0 6   |   W E B C A D - 2 1 8   c o m p l e t e :   a l l   3 4   c o m m a n d s   i m p l e m e n t e d ,   r e g i s t e r e d ,   t e s t s   p a s s   |   4 4   f i l e s ,   2 6 8 4   i n s e r t i o n s   |   c o m m i t t e d   t o   d e v   |   ~ 5 0 0   |  
+ |   1 3 : 5 8   |   F i x e d   d e a d l i n e   t i m e o u t   r e j e c t i o n      w i r e d   p e n d i n g . r e j e c t   t o   a c t u a l   p r o m i s e   r e j e c t   f u n c t i o n   |   s r c / c o r e / i o / R e m o t e G r p c T r a n s p o r t . t s   |   A l l   2 4   t e s t s   p a s s   |   ~ 0 . 5 K   |  
  
+| 15:00 | WC-EC-28 reconnect complete: state machine, backoff with jitter, heartbeat watchdog, pending-call retry/abort, rehydrate-needed via Restore; design doc approved; all checks pass | src/core/io/RemoteGrpcTransport.ts, src/core/io/OpenCascadeService.ts, src/core/io/__tests__/RemoteGrpcTransport.reconnect.integration.test.ts, src/core/io/__tests__/codec.test.ts, docs/superpowers/specs/2026-11-20-remote-grpc-transport-reconnect-design.md | 713 tests pass, typecheck/lint/buf:lint pass; buf:breaking fails (pre-existing network issue) | ~5K |

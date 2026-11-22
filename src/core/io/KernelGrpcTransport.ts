@@ -386,7 +386,15 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async chamferSolidFace(entityId: string, faceIndex: number, radius: number): Promise<any> {
-    throw new Error('chamferSolidFace not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      chamfer_solid_face: {
+        entityId,
+        faceIndex,
+        radius,
+      },
+    });
   }
 
   async makeThickSolid(entityId: string, faceIndices: number[], thickness: number, removeFaces?: boolean): Promise<any> {

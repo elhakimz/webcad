@@ -101,6 +101,7 @@ static bool ShouldLog(LogLevel level) { return level >= g_logLevel; }
 #include <opencascade/BRepBuilderAPI_Transform.hxx>
 #include <opencascade/BRepBuilderAPI_MakeSolid.hxx>
 #include <opencascade/BRepBuilderAPI_MakeVertex.hxx>
+#include <opencascade/BRepTools.hxx>
 #include <opencascade/BRepOffsetAPI_MakePipeShell.hxx>
 #include <opencascade/GCPnts_QuasiUniformDeflection.hxx>
 #include <opencascade/BRepAdaptor_Curve.hxx>
@@ -1819,6 +1820,9 @@ static OpResult OpCreatePyramid(double x, double y, double z, int sides, double 
 // ---------------------------------------------------------------------------
 // OpCreateLoft — loft cross-section wires and/or vertex apices into a solid or
 // shell using BRepOffsetAPI_ThruSections.
+// Section order follows profile order: each profile contributes exactly one
+// section (AddWire or AddVertex). Cached-shape id wins over points; an
+// unresolvable id with no points is MISSING_ENTITY.
 // ---------------------------------------------------------------------------
 static OpResult OpCreateLoft(const std::vector<LoftProfile>& profiles,
                              bool isSolid,
@@ -1845,34 +1849,41 @@ static OpResult OpCreateLoft(const std::vector<LoftProfile>& profiles,
     if (!profId.empty()) {
       auto it = g_shapeCache.find(profId);
       if (it == g_shapeCache.end()) {
-        result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+        result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_MISSING_ENTITY);
         result.message = "LoftProfile " + std::to_string(i) + ": referenced shape id not found: " + profId;
         return result;
       }
       const TopoDS_Shape& refShape = it->second;
       if (refShape.IsNull()) {
-        result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+        result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_GEOMETRY_EMPTY);
         result.message = "LoftProfile " + std::to_string(i) + ": referenced shape is null: " + profId;
         return result;
       }
-      // Extract wires from the cached shape.
-      TopExp_Explorer wireExplorer(refShape, TopAbs_WIRE);
-      bool foundWire = false;
-      while (wireExplorer.More()) {
-        TopoDS_Wire refWire = TopoDS::Wire(wireExplorer.Current());
-        loft.AddWire(refWire);
-        foundWire = true;
-        wireExplorer.Next();
-      }
-      // If no wires found, check if it's a vertex (apex).
-      if (!foundWire) {
-        TopExp_Explorer vertexExplorer(refShape, TopAbs_VERTEX);
-        if (vertexExplorer.More()) {
-          loft.AddVertex(TopoDS::Vertex(vertexExplorer.Current()));
-        } else {
-          result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
-          result.message = "LoftProfile " + std::to_string(i) + ": referenced shape is not a wire or vertex: " + profId;
+      // Face profiles: use the outer wire (BRepTools::OuterWire), not the
+      // first wire found. A face may have multiple wires (outer + holes).
+      if (refShape.ShapeType() == TopAbs_FACE) {
+        TopoDS_Face face = TopoDS::Face(refShape);
+        TopoDS_Wire outerWire = BRepTools::OuterWire(face);
+        if (outerWire.IsNull()) {
+          result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PROFILE);
+          result.message = "LoftProfile " + std::to_string(i) + ": face has no outer wire: " + profId;
           return result;
+        }
+        loft.AddWire(outerWire);
+      } else {
+        // Wire or vertex: add exactly one section in profile order.
+        TopExp_Explorer wireExplorer(refShape, TopAbs_WIRE);
+        if (wireExplorer.More()) {
+          loft.AddWire(TopoDS::Wire(wireExplorer.Current()));
+        } else {
+          TopExp_Explorer vertexExplorer(refShape, TopAbs_VERTEX);
+          if (vertexExplorer.More()) {
+            loft.AddVertex(TopoDS::Vertex(vertexExplorer.Current()));
+          } else {
+            result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PROFILE);
+            result.message = "LoftProfile " + std::to_string(i) + ": referenced shape is not a wire, face, or vertex: " + profId;
+            return result;
+          }
         }
       }
       continue;
@@ -1880,7 +1891,7 @@ static OpResult OpCreateLoft(const std::vector<LoftProfile>& profiles,
 
     // Build wire from points.
     if (points.size() == 0) {
-      result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PARAMETER);
+      result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PROFILE);
       result.message = "LoftProfile " + std::to_string(i) + ": must specify id or points";
       return result;
     }
@@ -1890,6 +1901,11 @@ static OpResult OpCreateLoft(const std::vector<LoftProfile>& profiles,
       const auto& pt = points[0];
       gp_Pnt apexPnt(pt.x(), pt.y(), pt.z());
       BRepBuilderAPI_MakeVertex makeVertex(apexPnt);
+      if (!makeVertex.IsDone()) {
+        result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PROFILE);
+        result.message = "LoftProfile " + std::to_string(i) + ": failed to build vertex";
+        return result;
+      }
       TopoDS_Shape apexVertex = makeVertex.Vertex();
       loft.AddVertex(TopoDS::Vertex(apexVertex));
       continue;
@@ -1904,8 +1920,8 @@ static OpResult OpCreateLoft(const std::vector<LoftProfile>& profiles,
           gp_Pnt(p0.x(), p0.y(), p0.z()),
           gp_Pnt(p1.x(), p1.y(), p1.z()));
       if (!edge.IsDone()) {
-        result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
-        result.message = "LoftProfile " + std::to_string(i) + ": failed to build edge";
+        result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PROFILE);
+        result.message = "LoftProfile " + std::to_string(i) + ": failed to build edge (degenerate input)";
         return result;
       }
       wireBuilder.Add(edge.Edge());
@@ -1918,34 +1934,22 @@ static OpResult OpCreateLoft(const std::vector<LoftProfile>& profiles,
           gp_Pnt(pLast.x(), pLast.y(), pLast.z()),
           gp_Pnt(pFirst.x(), pFirst.y(), pFirst.z()));
       if (!closingEdge.IsDone()) {
-        result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
-        result.message = "LoftProfile " + std::to_string(i) + ": failed to build closing edge";
+        result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PROFILE);
+        result.message = "LoftProfile " + std::to_string(i) + ": failed to build closing edge (degenerate input)";
         return result;
       }
       wireBuilder.Add(closingEdge.Edge());
     }
     TopoDS_Wire wire = wireBuilder.Wire();
     if (!wireBuilder.IsDone() || wire.IsNull()) {
-      result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
-      result.message = "LoftProfile " + std::to_string(i) + ": failed to build wire";
-      return result;
-    }
-
-    // Fix wire connectivity/ordering.
-    ShapeFix_Wire wireFixer(wire, TopoDS_Face(), 1.0e-6);
-    wireFixer.FixReorder();
-    wireFixer.FixConnected();
-    wire = wireFixer.Wire();
-    if (wire.IsNull()) {
-      result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
-      result.message = "LoftProfile " + std::to_string(i) + ": failed to fix wire";
+      result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_INVALID_PROFILE);
+      result.message = "LoftProfile " + std::to_string(i) + ": failed to build wire (degenerate input)";
       return result;
     }
 
     loft.AddWire(wire);
   }
 
-  loft.CheckCompatibility(Standard_True);
   loft.Build();
   if (!loft.IsDone()) {
     result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
@@ -1960,7 +1964,19 @@ static OpResult OpCreateLoft(const std::vector<LoftProfile>& profiles,
     return result;
   }
 
-  EnsurePositiveVolume(shape);
+  // EnsurePositiveVolume applies only to solids (ThruSections may return a shell
+  // for open wires where volume is meaningless).
+  if (isSolid && shape.ShapeType() == TopAbs_SOLID) {
+    EnsurePositiveVolume(shape);
+  }
+
+  // Validity check on the result.
+  BRepCheck_Analyzer analyzer(shape);
+  if (!analyzer.IsValid()) {
+    result.code = static_cast<uint32_t>(ExecutionFailureCode::EXECUTION_FAILURE_CODE_OPERATION_FAILED);
+    result.message = "Loft: resulting shape failed BRepCheck validity";
+    return result;
+  }
 
   return OpCreateAndCache(shape, deflection, entityId);
 }

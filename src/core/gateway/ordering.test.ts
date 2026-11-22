@@ -209,23 +209,30 @@ describe('SessionOrderer', () => {
   });
 
   describe('OrdererRegistryImpl', () => {
-    it('creates and retrieves orderers per session', () => {
+    it('creates and retrieves orderers per principal:session', () => {
       const registry = new OrdererRegistryImpl();
-      const o1 = registry.getOrCreate('sess-a');
-      const o2 = registry.getOrCreate('sess-b');
-      const o1again = registry.getOrCreate('sess-a');
+      const o1 = registry.getOrCreate('user-a', 'sess-a');
+      const o2 = registry.getOrCreate('user-b', 'sess-b');
+      const o1again = registry.getOrCreate('user-a', 'sess-a');
 
-      expect(o1).toBe(o1again); // same instance for same session
-      expect(o1).not.toBe(o2); // different instances for different sessions
+      expect(o1).toBe(o1again); // same instance for same principal:session
+      expect(o1).not.toBe(o2); // different instances for different principal:session
     });
 
     it('remove deletes the orderer', () => {
       const registry = new OrdererRegistryImpl();
-      registry.getOrCreate('sess-a');
-      registry.remove('sess-a');
+      registry.getOrCreate('user-a', 'sess-a');
+      registry.remove('user-a', 'sess-a');
       // getOrCreate should create a new one
-      const newOrderer = registry.getOrCreate('sess-a');
+      const newOrderer = registry.getOrCreate('user-a', 'sess-a');
       expect(newOrderer).not.toBeUndefined();
+    });
+
+    it('does not return same orderer for different principal same session', () => {
+      const registry = new OrdererRegistryImpl();
+      const o1 = registry.getOrCreate('user-a', 'sess-1');
+      const o2 = registry.getOrCreate('user-b', 'sess-1');
+      expect(o1).not.toBe(o2);
     });
   });
 });

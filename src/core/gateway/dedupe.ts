@@ -3,6 +3,7 @@ export type DedupeStatus = 'pending' | 'completed' | 'failed';
 export interface DedupeEntry {
   requestId: string;
   sessionId: string;
+  principal: string;
   status: DedupeStatus;
   resultRef?: string; // result_id for large results stored by reference
   errorCode?: number;
@@ -31,38 +32,44 @@ export class DedupeCache {
     };
   }
 
+  private key(principal: string, sessionId: string, requestId: string): string {
+    return `${principal}:${sessionId}:${requestId}`;
+  }
+
   /** Check if a request_id is already in flight or completed. Returns existing entry or undefined. */
-  lookup(requestId: string): DedupeEntry | undefined {
+  lookup(principal: string, sessionId: string, requestId: string): DedupeEntry | undefined {
     this.evictExpired();
-    return this.entries.get(requestId);
+    return this.entries.get(this.key(principal, sessionId, requestId));
   }
 
   /** Mark a request as in-flight. Returns false if already exists (duplicate joins in-flight). */
-  markPending(requestId: string, sessionId: string): boolean {
+  markPending(principal: string, sessionId: string, requestId: string): boolean {
     this.evictExpired();
-    if (this.entries.has(requestId)) {
+    const k = this.key(principal, sessionId, requestId);
+    if (this.entries.has(k)) {
       return false; // duplicate - caller joins the in-flight call
     }
     this.enforceSizeCap();
-    this.entries.set(requestId, {
+    this.entries.set(k, {
       requestId,
       sessionId,
+      principal,
       status: 'pending',
       createdAt: Date.now(),
     });
     return true;
   }
 
-  complete(requestId: string, resultRef?: string): void {
-    const entry = this.entries.get(requestId);
+  complete(principal: string, sessionId: string, requestId: string, resultRef?: string): void {
+    const entry = this.entries.get(this.key(principal, sessionId, requestId));
     if (!entry) return;
     entry.status = 'completed';
     entry.resultRef = resultRef;
     entry.completedAt = Date.now();
   }
 
-  fail(requestId: string, errorCode: number, errorMessage: string): void {
-    const entry = this.entries.get(requestId);
+  fail(principal: string, sessionId: string, requestId: string, errorCode: number, errorMessage: string): void {
+    const entry = this.entries.get(this.key(principal, sessionId, requestId));
     if (!entry) return;
     entry.status = 'failed';
     entry.errorCode = errorCode;
@@ -71,8 +78,8 @@ export class DedupeCache {
   }
 
   /** Get a result reference by request_id (for dedupe replay). Returns undefined if not found or not completed. */
-  getResultRef(requestId: string): string | undefined {
-    const entry = this.entries.get(requestId);
+  getResultRef(principal: string, sessionId: string, requestId: string): string | undefined {
+    const entry = this.entries.get(this.key(principal, sessionId, requestId));
     if (!entry || entry.status !== 'completed') return undefined;
     return entry.resultRef;
   }

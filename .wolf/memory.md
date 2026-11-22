@@ -603,6 +603,8 @@ Dev servers stopped (5173, 4173). Uncommitted: .wolf/, .claude/, CLAUDE.md, plan
  
 | 10:52 | Addressed WC-EC-05 open questions Q1/Q4; fixed Document.test.ts redo B-rep restore race (un-awaited async undo/redo); all 477 unit tests pass; updated ADR spec Sections 12-13 and plan open questions table | src/core/model/Document.test.ts, docs/superpowers/specs/2026-11-20-kernel-strategy-adr-design.md, docs/superpowers/plans/2026-11-20-wc-ec-05-kernel-skeleton.md | ~200 |
 
+| 13:32 | WC-EC-27 gateway auth: fixed typecheck errors (auth-interceptor null header, dedupe.test.ts 3-arg API, DedupeEntry principal field); wrote auth-interceptor.test.ts (11 tests), session-owner tests in session-manager.test.ts, restore-breps.test.ts; all 695 tests pass across 97 files; typecheck + lint + buf:lint clean | src/core/gateway/auth-interceptor.ts, auth-interceptor.test.ts, dedupe.test.ts, ordering.test.ts, session-manager.test.ts, restore-breps.test.ts | Done | ~2k |
+
 | 13:37 | Created assets/fonts/FONT-CREDITS.md (font license/attribution doc for public/fonts/); added anatomy.md entry; Chunk 1 of kernel-dependency-implementation-plan.md started | assets/fonts/FONT-CREDITS.md, .wolf/anatomy.md | Chunk 1 complete | ~800 |
 
 | 14:15 | Implemented ImportBRep and ExportBRep in kernel-worker.cpp via OCCT BinTools (Add ImportBRepOp/ExportBRepOp switch cases, 64 MiB size + 0x1a terminator pre-validation, temp file write/read, BrepReference FORMAT_BINARY response; BrepRef import rejected with INVALID_PARAMETER; removed unused kMaxBrepBytes const; added unistd.h) | src/core/gateway/kernel-worker.cpp | Committed as 7c0c72b | ~3k |

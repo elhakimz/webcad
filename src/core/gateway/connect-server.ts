@@ -6,6 +6,8 @@ import { dedupeCache } from './dedupe.js';
 import { ordererRegistry } from './ordering.js';
 import { CommandRegistry } from './command-registry.js';
 import { kernelSupervisor } from './kernel-supervisor.js';
+import { authInterceptor } from './auth-interceptor.js';
+import { authenticator } from './auth.js';
 import {
   BoxCommand, CylinderCommand, SphereCommand, ConeCommand, FrustumCommand,
   TorusCommand, WedgeCommand, PyramidCommand, PolyhedronCommand, ConvexHullCommand,
@@ -76,6 +78,7 @@ export interface GatewayServiceImpl {
 
 export function createGatewayServer(impl: GatewayServiceImpl, config: GatewayConfig = {}) {
   const handler = connectNodeAdapter({
+    interceptors: [authInterceptor],
     routes(router) {
       router.service(EngineGatewayServiceDesc, {
         openSession: async (req: any) => impl.OpenSession(req),
@@ -176,9 +179,19 @@ export interface ExecuteResponseOutput {
 
 export const defaultGatewayImpl: GatewayServiceImpl = {
   async OpenSession(req: ExecuteRequestInput) {
+    let ownerId: string | undefined;
+    try {
+      const authHeader = (req as any)?.header?.authorization ?? '';
+      const payload = authenticator.authenticate(authHeader);
+      ownerId = payload.sub;
+    } catch {
+      // No valid JWT - ownerId stays undefined (anonymous session)
+    }
+
     const session = sessionManager.createSession(
       (req as any)?.clientVersion ?? '',
-      req.header?.sessionId
+      req.header?.sessionId,
+      ownerId
     );
 
     return {
@@ -215,22 +228,25 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
       throw new Error('INVALID_ARGUMENT: missing session_id or request_id');
     }
 
-    const existing = dedupeCache.lookup(requestId);
+    const session = sessionManager.getSession(sessionId);
+    const principal = session?.ownerId ?? sessionId;
+
+    const existing = dedupeCache.lookup(principal, sessionId, requestId);
     if (existing && existing.status === 'completed') {
       return { requestId, resultRef: existing.resultRef, status: 'completed' };
     }
 
-    const isNew = dedupeCache.markPending(requestId, sessionId);
+    const isNew = dedupeCache.markPending(principal, sessionId, requestId);
     if (!isNew) {
       await new Promise((r) => setTimeout(r, 100));
-      const completed = dedupeCache.lookup(requestId);
+      const completed = dedupeCache.lookup(principal, sessionId, requestId);
       if (completed?.status === 'completed') {
         return { requestId, resultRef: completed.resultRef, status: 'completed' };
       }
       throw new Error('ABORTED: duplicate request_id while in-flight');
     }
 
-    const orderer = ordererRegistry.getOrCreate(sessionId);
+    const orderer = ordererRegistry.getOrCreate(principal, sessionId);
     try {
       await orderer.submit({
         clientSeq,
@@ -243,18 +259,18 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
         receivedAt: Date.now(),
       });
     } catch (err) {
-      dedupeCache.fail(requestId, 0, err instanceof Error ? err.message : 'ordering error');
+      dedupeCache.fail(principal, sessionId, requestId, 0, err instanceof Error ? err.message : 'ordering error');
       throw err;
     }
 
     try {
       const result = await this.executeOnKernel(sessionId, req);
       orderer.advance();
-      dedupeCache.complete(requestId, result.resultRef);
+      dedupeCache.complete(principal, sessionId, requestId, result.resultRef);
       return result;
     } catch (err) {
       orderer.advance();
-      dedupeCache.fail(requestId, 0, err instanceof Error ? err.message : 'execution failed');
+      dedupeCache.fail(principal, sessionId, requestId, 0, err instanceof Error ? err.message : 'execution failed');
       throw err;
     }
   },
@@ -268,22 +284,25 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
       throw new Error('INVALID_ARGUMENT: missing session_id or request_id');
     }
 
-    const existing = dedupeCache.lookup(requestId);
+    const session = sessionManager.getSession(sessionId);
+    const principal = session?.ownerId ?? sessionId;
+
+    const existing = dedupeCache.lookup(principal, sessionId, requestId);
     if (existing && existing.status === 'completed') {
       return { requestId, resultRef: existing.resultRef, status: 'restored' };
     }
 
-    const isNew = dedupeCache.markPending(requestId, sessionId);
+    const isNew = dedupeCache.markPending(principal, sessionId, requestId);
     if (!isNew) {
       await new Promise((r) => setTimeout(r, 100));
-      const completed = dedupeCache.lookup(requestId);
+      const completed = dedupeCache.lookup(principal, sessionId, requestId);
       if (completed?.status === 'completed') {
         return { requestId, resultRef: completed.resultRef, status: 'restored' };
       }
       throw new Error('ABORTED: duplicate request_id while in-flight');
     }
 
-    const orderer = ordererRegistry.getOrCreate(sessionId);
+    const orderer = ordererRegistry.getOrCreate(principal, sessionId);
     try {
       await orderer.submit({
         clientSeq,
@@ -296,18 +315,18 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
         receivedAt: Date.now(),
       });
     } catch (err) {
-      dedupeCache.fail(requestId, 0, err instanceof Error ? err.message : 'ordering error');
+      dedupeCache.fail(principal, sessionId, requestId, 0, err instanceof Error ? err.message : 'ordering error');
       throw err;
     }
 
     try {
       const result = await this.restoreOnKernel(sessionId, req);
       orderer.advance();
-      dedupeCache.complete(requestId, result.resultRef);
+      dedupeCache.complete(principal, sessionId, requestId, result.resultRef);
       return result;
     } catch (err) {
       orderer.advance();
-      dedupeCache.fail(requestId, 0, err instanceof Error ? err.message : 'restore failed');
+      dedupeCache.fail(principal, sessionId, requestId, 0, err instanceof Error ? err.message : 'restore failed');
       throw err;
     }
   },
@@ -345,7 +364,9 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
     if (!sessionId) {
       throw new Error('INVALID_ARGUMENT: missing session_id');
     }
-    const orderer = ordererRegistry.getOrCreate(sessionId);
+    const session = sessionManager.getSession(sessionId);
+    const principal = session?.ownerId ?? sessionId;
+    const orderer = ordererRegistry.getOrCreate(principal, sessionId);
     orderer.cancelQueued();
     return { success: true };
   },
@@ -353,7 +374,9 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
   async CloseSession(req: ExecuteRequestInput) {
     const sessionId = req.header?.sessionId;
     if (sessionId) {
-      ordererRegistry.remove(sessionId);
+      const session = sessionManager.getSession(sessionId);
+      const principal = session?.ownerId ?? sessionId;
+      ordererRegistry.remove(principal, sessionId);
       sessionManager.closeSession(sessionId);
     }
     return { success: true };

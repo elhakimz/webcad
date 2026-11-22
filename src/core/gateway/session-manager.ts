@@ -12,6 +12,7 @@ export interface SessionInfo {
   lastActivity: number;
   lastEventId: number;
   includeBrep: boolean;
+  ownerId?: string;
 }
 
 export interface SessionEventEntry {
@@ -39,12 +40,13 @@ export class SessionManager {
     };
   }
 
-  createSession(clientVersion: string, sessionId?: string): SessionInfo {
+  createSession(clientVersion: string, sessionId?: string, ownerId?: string): SessionInfo {
     const id = sessionId ?? uuidv4();
     const session: SessionInfo = {
       id,
       clientVersion,
       state: 'connected',
+      ownerId,
       createdAt: Date.now(),
       lastActivity: Date.now(),
       lastEventId: 0,

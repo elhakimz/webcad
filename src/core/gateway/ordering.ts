@@ -123,27 +123,33 @@ export class SessionOrderer {
 }
 
 export interface OrdererRegistry {
-  getOrCreate(sessionId: string): SessionOrderer;
-  remove(sessionId: string): void;
+  getOrCreate(principal: string, sessionId: string): SessionOrderer;
+  remove(principal: string, sessionId: string): void;
 }
 
 export class OrdererRegistryImpl implements OrdererRegistry {
   private orderers = new Map<string, SessionOrderer>();
 
-  getOrCreate(sessionId: string): SessionOrderer {
-    let orderer = this.orderers.get(sessionId);
+  private key(principal: string, sessionId: string): string {
+    return `${principal}:${sessionId}`;
+  }
+
+  getOrCreate(principal: string, sessionId: string): SessionOrderer {
+    const k = this.key(principal, sessionId);
+    let orderer = this.orderers.get(k);
     if (!orderer) {
       orderer = new SessionOrderer(sessionId);
-      this.orderers.set(sessionId, orderer);
+      this.orderers.set(k, orderer);
     }
     return orderer;
   }
 
-  remove(sessionId: string): void {
-    const orderer = this.orderers.get(sessionId);
+  remove(principal: string, sessionId: string): void {
+    const k = this.key(principal, sessionId);
+    const orderer = this.orderers.get(k);
     if (orderer) {
       orderer.cleanup();
-      this.orderers.delete(sessionId);
+      this.orderers.delete(k);
     }
   }
 }

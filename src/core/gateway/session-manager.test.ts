@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { SessionManager, type SessionInfo } from './session-manager.js';
-
 describe('SessionManager', () => {
   let manager: SessionManager;
 
@@ -201,6 +200,27 @@ describe('SessionManager', () => {
 
     it('defaults to true for unknown session', () => {
       expect(manager.getIncludeBrep('nonexistent')).toBe(true);
+    });
+  });
+
+  describe('ownerId', () => {
+    it('stores ownerId when provided at creation', () => {
+      const session = manager.createSession('1.0.0', 's1', 'user-1');
+      expect(session.ownerId).toBe('user-1');
+      expect(manager.getSession('s1')?.ownerId).toBe('user-1');
+    });
+
+    it('defaults ownerId to undefined when not provided', () => {
+      const session = manager.createSession('1.0.0', 's1');
+      expect(session.ownerId).toBeUndefined();
+    });
+
+    it('getAllSessions includes ownerId', () => {
+      manager.createSession('1.0.0', 's1', 'user-a');
+      manager.createSession('2.0.0', 's2', 'user-b');
+      const all = manager.getAllSessions();
+      expect(all.find((s) => s.id === 's1')?.ownerId).toBe('user-a');
+      expect(all.find((s) => s.id === 's2')?.ownerId).toBe('user-b');
     });
   });
 

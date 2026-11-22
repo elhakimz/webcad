@@ -135,6 +135,22 @@ export class Document implements IDocument {
     return Array.from(this.entities.values())
   }
 
+  /**
+   * Returns a snapshot provider that resolves a BrepReference id for a given entity id.
+   * Only Solid3D entities with a brepSnapshot are eligible; the entity id itself is used
+   * as the brepRefId (the gateway resolves the actual brep bytes via the RestoreItem.brepRef.sha256 field).
+   */
+  getSnapshotProvider(): (entityId: string) => Promise<{ id: string } | null> {
+    return async (entityId: string) => {
+      const entity = this.getEntity(entityId)
+      if (!entity) return null
+      const solid = entity as any
+      if (solid.type !== 'Solid3D') return null
+      if (!solid.brepSnapshot) return null
+      return { id: entityId }
+    }
+  }
+
   getIdCounters(): Record<string, number> {
     const out: Record<string, number> = {};
     this.idCounters.forEach((v, k) => { out[k] = v; });

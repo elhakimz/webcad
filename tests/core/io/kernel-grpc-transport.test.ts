@@ -890,3 +890,73 @@ describe('KernelGrpcTransport.createExtrude()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.createRevolve()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_revolve op and revolve params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'revolve-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const points = [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }];
+    const result = await transport.createRevolve(points, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, 360.0, 2.0, 0.001, true, 'revolve-1');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_revolve: {
+          points: [
+            { x: 0, y: 0, z: 0 },
+            { x: 1, y: 0, z: 0 },
+            { x: 0, y: 1, z: 0 },
+          ],
+          axisPoint: { x: 0, y: 0, z: 0 },
+          axisDir: { x: 0, y: 0, z: 1 },
+          angle: 360.0,
+          thickness: 2.0,
+          deflection: 0.001,
+          isClosed: true,
+          entityId: 'revolve-1',
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'revolve-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createRevolve([{ x: 0, y: 0, z: 0 }], { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, 90.0);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults thickness to 0, deflection to 0, isClosed to false, entityId to empty string', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createRevolve([{ x: 1, y: 2, z: 3 }], { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, 45.0);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_revolve: expect.objectContaining({
+          thickness: 0,
+          deflection: 0,
+          isClosed: false,
+          entityId: '',
+        }),
+      })
+    );
+  });
+});

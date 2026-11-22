@@ -1279,3 +1279,64 @@ describe('KernelGrpcTransport.multMatrixShape()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.transformShape()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with transform_shape op and dx/dy/dz params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'transform-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.transformShape('shape-1', 10, 20, 30, 'target-1', 0.001);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transform_shape: {
+          entityId: 'shape-1',
+          dx: 10,
+          dy: 20,
+          dz: 30,
+          targetEntityId: 'target-1',
+          deflection: 0.001,
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'transform-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.transformShape('shape-1', 1, 2, 3);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults targetEntityId to empty string and deflection to 0', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.transformShape('shape-1', 1, 2, 3);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transform_shape: expect.objectContaining({
+          targetEntityId: '',
+          deflection: 0,
+        }),
+      })
+    );
+  });
+});

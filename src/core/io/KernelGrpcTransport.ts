@@ -277,7 +277,18 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async transformShape(entityId: string, dx: number, dy: number, dz: number, targetEntityId?: string, deflection?: number): Promise<any> {
-    throw new Error('transformShape not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      transform_shape: {
+        entityId,
+        dx,
+        dy,
+        dz,
+        targetEntityId: targetEntityId ?? '',
+        deflection: deflection ?? 0,
+      },
+    });
   }
 
   async rotateShape(entityId: string, rx: number, ry: number, rz: number, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number): Promise<any> {

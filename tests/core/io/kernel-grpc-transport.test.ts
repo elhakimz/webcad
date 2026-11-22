@@ -1404,3 +1404,67 @@ describe('KernelGrpcTransport.rotateShape()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.mirrorShape()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with mirror_shape op and p1/p2 params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'mirror-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const p1 = { x: 0, y: 0, z: 0 };
+    const p2 = { x: 0, y: 1, z: 0 };
+    const normal = { x: 0, y: 0, z: 1 };
+    const result = await transport.mirrorShape('shape-1', p1, p2, 'target-1', 0.001, normal);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mirror_shape: {
+          entityId: 'shape-1',
+          p1,
+          p2,
+          targetEntityId: 'target-1',
+          deflection: 0.001,
+          normal,
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'mirror-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.mirrorShape('shape-1', { x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 });
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults targetEntityId to empty string and deflection to 0', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.mirrorShape('shape-1', { x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 });
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mirror_shape: expect.objectContaining({
+          targetEntityId: '',
+          deflection: 0,
+        }),
+      })
+    );
+  });
+});

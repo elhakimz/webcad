@@ -37,7 +37,7 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-23 ✓ | Port: tessellation to binary buffers | high | B | Phase 2 |
 | WC-EC-24 ✓ | B-rep import/export and cross-version compatibility (done) | high | B | Phase 2 |
 | WC-EC-25 | Server-side STEP / STL / glTF export | medium | B | Phase 2 |
-| WC-EC-26 | Extract OCCTransport interface; keep WASM worker as local fallback for now (we will use grpc -> occt kernel ) | high | A | Phase 3 |
+| WC-EC-26 ✓ | Extract OCCTransport interface; keep WASM worker as local fallback for now (we will use grpc -> occt kernel ) (done) | high | A | Phase 3 |
 | WC-EC-27 | Gateway: gRPC server, auth hello, sessions | high | A | Phase 3 |
 | WC-EC-28 | RemoteGrpcTransport (client) | high | A | Phase 3 |
 | WC-EC-29 | Vite dev proxy and local/remote switch | medium | A | Phase 3 |

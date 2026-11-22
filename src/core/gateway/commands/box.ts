@@ -1,4 +1,5 @@
 import { CommandImplementation, CommandContext, CommandResult } from '../command-registry';
+import { KernelGrpcTransport } from '../../io/KernelGrpcTransport.js';
 
 export const BoxCommand: CommandImplementation = {
   metadata: {
@@ -14,6 +15,7 @@ export const BoxCommand: CommandImplementation = {
       dy: { type: 'number', required: true, description: 'Size Y' },
       dz: { type: 'number', required: true, description: 'Size Z' },
       deflection: { type: 'number', required: true, description: 'Tessellation deflection' },
+      entityId: { type: 'string', required: false, description: 'Optional entity ID' },
     },
     result: {
       shape_id: { type: 'string', description: 'ID of the created box shape' },
@@ -42,11 +44,33 @@ export const BoxCommand: CommandImplementation = {
       }
     }
 
-    const shapeId = `box_${context.requestId}`;
-    return {
-      success: true,
-      entityIds: [shapeId],
-      data: { shape_id: shapeId },
-    };
+    const transport = new KernelGrpcTransport(context.sessionId);
+    try {
+      await transport.init();
+      const result = await transport.createBox(
+        params.x as number,
+        params.y as number,
+        params.z as number,
+        params.dx as number,
+        params.dy as number,
+        params.dz as number,
+        params.deflection as number,
+        typeof params.entityId === 'string' ? params.entityId : undefined,
+      );
+
+      const shapeId = (result as { shapeId?: string })?.shapeId;
+      return {
+        success: true,
+        entityIds: shapeId ? [shapeId] : [],
+        data: { shape_id: shapeId ?? '' },
+      };
+    } catch (err) {
+      return {
+        success: false,
+        entityIds: [],
+        errorCode: 1,
+        errorMessage: err instanceof Error ? err.message : 'kernel error',
+      };
+    }
   },
 };

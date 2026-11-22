@@ -314,3 +314,17 @@ inja -C /kernel/build kernel_worker compiled, docker restart deployed new binary
 - [2026-11-21] Don't link OpenSSL without checking `CMakeLists.txt` — no OpenSSL linked (verified). Use vendored SHA-256 or add linking + licence review.
 - [2026-11-21] Don't commit generated proto files — `src/generated/` is codegen output; never edit or commit by hand.
 
+
+## Decision Log (WEBCAD-218)
+- Approach C (both KernelGrpcTransport + command registry) — full parity for both grpc and kernel transport types (2026-11-22)
+- No proto changes needed — all 37 operations already defined in engine.proto (2026-11-22)
+- WASM remains as temporary fallback; remove after gRPC parity verified (2026-11-22)
+- Unimplemented ops → UNIMPLEMENTED (not INVALID_PARAMETER) per Part A findings (2026-11-22)
+- Unexpected exceptions → INTERNAL (not UNSPECIFIED) per Part A findings (2026-11-22)
+
+
+## Plan (WEBCAD-218)
+- Implementation plan saved to docs/superpowers/plans/2026-11-22-grpc-kernel-transport-parity.md (2026-11-22)
+- 37 commands across 11 chunks, each chunk self-contained and committable
+- TDD approach: write failing test first, then implement, then verify
+

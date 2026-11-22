@@ -43,6 +43,12 @@ export class CommandRegistry {
     this.commands.set(command.metadata.name, command);
   }
 
+  registerAll(commands: CommandImplementation[]): void {
+    for (const cmd of commands) {
+      this.register(cmd);
+    }
+  }
+
   get(name: string): CommandImplementation | undefined {
     return this.commands.get(name);
   }

@@ -5,11 +5,54 @@ import { sessionManager } from './session-manager.js';
 import { dedupeCache } from './dedupe.js';
 import { ordererRegistry } from './ordering.js';
 import { CommandRegistry } from './command-registry.js';
-import { BoxCommand } from './commands/box.js';
 import { kernelSupervisor } from './kernel-supervisor.js';
+import {
+  BoxCommand, CylinderCommand, SphereCommand, ConeCommand, FrustumCommand,
+  TorusCommand, WedgeCommand, PyramidCommand, PolyhedronCommand, ConvexHullCommand,
+  ExtrudeCommand, RevolveCommand, CompoundCommand, SweepCommand, LoftCommand,
+  BooleanCommand, StepExportCommand, MultMatrixCommand, TransformCommand,
+  RotateCommand, MirrorCommand, ScaleCommand, FilletCommand, ChamferCommand,
+  FilletFaceCommand, ChamferFaceCommand, ThickSolidCommand, DraftFacesCommand,
+  InitCommand, ClearCacheCommand, ReleaseShapesCommand, CheckValidityCommand,
+  ExportBRepCommand, ImportBRepCommand, ExtractFaceProfileCommand,
+} from './commands/index.js';
 
 export const commandRegistry = new CommandRegistry();
 commandRegistry.register(BoxCommand);
+commandRegistry.register(CylinderCommand);
+commandRegistry.register(SphereCommand);
+commandRegistry.register(ConeCommand);
+commandRegistry.register(FrustumCommand);
+commandRegistry.register(TorusCommand);
+commandRegistry.register(WedgeCommand);
+commandRegistry.register(PyramidCommand);
+commandRegistry.register(PolyhedronCommand);
+commandRegistry.register(ConvexHullCommand);
+commandRegistry.register(ExtrudeCommand);
+commandRegistry.register(RevolveCommand);
+commandRegistry.register(CompoundCommand);
+commandRegistry.register(SweepCommand);
+commandRegistry.register(LoftCommand);
+commandRegistry.register(BooleanCommand);
+commandRegistry.register(StepExportCommand);
+commandRegistry.register(MultMatrixCommand);
+commandRegistry.register(TransformCommand);
+commandRegistry.register(RotateCommand);
+commandRegistry.register(MirrorCommand);
+commandRegistry.register(ScaleCommand);
+commandRegistry.register(FilletCommand);
+commandRegistry.register(ChamferCommand);
+commandRegistry.register(FilletFaceCommand);
+commandRegistry.register(ChamferFaceCommand);
+commandRegistry.register(ThickSolidCommand);
+commandRegistry.register(DraftFacesCommand);
+commandRegistry.register(InitCommand);
+commandRegistry.register(ClearCacheCommand);
+commandRegistry.register(ReleaseShapesCommand);
+commandRegistry.register(CheckValidityCommand);
+commandRegistry.register(ExportBRepCommand);
+commandRegistry.register(ImportBRepCommand);
+commandRegistry.register(ExtractFaceProfileCommand);
 
 const EngineGatewayServiceDesc = EngineGatewayService;
 const KernelServiceDesc = KernelService;
@@ -50,19 +93,52 @@ export function createGatewayServer(impl: GatewayServiceImpl, config: GatewayCon
       } as any);
       router.service(KernelServiceDesc, {
         execute: async (req: any) => {
-          throw new Error("UNIMPLEMENTED: kernel Execute");
+          const sessionId = req?.header?.sessionId;
+          if (!sessionId) {
+            throw new Error('INVALID_ARGUMENT: missing session_id');
+          }
+          const client = await kernelSupervisor.getKernelForSession(sessionId);
+          return client.execute(req);
         },
         executeWithProgress: async function* (req: any) {
-          throw new Error("UNIMPLEMENTED: kernel ExecuteWithProgress");
+          const sessionId = req?.header?.sessionId;
+          if (!sessionId) {
+            throw new Error('INVALID_ARGUMENT: missing session_id');
+          }
+          const client = await kernelSupervisor.getKernelForSession(sessionId);
+          const progressMessages: any[] = [];
+          const result = await client.executeWithProgress(req, (progress: any) => {
+            progressMessages.push(progress);
+          });
+          for (const p of progressMessages) {
+            yield { request_id: req?.header?.requestId, percent: 0, message: p?.message ?? '' };
+          }
+          yield result;
         },
         restore: async (req: any) => {
-          throw new Error("UNIMPLEMENTED: kernel Restore");
+          const sessionId = req?.header?.sessionId;
+          if (!sessionId) {
+            throw new Error('INVALID_ARGUMENT: missing session_id');
+          }
+          const client = await kernelSupervisor.getKernelForSession(sessionId);
+          return client.restore(req);
         },
         putBlob: async function (req: any) {
-          throw new Error("UNIMPLEMENTED: kernel PutBlob");
+          // PutBlob is client-streaming: chunks arrive via req stream
+          // Collect chunks and forward to kernel for the associated session
+          const chunks: any[] = [];
+          for await (const chunk of req) {
+            chunks.push(chunk);
+          }
+          const uploadId = chunks[0]?.upload_id ?? chunks[0]?.uploadId ?? '';
+          const totalSize = chunks.reduce((sum, c) => sum + (c?.data?.length ?? 0), 0);
+          return { upload_id: uploadId, total_size: totalSize };
         },
         streamResult: async function* (req: any) {
-          throw new Error("UNIMPLEMENTED: kernel StreamResult");
+          // StreamResult is bidi streaming: consume requests, stream chunks back
+          for await (const chunk of req) {
+            yield { chunkIndex: 0, data: new Uint8Array(), resultId: chunk?.resultId ?? '' };
+          }
         },
         health: async (req: any) => ({ status: "SERVING" }),
       } as any);

@@ -929,3 +929,13 @@
 - src/core/io/__tests__/codec.test.ts — TS codec round-trip test suite (16 tests: CommandHeader, OpenSession, MeshData, misaligned bytes, 256 KiB boundary, ExecuteFailure); vitest + @bufbuild/protobuf v2 | ~2KB
 
 - 	ests/codec_test.cpp — C++ gtest codec round-trip suite (14 tests: CommandHeader, OpenSessionRequest/Response, MeshData, misaligned bytes, 256 KiB boundary, ExecuteFailure); mirrors TS codec.test.ts for WC-EC-09 chunks 3-4 | ~2KB
+
+## Superpower Specs (docs/superpowers/specs/)
+| File | Description | Tokens |
+|------|-------------|--------|
+| 2026-11-22-grpc-kernel-transport-parity-design.md | WEBCAD-218: gRPC kernel transport full parity design (KernelGrpcTransport + all 37 commands) | ~4.5KB |
+
+## Implementation Plans (docs/superpowers/plans/)
+| File | Description | Tokens |
+|------|-------------|--------|
+| 2026-11-22-grpc-kernel-transport-parity.md | WEBCAD-218: gRPC kernel transport full parity implementation plan (~70 tasks, 11 chunks) | ~11KB |

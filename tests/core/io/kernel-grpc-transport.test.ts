@@ -1156,3 +1156,66 @@ describe('KernelGrpcTransport.createLoft()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.createBoolean()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_boolean op and boolean params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'boolean-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.createBoolean('fuse', 'shape-a', 'shape-b', 'boolean-1', 0.001, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_boolean: {
+          operation: 'fuse',
+          idA: 'shape-a',
+          idB: 'shape-b',
+          entityId: 'boolean-1',
+          deflection: 0.001,
+          rotA: { x: 0, y: 0, z: 0 },
+          rotB: { x: 0, y: 0, z: 0 },
+          centerA: { x: 0, y: 0, z: 0 },
+          centerB: { x: 0, y: 0, z: 0 },
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'boolean-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createBoolean('cut', 'shape-a', 'shape-b', 'boolean-1');
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults deflection to 0 and optional Point3D fields to undefined', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createBoolean('common', 'shape-a', 'shape-b', 'boolean-1');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_boolean: expect.objectContaining({
+          deflection: 0,
+        }),
+      })
+    );
+  });
+});

@@ -246,7 +246,21 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number, rotA?: { x: number; y: number; z: number }, rotB?: { x: number; y: number; z: number }, centerA?: { x: number; y: number; z: number }, centerB?: { x: number; y: number; z: number }): Promise<any> {
-    throw new Error('createBoolean not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_boolean: {
+        operation,
+        idA,
+        idB,
+        entityId,
+        deflection: deflection ?? 0,
+        rotA,
+        rotB,
+        centerA,
+        centerB,
+      },
+    });
   }
 
   async multMatrixShape(entityId: string, m: number[], targetEntityId?: string, deflection?: number): Promise<any> {

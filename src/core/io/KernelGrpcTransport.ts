@@ -31,27 +31,37 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async clearCache(): Promise<{ success: boolean }> {
-    throw new Error('clearCache not yet implemented on KernelGrpcTransport');
+    await this.init();
+    const result = await this.client!.execute({ clear_cache: {} });
+    return result as { success: boolean };
   }
 
   async releaseShapes(entityIds: string[]): Promise<void> {
-    throw new Error('releaseShapes not yet implemented on KernelGrpcTransport');
+    await this.init();
+    await this.client!.execute({ release_shapes: { entity_ids: entityIds } });
   }
 
   async checkValidity(entityId: string): Promise<{ isValid: boolean; faceCount: number; errorMsg: string }> {
-    throw new Error('checkValidity not yet implemented on KernelGrpcTransport');
+    await this.init();
+    const result = await this.client!.execute({ check_validity: { entity_id: entityId } });
+    return result as { isValid: boolean; faceCount: number; errorMsg: string };
   }
 
   async exportBRep(entityId: string): Promise<Uint8Array> {
-    throw new Error('exportBRep not yet implemented on KernelGrpcTransport');
+    await this.init();
+    const result = await this.client!.execute({ export_brep: { entity_id: entityId } });
+    return result as Uint8Array;
   }
 
   async importBRep(entityId: string, brepBytes: Uint8Array, deflection?: number): Promise<any> {
-    throw new Error('importBRep not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({ import_brep: { entity_id: entityId, brep_bytes: brepBytes, deflection: deflection ?? 0 } });
   }
 
   async extractFaceProfile(entityId: string, faceIndex: number, deflection?: number): Promise<{ loops: { x: number; y: number; bulge: number }[][] }> {
-    throw new Error('extractFaceProfile not yet implemented on KernelGrpcTransport');
+    await this.init();
+    const result = await this.client!.execute({ extract_face_profile: { entity_id: entityId, face_index: faceIndex, deflection: deflection ?? 0 } });
+    return result as { loops: { x: number; y: number; bulge: number }[][] };
   }
 
   async createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number, deflection?: number, entityId?: string): Promise<any> {

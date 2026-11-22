@@ -1,7 +1,9 @@
 # WebCAD Engine Container (WC-EC) — docker-compose
-# Services: gateway (Connect + gRPC), kernel (OCCT), nginx (HTTP/2 termination)
+# Services: gateway (Connect + gRPC), kernel (OCCT), nginx (HTTP/2 termination),
+# vite (dev server), postgres, minio
 #
-# See WC-EC-36 for infra decisions.
+# Local development target. OCCT uses conda-forge prebuilt (Dockerfile.kernel.conda)
+# — no from-source OCCT build.
 
 services:
   # ------------------------------------------------------------------
@@ -74,24 +76,63 @@ services:
       - webcad
 
   # ------------------------------------------------------------------
-  # kernel — OCCT geometry kernel (gRPC server)
+  # kernel — OCCT geometry kernel (gRPC server, conda-forge prebuilt)
   # ------------------------------------------------------------------
   kernel:
     build:
       context: .
-      dockerfile: Dockerfile.kernel
+      dockerfile: Dockerfile.kernel.conda
     environment:
       - KERNEL_PORT=50051
       - KERNEL_SOCKET=/var/run/webcad/kernel.sock
-      - OCCT_VERSION=7.8.0
       - KERNEL_LOG_LEVEL=info
     volumes:
       - webcad-kernel-socket:/var/run/webcad
     networks:
       - webcad
 
+  # ------------------------------------------------------------------
+  # postgres — PostgreSQL database (for WC-EC-37/38/39)
+  # ------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=webcad
+      - POSTGRES_USER=webcad
+      - POSTGRES_PASSWORD=webcad
+    volumes:
+      - webcad-postgres-data:/var/lib/postgresql/data
+    networks:
+      - webcad
+
+  # ------------------------------------------------------------------
+  # minio — S3-compatible object storage (for WC-EC-39 file API)
+  # ------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - webcad-minio-data:/data
+    networks:
+      - webcad
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
 volumes:
   webcad-kernel-socket:
+  webcad-postgres-data:
+  webcad-minio-data:
 
 networks:
   webcad:

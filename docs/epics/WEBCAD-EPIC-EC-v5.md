@@ -39,7 +39,7 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-25 | Server-side STEP / STL / glTF export | medium | B | Phase 2 |
 | WC-EC-26 ✓ | Extract OCCTransport interface; keep WASM worker as local fallback for now (we will use grpc -> occt kernel ) (done) | high | A | Phase 3 |
 | WC-EC-27 ✓ | Gateway: gRPC server, auth hello, sessions (done) | high | A | Phase 3 |
-| WC-EC-28 | RemoteGrpcTransport (client) | high | A | Phase 3 |
+| WC-EC-28 ✓ | RemoteGrpcTransport (client) (done) | high | A | Phase 3 |
 | WC-EC-29 | Vite dev proxy and local/remote switch | medium | A | Phase 3 |
 | WC-EC-30 | Session resume, rehydrate and restoreMany | high | B | Phase 3 |
 | WC-EC-31 | Cancellation, per-operation timeouts, progress events | medium | B | Phase 3 |
@@ -710,13 +710,13 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 **Goal:** Client transport implementing OCCTransport over gRPC.
 
 **Tasks**
-- [ ] Request/response by id, timeout, heartbeat
-- [ ] Reconnect with backoff; connection state events; UI status: connected / reconnecting / rehydrating
-- [ ] Surface failures of previously fire-and-forget calls (restoreSolidBRep, undo transformShape)
+- [x] Request/response by id, timeout, heartbeat
+- [x] Reconnect with backoff; connection state events; UI status: connected / reconnecting / rehydrating
+- [x] Surface failures of previously fire-and-forget calls (restoreSolidBRep, undo transformShape)
 
 **Acceptance criteria**
-- [ ] Kill gateway mid-session: UI recovers
-- [ ] No silent failures on formerly fire-and-forget calls
+- [x] Kill gateway mid-session: UI recovers
+- [x] No silent failures on formerly fire-and-forget calls
 
 **Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)
 - Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.

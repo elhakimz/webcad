@@ -278,7 +278,7 @@ export class KernelPoolManager {
         kernel.exitSignal = signal ?? null;
 
         if (kernel.sessionId) {
-          this.onKernelCrash(kernel.sessionId);
+          this.onKernelCrash?.(kernel.sessionId);
         } else {
           this.spares = this.spares.filter((s) => s !== kernel);
           this.createSpare().catch(console.error);

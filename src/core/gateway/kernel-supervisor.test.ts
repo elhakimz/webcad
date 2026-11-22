@@ -100,7 +100,7 @@ describe('KernelSupervisor crash isolation', () => {
     const exitListeners = new Map<any, (code: number | null, signal: string | null) => void>();
     spawnMock.mockImplementation(() => {
       const proc = mockProcess(1000);
-      proc.on.mockImplementation((event: string, listener: any) => {
+      (proc.on as any).mockImplementation((event: string, listener: any) => {
         if (event === 'exit') {
           exitListeners.set(proc, listener);
         }
@@ -151,7 +151,7 @@ describe('KernelSupervisor crash isolation', () => {
     spawnMock.mockImplementation(() => {
       spawnCount++;
       const proc = mockProcess(1000 + spawnCount);
-      proc.on.mockImplementation((event: string, listener: any) => {
+      (proc.on as any).mockImplementation((event: string, listener: any) => {
         if (event === 'exit') {
           setTimeout(() => listener(null, 'SIGSEGV'), 10);
         }
@@ -184,7 +184,7 @@ describe('KernelSupervisor crash isolation', () => {
     spawnMock.mockImplementation(() => {
       spawnCount++;
       const proc = mockProcess(1000 + spawnCount);
-      proc.on.mockImplementation((event: string, listener: any) => {
+      (proc.on as any).mockImplementation((event: string, listener: any) => {
         if (event === 'exit') {
           exitListeners.set(proc, listener);
         }

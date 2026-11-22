@@ -187,7 +187,7 @@ describe('KernelPoolManager allocate/release', () => {
     const exitListeners = new Map<any, (code: number | null, signal: string | null) => void>();
     vi.mocked(spawn).mockImplementation(() => {
       const proc = mockProcess(1000);
-      proc.on.mockImplementation((event: string, listener: any) => {
+      (proc.on as any).mockImplementation((event: string, listener: any) => {
         if (event === 'exit') {
           exitListeners.set(proc, listener);
         }

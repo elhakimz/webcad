@@ -95,4 +95,54 @@ describe('KernelSupervisor crash isolation', () => {
     // Verify spawn was called (pool manager created a spare kernel)
     expect(spawnMock).toHaveBeenCalled();
   });
+
+  it('logs structured crash event on kernel crash', async () => {
+    const exitListeners = new Map<any, (code: number | null, signal: string | null) => void>();
+    spawnMock.mockImplementation(() => {
+      const proc = mockProcess(1000);
+      proc.on.mockImplementation((event: string, listener: any) => {
+        if (event === 'exit') {
+          exitListeners.set(proc, listener);
+        }
+      });
+      return proc as any;
+    });
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const supervisor = new KernelSupervisor({
+      sparePoolSize: 0,
+      binary: '/fake/kernel',
+      socketDir: '/tmp',
+    });
+    await supervisor.start();
+
+    // Allocate via getKernelForSession so the kernel is tracked in supervisor's map
+    await supervisor.getKernelForSession('session-1');
+    const kernel = (supervisor as any).kernels.get('session-1');
+    const proc = kernel.process!;
+
+    // Simulate SIGSEGV crash
+    const exitListener = exitListeners.get(proc)!;
+    exitListener(null, 'SIGSEGV');
+
+    // Wait for async respawn
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Verify structured crash log was emitted
+    const crashLogCalls = consoleErrorSpy.mock.calls.filter(([msg]) =>
+      typeof msg === 'string' && msg.includes('[KernelCrash]')
+    );
+    expect(crashLogCalls.length).toBeGreaterThan(0);
+    const logMsg = crashLogCalls[0][0] as string;
+    expect(logMsg).toContain('session=session-1');
+    expect(logMsg).toContain('pid=1000');
+    expect(logMsg).toContain('exitCode=null');
+    expect(logMsg).toContain('signal=SIGSEGV');
+    expect(logMsg).toContain('restartCount=');
+
+    consoleErrorSpy.mockRestore();
+
+    await supervisor.stop();
+  });
 });

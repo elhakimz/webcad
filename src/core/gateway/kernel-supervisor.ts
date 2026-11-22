@@ -99,6 +99,10 @@ export class KernelSupervisor {
     kernel.lastCrashAt = Date.now();
     kernel.restartCount++;
 
+    console.error(
+      `[KernelCrash] session=${sessionId} pid=${kernel.pid} exitCode=${kernel.exitCode} signal=${kernel.exitSignal} restartCount=${kernel.restartCount} ts=${new Date().toISOString()}`
+    );
+
     sessionManager.setState(sessionId, 'rehydrating');
 
     if (kernel.restartCount > this.config.maxRestartsPerSession) {

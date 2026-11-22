@@ -1533,3 +1533,67 @@ describe('KernelGrpcTransport.scaleShape()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.filletSolid()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with fillet_solid op and fillet params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'fillet-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const visualP1 = { x: 0, y: 0, z: 0 };
+    const visualP2 = { x: 1, y: 1, z: 1 };
+    const result = await transport.filletSolid('shape-1', 5, 2.5, 0.001, visualP1, visualP2);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fillet_solid: {
+          entityId: 'shape-1',
+          edgeIndex: 5,
+          radius: 2.5,
+          deflection: 0.001,
+          visualP1,
+          visualP2,
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'fillet-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.filletSolid('shape-1', 3, 1.0);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults deflection to 0 and optional visual points to undefined', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.filletSolid('shape-1', 3, 1.0);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fillet_solid: expect.objectContaining({
+          deflection: 0,
+          visualP1: undefined,
+          visualP2: undefined,
+        }),
+      })
+    );
+  });
+});

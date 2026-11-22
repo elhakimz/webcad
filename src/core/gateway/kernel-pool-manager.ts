@@ -5,13 +5,14 @@
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { rm, writeFile } from 'node:fs/promises';
 import { platform } from 'node:os';
 import { join } from 'node:path';
 import { sessionManager } from './session-manager.js';
-import { GrpcKernelClient, KernelClient, KernelTransport } from './kernel-client.js';
+import { GrpcKernelClient, KernelClient } from './kernel-client.js';
 import { StdioKernelClient } from './stdio-kernel-client.js';
+
+export type KernelTransport = 'uds' | 'stdio';
 
 const KERNEL_BINARY = process.env.KERNEL_BINARY ?? './build/kernel_worker';
 const KERNEL_SOCKET_DIR = process.env.KERNEL_SOCKET_DIR ?? '/tmp';
@@ -441,7 +442,7 @@ export class KernelPoolManager {
       if (kernel.state !== 'ready' || !kernel.process) continue;
 
       try {
-        const usage = kernel.process.resourceUsage();
+        const usage = (kernel.process as any).resourceUsage();
         if (usage.maxRSS > this.config.memoryLimitBytes) {
           await this.handleOom(sessionId, kernel);
         }

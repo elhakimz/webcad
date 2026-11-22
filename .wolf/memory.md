@@ -726,3 +726,6 @@ Dev servers stopped (5173, 4173). Uncommitted: .wolf/, .claude/, CLAUDE.md, plan
 | 2026-11-23T19:59 | Marked WC-EC-33 Done in Plane via API | .wolf/memory.md | PATCH work-item state → Done (3db7e240-...); completed_at set | ~1k |
 | 2026-11-23T20:02 | Posted WC-EC-33 benchmark results comment to Plane ticket | WEBCAD-33 comments | POST comment_html to work-item comments endpoint; comment id 5963891e-...; deleted empty placeholder comment | ~2k |
 | 2026-11-25T00:00 | Created WC-EC-34 implementation plan (KernelPoolManager: idle TTL eviction, CPU affinity, cgroup limits, OOM) | docs/superpowers/plans/2026-11-25-wc-ec-34-kernel-pool-manager.md | Plan saved, ready for execution | ~4k |
+| 2026-11-25T01:00 | WC-EC-34 Task 1: KernelPoolManager allocate/release core implemented and committed | src/core/gateway/kernel-pool-manager.ts | 5 tests passing | ~8k |
+| 2026-11-25T01:30 | WC-EC-34 Tasks 2-6: idle TTL eviction, spare pool eviction, CPU affinity, cgroup v2, OOM detection — all 14 tests passing | src/core/gateway/kernel-pool-manager.ts, kernel-pool-manager.test.ts | typecheck+lint+test pass | ~15k |
+| 2026-11-25T02:00 | WC-EC-34 Task 7: KernelSupervisor refactored to delegate pool management to KernelPoolManager | src/core/gateway/kernel-supervisor.ts | typecheck+lint+test pass | ~5k |

@@ -1837,3 +1837,40 @@ describe('KernelGrpcTransport.draftSolidFaces()', () => {
     expect(mockExecute).toHaveBeenCalled();
   });
 });
+
+describe('KernelGrpcTransport.stepExport()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with step_export op and entityId', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ stepId: 'step-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.stepExport('shape-1');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        step_export: {
+          entityId: 'shape-1',
+        },
+      })
+    );
+    expect(result).toEqual({ stepId: 'step-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.stepExport('shape-1');
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+});

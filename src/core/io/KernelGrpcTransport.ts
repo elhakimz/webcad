@@ -422,4 +422,14 @@ export class KernelGrpcTransport implements OCCTransport {
       },
     });
   }
+
+  async stepExport(entityId: string): Promise<any> {
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      step_export: {
+        entityId,
+      },
+    });
+  }
 }

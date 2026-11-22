@@ -38,7 +38,7 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-24 ✓ | B-rep import/export and cross-version compatibility (done) | high | B | Phase 2 |
 | WC-EC-25 | Server-side STEP / STL / glTF export | medium | B | Phase 2 |
 | WC-EC-26 ✓ | Extract OCCTransport interface; keep WASM worker as local fallback for now (we will use grpc -> occt kernel ) (done) | high | A | Phase 3 |
-| WC-EC-27 | Gateway: gRPC server, auth hello, sessions | high | A | Phase 3 |
+| WC-EC-27 ✓ | Gateway: gRPC server, auth hello, sessions (done) | high | A | Phase 3 |
 | WC-EC-28 | RemoteGrpcTransport (client) | high | A | Phase 3 |
 | WC-EC-29 | Vite dev proxy and local/remote switch | medium | A | Phase 3 |
 | WC-EC-30 | Session resume, rehydrate and restoreMany | high | B | Phase 3 |
@@ -684,19 +684,19 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 - Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).
 - Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.
 
-### WC-EC-27 - Gateway: gRPC server, auth hello, sessions
+### WC-EC-27 ✓ - Gateway: gRPC server, auth hello, sessions (done)
 
 **Priority:** high · **Agent:** A · **Labels:** server, transport · **Parent:** WC-EC · **Depends on:** WC-EC-09, WC-EC-11
 
 **Goal:** gRPC server mapping sessions to kernel processes via the supervisor.
 
 **Tasks**
-- [ ] hello {sessionId, projectId, token}
-- [ ] Session registry; isolation of entityIds between sessions
-- [ ] Forward binary frames to/from the kernel unchanged where possible (zero-copy Buffers)
+- [x] hello {sessionId, projectId, token}
+- [x] Session registry; isolation of entityIds between sessions
+- [x] Forward binary frames to/from the kernel unchanged where possible (zero-copy Buffers)
 
 **Acceptance criteria**
-- [ ] Two sessions cannot see each other's shapes
+- [x] Two sessions cannot see each other's shapes
 
 **Agent brief** (suitability A - agent-led: the agent implements and verifies, a human reviews the PR.)
 - Context pack: AGENTS.md, the protocol spec, and the files named in the tasks.

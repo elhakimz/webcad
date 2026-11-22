@@ -537,6 +537,70 @@ describe('KernelGrpcTransport.createTorus()', () => {
   });
 });
 
+describe('KernelGrpcTransport.createWedge()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_wedge op and wedge params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'wedge-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.createWedge(0, 0, 0, 10, 0, 10, 5, 0.001, 'wedge-1');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_wedge: {
+          x1: 0,
+          y1: 0,
+          z1: 0,
+          x2: 10,
+          y2: 0,
+          height: 10,
+          ltx: 5,
+          deflection: 0.001,
+          entityId: 'wedge-1',
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'wedge-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createWedge(0, 0, 0, 10, 0, 10, 5);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults deflection to 0 and entityId to empty string', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createWedge(1, 2, 3, 4, 5, 6, 7);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_wedge: expect.objectContaining({
+          deflection: 0,
+          entityId: '',
+        }),
+      })
+    );
+  });
+});
+
 describe('KernelGrpcTransport.extractFaceProfile()', () => {
   beforeEach(() => {
     vi.clearAllMocks();

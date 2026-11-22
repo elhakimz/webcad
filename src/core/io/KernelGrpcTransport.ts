@@ -125,7 +125,11 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async createWedge(x1: number, y1: number, z1: number, x2: number, y2: number, height: number, ltx: number, deflection?: number, entityId?: string): Promise<any> {
-    throw new Error('createWedge not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_wedge: { x1, y1, z1, x2, y2, height, ltx, deflection: deflection ?? 0, entityId: entityId ?? '' },
+    });
   }
 
   async createPyramid(x: number, y: number, z: number, sides: number, radius: number, h: number, deflection?: number, entityId?: string): Promise<any> {

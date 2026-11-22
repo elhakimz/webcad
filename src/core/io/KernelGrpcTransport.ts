@@ -212,7 +212,19 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async createSweep(profilePoints: { x: number; y: number; z: number }[], spinePoints: { x: number; y: number; z: number }[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number, cornerMode?: string, isEllipse?: boolean): Promise<any> {
-    throw new Error('createSweep not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_sweep: {
+        profilePoints: profilePoints.map((p: any) => ({ x: p.x, y: p.y, z: p.z })),
+        spinePoints: spinePoints.map((p: any) => ({ x: p.x, y: p.y, z: p.z })),
+        isSolid,
+        deflection: deflection ?? 0,
+        entityId: entityId ?? '',
+        profileCount: profileCount ?? 0,
+        cornerMode: cornerMode ?? '',
+      },
+    });
   }
 
   async createLoft(profiles: { id: string; points: { x: number; y: number; z: number }[]; closed: boolean }[], isSolid: boolean, isRuled: boolean, deflection?: number, entityId?: string): Promise<any> {

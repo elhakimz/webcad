@@ -1017,3 +1017,75 @@ describe('KernelGrpcTransport.createCompound()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.createSweep()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_sweep op and sweep params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'sweep-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const profilePoints = [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }];
+    const spinePoints = [{ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 10 }];
+    const result = await transport.createSweep(profilePoints, spinePoints, true, 0.001, 'sweep-1', 2, 'tangent');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_sweep: {
+          profilePoints: [
+            { x: 0, y: 0, z: 0 },
+            { x: 1, y: 0, z: 0 },
+          ],
+          spinePoints: [
+            { x: 0, y: 0, z: 0 },
+            { x: 0, y: 0, z: 10 },
+          ],
+          isSolid: true,
+          deflection: 0.001,
+          entityId: 'sweep-1',
+          profileCount: 2,
+          cornerMode: 'tangent',
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'sweep-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createSweep([{ x: 0, y: 0, z: 0 }], [{ x: 0, y: 0, z: 0 }], true);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults deflection to 0, entityId to empty string, profileCount to 0, cornerMode to empty string', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createSweep([{ x: 1, y: 2, z: 3 }], [{ x: 0, y: 0, z: 0 }], true);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_sweep: expect.objectContaining({
+          deflection: 0,
+          entityId: '',
+          profileCount: 0,
+          cornerMode: '',
+        }),
+      })
+    );
+  });
+});

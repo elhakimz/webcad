@@ -19,6 +19,8 @@
 | 10:54 | Fixed native OCCT kernel build files: kernel-worker.cpp API/proto alignment, CMakeLists.txt protobuf/gRPC codegen, Dockerfile.kernel deps/copy/URL | src/core/gateway/kernel-worker.cpp, CMakeLists.txt, Dockerfile.kernel | Edits applied, verified by re-read | ~1k |
 | 15:32 | Updated .wolf/anatomy.md | 1 entry | Added docs/superpowers/specs/ section with new design doc entry | ~0.5k |
 
+| 04:00 | Completed WC-EC-35 crash isolation + sanitizer CI | src/core/gateway/kernel-pool-manager.ts, kernel-supervisor.ts, kernel-pool-manager.test.ts, kernel-supervisor.test.ts, scripts/sanitizer-check.sh | Committed ef4b89d; typecheck/lint/tests pass (780 tests) | ~3k |
+
 | 02:41 | Completed WC-EC-32: Input validation, frame limits, quotas | command-registry.ts, connect-server.ts, RemoteGrpcTransport.ts, command-registry.test.ts, RemoteGrpcTransport.test.ts, 9 command metadata files, design doc | All verified: 747 tests pass, tsc 0 errors, lint 0 errors, buf lint passes | ~5k |
 
 | 01:45 | Brainstormed WC-EC-30: Session resume, rehydrate and restoreMany | docs/superpowers/specs/2026-11-23-wc-ec-30-session-resume-rehydrate-restore-many-design.md | Design doc drafted, spec self-review passed | ~8k |
@@ -729,3 +731,6 @@ Dev servers stopped (5173, 4173). Uncommitted: .wolf/, .claude/, CLAUDE.md, plan
 | 2026-11-25T01:00 | WC-EC-34 Task 1: KernelPoolManager allocate/release core implemented and committed | src/core/gateway/kernel-pool-manager.ts | 5 tests passing | ~8k |
 | 2026-11-25T01:30 | WC-EC-34 Tasks 2-6: idle TTL eviction, spare pool eviction, CPU affinity, cgroup v2, OOM detection — all 14 tests passing | src/core/gateway/kernel-pool-manager.ts, kernel-pool-manager.test.ts | typecheck+lint+test pass | ~15k |
 | 2026-11-25T02:00 | WC-EC-34 Task 7: KernelSupervisor refactored to delegate pool management to KernelPoolManager | src/core/gateway/kernel-supervisor.ts | typecheck+lint+test pass | ~5k |
+| 2026-11-23T03:20:24 | WC-EC-34 committed + verify run | kernel-pool-manager.ts, kernel-pool-manager.test.ts, kernel-supervisor.ts, plan doc | committed, typecheck+lint+buf:lint pass, 1 pre-existing benchmark test timeout unrelated | ~200 |
+
+| 2026-11-23T03:27:43 | WC-EC-35 design doc written: crash isolation (exit code/signal capture, structured crash logging, respawn via pool manager), diagnostics (structured logging only), sanitizer CI script (ASan/UBSan build + crash-diagnostics test); no GitHub Actions per user constraint | docs/superpowers/specs/2026-11-25-wc-ec-35-crash-isolation-diagnostics-sanitizer-design.md | Design doc written, awaiting user review | ~9k |

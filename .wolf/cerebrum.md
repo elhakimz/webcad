@@ -368,3 +368,12 @@ inja -C /kernel/build kernel_worker compiled, docker restart deployed new binary
 - Output = JSON report at tests/benchmark/reports/<timestamp>.json, no UI
 
 | 2026-11-23T02:56:09 | WC-EC-33 benchmark: fs.readdirSync throws ENOENT for missing dirs — need try/catch to convert to 'no benchmark scripts found' error; KernelAdapter interface has 'surface' (not just 'surfaceArea') in ScriptTolerances | src/core/benchmark/benchmark-runner.ts src/core/benchmark/dxf-to-script.ts | fix | ~5 |
+
+## Key Learnings (WC-EC-35 Crash Isolation, Diagnostics, Sanitizer CI)
+
+- **Crash isolation: gateway-side only.** Kernel process exit code/signal captured in KernelPoolManager.child.on('exit'); ManagedKernel gets exitCode/exitSignal/lastCrashAt fields; KernelSupervisor.onKernelCrash() logs structured [KernelCrash] event and respawns via pool manager. No kernel-side crash capture, no getDiagnostics() method, no diagnostics RPC.
+- **Diagnostics: structured logging only.** Crash events logged as [KernelCrash] session=<id> pid=<pid> exitCode=<code> signal=<signal> restartCount=<n> ts=<iso>. Session state (ehydrating → connected) is the client-facing signal. No new protocol messages.
+- **Sanitizer CI: CI-agnostic local script.** scripts/sanitizer-check.sh builds kernel with -fsanitize=address,undefined, runs malformed-input crash-diagnostics tests, exits non-zero on violations. No GitHub Actions workflow (user constraint).
+- **Circular dependency resolved via callback injection.** KernelPoolManager accepts onKernelCrash?: (sessionId: string) => void in config; KernelSupervisor passes its onKernelCrash method as the callback. Avoids KernelPoolManager importing KernelSupervisor.
+- **No proto/generated-code changes.** All crash isolation and diagnostics happen entirely within the gateway (Node.js) layer.
+

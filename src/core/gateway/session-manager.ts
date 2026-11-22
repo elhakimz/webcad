@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { KernelStatus, SessionEvent } from '../../generated/proto/webcad/engine/v1/engine_pb.js';
+import { sessionsActive } from './metrics.js';
 
 export type SessionState = 'connected' | 'restarting' | 'rehydrating';
 
@@ -54,6 +55,9 @@ export class SessionManager {
     };
     this.sessions.set(id, session);
     this.eventBuffers.set(id, []);
+
+    sessionsActive.set({}, this.sessions.size);
+
     return session;
   }
 
@@ -67,7 +71,9 @@ export class SessionManager {
       eventBuffer.length = 0;
       this.eventBuffers.delete(id);
     }
-    return this.sessions.delete(id);
+    const deleted = this.sessions.delete(id);
+    sessionsActive.set({}, this.sessions.size);
+    return deleted;
   }
 
   hasSession(id: string): boolean {

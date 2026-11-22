@@ -7,7 +7,10 @@ import { ordererRegistry } from './ordering.js';
 import { CommandRegistry } from './command-registry.js';
 import { kernelSupervisor } from './kernel-supervisor.js';
 import { authInterceptor } from './auth-interceptor.js';
-import { authenticator } from './auth.js';import {
+import { authenticator } from './auth.js';
+import { logger } from './logger.js';
+import { sessionsCreated, sessionsActive, opsExecuted, opLatencyMs } from './metrics.js';
+import {
   BoxCommand, CylinderCommand, SphereCommand, ConeCommand, FrustumCommand,
   TorusCommand, WedgeCommand, PyramidCommand, PolyhedronCommand, ConvexHullCommand,
   ExtrudeCommand, RevolveCommand, CompoundCommand, SweepCommand, LoftCommand,
@@ -159,7 +162,7 @@ export function createGatewayServer(impl: GatewayServiceImpl, config: GatewayCon
 
   const port = config.port ?? 8080;
   server.listen(port, () => {
-    console.log(`[Gateway] Listening on http://localhost:${port}`);
+    logger.info(`Gateway listening on http://localhost:${port}`);
   });
 
   return server;
@@ -200,6 +203,9 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
       req.header?.sessionId,
       ownerId
     );
+
+    sessionsCreated.inc({ status: 'ok' });
+    sessionsActive.set({}, 1);
 
     return {
       protocolVersion: '1.0.0',
@@ -296,9 +302,21 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
     }
 
     try {
+      const start = Date.now();
       const result = await this.executeOnKernel(sessionId, req);
+      const latencyMs = Date.now() - start;
       orderer.advance();
       dedupeCache.complete(principal, sessionId, requestId, result.resultRef);
+
+      opsExecuted.inc({ op: opName ?? 'unknown', status: 'ok' });
+      opLatencyMs.observe({ op: opName ?? 'unknown' }, latencyMs);
+
+      logger.debug('Execute completed', {
+        sessionId,
+        requestId,
+        op: opName,
+        latencyMs,
+      });
 
       // --- WC-EC-32: Frame limits (response size) ---
       const responseSize = Buffer.byteLength(JSON.stringify(result));
@@ -310,6 +328,15 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
     } catch (err) {
       orderer.advance();
       dedupeCache.fail(principal, sessionId, requestId, 0, err instanceof Error ? err.message : 'execution failed');
+
+      opsExecuted.inc({ op: opName ?? 'unknown', status: 'error' });
+
+      logger.warn('Execute failed', {
+        sessionId,
+        requestId,
+        op: opName,
+        err: err instanceof Error ? err : undefined,
+      });
       throw err;
     } finally {
       concurrentOps.set(sessionId, Math.max(0, (concurrentOps.get(sessionId) ?? 1) - 1));
@@ -386,9 +413,14 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
     }
 
     try {
+      const start = Date.now();
       const result = await this.restoreOnKernel(sessionId, req);
+      const latencyMs = Date.now() - start;
       orderer.advance();
       dedupeCache.complete(principal, sessionId, requestId, result.resultRef);
+
+      opsExecuted.inc({ op: opName ?? 'unknown', status: 'ok' });
+      opLatencyMs.observe({ op: opName ?? 'unknown' }, latencyMs);
 
       // --- WC-EC-32: Frame limits (response size) ---
       const responseSize = Buffer.byteLength(JSON.stringify(result));
@@ -400,6 +432,15 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
     } catch (err) {
       orderer.advance();
       dedupeCache.fail(principal, sessionId, requestId, 0, err instanceof Error ? err.message : 'restore failed');
+
+      opsExecuted.inc({ op: opName ?? 'unknown', status: 'error' });
+
+      logger.warn('Restore failed', {
+        sessionId,
+        requestId,
+        op: opName,
+        err: err instanceof Error ? err : undefined,
+      });
       throw err;
     } finally {
       concurrentOps.set(sessionId, Math.max(0, (concurrentOps.get(sessionId) ?? 1) - 1));

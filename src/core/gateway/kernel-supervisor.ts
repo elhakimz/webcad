@@ -8,6 +8,8 @@
 import { sessionManager } from './session-manager.js';
 import { KernelPoolManager, type ManagedKernel, KernelTransport } from './kernel-pool-manager.js';
 import { KernelClient } from './kernel-client.js';
+import { logger } from './logger.js';
+import { kernelCrashes, kernelRespawns } from './metrics.js';
 
 const KERNEL_BINARY = process.env.KERNEL_BINARY ?? './build/kernel_worker';
 const KERNEL_SOCKET_DIR = process.env.KERNEL_SOCKET_DIR ?? '/tmp';
@@ -99,15 +101,20 @@ export class KernelSupervisor {
     kernel.lastCrashAt = Date.now();
     kernel.restartCount++;
 
-    console.error(
-      `[KernelCrash] session=${sessionId} pid=${kernel.pid} exitCode=${kernel.exitCode} signal=${kernel.exitSignal} restartCount=${kernel.restartCount} ts=${new Date().toISOString()}`
-    );
+    logger.error('Kernel crash', {
+      sessionId,
+      pid: kernel.pid,
+      exitCode: kernel.exitCode,
+      exitSignal: kernel.exitSignal,
+      restartCount: kernel.restartCount,
+    });
 
+    kernelCrashes.inc({});
     sessionManager.setState(sessionId, 'rehydrating');
 
     if (kernel.restartCount > this.config.maxRestartsPerSession) {
       sessionManager.setState(sessionId, 'rehydrating');
-      console.error(`[Supervisor] Session ${sessionId}: max restarts exceeded, giving up`);
+      logger.error('Session max restarts exceeded, giving up', { sessionId });
       return;
     }
 
@@ -124,10 +131,16 @@ export class KernelSupervisor {
       sessionManager.setState(sessionId, 'connected');
       sessionManager.setKernelPid(sessionId, replacement.pid ?? -1);
 
-      console.log(`[Supervisor] Session ${sessionId}: kernel respawned (PID ${replacement.pid}), awaiting client replay`);
+      kernelRespawns.inc({});
+
+      logger.info('Kernel respawned', {
+        sessionId,
+        pid: replacement.pid,
+        restartCount: replacement.restartCount,
+      });
     } catch (err) {
       sessionManager.setState(sessionId, 'rehydrating');
-      console.error(`[Supervisor] Session ${sessionId}: respawn failed`, err);
+      logger.error('Kernel respawn failed', { sessionId, err: err instanceof Error ? err : undefined });
     }
   }
 
@@ -141,7 +154,7 @@ export class KernelSupervisor {
       try {
         await kernel.client.health({ service: 'KernelService' });
       } catch {
-        console.error(`[Supervisor] Session ${sessionId}: health check failed`);
+        logger.warn('Health check failed', { sessionId });
         this.onKernelCrash(sessionId);
       }
     }

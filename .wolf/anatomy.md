@@ -61,6 +61,7 @@
 ## ./src/core/gateway/
 
 - `kernel-supervisor.ts` — Manages one native OCCT kernel process per session with spare pool, crash recovery (REHYDRATING → Restore → replay), health checks; delegates pool management to KernelPoolManager (~1300 tok)
+- `kernel-supervisor.ts` — WC-EC-35: structured crash-event logging on kernel crash (exit code/signal, restart count) (~1300 tok)
 - `session-manager.ts` — Session lifecycle (connected/restarting/rehydrating), event replay buffer with size+TTL eviction, kernel PID tracking (~1300 tok)
 - `kernel-client.ts` — KernelClient interface + GrpcKernelClient (UDS/gRPC) implementation (~1300 tok)
 - `stdio-kernel-client.ts` — Stdio-based kernel client alternative (~1300 tok)
@@ -101,6 +102,7 @@
 ## scripts/
 
 - `verify-kernel.sh` — One-command kernel verify: cmake configure (Ninja), build kernel_worker, ctest if available, parity subset via kernel-worker --cli, pass/fail + timing report (~2k tok)
+- `sanitizer-check.sh` — WC-EC-35: CI-agnostic ASan/UBSan kernel build + crash-diagnostics test suite (~2k tok)
 
 ## docs/3d/
 
@@ -788,7 +790,10 @@
 
 ## docs/superpowers/specs/
 - `2026-11-25-wc-ec-34-kernel-process-pool-idle-eviction-cgroup-design.md` — WC-EC-34 design spec: KernelPoolManager for idle TTL eviction, CPU affinity, cgroup memory/CPU limits, OOM detection and recovery (~14k tok)
-
+> - `2026-11-25-wc-ec-35-crash-isolation-diagnostics-sanitizer-design.md` — WC-EC-35 design spec: crash isolation 
+(exit code/signal capture, structured crash logging, respawn via pool manager), diagnostics (structured logging only), 
+sanitizer CI script (ASan/UBSan build + crash-diagnostics test) (~9k tok)
+  
 ## docs/superpowers/plans/
 - `2026-11-19-grpc-connect-transport.md` — Implementation plan for gRPC/Connect transport replacement across three PRs (~13k tok)
 - `2026-11-19-parity-harness.md` — Implementation plan for WC-EC-12 parity harness: WASM worker vs native OCCT kernel comparison with tolerances (~14k tok)

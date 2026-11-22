@@ -11,6 +11,8 @@ import { join } from 'node:path';
 import { sessionManager } from './session-manager.js';
 import { GrpcKernelClient, KernelClient } from './kernel-client.js';
 import { StdioKernelClient } from './stdio-kernel-client.js';
+import { logger } from './logger.js';
+import { kernelRssBytes, kernelsActive, kernelsSpare, kernelCrashes } from './metrics.js';
 
 export type KernelTransport = 'uds' | 'stdio';
 
@@ -185,6 +187,22 @@ export class KernelPoolManager {
       }
     }
 
+    // Track RSS per kernel
+    for (const [sessionId, kernel] of this.kernels) {
+      if (kernel.state !== 'ready' || !kernel.process) continue;
+      try {
+        const usage = (kernel.process as any).resourceUsage?.();
+        if (usage && usage.maxRSS) {
+          kernelRssBytes.set({ sessionId }, usage.maxRSS);
+        }
+      } catch {
+        // resourceUsage may not be available
+      }
+    }
+
+    kernelsActive.set({}, this.kernels.size);
+    kernelsSpare.set({}, this.spares.length);
+
     // Evict idle spares
     this.spares = this.spares.filter((spare) => {
       if (spare.state !== 'spawning' || !spare.process) return true;
@@ -287,7 +305,7 @@ export class KernelPoolManager {
     });
 
     child.stderr?.on('data', (data) => {
-      console.error(`[Kernel PID ${child.pid}] ${data}`);
+      logger.debug('Kernel stderr', { pid: child.pid, data: data.toString() });
     });
 
     const kernel: ManagedKernel = {
@@ -388,7 +406,7 @@ export class KernelPoolManager {
 
   private applyAffinity(pid: number): void {
     if (platform() !== 'linux') {
-      console.log(`[KernelPoolManager] CPU affinity not supported on ${platform()}, skipping`);
+      logger.debug('CPU affinity not supported on platform, skipping', { platform: platform() });
       return;
     }
 
@@ -401,7 +419,7 @@ export class KernelPoolManager {
     try {
       spawnSync('taskset', ['-c', cores.join(','), String(pid)], { stdio: 'ignore' });
     } catch {
-      console.log(`[KernelPoolManager] taskset failed for PID ${pid}, continuing without affinity`);
+      logger.warn('taskset failed for kernel PID, continuing without affinity', { pid });
     }
   }
 
@@ -465,7 +483,13 @@ export class KernelPoolManager {
   }
 
   private async handleOom(sessionId: string, kernel: ManagedKernel): Promise<void> {
-    console.error(`[KernelPoolManager] OOM detected for kernel PID ${kernel.pid} (session ${sessionId})`);
+    logger.error('OOM detected for kernel', {
+      sessionId,
+      pid: kernel.pid,
+      memoryLimitBytes: this.config.memoryLimitBytes,
+    });
+
+    kernelCrashes.inc({});
 
     kernel.state = 'dead';
     if (kernel.process) {

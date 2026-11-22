@@ -46,6 +46,7 @@ export class KernelSupervisor {
       transport: this.config.transport,
       sparePoolSize: this.config.sparePoolSize,
       maxRestartsPerSession: this.config.maxRestartsPerSession,
+      onKernelCrash: (sessionId) => this.onKernelCrash(sessionId),
     });
   }
 

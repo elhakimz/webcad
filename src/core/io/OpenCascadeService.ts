@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OCCWorkerClient } from "./OCCWorkerClient";
 import { OCCTransport } from "./OCCTransport";
 import { RemoteGrpcTransport } from "./RemoteGrpcTransport";
+import { CommandReplayManager } from "../engine/CommandReplayManager";
 
 export type Vec3Like = { x: number; y: number; z: number } | [number, number, number];
 
@@ -25,6 +26,7 @@ export class OpenCascadeService {
   private loading: Promise<void> | null = null;
   private errorCallback: ((msg: string) => void) | null = null;
   private snapshotProvider: ((entityId: string) => Promise<{ id: string } | null>) | null = null;
+  private replayManager: CommandReplayManager | null = null;
   private _doc: any = null;
 
   public onError(callback: (msg: string) => void) {
@@ -416,9 +418,27 @@ export class OpenCascadeService {
     try {
       const restored = await transport.restore(items);
       console.log(`[OCC] Restored ${restored.length} entities via Restore RPC`);
+
+      // Replay aborted commands in client_seq order after Restore.
+      if (this.replayManager && this.replayManager.pendingCount > 0) {
+        try {
+          await this.replayManager.replayAll();
+          console.log('[OCC] Replayed aborted commands after Restore');
+        } catch (e) {
+          this.reportError(`[OCC] Command replay failed after Restore: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
     } catch (e) {
       this.reportError(`[OCC] Restore RPC failed: ${e instanceof Error ? e.message : String(e)}`);
     }
+  }
+
+  /**
+   * Injects a CommandReplayManager so aborted commands can be replayed
+   * in client_seq order after a successful Restore.
+   */
+  setReplayManager(manager: CommandReplayManager): void {
+    this.replayManager = manager;
   }
 }
 

@@ -141,7 +141,16 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async createPolyhedron(points: any[], faces: number[][], deflection?: number, entityId?: string): Promise<any> {
-    throw new Error('createPolyhedron not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_polyhedron: {
+        pointsInline: points.map((p: any) => ({ x: p.x, y: p.y, z: p.z })),
+        faces: faces.map((f: number[]) => ({ vertexIndices: f })),
+        deflection: deflection ?? 0,
+        entityId: entityId ?? '',
+      },
+    });
   }
 
   async createConvexHull(points?: any[], shapeIds?: string[], deflection?: number, entityId?: string): Promise<any> {

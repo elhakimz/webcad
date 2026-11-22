@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { KernelGrpcTransport } from '../../../src/core/io/KernelGrpcTransport.js';
+import { Point3DSchema, PolyhedronFaceSchema } from '../../../src/generated/proto/webcad/engine/v1/engine_pb.js';
 
 // Mock kernelSupervisor
 vi.mock('../../../src/core/gateway/kernel-supervisor.js', () => ({
@@ -656,6 +657,74 @@ describe('KernelGrpcTransport.createPyramid()', () => {
     expect(mockExecute).toHaveBeenCalledWith(
       expect.objectContaining({
         create_pyramid: expect.objectContaining({
+          deflection: 0,
+          entityId: '',
+        }),
+      })
+    );
+  });
+});
+
+describe('KernelGrpcTransport.createPolyhedron()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_polyhedron op and polyhedron params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'polyhedron-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const points = [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }];
+    const faces = [[0, 1, 2]];
+    const result = await transport.createPolyhedron(points, faces, 0.001, 'polyhedron-1');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_polyhedron: {
+          pointsInline: [
+            { x: 0, y: 0, z: 0 },
+            { x: 1, y: 0, z: 0 },
+            { x: 0, y: 1, z: 0 },
+          ],
+          faces: [{ vertexIndices: [0, 1, 2] }],
+          deflection: 0.001,
+          entityId: 'polyhedron-1',
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'polyhedron-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createPolyhedron([{ x: 0, y: 0, z: 0 }], [[0]]);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults deflection to 0 and entityId to empty string', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createPolyhedron(
+      [{ x: 1, y: 2, z: 3 }],
+      [[0]]
+    );
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_polyhedron: expect.objectContaining({
           deflection: 0,
           entityId: '',
         }),

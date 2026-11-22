@@ -1797,3 +1797,43 @@ describe('KernelGrpcTransport.makeThickSolid()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.draftSolidFaces()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with draft_solid_faces op and draft params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'draft-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.draftSolidFaces('shape-1', [1, 2], 0, 0.5);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draft_solid_faces: {
+          entityId: 'shape-1',
+          faceIndices: [1, 2],
+          neutralFaceIndex: 0,
+          angleRad: 0.5,
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'draft-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.draftSolidFaces('shape-1', [0], 0, 0.3);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+});

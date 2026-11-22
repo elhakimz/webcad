@@ -411,6 +411,15 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async draftSolidFaces(entityId: string, faceIndices: number[], neutralFaceIndex: number, angleRad: number): Promise<any> {
-    throw new Error('draftSolidFaces not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      draft_solid_faces: {
+        entityId,
+        faceIndices,
+        neutralFaceIndex,
+        angleRad,
+      },
+    });
   }
 }

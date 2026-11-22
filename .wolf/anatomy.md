@@ -65,6 +65,7 @@
 - `kernel-client.ts` — KernelClient interface + GrpcKernelClient (UDS/gRPC) implementation (~1300 tok)
 - `stdio-kernel-client.ts` — Stdio-based kernel client alternative (~1300 tok)
 - `kernel-pool-manager.ts` — WC-EC-34: KernelPoolManager for idle TTL eviction, CPU affinity (taskset), cgroup v2 memory/CPU limits, OOM detection and recovery (~1300 tok)
+- `kernel-pool-manager.test.ts` — Vitest tests for KernelPoolManager: allocate/release, idle TTL eviction, spare pool culling, CPU affinity, cgroup limits, OOM detection (~1300 tok)
 - `kernel-worker.cpp` — OCCT 7.9.3 kernel worker implementing KernelService (Execute over gRPC/UDS), shape cache, CreateBox/ImportBRep handlers, OpCreateSweep/HandleCreateSweep via BRepOffsetAPI_MakePipeShell (~1300 tok)
 
 ## ./src/core/harness/

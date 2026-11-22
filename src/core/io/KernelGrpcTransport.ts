@@ -85,7 +85,11 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async createCylinder(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string): Promise<any> {
-    throw new Error('createCylinder not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_cylinder: { x, y, z, r, h, deflection: deflection ?? 0, entityId: entityId ?? '' },
+    });
   }
 
   async createSphere(x: number, y: number, z: number, r: number, deflection?: number, entityId?: string): Promise<any> {

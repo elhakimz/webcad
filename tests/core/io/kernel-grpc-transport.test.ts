@@ -227,6 +227,68 @@ describe('KernelGrpcTransport.createBox()', () => {
   });
 });
 
+describe('KernelGrpcTransport.createCylinder()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_cylinder op and cylinder params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'cyl-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.createCylinder(0, 0, 0, 5, 10, 0.001, 'cyl-1');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_cylinder: {
+          x: 0,
+          y: 0,
+          z: 0,
+          r: 5,
+          h: 10,
+          deflection: 0.001,
+          entityId: 'cyl-1',
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'cyl-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createCylinder(0, 0, 0, 5, 10);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults deflection to 0 and entityId to empty string', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createCylinder(1, 2, 3, 4, 5);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_cylinder: expect.objectContaining({
+          deflection: 0,
+          entityId: '',
+        }),
+      })
+    );
+  });
+});
+
 describe('KernelGrpcTransport.extractFaceProfile()', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -960,3 +960,60 @@ describe('KernelGrpcTransport.createRevolve()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.createCompound()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_compound op and compound params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'compound-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.createCompound(['shape-1', 'shape-2'], 'compound-1', 0.001);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_compound: {
+          childrenIds: ['shape-1', 'shape-2'],
+          entityId: 'compound-1',
+          deflection: 0.001,
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'compound-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createCompound(['shape-1'], 'compound-1');
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults deflection to 0', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createCompound(['shape-1'], 'compound-1');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_compound: expect.objectContaining({
+          deflection: 0,
+        }),
+      })
+    );
+  });
+});

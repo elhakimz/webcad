@@ -200,7 +200,15 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async createCompound(childrenIds: string[], entityId: string, deflection?: number): Promise<any> {
-    throw new Error('createCompound not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_compound: {
+        childrenIds,
+        entityId,
+        deflection: deflection ?? 0,
+      },
+    });
   }
 
   async createSweep(profilePoints: { x: number; y: number; z: number }[], spinePoints: { x: number; y: number; z: number }[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number, cornerMode?: string, isEllipse?: boolean): Promise<any> {

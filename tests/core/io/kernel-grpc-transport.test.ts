@@ -601,6 +601,69 @@ describe('KernelGrpcTransport.createWedge()', () => {
   });
 });
 
+describe('KernelGrpcTransport.createPyramid()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_pyramid op and pyramid params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'pyramid-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.createPyramid(0, 0, 0, 4, 5, 10, 0.001, 'pyramid-1');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_pyramid: {
+          x: 0,
+          y: 0,
+          z: 0,
+          sides: 4,
+          radius: 5,
+          h: 10,
+          deflection: 0.001,
+          entityId: 'pyramid-1',
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'pyramid-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createPyramid(0, 0, 0, 4, 5, 10);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults deflection to 0 and entityId to empty string', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createPyramid(1, 2, 3, 4, 5, 6);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_pyramid: expect.objectContaining({
+          deflection: 0,
+          entityId: '',
+        }),
+      })
+    );
+  });
+});
+
 describe('KernelGrpcTransport.extractFaceProfile()', () => {
   beforeEach(() => {
     vi.clearAllMocks();

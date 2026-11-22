@@ -133,7 +133,11 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async createPyramid(x: number, y: number, z: number, sides: number, radius: number, h: number, deflection?: number, entityId?: string): Promise<any> {
-    throw new Error('createPyramid not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_pyramid: { x, y, z, sides, radius, h, deflection: deflection ?? 0, entityId: entityId ?? '' },
+    });
   }
 
   async createPolyhedron(points: any[], faces: number[][], deflection?: number, entityId?: string): Promise<any> {

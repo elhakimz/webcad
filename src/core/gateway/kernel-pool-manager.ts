@@ -33,6 +33,8 @@ export interface ManagedKernel {
   process: ChildProcess | null;
   state: KernelState;
   lastCrashAt: number | null;
+  exitCode: number | null;
+  exitSignal: string | null;
   restartCount: number;
   transport: KernelTransport;
   // WC-EC-34 fields
@@ -288,6 +290,8 @@ export class KernelPoolManager {
       process: child,
       state: 'spawning',
       lastCrashAt: null,
+      exitCode: null,
+      exitSignal: null,
       restartCount: 0,
       transport,
       lastActivity: Date.now(),

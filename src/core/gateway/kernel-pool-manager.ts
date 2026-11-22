@@ -55,6 +55,7 @@ export interface KernelPoolManagerConfig {
   cpuAffinityCores?: number[];
   cgroupEnabled?: boolean;
   oomPollIntervalMs?: number;
+  onKernelCrash?: (sessionId: string) => void;
 }
 
 export class KernelPoolManager {
@@ -63,6 +64,7 @@ export class KernelPoolManager {
   private readonly config: Required<KernelPoolManagerConfig>;
   private cgroupAvailable = false;
   private oomTimer: NodeJS.Timeout | null = null;
+  private onKernelCrash?: (sessionId: string) => void;
 
   constructor(config: KernelPoolManagerConfig = {}) {
     this.config = {
@@ -76,7 +78,9 @@ export class KernelPoolManager {
       cpuAffinityCores: config.cpuAffinityCores ?? [],
       cgroupEnabled: config.cgroupEnabled ?? CGROUP_ENABLED,
       oomPollIntervalMs: config.oomPollIntervalMs ?? OOM_POLL_INTERVAL_MS,
+      onKernelCrash: config.onKernelCrash ?? (() => {}),
     };
+    this.onKernelCrash = config.onKernelCrash ?? (() => {});
   }
 
   async start(): Promise<void> {
@@ -264,13 +268,17 @@ export class KernelPoolManager {
       this.applyAffinity(child.pid ?? 0);
     }
 
-    child.on('exit', (_code, _signal) => {
+    child.on('exit', (code, signal) => {
       const kernel = this.findKernelByProcess(child);
       if (kernel) {
         kernel.state = 'dead';
         kernel.process = null;
+        kernel.lastCrashAt = Date.now();
+        kernel.exitCode = code ?? null;
+        kernel.exitSignal = signal ?? null;
+
         if (kernel.sessionId) {
-          // Handled by KernelSupervisor.onKernelCrash
+          this.onKernelCrash(kernel.sessionId);
         } else {
           this.spares = this.spares.filter((s) => s !== kernel);
           this.createSpare().catch(console.error);

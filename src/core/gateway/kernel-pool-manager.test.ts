@@ -182,6 +182,44 @@ describe('KernelPoolManager allocate/release', () => {
 
     await mgr.stop();
   });
+
+  it('captures exitCode and exitSignal when kernel process exits', async () => {
+    const exitListeners = new Map<any, (code: number | null, signal: string | null) => void>();
+    vi.mocked(spawn).mockImplementation(() => {
+      const proc = mockProcess(1000);
+      proc.on.mockImplementation((event: string, listener: any) => {
+        if (event === 'exit') {
+          exitListeners.set(proc, listener);
+        }
+      });
+      return proc as any;
+    });
+
+    const onKernelCrash = vi.fn();
+    const mgr = new KernelPoolManager({
+      sparePoolSize: 0,
+      binary: '/fake/kernel',
+      socketDir: '/tmp',
+      onKernelCrash,
+    });
+    await mgr.start();
+
+    const kernel = await mgr.allocate('session-1');
+    const proc = kernel.process!;
+
+    // Simulate SIGSEGV exit
+    const exitListener = exitListeners.get(proc)!;
+    exitListener(null, 'SIGSEGV');
+
+    const updated = mgr.getKernels().get('session-1');
+    expect(updated!.exitCode).toBeNull();
+    expect(updated!.exitSignal).toBe('SIGSEGV');
+    expect(updated!.lastCrashAt).toBeGreaterThan(0);
+    expect(updated!.state).toBe('dead');
+    expect(onKernelCrash).toHaveBeenCalledWith('session-1');
+
+    await mgr.stop();
+  });
 });
 
 describe('KernelPoolManager idle TTL eviction', () => {

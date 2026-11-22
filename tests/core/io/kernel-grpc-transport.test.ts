@@ -1468,3 +1468,68 @@ describe('KernelGrpcTransport.mirrorShape()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.scaleShape()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with scale_shape op and scale params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'scale-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.scaleShape('shape-1', 2.0, 0, 0, 0, 'target-1', 0.001, 2.0, 2.0, 2.0);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scale_shape: {
+          entityId: 'shape-1',
+          factor: 2.0,
+          cx: 0,
+          cy: 0,
+          cz: 0,
+          targetEntityId: 'target-1',
+          deflection: 0.001,
+          factorX: 2.0,
+          factorY: 2.0,
+          factorZ: 2.0,
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'scale-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.scaleShape('shape-1', undefined, 10, 20, 30);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults targetEntityId to empty string and deflection to 0', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.scaleShape('shape-1', undefined, 10, 20, 30);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scale_shape: expect.objectContaining({
+          targetEntityId: '',
+          deflection: 0,
+        }),
+      })
+    );
+  });
+});

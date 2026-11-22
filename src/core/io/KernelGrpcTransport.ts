@@ -325,7 +325,22 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async scaleShape(entityId: string, factor: number | undefined, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number, factorX?: number, factorY?: number, factorZ?: number): Promise<any> {
-    throw new Error('scaleShape not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      scale_shape: {
+        entityId,
+        factor,
+        cx,
+        cy,
+        cz,
+        targetEntityId: targetEntityId ?? '',
+        deflection: deflection ?? 0,
+        factorX,
+        factorY,
+        factorZ,
+      },
+    });
   }
 
   async filletSolid(entityId: string, edgeIndex: number, radius: number, deflection?: number, visualP1?: any, visualP2?: any): Promise<any> {

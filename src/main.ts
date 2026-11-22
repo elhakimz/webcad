@@ -410,6 +410,7 @@ Promise.all([
     sessionId: crypto.randomUUID(),
     includeBrep: true,
     timeoutMs: 30000,
+    document: app.doc,
   }),
   app.persistence.init()
 ])

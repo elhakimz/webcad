@@ -3,6 +3,7 @@ import { OCCWorkerClient } from "./OCCWorkerClient";
 import { OCCTransport } from "./OCCTransport";
 import { RemoteGrpcTransport } from "./RemoteGrpcTransport";
 import { CommandReplayManager } from "../engine/CommandReplayManager";
+import { Document } from "../model/Document";
 
 export type Vec3Like = { x: number; y: number; z: number } | [number, number, number];
 
@@ -18,6 +19,8 @@ export interface OpenCascadeConfig {
   timeoutMs?: number;
   /** Injected snapshot provider: returns brep bytes (or BrepReference) for an entity id during rehydration. */
   snapshotProvider?: (entityId: string) => Promise<{ id: string } | null>;
+  /** Optional Document to derive a snapshot provider from during init. */
+  document?: Document;
 }
 
 export class OpenCascadeService {
@@ -67,7 +70,13 @@ export class OpenCascadeService {
             includeBrep: config.includeBrep,
             timeoutMs: config.timeoutMs,
           });
-          this.snapshotProvider = config.snapshotProvider ?? null;
+          if (config.snapshotProvider) {
+            this.snapshotProvider = config.snapshotProvider;
+          } else if (config.document) {
+            this.snapshotProvider = config.document.getSnapshotProvider();
+          } else {
+            this.snapshotProvider = null;
+          }
           this.wireRehydrateListener();
         } else {
           this.transport = new OCCWorkerClient();

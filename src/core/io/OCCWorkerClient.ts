@@ -178,6 +178,11 @@ export class OCCWorkerClient implements OCCTransport {
   }
 
 
+  cancel(requestId: string): Promise<void> {
+    // Worker transport: no per-request cancellation support; resolve immediately.
+    return Promise.resolve();
+  }
+
   /** Requests sent to the worker that have not yet resolved. Used by the test bridge's idle signal. */
   get pendingCount(): number {
     return this.resolvers.size;

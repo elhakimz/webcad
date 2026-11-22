@@ -423,6 +423,11 @@ export class KernelGrpcTransport implements OCCTransport {
     });
   }
 
+  cancel(requestId: string): Promise<void> {
+    // Server-side kernel transport: no per-request cancellation support from client side.
+    return Promise.resolve();
+  }
+
   async stepExport(entityId: string): Promise<any> {
     await this.init();
     return await this.client!.execute({

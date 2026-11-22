@@ -33,6 +33,9 @@ export interface OCCTransport {
   chamferSolidFace(entityId: string, faceIndex: number, radius: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }>;
   makeThickSolid(entityId: string, faceIndices: number[], thickness: number, removeFaces?: boolean): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }>;
   draftSolidFaces(entityId: string, faceIndices: number[], neutralFaceIndex: number, angleRad: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }>;
+  /** Cancel an in-flight operation by request id. Resolves even if the request was already complete or not found. */
+  cancel(requestId: string): Promise<void>;
+
   /** Kernel requests still in flight. 0 means the kernel is idle. Used by the test bridge's idle signal. */
   get pendingCount(): number;
 }

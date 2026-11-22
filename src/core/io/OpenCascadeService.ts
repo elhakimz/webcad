@@ -4,6 +4,13 @@ import { OCCTransport } from "./OCCTransport";
 import { RemoteGrpcTransport } from "./RemoteGrpcTransport";
 import { CommandReplayManager } from "../engine/CommandReplayManager";
 import { Document } from "../model/Document";
+import { SessionEvent } from '../../generated/proto/webcad/engine/v1/engine_pb.js';
+
+export type ProgressEvent = {
+  operation: string;
+  percent: number;
+  message: string;
+};
 
 export type Vec3Like = { x: number; y: number; z: number } | [number, number, number];
 
@@ -28,12 +35,47 @@ export class OpenCascadeService {
   private transport: OCCTransport | null = null;
   private loading: Promise<void> | null = null;
   private errorCallback: ((msg: string) => void) | null = null;
+  private progressCallbacks = new Set<(event: ProgressEvent) => void>();
+  private progressHandler: ((event: SessionEvent) => void) | null = null;
   private snapshotProvider: ((entityId: string) => Promise<{ id: string } | null>) | null = null;
   private replayManager: CommandReplayManager | null = null;
   private _doc: any = null;
 
   public onError(callback: (msg: string) => void) {
     this.errorCallback = callback;
+  }
+
+  public onProgress(callback: (event: ProgressEvent) => void): void {
+    this.progressCallbacks.add(callback);
+    // Ensure the transport subscribes to SessionEvent fan-out so progress
+    // events flow through to registered callbacks.
+    if (this.transport instanceof RemoteGrpcTransport && !this.progressHandler) {
+      this.progressHandler = (event: SessionEvent) => {
+        if (event.payload?.case === 'progress' && event.payload.value) {
+          const p = event.payload.value;
+          this.progressCallbacks.forEach((cb) => cb({
+            operation: p.operation,
+            percent: p.percent,
+            message: p.message,
+          }));
+        }
+      };
+      void this.transport.subscribe(this.progressHandler);
+    }
+  }
+
+  public offProgress(callback: (event: ProgressEvent) => void): void {
+    this.progressCallbacks.delete(callback);
+    // If no more progress callbacks remain, unsubscribe from the transport.
+    if (this.progressCallbacks.size === 0 && this.progressHandler && this.transport instanceof RemoteGrpcTransport) {
+      this.transport.unsubscribe(this.progressHandler);
+      this.progressHandler = null;
+    }
+  }
+
+  public async cancel(requestId: string): Promise<void> {
+    if (!this.transport) return;
+    await this.transport.cancel(requestId);
   }
 
   private reportError(msg: string) {

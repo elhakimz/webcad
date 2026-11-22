@@ -233,6 +233,7 @@ export class RemoteGrpcTransport implements OCCTransport {
     opName: C,
     payload: unknown,
     requestId?: string,
+    timeoutMs?: number, // per-call override; defaults to config.deadlineMs
   ): Promise<ExecuteResponse> {
     const reqId = requestId ?? crypto.randomUUID();
 
@@ -246,7 +247,7 @@ export class RemoteGrpcTransport implements OCCTransport {
       });
     }
 
-    const deadline = Date.now() + this.config.deadlineMs;
+    const deadline = Date.now() + (timeoutMs ?? this.config.deadlineMs);
     const pending: {
       resolve: (value: ExecuteResponse) => void;
       reject: (reason: any) => void;
@@ -271,7 +272,7 @@ export class RemoteGrpcTransport implements OCCTransport {
 
         const response = await this.clientOrThrow.execute(request, {
           headers: { 'x-session-id': this.sessionId },
-          responseTimeout: this.config.timeoutMs,
+          responseTimeout: timeoutMs ?? this.config.timeoutMs,
         });
 
         if (response.result?.case === 'failure') {
@@ -303,8 +304,7 @@ export class RemoteGrpcTransport implements OCCTransport {
       rejectFn(new GrpcTransportError('DEADLINE_EXCEEDED', `DEADLINE_EXCEEDED: Operation ${opName} timed out`));
     }, Math.max(0, deadline - Date.now()));
 
-    promise.finally(() => clearTimeout(deadlineTimer));
-    return promise;
+    return promise.finally(() => clearTimeout(deadlineTimer));
   }
 
   private async handleExecuteError(
@@ -484,25 +484,25 @@ export class RemoteGrpcTransport implements OCCTransport {
     return this.pendingCountValue;
   }
 
-  async clearCache(): Promise<{ success: boolean }> {
-    await this.execute('clearCache', {});
+  async clearCache(timeoutMs?: number): Promise<{ success: boolean }> {
+    await this.execute('clearCache', {}, undefined, timeoutMs);
     return { success: true };
   }
 
-  async releaseShapes(entityIds: string[]): Promise<void> {
+  async releaseShapes(entityIds: string[], timeoutMs?: number): Promise<void> {
     const op = create(ReleaseShapesOpSchema, { entityIds });
-    await this.execute('releaseShapes', op);
+    await this.execute('releaseShapes', op, undefined, timeoutMs);
   }
 
-  async checkValidity(entityId: string): Promise<{ isValid: boolean; faceCount: number; errorMsg: string }> {
+  async checkValidity(entityId: string, timeoutMs?: number): Promise<{ isValid: boolean; faceCount: number; errorMsg: string }> {
     const op = create(CheckValidityOpSchema, { entityId });
-    await this.execute('checkValidity', op);
+    await this.execute('checkValidity', op, undefined, timeoutMs);
     return { isValid: true, faceCount: 0, errorMsg: '' };
   }
 
-  async exportBRep(entityId: string): Promise<Uint8Array> {
+  async exportBRep(entityId: string, timeoutMs?: number): Promise<Uint8Array> {
     const op = create(ExportBRepOpSchema, { entityId });
-    const response = await this.execute('exportBrep', op);
+    const response = await this.execute('exportBrep', op, undefined, timeoutMs);
     const brepRef = response.brepRef;
     if (brepRef?.data) {
       return new Uint8Array(brepRef.data);
@@ -514,9 +514,10 @@ export class RemoteGrpcTransport implements OCCTransport {
     entityId: string,
     brepBytes: Uint8Array,
     deflection?: number,
+    timeoutMs?: number,
   ): Promise<any> {
     const op = create(ImportBRepOpSchema, { entityId, brepSource: { case: 'brepBytes', value: brepBytes }, deflection: deflection ?? 0.1 });
-    await this.execute('importBrep', op);
+    await this.execute('importBrep', op, undefined, timeoutMs);
     return { success: true };
   }
 
@@ -524,9 +525,10 @@ export class RemoteGrpcTransport implements OCCTransport {
     entityId: string,
     faceIndex: number,
     deflection?: number,
+    timeoutMs?: number,
   ): Promise<{ loops: { x: number; y: number; bulge: number }[][] }> {
     const op = create(ExtractFaceProfileOpSchema, { entityId, faceIndex, deflection: deflection ?? 0.1 });
-    await this.execute('extractFaceProfile', op);
+    await this.execute('extractFaceProfile', op, undefined, timeoutMs);
     return { loops: [] };
   }
 
@@ -586,166 +588,166 @@ export class RemoteGrpcTransport implements OCCTransport {
     return { positions, indices, faceMapping, edgeLines, brepBytes };
   }
 
-  async createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number, deflection?: number, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number, deflection?: number, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateBoxOpSchema, { x, y, z, dx, dy, dz, deflection: deflection ?? 0.1, entityId: entityId ?? '' });
-    const response = await this.execute('createBox', op);
+    const response = await this.execute('createBox', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createCylinder(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createCylinder(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateCylinderOpSchema, { x, y, z, r, h, deflection: deflection ?? 0.1, entityId: entityId ?? '' });
-    const response = await this.execute('createCylinder', op);
+    const response = await this.execute('createCylinder', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createSphere(x: number, y: number, z: number, r: number, deflection?: number, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createSphere(x: number, y: number, z: number, r: number, deflection?: number, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateSphereOpSchema, { x, y, z, r, deflection: deflection ?? 0.1, entityId: entityId ?? '' });
-    const response = await this.execute('createSphere', op);
+    const response = await this.execute('createSphere', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createCone(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createCone(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateConeOpSchema, { x, y, z, r, h, deflection: deflection ?? 0.1, entityId: entityId ?? '' });
-    const response = await this.execute('createCone', op);
+    const response = await this.execute('createCone', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createFrustum(x: number, y: number, z: number, r1: number, r2: number, h: number, deflection?: number, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createFrustum(x: number, y: number, z: number, r1: number, r2: number, h: number, deflection?: number, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateFrustumOpSchema, { x, y, z, r1, r2, h, deflection: deflection ?? 0.1, entityId: entityId ?? '' });
-    const response = await this.execute('createFrustum', op);
+    const response = await this.execute('createFrustum', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createTorus(x: number, y: number, z: number, r1: number, r2: number, deflection?: number, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateTorusOpSchema, { x, y, z, r1, r2, deflection: deflection ?? 0.1, entityId: entityId ?? '' });
-    const response = await this.execute('createTorus', op);
+    const response = await this.execute('createTorus', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createWedge(x1: number, y1: number, z1: number, x2: number, y2: number, height: number, ltx: number, deflection?: number, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createWedge(x1: number, y1: number, z1: number, x2: number, y2: number, height: number, ltx: number, deflection?: number, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateWedgeOpSchema, { x1, y1, z1, x2, y2, height, ltx, deflection: deflection ?? 0.1, entityId: entityId ?? '' });
-    const response = await this.execute('createWedge', op);
+    const response = await this.execute('createWedge', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createPyramid(x: number, y: number, z: number, sides: number, radius: number, h: number, deflection?: number, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createPyramid(x: number, y: number, z: number, sides: number, radius: number, h: number, deflection?: number, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreatePyramidOpSchema, { x, y, z, sides, radius, h, deflection: deflection ?? 0.1, entityId: entityId ?? '' });
-    const response = await this.execute('createPyramid', op);
+    const response = await this.execute('createPyramid', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createPolyhedron(points: any[], faces: number[][], deflection?: number, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array; nakedLines?: number[][]; isSolid?: boolean }> {
+  async createPolyhedron(points: any[], faces: number[][], deflection?: number, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array; nakedLines?: number[][]; isSolid?: boolean }> {
     const op = create(CreatePolyhedronOpSchema, { pointsInline: points, deflection: deflection ?? 0.1, entityId: entityId ?? '' });
-    const response = await this.execute('createPolyhedron', op);
+    const response = await this.execute('createPolyhedron', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createConvexHull(points?: { x: number; y: number; z: number }[], shapeIds?: string[], deflection?: number, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array; isSolid?: boolean }> {
+  async createConvexHull(points?: { x: number; y: number; z: number }[], shapeIds?: string[], deflection?: number, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array; isSolid?: boolean }> {
     const op = create(CreateConvexHullOpSchema, { pointsInline: points ?? [], shapeIds: shapeIds ?? [], deflection: deflection ?? 0.1, entityId: entityId ?? '' });
-    const response = await this.execute('createConvexHull', op);
+    const response = await this.execute('createConvexHull', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createExtrude(points: { x: number; y: number; z: number }[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string, vector?: number[]): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createExtrude(points: { x: number; y: number; z: number }[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string, vector?: number[], timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateExtrudeOpSchema, { points, height, thickness: thickness ?? 0, deflection: deflection ?? 0.1, isClosed: isClosed ?? false, entityId: entityId ?? '', vector: vector ?? [] });
-    const response = await this.execute('createExtrude', op);
+    const response = await this.execute('createExtrude', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createRevolve(points: { x: number; y: number; z: number }[], axisPoint: { x: number; y: number; z: number }, axisDir: { x: number; y: number; z: number }, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createRevolve(points: { x: number; y: number; z: number }[], axisPoint: { x: number; y: number; z: number }, axisDir: { x: number; y: number; z: number }, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateRevolveOpSchema, { points, axisPoint, axisDir, angle, thickness: thickness ?? 0, deflection: deflection ?? 0.1, isClosed: isClosed ?? false, entityId: entityId ?? '' });
-    const response = await this.execute('createRevolve', op);
+    const response = await this.execute('createRevolve', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createCompound(childrenIds: string[], entityId: string, deflection?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createCompound(childrenIds: string[], entityId: string, deflection?: number, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateCompoundOpSchema, { childrenIds, entityId, deflection: deflection ?? 0.1 });
-    const response = await this.execute('createCompound', op);
+    const response = await this.execute('createCompound', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createSweep(profilePoints: { x: number; y: number; z: number }[], spinePoints: { x: number; y: number; z: number }[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number, cornerMode?: string, isEllipse?: boolean): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createSweep(profilePoints: { x: number; y: number; z: number }[], spinePoints: { x: number; y: number; z: number }[], isSolid: boolean, deflection?: number, entityId?: string, profileCount?: number, cornerMode?: string, isEllipse?: boolean, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateSweepOpSchema, { profilePoints, spinePoints, isSolid, deflection: deflection ?? 0.1, entityId: entityId ?? '', profileCount: profileCount ?? 0, cornerMode: cornerMode ?? '', isEllipse: isEllipse ?? false });
-    const response = await this.execute('createSweep', op);
+    const response = await this.execute('createSweep', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createLoft(profiles: { id: string; points: { x: number; y: number; z: number }[]; closed: boolean }[], isSolid: boolean, isRuled: boolean, deflection?: number, entityId?: string): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createLoft(profiles: { id: string; points: { x: number; y: number; z: number }[]; closed: boolean }[], isSolid: boolean, isRuled: boolean, deflection?: number, entityId?: string, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateLoftOpSchema, { profiles: profiles.map(p => ({ id: p.id, points: p.points, closed: p.closed })), isSolid, isRuled, deflection: deflection ?? 0.1, entityId: entityId ?? '' });
-    const response = await this.execute('createLoft', op);
+    const response = await this.execute('createLoft', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number, rotA?: { x: number; y: number; z: number }, rotB?: { x: number; y: number; z: number }, centerA?: { x: number; y: number; z: number }, centerB?: { x: number; y: number; z: number }): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number, rotA?: { x: number; y: number; z: number }, rotB?: { x: number; y: number; z: number }, centerA?: { x: number; y: number; z: number }, centerB?: { x: number; y: number; z: number }, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(CreateBooleanOpSchema, { operation, idA, idB, entityId, deflection: deflection ?? 0.1, rotA: rotA ?? { x: 0, y: 0, z: 0 }, rotB: rotB ?? { x: 0, y: 0, z: 0 }, centerA: centerA ?? { x: 0, y: 0, z: 0 }, centerB: centerB ?? { x: 0, y: 0, z: 0 } });
-    const response = await this.execute('createBoolean', op);
+    const response = await this.execute('createBoolean', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async multMatrixShape(entityId: string, m: number[], targetEntityId?: string, deflection?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async multMatrixShape(entityId: string, m: number[], targetEntityId?: string, deflection?: number, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(MultMatrixShapeOpSchema, { entityId, m, targetEntityId: targetEntityId ?? '', deflection: deflection ?? 0.1 });
-    const response = await this.execute('multMatrixShape', op);
+    const response = await this.execute('multMatrixShape', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async transformShape(entityId: string, dx: number, dy: number, dz: number, targetEntityId?: string, deflection?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async transformShape(entityId: string, dx: number, dy: number, dz: number, targetEntityId?: string, deflection?: number, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(TransformShapeOpSchema, { entityId, dx, dy, dz, targetEntityId: targetEntityId ?? '', deflection: deflection ?? 0.1 });
-    const response = await this.execute('transformShape', op);
+    const response = await this.execute('transformShape', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async rotateShape(entityId: string, rx: number, ry: number, rz: number, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async rotateShape(entityId: string, rx: number, ry: number, rz: number, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(RotateShapeOpSchema, { entityId, rx, ry, rz, cx, cy, cz, targetEntityId: targetEntityId ?? '', deflection: deflection ?? 0.1 });
-    const response = await this.execute('rotateShape', op);
+    const response = await this.execute('rotateShape', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async mirrorShape(entityId: string, p1: { x: number; y: number; z?: number } | undefined, p2: { x: number; y: number; z?: number } | undefined, targetEntityId?: string, deflection?: number, normal?: { x: number; y: number; z?: number }): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async mirrorShape(entityId: string, p1: { x: number; y: number; z?: number } | undefined, p2: { x: number; y: number; z?: number } | undefined, targetEntityId?: string, deflection?: number, normal?: { x: number; y: number; z?: number }, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const toPt = (p: { x: number; y: number; z?: number }) => ({ x: p.x, y: p.y, z: p.z ?? 0 });
     const op = create(MirrorShapeOpSchema, { entityId, p1: p1 ? toPt(p1) : { x: 0, y: 0, z: 0 }, p2: p2 ? toPt(p2) : { x: 0, y: 0, z: 0 }, targetEntityId: targetEntityId ?? '', deflection: deflection ?? 0.1, normal: normal ? toPt(normal) : { x: 0, y: 0, z: 0 } });
-    const response = await this.execute('mirrorShape', op);
+    const response = await this.execute('mirrorShape', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async scaleShape(entityId: string, factor: number | undefined, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number, factorX?: number, factorY?: number, factorZ?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async scaleShape(entityId: string, factor: number | undefined, cx: number, cy: number, cz: number, targetEntityId?: string, deflection?: number, factorX?: number, factorY?: number, factorZ?: number, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(ScaleShapeOpSchema, { entityId, factor: factor ?? 1, cx, cy, cz, targetEntityId: targetEntityId ?? '', deflection: deflection ?? 0.1, factorX: factorX ?? 1, factorY: factorY ?? 1, factorZ: factorZ ?? 1 });
-    const response = await this.execute('scaleShape', op);
+    const response = await this.execute('scaleShape', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async filletSolid(entityId: string, edgeIndex: number, radius: number, deflection?: number, visualP1?: any, visualP2?: any): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async filletSolid(entityId: string, edgeIndex: number, radius: number, deflection?: number, visualP1?: any, visualP2?: any, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(FilletSolidOpSchema, { entityId, edgeIndex, radius, deflection: deflection ?? 0.1, visualP1: visualP1 ?? { x: 0, y: 0 }, visualP2: visualP2 ?? { x: 0, y: 0 } });
-    const response = await this.execute('filletSolid', op);
+    const response = await this.execute('filletSolid', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async chamferSolid(entityId: string, edgeIndex: number, radius: number, deflection?: number, visualP1?: any, visualP2?: any): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async chamferSolid(entityId: string, edgeIndex: number, radius: number, deflection?: number, visualP1?: any, visualP2?: any, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(ChamferSolidOpSchema, { entityId, edgeIndex, radius, deflection: deflection ?? 0.1, visualP1: visualP1 ?? { x: 0, y: 0 }, visualP2: visualP2 ?? { x: 0, y: 0 } });
-    const response = await this.execute('chamferSolid', op);
+    const response = await this.execute('chamferSolid', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async filletSolidFace(entityId: string, faceIndex: number, radius: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async filletSolidFace(entityId: string, faceIndex: number, radius: number, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(FilletSolidFaceOpSchema, { entityId, faceIndex, radius });
-    const response = await this.execute('filletSolidFace', op);
+    const response = await this.execute('filletSolidFace', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async chamferSolidFace(entityId: string, faceIndex: number, radius: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async chamferSolidFace(entityId: string, faceIndex: number, radius: number, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(ChamferSolidFaceOpSchema, { entityId, faceIndex, radius });
-    const response = await this.execute('chamferSolidFace', op);
+    const response = await this.execute('chamferSolidFace', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async makeThickSolid(entityId: string, faceIndices: number[], thickness: number, removeFaces?: boolean): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async makeThickSolid(entityId: string, faceIndices: number[], thickness: number, removeFaces?: boolean, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(MakeThickSolidOpSchema, { entityId, faceIndices, thickness, removeFaces: removeFaces ?? false });
-    const response = await this.execute('makeThickSolid', op);
+    const response = await this.execute('makeThickSolid', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
-  async draftSolidFaces(entityId: string, faceIndices: number[], neutralFaceIndex: number, angleRad: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
+  async draftSolidFaces(entityId: string, faceIndices: number[], neutralFaceIndex: number, angleRad: number, timeoutMs?: number): Promise<{ positions: number[]; indices: number[]; faceMapping?: number[]; edgeLines?: number[][]; brepBytes?: Uint8Array }> {
     const op = create(DraftSolidFacesOpSchema, { entityId, faceIndices, neutralFaceIndex, angleRad });
-    const response = await this.execute('draftSolidFaces', op);
+    const response = await this.execute('draftSolidFaces', op, undefined, timeoutMs);
     return this.meshDataToResult(response.mesh, response.brepRef);
   }
 
@@ -757,6 +759,29 @@ export class RemoteGrpcTransport implements OCCTransport {
       this.client = null;
       this.subscribed = false;
     }
+  }
+
+  /**
+   * Cancel an in-flight operation by request id. Looks up the pending call,
+   * calls the client's cancel RPC, and rejects the caller's promise with a
+   * CANCELLED error. Resolves (no-op) if the request id is not found or already
+   * complete.
+   */
+  async cancel(requestId: string): Promise<void> {
+    const pending = this.pendingCalls.get(requestId);
+    if (!pending) return; // already complete or not found
+
+    try {
+      if (this.client) {
+        await this.client.cancel(requestId).catch(() => {});
+      }
+    } catch {
+      // Ignore cancel RPC errors; we still reject the caller below.
+    }
+
+    pending.reject(new GrpcTransportError('CANCELLED', `Cancelled: ${pending.opName}`));
+    this.pendingCalls.delete(requestId);
+    this.pendingCountValue--;
   }
 
   /**

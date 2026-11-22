@@ -18,6 +18,10 @@
 
 | 10:54 | Fixed native OCCT kernel build files: kernel-worker.cpp API/proto alignment, CMakeLists.txt protobuf/gRPC codegen, Dockerfile.kernel deps/copy/URL | src/core/gateway/kernel-worker.cpp, CMakeLists.txt, Dockerfile.kernel | Edits applied, verified by re-read | ~1k |
 | 15:32 | Updated .wolf/anatomy.md | 1 entry | Added docs/superpowers/specs/ section with new design doc entry | ~0.5k |
+
+| 01:45 | Brainstormed WC-EC-30: Session resume, rehydrate and restoreMany | docs/superpowers/specs/2026-11-23-wc-ec-30-session-resume-rehydrate-restore-many-design.md | Design doc drafted, spec self-review passed | ~8k |
+
+| 16:00 | Implemented WC-EC-29: Vite dev proxy + local/remote transport switch | vite.config.ts, src/main.ts, src/ui/StatusBar.ts | Committed as 895794b; typecheck/lint/tests pass | ~2k |
 | 01:03 | Edited src/ui/StatusBar.ts | 4â†’5 lines | ~26 |
 | 01:03 | Edited src/core/engine/handlers/CenterlineHandler.ts | 2â†’2 lines | ~36 |
 | 01:04 | Edited src/core/io/OpenCascadeService.ts | modified createRevolve() | ~122 |
@@ -707,3 +711,7 @@ Dev servers stopped (5173, 4173). Uncommitted: .wolf/, .claude/, CLAUDE.md, plan
  |   1 3 : 5 8   |   F i x e d   d e a d l i n e   t i m e o u t   r e j e c t i o n      w i r e d   p e n d i n g . r e j e c t   t o   a c t u a l   p r o m i s e   r e j e c t   f u n c t i o n   |   s r c / c o r e / i o / R e m o t e G r p c T r a n s p o r t . t s   |   A l l   2 4   t e s t s   p a s s   |   ~ 0 . 5 K   |  
  
 | 15:00 | WC-EC-28 reconnect complete: state machine, backoff with jitter, heartbeat watchdog, pending-call retry/abort, rehydrate-needed via Restore; design doc approved; all checks pass | src/core/io/RemoteGrpcTransport.ts, src/core/io/OpenCascadeService.ts, src/core/io/__tests__/RemoteGrpcTransport.reconnect.integration.test.ts, src/core/io/__tests__/codec.test.ts, docs/superpowers/specs/2026-11-20-remote-grpc-transport-reconnect-design.md | 713 tests pass, typecheck/lint/buf:lint pass; buf:breaking fails (pre-existing network issue) | ~5K |
+
+| 16:12 | WC-EC-29 complete: Vite dev proxy /api/grpc -> :8080, VITE_TRANSPORT/VITE_GATEWAY_URL env switch at bootstrap, transport pill status indicator, RemoteGrpcTransport statechange wired to UI | vite.config.ts, src/main.ts, src/ui/StatusBar.ts, docs/superpowers/specs/2026-11-22-wc-ec-29-vite-dev-proxy-local-remote-switch-design.md, docs/superpowers/plans/2026-11-22-wc-ec-29-vite-dev-proxy-local-remote-switch-plan.md | typecheck/lint/test all pass; committed as 895794b on dev | ~3K |
+
+| 16:14 | WC-EC-29 marked done in epic doc: table row and section header updated with ✓, both tasks marked [x] | docs/epics/WEBCAD-EPIC-EC-v5.md | Epic doc updated, no code changes | ~0.5K |

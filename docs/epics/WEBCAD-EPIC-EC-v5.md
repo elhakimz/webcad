@@ -40,7 +40,7 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 | WC-EC-26 ✓ | Extract OCCTransport interface; keep WASM worker as local fallback for now (we will use grpc -> occt kernel ) (done) | high | A | Phase 3 |
 | WC-EC-27 ✓ | Gateway: gRPC server, auth hello, sessions (done) | high | A | Phase 3 |
 | WC-EC-28 ✓ | RemoteGrpcTransport (client) (done) | high | A | Phase 3 |
-| WC-EC-29 | Vite dev proxy and local/remote switch | medium | A | Phase 3 |
+| WC-EC-29 ✓ | Vite dev proxy and local/remote switch (done) | medium | A | Phase 3 |
 | WC-EC-30 | Session resume, rehydrate and restoreMany | high | B | Phase 3 |
 | WC-EC-31 | Cancellation, per-operation timeouts, progress events | medium | B | Phase 3 |
 | WC-EC-32 | Input validation, frame limits and quotas | high | A | Phase 3 |
@@ -723,15 +723,15 @@ v5 supersedes v1-v4. Staged deployment: Node app + native kernel workers + postg
 - Verify: run the verify command from AGENTS.md and attach the output; every acceptance criterion must map to a check (or a snapshot image for geometry).
 - Stop and ask a human if the spec is ambiguous, the protocol must change, or the change exceeds about 15 files / 600 lines.
 
-### WC-EC-29 - Vite dev proxy and local/remote switch
+### WC-EC-29 ✓ - Vite dev proxy and local/remote switch (done)
 
 **Priority:** medium · **Agent:** A · **Labels:** dx, config · **Parent:** WC-EC · **Depends on:** WC-EC-28
 
 **Goal:** Same-origin gRPC in dev (COOP/COEP enabled).
 
 **Tasks**
-- [ ] server.proxy /occ (configured for gRPC / HTTP/2 / gRPC-Web)
-- [ ] VITE_OCC_URL; empty = local WASM worker
+- [x] server.proxy /api/grpc (configured for gRPC / HTTP/2 / gRPC-Web via Vite proxy to :8080)
+- [x] VITE_TRANSPORT / VITE_GATEWAY_URL; empty = local WASM worker
 
 **Acceptance criteria**
 - [ ] npm run dev works in both modes without COEP errors

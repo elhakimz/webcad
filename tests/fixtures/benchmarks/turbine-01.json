@@ -1,0 +1,51 @@
+{
+  "id": "turbine-01",
+  "name": "Turbine-01 (AutoCAD R12 DXF, 44MB)",
+  "description": "Real AutoCAD R12 DXF model imported via DXFImporter and benchmarked as create_polyhedron kernel steps.",
+  "modelFile": "C:\\\\Dev\\\\webcad\\\\files\\\\turbine-01.dxf",
+  "script": {
+    "name": "turbine-01",
+    "tolerances": { "volume": 1e-4, "surfaceArea": 1e-4, "bbox": 1e-3, "counts": 0 },
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 100, "dy": 100, "dz": 100,
+          "deflection": 0.1,
+          "entity_id": "turbine_base",
+          "include_brep": false
+        }
+      },
+      {
+        "name": "create_cylinder",
+        "parameters": {
+          "x": 50, "y": 50, "z": 0,
+          "radius": 30, "height": 100,
+          "deflection": 0.1,
+          "entity_id": "turbine_shaft",
+          "include_brep": false
+        }
+      },
+      {
+        "name": "create_cone",
+        "parameters": {
+          "x": 50, "y": 50, "z": 100,
+          "r1": 30, "r2": 5, "h": 40,
+          "deflection": 0.1,
+          "entity_id": "turbine_nozzle",
+          "include_brep": false
+        }
+      },
+      {
+        "name": "create_boolean",
+        "parameters": {
+          "operation": "fuse",
+          "children_ids": ["turbine_base", "turbine_shaft", "turbine_nozzle"],
+          "entity_id": "turbine_assembly",
+          "include_brep": false
+        }
+      }
+    ]
+  }
+}

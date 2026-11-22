@@ -943,3 +943,23 @@
 |------|-------------|--------|
 | 2026-11-22-grpc-kernel-transport-parity.md | WEBCAD-218: gRPC kernel transport full parity implementation plan (~70 tasks, 11 chunks) | ~11KB |
 | 2026-11-22-remote-grpc-transport-reconnect.md | WC-EC-28: RemoteGrpcTransport reconnect implementation plan | ~26KB |
+
+## Benchmark Design (docs/superpowers/specs/)
+| File | Description | Tokens |
+|------|-------------|--------|
+| 2026-11-23-wc-ec-33-benchmark-native-wasm-thread-scaling-design.md | WC-EC-33: Benchmark native vs WASM, thread scaling design (BenchmarkAdapter, BenchmarkRunner, BenchmarkReport, fixtures, tests) | ~9KB |
+
+## New (unlisted)
+| File | Description | Tokens |
+|------|-------------|--------|
+| src/core/benchmark/benchmark-adapter.ts | Planned: wraps KernelAdapter, instruments per-step timing + memory | ~0KB (not yet created) |
+| src/core/benchmark/benchmark-runner.ts | Planned: orchestrates benchmarks across kernels × thread counts | ~0KB (not yet created) |
+| src/core/benchmark/benchmark-report.ts | Planned: report types + JSON writer | ~0KB (not yet created) |
+| tests/fixtures/benchmarks/turbine-01.json | Planned: turbine-01.dxf import benchmark script | ~0KB (not yet created) |
+| tests/fixtures/benchmarks/composite_box.json | Planned: script-defined composite benchmark | ~0KB (not yet created) |
+| tests/fixtures/benchmarks/composite_cylinder.json | Planned: script-defined composite benchmark | ~0KB (not yet created) |
+| tests/benchmark/benchmark-adapter.test.ts | Planned: unit tests with mock KernelAdapter | ~0KB (not yet created) |
+| tests/benchmark/benchmark-runner.test.ts | Planned: unit tests for runner aggregation | ~0KB (not yet created) |
+| tests/benchmark/benchmark-e2e.spec.ts | Planned: Playwright E2E against real WASM + native kernels | ~0KB (not yet created) |
+tests/benchmark/benchmark-adapter.test.ts | Unit tests for BenchmarkAdapter (mock KernelAdapter, timing/memory recording, error handling) | ~300 |
+tests/benchmark/benchmark-runner.test.ts | Unit tests for BenchmarkRunner (thread count propagation, continue-on-error, report writing) | ~250 |

@@ -1,0 +1,59 @@
+{
+  "id": "composite_cylinder",
+  "name": "Composite Cylinder (script-defined)",
+  "description": "Script-defined composite model: cylinder with revolve profile and boolean cut.",
+  "script": {
+    "name": "composite_cylinder",
+    "tolerances": { "volume": 1e-4, "surfaceArea": 1e-4, "bbox": 1e-3, "counts": 0 },
+    "steps": [
+      {
+        "name": "create_cylinder",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "radius": 20, "height": 60,
+          "deflection": 0.1,
+          "entity_id": "cyl_base",
+          "include_brep": false
+        }
+      },
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": -15, "y": -15, "z": 0,
+          "dx": 30, "dy": 30, "dz": 10,
+          "deflection": 0.1,
+          "entity_id": "cyl_cutout",
+          "include_brep": false
+        }
+      },
+      {
+        "name": "create_boolean",
+        "parameters": {
+          "operation": "cut",
+          "children_ids": ["cyl_base", "cyl_cutout"],
+          "entity_id": "cyl_final",
+          "include_brep": false
+        }
+      },
+      {
+        "name": "create_sphere",
+        "parameters": {
+          "x": 0, "y": 0, "z": 70,
+          "r": 12,
+          "deflection": 0.1,
+          "entity_id": "cyl_top",
+          "include_brep": false
+        }
+      },
+      {
+        "name": "create_boolean",
+        "parameters": {
+          "operation": "fuse",
+          "children_ids": ["cyl_final", "cyl_top"],
+          "entity_id": "cyl_complete",
+          "include_brep": false
+        }
+      }
+    ]
+  }
+}

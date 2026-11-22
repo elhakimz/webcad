@@ -354,3 +354,17 @@ inja -C /kernel/build kernel_worker compiled, docker restart deployed new binary
 - **Backoff with jitter:** Exponential backoff base 1s, doubles, cap 30s, jitter 0-25%, max 10 attempts (~3.5 min). `online`/`visibilitychange` trigger immediate reconnect.
 - **Single-flight reconnect:** Generation counter + `reconnecting` flag prevent duplicate reconnect loops from heartbeat failure and RPC error simultaneously.
 
+
+## Plane API learnings (2026-11-25)
+- Auth header: X-API-Key works; Bearer returns 401
+- Responses are UTF-16LE with BOM - decode with utf-8-sig before json.loads()
+- Done state = 3db7e240-6c48-4acd-8b2e-fee18c0586eb; Backlog = d2595e99-1359-40f0-9efc-6f590d813476
+
+## WC-EC-33 benchmark design (2026-11-23)
+- Thread scaling = concurrent kernel operations at counts 1/2/4/8 (WC-EC-34 handles multi-process worker pools separately)
+- BenchmarkAdapter wraps KernelAdapter, instruments per-step timing (performance.now) + memory (process.resourceUsage RSS delta)
+- Continue-and-report error handling: crashed run at one thread count doesn't abort the benchmark
+- Missing DXF file = skip with warning, not hard failure
+- Output = JSON report at tests/benchmark/reports/<timestamp>.json, no UI
+
+| 2026-11-23T02:56:09 | WC-EC-33 benchmark: fs.readdirSync throws ENOENT for missing dirs — need try/catch to convert to 'no benchmark scripts found' error; KernelAdapter interface has 'surface' (not just 'surfaceArea') in ScriptTolerances | src/core/benchmark/benchmark-runner.ts src/core/benchmark/dxf-to-script.ts | fix | ~5 |

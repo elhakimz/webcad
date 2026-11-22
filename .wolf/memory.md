@@ -19,6 +19,8 @@
 | 10:54 | Fixed native OCCT kernel build files: kernel-worker.cpp API/proto alignment, CMakeLists.txt protobuf/gRPC codegen, Dockerfile.kernel deps/copy/URL | src/core/gateway/kernel-worker.cpp, CMakeLists.txt, Dockerfile.kernel | Edits applied, verified by re-read | ~1k |
 | 15:32 | Updated .wolf/anatomy.md | 1 entry | Added docs/superpowers/specs/ section with new design doc entry | ~0.5k |
 
+| 02:41 | Completed WC-EC-32: Input validation, frame limits, quotas | command-registry.ts, connect-server.ts, RemoteGrpcTransport.ts, command-registry.test.ts, RemoteGrpcTransport.test.ts, 9 command metadata files, design doc | All verified: 747 tests pass, tsc 0 errors, lint 0 errors, buf lint passes | ~5k |
+
 | 01:45 | Brainstormed WC-EC-30: Session resume, rehydrate and restoreMany | docs/superpowers/specs/2026-11-23-wc-ec-30-session-resume-rehydrate-restore-many-design.md | Design doc drafted, spec self-review passed | ~8k |
 
 | 16:00 | Implemented WC-EC-29: Vite dev proxy + local/remote transport switch | vite.config.ts, src/main.ts, src/ui/StatusBar.ts | Committed as 895794b; typecheck/lint/tests pass | ~2k |
@@ -715,3 +717,7 @@ Dev servers stopped (5173, 4173). Uncommitted: .wolf/, .claude/, CLAUDE.md, plan
 | 16:12 | WC-EC-29 complete: Vite dev proxy /api/grpc -> :8080, VITE_TRANSPORT/VITE_GATEWAY_URL env switch at bootstrap, transport pill status indicator, RemoteGrpcTransport statechange wired to UI | vite.config.ts, src/main.ts, src/ui/StatusBar.ts, docs/superpowers/specs/2026-11-22-wc-ec-29-vite-dev-proxy-local-remote-switch-design.md, docs/superpowers/plans/2026-11-22-wc-ec-29-vite-dev-proxy-local-remote-switch-plan.md | typecheck/lint/test all pass; committed as 895794b on dev | ~3K |
 
 | 16:14 | WC-EC-29 marked done in epic doc: table row and section header updated with ✓, both tasks marked [x] | docs/epics/WEBCAD-EPIC-EC-v5.md | Epic doc updated, no code changes | ~0.5K |
+| 2026-11-23 02:26 | WC-EC-31 implementation complete and committed on dev | RemoteGrpcTransport.ts, OpenCascadeService.ts, OCCTransport.ts, OCCWorkerClient.ts, KernelGrpcTransport.ts, transport-cancel-progress.test.ts, design spec | All 734 tests pass, typecheck clean, lint clean, buf lint passes | ~1500 |
+| 02:45 | Marked WC-EC-32 Done in Plane + committed on dev | .wolf/plane_mark_done.py (temp, removed), git commit 1a34491 | Plane issue afd077df state → Done (3db7e240-...); commit [dev 1a34491] feat(gateway,transport): WC-EC-32 input validation, frame limits and quotas | ~2k |
+| 02:49 | WC-EC-33 benchmark design doc created | docs/superpowers/specs/2026-11-23-wc-ec-33-benchmark-native-wasm-thread-scaling-design.md | Design spec written, awaiting user review before implementation | ~9K |
+| 2026-11-23T02:56:09 | WC-EC-33 benchmark: wrote unit tests (benchmark-adapter.test.ts, benchmark-runner.test.ts), fixed 2 type errors + lint warnings in source files, ran typecheck/lint/test all passing | src/core/benchmark/*.ts tests/benchmark/*.ts | success | ~15 |

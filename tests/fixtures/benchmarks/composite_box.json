@@ -1,0 +1,60 @@
+{
+  "id": "composite_box",
+  "name": "Composite Box (script-defined)",
+  "description": "Script-defined composite model: box with fillet, chamfer, and boolean operations.",
+  "script": {
+    "name": "composite_box",
+    "tolerances": { "volume": 1e-4, "surfaceArea": 1e-4, "bbox": 1e-3, "counts": 0 },
+    "steps": [
+      {
+        "name": "create_box",
+        "parameters": {
+          "x": 0, "y": 0, "z": 0,
+          "dx": 50, "dy": 40, "dz": 30,
+          "deflection": 0.1,
+          "entity_id": "box_base",
+          "include_brep": false
+        }
+      },
+      {
+        "name": "fillet_solid",
+        "parameters": {
+          "entity_id": "box_base",
+          "edge_ids": [],
+          "radius": 2.0,
+          "deflection": 0.1,
+          "include_brep": false
+        }
+      },
+      {
+        "name": "chamfer_solid",
+        "parameters": {
+          "entity_id": "box_base",
+          "face_ids": [],
+          "distance": 1.5,
+          "deflection": 0.1,
+          "include_brep": false
+        }
+      },
+      {
+        "name": "create_cylinder",
+        "parameters": {
+          "x": 25, "y": 20, "z": 30,
+          "radius": 8, "height": 20,
+          "deflection": 0.1,
+          "entity_id": "box_hole",
+          "include_brep": false
+        }
+      },
+      {
+        "name": "create_boolean",
+        "parameters": {
+          "operation": "cut",
+          "children_ids": ["box_base", "box_hole"],
+          "entity_id": "box_final",
+          "include_brep": false
+        }
+      }
+    ]
+  }
+}

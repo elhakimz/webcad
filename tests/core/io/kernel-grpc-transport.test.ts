@@ -1340,3 +1340,67 @@ describe('KernelGrpcTransport.transformShape()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.rotateShape()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with rotate_shape op and rotation params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'rotate-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.rotateShape('shape-1', 45, 0, 0, 0, 0, 0, 'target-1', 0.001);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rotate_shape: {
+          entityId: 'shape-1',
+          rx: 45,
+          ry: 0,
+          rz: 0,
+          cx: 0,
+          cy: 0,
+          cz: 0,
+          targetEntityId: 'target-1',
+          deflection: 0.001,
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'rotate-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.rotateShape('shape-1', 90, 0, 0, 10, 20, 30);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults targetEntityId to empty string and deflection to 0', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.rotateShape('shape-1', 90, 0, 0, 10, 20, 30);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rotate_shape: expect.objectContaining({
+          targetEntityId: '',
+          deflection: 0,
+        }),
+      })
+    );
+  });
+});

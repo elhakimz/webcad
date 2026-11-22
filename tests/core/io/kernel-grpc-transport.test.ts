@@ -289,6 +289,67 @@ describe('KernelGrpcTransport.createCylinder()', () => {
   });
 });
 
+describe('KernelGrpcTransport.createSphere()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_sphere op and sphere params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'sphere-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const result = await transport.createSphere(0, 0, 0, 5, 0.001, 'sphere-1');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_sphere: {
+          x: 0,
+          y: 0,
+          z: 0,
+          r: 5,
+          deflection: 0.001,
+          entityId: 'sphere-1',
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'sphere-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createSphere(0, 0, 0, 5);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults deflection to 0 and entityId to empty string', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createSphere(1, 2, 3, 4);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_sphere: expect.objectContaining({
+          deflection: 0,
+          entityId: '',
+        }),
+      })
+    );
+  });
+});
+
 describe('KernelGrpcTransport.extractFaceProfile()', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -167,7 +167,19 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async createExtrude(points: any[], height: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string, vector?: number[]): Promise<any> {
-    throw new Error('createExtrude not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_extrude: {
+        points: points.map((p: any) => ({ x: p.x, y: p.y, z: p.z })),
+        height,
+        thickness: thickness ?? 0,
+        deflection: deflection ?? 0,
+        isClosed: isClosed ?? false,
+        entityId: entityId ?? '',
+        vector: vector ?? [],
+      },
+    });
   }
 
   async createRevolve(points: any[], axisPoint: { x: number; y: number; z: number }, axisDir: { x: number; y: number; z: number }, angle: number, thickness?: number, deflection?: number, isClosed?: boolean, entityId?: string): Promise<any> {

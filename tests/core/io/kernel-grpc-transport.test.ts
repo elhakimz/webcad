@@ -820,3 +820,73 @@ describe('KernelGrpcTransport.extractFaceProfile()', () => {
     expect(result).toEqual({ loops: [] });
   });
 });
+
+describe('KernelGrpcTransport.createExtrude()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_extrude op and extrude params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'extrude-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const points = [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }];
+    const result = await transport.createExtrude(points, 10.0, 2.0, 0.001, true, 'extrude-1', [0, 0, 1]);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_extrude: {
+          points: [
+            { x: 0, y: 0, z: 0 },
+            { x: 1, y: 0, z: 0 },
+            { x: 0, y: 1, z: 0 },
+          ],
+          height: 10.0,
+          thickness: 2.0,
+          deflection: 0.001,
+          isClosed: true,
+          entityId: 'extrude-1',
+          vector: [0, 0, 1],
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'extrude-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createExtrude([{ x: 0, y: 0, z: 0 }], 5.0);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults thickness to 0, deflection to 0, isClosed to false, entityId to empty string, vector to []', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createExtrude([{ x: 1, y: 2, z: 3 }], 5.0);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_extrude: expect.objectContaining({
+          thickness: 0,
+          deflection: 0,
+          isClosed: false,
+          entityId: '',
+          vector: [],
+        }),
+      })
+    );
+  });
+});

@@ -111,6 +111,22 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    proxy: {
+      '/api/grpc': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/grpc/, ''),
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, req, res) => {
+            console.warn('[Vite proxy] Gateway unreachable:', err.message)
+            if (!res.headersSent) {
+              res.writeHead(502, { 'Content-Type': 'text/plain' })
+              res.end('Gateway unavailable — is the gateway running on port 8080?')
+            }
+          })
+        },
+      },
+    },
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp'

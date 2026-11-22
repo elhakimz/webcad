@@ -19,6 +19,7 @@ export class StatusBar {
   private orthoTag: HTMLElement;
   private osnapTag: HTMLElement;
   private otrackTag: HTMLElement;
+  private transportEl: HTMLElement | null;
 
   constructor() {
     this.layerEl = document.getElementById('layer-info')!;
@@ -28,6 +29,7 @@ export class StatusBar {
     this.orthoTag = document.getElementById('tag-ortho')!;
     this.osnapTag = document.getElementById('tag-osnap')!;
     this.otrackTag = document.getElementById('tag-otrack')!;
+    this.transportEl = document.getElementById('transport-indicator');
   }
 
   updateLayer(layer: Layer) {
@@ -53,6 +55,12 @@ export class StatusBar {
     } else {
       el.classList.remove('active');
     }
+  }
+
+  updateTransport(mode: 'local' | 'grpc' | 'kernel', state: string) {
+    if (!this.transportEl) return;
+    const label = mode === 'local' ? 'LOCAL' : mode === 'grpc' ? 'REMOTE' : 'KERNEL';
+    this.transportEl.innerHTML = `<span class="bp6-text-muted">[${label}:${state}]</span>`;
   }
 
   onTagClick(type: 'snap' | 'grid' | 'ortho' | 'osnap' | 'otrack', callback: () => void) {

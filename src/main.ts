@@ -11,6 +11,7 @@ import { DisplayRibbonBar } from "./ui/DisplayRibbonBar"
 import { SettingsRibbonBar } from "./ui/SettingsRibbonBar"
 import { DazViewControl } from "./ui/DazViewControl"
 import { OpenCascadeService } from "./core/io/OpenCascadeService.js"
+import { RemoteGrpcTransport } from "./core/io/RemoteGrpcTransport.js"
 import { FloatingToolbar } from "./ui/FloatingToolbar"
 import { DockingManager } from "./ui/DockingManager"
 import { ToolWindowBar } from "./ui/ToolWindowBar"
@@ -398,14 +399,44 @@ editToolbar.show();
 inquiryToolbar.show();
 solidToolbar.show();
 
+const transport = (import.meta.env.VITE_TRANSPORT as
+  | 'local' | 'grpc' | 'kernel' | undefined) ?? 'local'
+const gatewayUrl = import.meta.env.VITE_GATEWAY_URL ?? undefined
+
 Promise.all([
-  OpenCascadeService.getInstance().init(),
+  OpenCascadeService.getInstance().init({
+    transport,
+    gatewayUrl,
+    sessionId: crypto.randomUUID(),
+    includeBrep: true,
+    timeoutMs: 30000,
+  }),
   app.persistence.init()
 ])
 .then(async () => {
   await app.execute('NEW');
   viewer.resize();
   viewer.render();
+
+  // Transport status indicator in the status bar
+  const statusBarEl = document.getElementById('status-bar')!;
+  const transportPill = document.createElement('span');
+  transportPill.id = 'transport-indicator';
+  transportPill.style.cssText = 'margin-left: auto; padding: 2px 8px; font-size: 11px; font-family: monospace; opacity: 0.8;';
+  transportPill.textContent = transport === 'local' ? '[LOCAL:CONNECTED]' : `[${transport === 'grpc' ? 'REMOTE' : 'KERNEL'}:CONNECTING]`;
+  statusBarEl.appendChild(transportPill);
+
+  const occService = OpenCascadeService.getInstance();
+
+  if (transport === 'grpc' || gatewayUrl) {
+    const client = occService.client as RemoteGrpcTransport;
+    if (client?.addEventListener) {
+      client.addEventListener('statechange', (event: Event) => {
+        const detail = (event as CustomEvent<{ state: string }>).detail;
+        transportPill.textContent = `[REMOTE:${detail.state}]`;
+      });
+    }
+  }
 
   const cmdInput = document.getElementById('cmd') as HTMLInputElement;
   if (cmdInput) cmdInput.focus();

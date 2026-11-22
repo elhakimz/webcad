@@ -264,7 +264,16 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async multMatrixShape(entityId: string, m: number[], targetEntityId?: string, deflection?: number): Promise<any> {
-    throw new Error('multMatrixShape not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      mult_matrix_shape: {
+        entityId,
+        m,
+        targetEntityId: targetEntityId ?? '',
+        deflection: deflection ?? 0,
+      },
+    });
   }
 
   async transformShape(entityId: string, dx: number, dy: number, dz: number, targetEntityId?: string, deflection?: number): Promise<any> {

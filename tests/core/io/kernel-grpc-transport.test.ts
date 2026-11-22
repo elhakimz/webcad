@@ -1219,3 +1219,63 @@ describe('KernelGrpcTransport.createBoolean()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.multMatrixShape()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with mult_matrix_shape op and matrix params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'matrix-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const m = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const result = await transport.multMatrixShape('shape-1', m, 'target-1', 0.001);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mult_matrix_shape: {
+          entityId: 'shape-1',
+          m,
+          targetEntityId: 'target-1',
+          deflection: 0.001,
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'matrix-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.multMatrixShape('shape-1', [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults targetEntityId to empty string and deflection to 0', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.multMatrixShape('shape-1', [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mult_matrix_shape: expect.objectContaining({
+          targetEntityId: '',
+          deflection: 0,
+        }),
+      })
+    );
+  });
+});

@@ -9,9 +9,9 @@ export const ExtrudeCommand: CommandImplementation = {
     undoable: false,
     parameters: {
       points: { type: 'array', required: true, description: 'Array of {x, y, z} profile points' },
-      height: { type: 'number', required: true, description: 'Extrusion height' },
+      height: { type: 'number', required: true, description: 'Extrusion height', min: 0 },
       thickness: { type: 'number', required: false, description: 'Shell thickness' },
-      deflection: { type: 'number', required: false, description: 'Tessellation deflection' },
+      deflection: { type: 'number', required: false, description: 'Tessellation deflection', min: 0 },
       isClosed: { type: 'boolean', required: false, description: 'Whether profile is closed' },
       entityId: { type: 'string', required: false, description: 'Optional entity ID' },
       vector: { type: 'array', required: false, description: 'Extrusion direction vector [x, y, z]' },

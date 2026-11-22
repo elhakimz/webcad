@@ -85,4 +85,132 @@ describe('CommandRegistry', () => {
     const result = registry.validate('optional_cmd', { value: 42 });
     expect(result.valid).toBe(true);
   });
+
+  // --- WC-EC-32: Range validation ---
+  it('fails validation when number is below min', () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      ...makeCommand('range_cmd'),
+      metadata: {
+        ...makeCommand('range_cmd').metadata,
+        parameters: {
+          value: { type: 'number', required: true, min: 0 },
+        },
+      },
+    });
+    const result = registry.validate('range_cmd', { value: -5 });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Parameter "value" must be >= 0, got -5');
+  });
+
+  it('passes validation when number is at min', () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      ...makeCommand('range_cmd'),
+      metadata: {
+        ...makeCommand('range_cmd').metadata,
+        parameters: {
+          value: { type: 'number', required: true, min: 0 },
+        },
+      },
+    });
+    const result = registry.validate('range_cmd', { value: 0 });
+    expect(result.valid).toBe(true);
+  });
+
+  it('fails validation when number is above max', () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      ...makeCommand('range_cmd'),
+      metadata: {
+        ...makeCommand('range_cmd').metadata,
+        parameters: {
+          value: { type: 'number', required: true, max: 100 },
+        },
+      },
+    });
+    const result = registry.validate('range_cmd', { value: 101 });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Parameter "value" must be <= 100, got 101');
+  });
+
+  it('passes validation when number is at max', () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      ...makeCommand('range_cmd'),
+      metadata: {
+        ...makeCommand('range_cmd').metadata,
+        parameters: {
+          value: { type: 'number', required: true, max: 100 },
+        },
+      },
+    });
+    const result = registry.validate('range_cmd', { value: 100 });
+    expect(result.valid).toBe(true);
+  });
+
+  it('passes validation when number is within range', () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      ...makeCommand('range_cmd'),
+      metadata: {
+        ...makeCommand('range_cmd').metadata,
+        parameters: {
+          value: { type: 'number', required: true, min: 0, max: 100 },
+        },
+      },
+    });
+    const result = registry.validate('range_cmd', { value: 50 });
+    expect(result.valid).toBe(true);
+  });
+
+  // --- WC-EC-32: Pattern validation ---
+  it('fails validation when string does not match pattern', () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      ...makeCommand('pattern_cmd'),
+      metadata: {
+        ...makeCommand('pattern_cmd').metadata,
+        parameters: {
+          value: { type: 'number', required: true },
+          label: { type: 'string', required: true, pattern: '^[A-Z]+$' },
+        },
+      },
+    });
+    const result = registry.validate('pattern_cmd', { value: 42, label: 'lowercase' });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Parameter "label" does not match required pattern: ^[A-Z]+$');
+  });
+
+  it('passes validation when string matches pattern', () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      ...makeCommand('pattern_cmd'),
+      metadata: {
+        ...makeCommand('pattern_cmd').metadata,
+        parameters: {
+          value: { type: 'number', required: true },
+          label: { type: 'string', required: true, pattern: '^[A-Z]+$' },
+        },
+      },
+    });
+    const result = registry.validate('pattern_cmd', { value: 42, label: 'HELLO' });
+    expect(result.valid).toBe(true);
+  });
+
+  it('skips pattern validation for missing optional string param', () => {
+    const registry = new CommandRegistry();
+    registry.register({
+      ...makeCommand('pattern_cmd'),
+      metadata: {
+        ...makeCommand('pattern_cmd').metadata,
+        parameters: {
+          value: { type: 'number', required: true },
+          label: { type: 'string', required: false, pattern: '^[A-Z]+$' },
+        },
+      },
+    });
+    const result = registry.validate('pattern_cmd', { value: 42 });
+    expect(result.valid).toBe(true);
+  });
 });

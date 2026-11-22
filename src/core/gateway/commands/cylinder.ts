@@ -11,9 +11,9 @@ export const CylinderCommand: CommandImplementation = {
       x: { type: 'number', required: true, description: 'Center X' },
       y: { type: 'number', required: true, description: 'Center Y' },
       z: { type: 'number', required: true, description: 'Center Z' },
-      r: { type: 'number', required: true, description: 'Radius' },
-      h: { type: 'number', required: true, description: 'Height' },
-      deflection: { type: 'number', required: true, description: 'Tessellation deflection' },
+      r: { type: 'number', required: true, description: 'Radius', min: 0 },
+      h: { type: 'number', required: true, description: 'Height', min: 0 },
+      deflection: { type: 'number', required: true, description: 'Tessellation deflection', min: 0 },
       entityId: { type: 'string', required: false, description: 'Optional entity ID' },
     },
     result: {

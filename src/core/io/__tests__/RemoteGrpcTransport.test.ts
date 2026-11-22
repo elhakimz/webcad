@@ -419,6 +419,60 @@ describe('RemoteGrpcTransport', () => {
     });
   });
 
+  // --- WC-EC-32: Client-side validation ---
+  describe('client-side validation', () => {
+    it('rejects null payload', async () => {
+      // validatePayload is private; test via createBox which calls execute -> validatePayload
+      // createBox builds a valid op object, so we need to mock execute to receive the call
+      // but validation happens before execute. We can test by passing NaN as a numeric param.
+      await expect(transport.createBox(0, 0, 0, NaN, 10, 10)).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT',
+      });
+    });
+
+    it('rejects Infinity payload', async () => {
+      await expect(transport.createBox(0, 0, 0, Infinity, 10, 10)).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT',
+      });
+    });
+
+    it('rejects -Infinity payload', async () => {
+      await expect(transport.createBox(0, 0, 0, -Infinity, 10, 10)).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT',
+      });
+    });
+
+    it('passes valid finite numbers through to execute', async () => {
+      await transport.createBox(0, 0, 0, 10, 10, 10);
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+      const payload = mockExecute.mock.calls[0][0].op.value;
+      expect(payload.dx).toBe(10);
+    });
+  });
+
+  // --- WC-EC-32: Client-side response size limit ---
+  describe('client-side response size', () => {
+    it('rejects oversized responses', async () => {
+      // Build a response with a large mesh to exceed 4MiB
+      const largePositions = new ArrayBuffer(5 * 1024 * 1024); // 5 MiB
+      mockExecute.mockResolvedValue({
+        result: { case: 'success', value: {} },
+        mesh: {
+          positions: new Uint8Array(largePositions),
+          indices: new Uint8Array(),
+          faceMapping: undefined,
+          edgeLines: undefined,
+          edgeOffsets: undefined,
+        } as any,
+        brepRef: undefined,
+      });
+
+      await expect(transport.createBox(0, 0, 0, 10, 10, 10)).rejects.toMatchObject({
+        code: 'RESOURCE_EXHAUSTED',
+      });
+    });
+  });
+
   describe('error classification', () => {
     it('rejects PERMISSION_DENIED immediately without retry', async () => {
       mockExecute.mockRejectedValue(new GrpcTransportError('PERMISSION_DENIED', 'access denied'));

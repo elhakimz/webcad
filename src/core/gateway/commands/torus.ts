@@ -11,9 +11,9 @@ export const TorusCommand: CommandImplementation = {
       x: { type: 'number', required: true, description: 'Center X' },
       y: { type: 'number', required: true, description: 'Center Y' },
       z: { type: 'number', required: true, description: 'Center Z' },
-      r1: { type: 'number', required: true, description: 'Major radius' },
-      r2: { type: 'number', required: true, description: 'Minor radius' },
-      deflection: { type: 'number', required: true, description: 'Tessellation deflection' },
+      r1: { type: 'number', required: true, description: 'Major radius', min: 0 },
+      r2: { type: 'number', required: true, description: 'Minor radius', min: 0 },
+      deflection: { type: 'number', required: true, description: 'Tessellation deflection', min: 0 },
       entityId: { type: 'string', required: false, description: 'Optional entity ID' },
     },
     result: {

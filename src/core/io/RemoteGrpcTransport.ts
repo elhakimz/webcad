@@ -237,6 +237,9 @@ export class RemoteGrpcTransport implements OCCTransport {
   ): Promise<ExecuteResponse> {
     const reqId = requestId ?? crypto.randomUUID();
 
+    // --- WC-EC-32: Client-side input validation (fail fast before network) ---
+    this.validatePayload(opName, payload);
+
     // If reconnecting, queue the call (bounded).
     if (this.stateValue === ConnectionState.RECONNECTING) {
       if (this.callQueue.length >= this.config.queueSize) {
@@ -274,6 +277,12 @@ export class RemoteGrpcTransport implements OCCTransport {
           headers: { 'x-session-id': this.sessionId },
           responseTimeout: timeoutMs ?? this.config.timeoutMs,
         });
+
+        // --- WC-EC-32: Client-side frame limits (response size) ---
+        const responseSize = Buffer.byteLength(JSON.stringify(response));
+        if (responseSize > 4 * 1024 * 1024) {
+          throw new GrpcTransportError('RESOURCE_EXHAUSTED', `Response size ${responseSize} exceeds max inline size`);
+        }
 
         if (response.result?.case === 'failure') {
           const f = response.result.value;
@@ -859,6 +868,27 @@ export class RemoteGrpcTransport implements OCCTransport {
 
   unsubscribe(onEvent: (event: SessionEvent) => void): void {
     this.eventListeners.delete(onEvent);
+  }
+
+  /**
+   * WC-EC-32: Client-side input validation (fail fast before network).
+   * Basic type/finiteness checks; full range/pattern validation is enforced
+   * by the gateway. Throws GrpcTransportError('INVALID_ARGUMENT') on failure.
+   */
+  private validatePayload(opName: string, payload: unknown): void {
+    if (payload === null || payload === undefined) {
+      throw new GrpcTransportError('INVALID_ARGUMENT', `Payload for ${opName} must not be null or undefined`);
+    }
+    if (typeof payload !== 'object') {
+      throw new GrpcTransportError('INVALID_ARGUMENT', `Payload for ${opName} must be an object`);
+    }
+
+    const p = payload as Record<string, unknown>;
+    for (const [key, value] of Object.entries(p)) {
+      if (typeof value === 'number' && !Number.isFinite(value)) {
+        throw new GrpcTransportError('INVALID_ARGUMENT', `${opName}.${key} must be a finite number, got ${String(value)}`);
+      }
+    }
   }
 }
 

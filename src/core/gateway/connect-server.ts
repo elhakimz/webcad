@@ -7,8 +7,7 @@ import { ordererRegistry } from './ordering.js';
 import { CommandRegistry } from './command-registry.js';
 import { kernelSupervisor } from './kernel-supervisor.js';
 import { authInterceptor } from './auth-interceptor.js';
-import { authenticator } from './auth.js';
-import {
+import { authenticator } from './auth.js';import {
   BoxCommand, CylinderCommand, SphereCommand, ConeCommand, FrustumCommand,
   TorusCommand, WedgeCommand, PyramidCommand, PolyhedronCommand, ConvexHullCommand,
   ExtrudeCommand, RevolveCommand, CompoundCommand, SweepCommand, LoftCommand,
@@ -55,6 +54,14 @@ commandRegistry.register(CheckValidityCommand);
 commandRegistry.register(ExportBRepCommand);
 commandRegistry.register(ImportBRepCommand);
 commandRegistry.register(ExtractFaceProfileCommand);
+
+// WC-EC-32: Per-session concurrent operation tracking (quota)
+const concurrentOps = new Map<string, number>();
+
+// WC-EC-32: Frame limit constants (mirrors ServerLimits returned by OpenSession)
+const MAX_INLINE_REQUEST_BYTES = 4 * 1024 * 1024;   // 4 MiB
+const MAX_INLINE_RESPONSE_BYTES = 4 * 1024 * 1024;  // 4 MiB
+const MAX_CONCURRENT_OPS_PER_SESSION = 16;
 
 const EngineGatewayServiceDesc = EngineGatewayService;
 const KernelServiceDesc = KernelService;
@@ -228,6 +235,30 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
       throw new Error('INVALID_ARGUMENT: missing session_id or request_id');
     }
 
+    // --- WC-EC-32: Input validation ---
+    const op = (req as any)?.op;
+    const opName = op?.case as string | undefined;
+    const params = op?.value as Record<string, unknown> | undefined;
+    if (opName && params) {
+      const validation = commandRegistry.validate(opName, params);
+      if (!validation.valid) {
+        throw new Error(`INVALID_ARGUMENT: ${validation.errors.join('; ')}`);
+      }
+    }
+
+    // --- WC-EC-32: Frame limits (request size) ---
+    const requestSize = Buffer.byteLength(JSON.stringify(req));
+    if (requestSize > MAX_INLINE_REQUEST_BYTES) {
+      throw new Error(`RESOURCE_EXHAUSTED: request size ${requestSize} exceeds max inline size ${MAX_INLINE_REQUEST_BYTES}`);
+    }
+
+    // --- WC-EC-32: Quota (concurrent ops per session) ---
+    const currentOps = concurrentOps.get(sessionId) ?? 0;
+    if (currentOps >= MAX_CONCURRENT_OPS_PER_SESSION) {
+      throw new Error(`RESOURCE_EXHAUSTED: session ${sessionId} has ${currentOps} concurrent ops (max ${MAX_CONCURRENT_OPS_PER_SESSION})`);
+    }
+    concurrentOps.set(sessionId, currentOps + 1);
+
     const session = sessionManager.getSession(sessionId);
     const principal = session?.ownerId ?? sessionId;
 
@@ -259,6 +290,7 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
         receivedAt: Date.now(),
       });
     } catch (err) {
+      concurrentOps.set(sessionId, Math.max(0, (concurrentOps.get(sessionId) ?? 1) - 1));
       dedupeCache.fail(principal, sessionId, requestId, 0, err instanceof Error ? err.message : 'ordering error');
       throw err;
     }
@@ -267,11 +299,20 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
       const result = await this.executeOnKernel(sessionId, req);
       orderer.advance();
       dedupeCache.complete(principal, sessionId, requestId, result.resultRef);
+
+      // --- WC-EC-32: Frame limits (response size) ---
+      const responseSize = Buffer.byteLength(JSON.stringify(result));
+      if (responseSize > MAX_INLINE_RESPONSE_BYTES) {
+        throw new Error(`RESOURCE_EXHAUSTED: response size ${responseSize} exceeds max inline size ${MAX_INLINE_RESPONSE_BYTES}`);
+      }
+
       return result;
     } catch (err) {
       orderer.advance();
       dedupeCache.fail(principal, sessionId, requestId, 0, err instanceof Error ? err.message : 'execution failed');
       throw err;
+    } finally {
+      concurrentOps.set(sessionId, Math.max(0, (concurrentOps.get(sessionId) ?? 1) - 1));
     }
   },
 
@@ -283,6 +324,30 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
     if (!sessionId || !requestId) {
       throw new Error('INVALID_ARGUMENT: missing session_id or request_id');
     }
+
+    // --- WC-EC-32: Input validation ---
+    const op = (req as any)?.op;
+    const opName = op?.case as string | undefined;
+    const params = op?.value as Record<string, unknown> | undefined;
+    if (opName && params) {
+      const validation = commandRegistry.validate(opName, params);
+      if (!validation.valid) {
+        throw new Error(`INVALID_ARGUMENT: ${validation.errors.join('; ')}`);
+      }
+    }
+
+    // --- WC-EC-32: Frame limits (request size) ---
+    const requestSize = Buffer.byteLength(JSON.stringify(req));
+    if (requestSize > MAX_INLINE_REQUEST_BYTES) {
+      throw new Error(`RESOURCE_EXHAUSTED: request size ${requestSize} exceeds max inline size ${MAX_INLINE_REQUEST_BYTES}`);
+    }
+
+    // --- WC-EC-32: Quota (concurrent ops per session) ---
+    const currentOps = concurrentOps.get(sessionId) ?? 0;
+    if (currentOps >= MAX_CONCURRENT_OPS_PER_SESSION) {
+      throw new Error(`RESOURCE_EXHAUSTED: session ${sessionId} has ${currentOps} concurrent ops (max ${MAX_CONCURRENT_OPS_PER_SESSION})`);
+    }
+    concurrentOps.set(sessionId, currentOps + 1);
 
     const session = sessionManager.getSession(sessionId);
     const principal = session?.ownerId ?? sessionId;
@@ -315,6 +380,7 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
         receivedAt: Date.now(),
       });
     } catch (err) {
+      concurrentOps.set(sessionId, Math.max(0, (concurrentOps.get(sessionId) ?? 1) - 1));
       dedupeCache.fail(principal, sessionId, requestId, 0, err instanceof Error ? err.message : 'ordering error');
       throw err;
     }
@@ -323,11 +389,20 @@ export const defaultGatewayImpl: GatewayServiceImpl = {
       const result = await this.restoreOnKernel(sessionId, req);
       orderer.advance();
       dedupeCache.complete(principal, sessionId, requestId, result.resultRef);
+
+      // --- WC-EC-32: Frame limits (response size) ---
+      const responseSize = Buffer.byteLength(JSON.stringify(result));
+      if (responseSize > MAX_INLINE_RESPONSE_BYTES) {
+        throw new Error(`RESOURCE_EXHAUSTED: response size ${responseSize} exceeds max inline size ${MAX_INLINE_RESPONSE_BYTES}`);
+      }
+
       return result;
     } catch (err) {
       orderer.advance();
       dedupeCache.fail(principal, sessionId, requestId, 0, err instanceof Error ? err.message : 'restore failed');
       throw err;
+    } finally {
+      concurrentOps.set(sessionId, Math.max(0, (concurrentOps.get(sessionId) ?? 1) - 1));
     }
   },
 

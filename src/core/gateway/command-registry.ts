@@ -2,6 +2,9 @@ export interface CommandParameter {
   type: 'string' | 'number' | 'boolean' | 'array';
   required?: boolean;
   description?: string;
+  min?: number;
+  max?: number;
+  pattern?: string;
 }
 
 export interface CommandMetadata {
@@ -76,6 +79,9 @@ export class CommandRegistry {
           errors.push(
             `Parameter "${paramName}" must be of type ${paramDef.type}, got ${typeof value}`,
           );
+        } else {
+          const rangeErrors = validateRange(paramName, value, paramDef);
+          errors.push(...rangeErrors);
         }
       }
     }
@@ -97,4 +103,32 @@ function validateType(value: unknown, type: string): boolean {
     default:
       return true;
   }
+}
+
+function validateRange(paramName: string, value: unknown, def: CommandParameter): string[] {
+  const errors: string[] = [];
+
+  if (def.type === 'number' && typeof value === 'number') {
+    if (def.min !== undefined && value < def.min) {
+      errors.push(
+        `Parameter "${paramName}" must be >= ${def.min}, got ${value}`,
+      );
+    }
+    if (def.max !== undefined && value > def.max) {
+      errors.push(
+        `Parameter "${paramName}" must be <= ${def.max}, got ${value}`,
+      );
+    }
+  }
+
+  if (def.type === 'string' && typeof value === 'string' && def.pattern) {
+    const regex = new RegExp(def.pattern);
+    if (!regex.test(value)) {
+      errors.push(
+        `Parameter "${paramName}" does not match required pattern: ${def.pattern}`,
+      );
+    }
+  }
+
+  return errors;
 }

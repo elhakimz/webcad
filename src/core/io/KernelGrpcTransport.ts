@@ -8,15 +8,27 @@
 // for architecture and error handling.
 
 import { OCCTransport } from './OCCTransport.js';
-import type { GrpcKernelClient } from '../gateway/kernel-client.js';
+import { create } from '@bufbuild/protobuf';
+import type { KernelClient } from '../gateway/kernel-client.js';
+import type { CommandHeader } from '../../generated/proto/webcad/engine/v1/common_pb.js';
+import { CommandHeaderSchema } from '../../generated/proto/webcad/engine/v1/common_pb.js';
 
 export class KernelGrpcTransport implements OCCTransport {
   private sessionId: string;
-  private client: GrpcKernelClient | null = null;
+  private client: KernelClient | null = null;
   private initialized = false;
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
+  }
+
+  private header(requestId: string): CommandHeader {
+    return create(CommandHeaderSchema, {
+      sessionId: this.sessionId,
+      requestId,
+      clientSeq: 0n,
+      documentId: '',
+    });
   }
 
   async init(): Promise<void> {
@@ -32,40 +44,44 @@ export class KernelGrpcTransport implements OCCTransport {
 
   async clearCache(): Promise<{ success: boolean }> {
     await this.init();
-    const result = await this.client!.execute({ clear_cache: {} });
-    return result as { success: boolean };
+    const result = await this.client!.execute({ header: this.header(crypto.randomUUID()), clear_cache: {} });
+    return { success: (result as { success?: boolean })?.success ?? false };
   }
 
   async releaseShapes(entityIds: string[]): Promise<void> {
     await this.init();
-    await this.client!.execute({ release_shapes: { entity_ids: entityIds } });
+    await this.client!.execute({ header: this.header(crypto.randomUUID()), release_shapes: { entity_ids: entityIds } });
   }
 
   async checkValidity(entityId: string): Promise<{ isValid: boolean; faceCount: number; errorMsg: string }> {
     await this.init();
-    const result = await this.client!.execute({ check_validity: { entity_id: entityId } });
+    const result = await this.client!.execute({ header: this.header(crypto.randomUUID()), check_validity: { entity_id: entityId } });
     return result as { isValid: boolean; faceCount: number; errorMsg: string };
   }
 
   async exportBRep(entityId: string): Promise<Uint8Array> {
     await this.init();
-    const result = await this.client!.execute({ export_brep: { entity_id: entityId } });
+    const result = await this.client!.execute({ header: this.header(crypto.randomUUID()), export_brep: { entity_id: entityId } });
     return result as Uint8Array;
   }
 
   async importBRep(entityId: string, brepBytes: Uint8Array, deflection?: number): Promise<any> {
     await this.init();
-    return await this.client!.execute({ import_brep: { entity_id: entityId, brep_bytes: brepBytes, deflection: deflection ?? 0 } });
+    return await this.client!.execute({ header: this.header(crypto.randomUUID()), import_brep: { entity_id: entityId, brep_bytes: brepBytes, deflection: deflection ?? 0 } });
   }
 
   async extractFaceProfile(entityId: string, faceIndex: number, deflection?: number): Promise<{ loops: { x: number; y: number; bulge: number }[][] }> {
     await this.init();
-    const result = await this.client!.execute({ extract_face_profile: { entity_id: entityId, face_index: faceIndex, deflection: deflection ?? 0 } });
+    const result = await this.client!.execute({ header: this.header(crypto.randomUUID()), extract_face_profile: { entity_id: entityId, face_index: faceIndex, deflection: deflection ?? 0 } });
     return result as { loops: { x: number; y: number; bulge: number }[][] };
   }
 
   async createBox(x: number, y: number, z: number, dx: number, dy: number, dz: number, deflection?: number, entityId?: string): Promise<any> {
-    throw new Error('createBox not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_box: { x, y, z, dx, dy, dz, deflection: deflection ?? 0, entityId: entityId ?? '' },
+    });
   }
 
   async createCylinder(x: number, y: number, z: number, r: number, h: number, deflection?: number, entityId?: string): Promise<any> {

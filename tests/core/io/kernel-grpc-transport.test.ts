@@ -1089,3 +1089,70 @@ describe('KernelGrpcTransport.createSweep()', () => {
     );
   });
 });
+
+describe('KernelGrpcTransport.createLoft()', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.execute with create_loft op and loft params', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({ shapeId: 'loft-1' });
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    const profiles = [
+      { id: 'p1', points: [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }], closed: true },
+      { id: 'p2', points: [{ x: 0, y: 0, z: 10 }, { x: 1, y: 0, z: 10 }], closed: true },
+    ];
+    const result = await transport.createLoft(profiles, true, false, 0.001, 'loft-1');
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_loft: {
+          profiles: [
+            { id: 'p1', points: [{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }], closed: true },
+            { id: 'p2', points: [{ x: 0, y: 0, z: 10 }, { x: 1, y: 0, z: 10 }], closed: true },
+          ],
+          isSolid: true,
+          isRuled: false,
+          deflection: 0.001,
+          entityId: 'loft-1',
+        },
+      })
+    );
+    expect(result).toEqual({ shapeId: 'loft-1' });
+  });
+
+  it('calls init before executing', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.createLoft([{ id: 'p1', points: [{ x: 0, y: 0, z: 0 }], closed: true }], true, false);
+
+    expect(kernelSupervisor.getKernelForSession).toHaveBeenCalledWith('session-1');
+    expect(mockExecute).toHaveBeenCalled();
+  });
+
+  it('defaults deflection to 0 and entityId to empty string', async () => {
+    const mockExecute = vi.fn().mockResolvedValue({});
+    const mockClient = { execute: mockExecute };
+    (kernelSupervisor.getKernelForSession as any).mockResolvedValue(mockClient);
+
+    const transport = new KernelGrpcTransport('session-1');
+    await transport.init();
+    await transport.createLoft([{ id: 'p1', points: [{ x: 1, y: 2, z: 3 }], closed: true }], true, false);
+
+    expect(mockExecute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create_loft: expect.objectContaining({
+          deflection: 0,
+          entityId: '',
+        }),
+      })
+    );
+  });
+});

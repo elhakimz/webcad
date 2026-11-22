@@ -228,7 +228,21 @@ export class KernelGrpcTransport implements OCCTransport {
   }
 
   async createLoft(profiles: { id: string; points: { x: number; y: number; z: number }[]; closed: boolean }[], isSolid: boolean, isRuled: boolean, deflection?: number, entityId?: string): Promise<any> {
-    throw new Error('createLoft not yet implemented on KernelGrpcTransport');
+    await this.init();
+    return await this.client!.execute({
+      header: this.header(crypto.randomUUID()),
+      create_loft: {
+        profiles: profiles.map((p: any) => ({
+          id: p.id,
+          points: p.points.map((pt: any) => ({ x: pt.x, y: pt.y, z: pt.z })),
+          closed: p.closed,
+        })),
+        isSolid,
+        isRuled,
+        deflection: deflection ?? 0,
+        entityId: entityId ?? '',
+      },
+    });
   }
 
   async createBoolean(operation: 'fuse' | 'cut' | 'common', idA: string, idB: string, entityId: string, deflection?: number, rotA?: { x: number; y: number; z: number }, rotB?: { x: number; y: number; z: number }, centerA?: { x: number; y: number; z: number }, centerB?: { x: number; y: number; z: number }): Promise<any> {

@@ -60,6 +60,11 @@
 
 ## ./src/core/gateway/
 
+- `kernel-supervisor.ts` — Manages one native OCCT kernel process per session with spare pool, crash recovery (REHYDRATING → Restore → replay), health checks; delegates pool management to KernelPoolManager (~1300 tok)
+- `session-manager.ts` — Session lifecycle (connected/restarting/rehydrating), event replay buffer with size+TTL eviction, kernel PID tracking (~1300 tok)
+- `kernel-client.ts` — KernelClient interface + GrpcKernelClient (UDS/gRPC) implementation (~1300 tok)
+- `stdio-kernel-client.ts` — Stdio-based kernel client alternative (~1300 tok)
+- `kernel-pool-manager.ts` — WC-EC-34: KernelPoolManager for idle TTL eviction, CPU affinity (taskset), cgroup v2 memory/CPU limits, OOM detection and recovery (~1300 tok)
 - `kernel-worker.cpp` — OCCT 7.9.3 kernel worker implementing KernelService (Execute over gRPC/UDS), shape cache, CreateBox/ImportBRep handlers, OpCreateSweep/HandleCreateSweep via BRepOffsetAPI_MakePipeShell (~1300 tok)
 
 ## ./src/core/harness/
@@ -779,6 +784,9 @@
 ## doc/results/
 
 - `kernel_create_box_findings.md` — Part A findings: kernel create_box P0 failure diagnosis — header/lib mismatch hypothesis, OpCreateBox call sequence correct, no swallowed exceptions, init is no-op handshake, unported ops (createLoft) return INVALID_PARAMETER → propose UNSUPPORTED, test changes recommended (~9k)
+
+## docs/superpowers/specs/
+- `2026-11-25-wc-ec-34-kernel-process-pool-idle-eviction-cgroup-design.md` — WC-EC-34 design spec: KernelPoolManager for idle TTL eviction, CPU affinity, cgroup memory/CPU limits, OOM detection and recovery (~14k tok)
 
 ## docs/superpowers/plans/
 - `2026-11-19-grpc-connect-transport.md` — Implementation plan for gRPC/Connect transport replacement across three PRs (~13k tok)
